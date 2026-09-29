@@ -82,6 +82,17 @@ impl Client {
             }
         }
     }
+
+    pub fn turn(&mut self, id: &str, text: &str) -> Value {
+        self.request(
+            "turn/start",
+            json!({"threadId":id,"input":[{"type":"text","text":text}]}),
+        );
+        self.wait(Duration::from_secs(180), |v| {
+            v["method"] == "turn/completed" && v["params"]["threadId"] == id
+        })["params"]["turn"]
+            .clone()
+    }
 }
 
 impl Drop for Client {

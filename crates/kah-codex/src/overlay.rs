@@ -1,0 +1,80 @@
+//! Per-launch policy rendered into an independent, persistent Codex home.
+use std::{fmt, path::Path};
+use toml::{Table, Value};
+
+mod storage;
+pub use storage::prepare;
+
+pub struct Policy<'a> {
+    pub restricted: bool,
+    pub online: bool,
+    pub root: &'a Path,
+    pub cwd: &'a Path,
+}
+
+#[derive(Debug)]
+pub struct OverlayError {
+    pub code: &'static str,
+    pub detail: String,
+}
+
+impl fmt::Display for OverlayError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} stage=codex_overlay: {}", self.code, self.detail)
+    }
+}
+impl std::error::Error for OverlayError {}
+
+pub fn render_config(source: &str, policy: &Policy<'_>) -> Result<String, OverlayError> {
+    let mut config: Table = toml::from_str(source).map_err(|e| OverlayError {
+        code: "CONFIG_PARSE",
+        detail: e.to_string(),
+    })?;
+    if policy.restricted {
+        restrict(&mut config, policy);
+    }
+    toml::to_string(&config).map_err(|e| OverlayError {
+        code: "CONFIG_ENCODE",
+        detail: e.to_string(),
+    })
+}
+
+fn restrict(config: &mut Table, policy: &Policy<'_>) {
+    // Preserve native model choice and presentation, not executable extension
+    // configuration. An allowlist also excludes newly introduced host surfaces.
+    const PREFERENCES: &[&str] = &[
+        "model",
+        "model_reasoning_effort",
+        "model_reasoning_summary",
+        "model_verbosity",
+        "model_context_window",
+        "model_auto_compact_token_limit",
+        "service_tier",
+        "personality",
+        "model_provider",
+        "model_providers",
+        "preferred_auth_method",
+        "cli_auth_credentials_store",
+        "forced_login_method",
+        "forced_chatgpt_workspace_id",
+        "tui",
+        "notice",
+    ];
+    config.retain(|key, _| PREFERENCES.contains(&key));
+    config.insert(
+        "web_search".into(),
+        Value::String(if policy.online { "live" } else { "disabled" }.into()),
+    );
+    let mut features = Table::new();
+    for name in ["apps", "plugins", "remote_plugin", "hooks"] {
+        features.insert(name.into(), Value::Boolean(false));
+    }
+    config.insert("features".into(), Value::Table(features));
+    let mut projects = Table::new();
+    for path in [policy.root, policy.cwd] {
+        let mut settings = Table::new();
+        settings.insert("trust_level".into(), Value::String("untrusted".into()));
+        projects.insert(path.to_string_lossy().into_owned(), Value::Table(settings));
+    }
+    config.insert("projects".into(), Value::Table(projects));
+}
