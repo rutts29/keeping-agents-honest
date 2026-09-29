@@ -7,6 +7,7 @@ use std::{
 
 mod domains;
 mod lifecycle;
+mod online_resume;
 pub use lifecycle::resume_and_loss;
 mod fixture;
 pub use domains::all_domains;
@@ -16,6 +17,7 @@ pub fn research() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();
     let (launch, f) = prepare(&home, "research", false);
+    let initial_commit = baseline(&home, &f);
     let mut client = Client::start_command(launch.command(true), &f.stderr);
     let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":true}));
     assert_eq!(start["model"], "gpt-6-sol");
@@ -48,7 +50,7 @@ pub fn research() {
     assert_eq!(fs::read_to_string(&f.canary).unwrap(), "untouched");
     drop(client);
     assert_eq!(fs::read(home.join(".codex/config.toml")).unwrap(), before);
-    let evidence = json!({"operations":operations,"model":start["model"],"effort":start["reasoningEffort"],"globalConfigUnchanged":true,"hostCanaryUnchanged":true,"newProjectCommitted":f.project.join(".git").is_dir(),"passed":true});
+    let evidence = json!({"operations":operations,"model":start["model"],"effort":start["reasoningEffort"],"globalConfigUnchanged":true,"hostCanaryUnchanged":true,"initialCommit":initial_commit,"newProjectCommitted":true,"sharedLoginAndHistory":true,"passed":true});
     let output = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/gates/evidence/phase-2/launcher-research.json");
     fs::write(
@@ -56,6 +58,35 @@ pub fn research() {
         serde_json::to_string_pretty(&evidence).unwrap() + "\n",
     )
     .unwrap();
+}
+
+fn baseline(home: &Path, f: &fixture::Fixture) -> String {
+    for name in ["auth.json", "sessions"] {
+        assert_eq!(
+            fs::canonicalize(f.overlay.join(name)).unwrap(),
+            fs::canonicalize(home.join(".codex").join(name)).unwrap()
+        );
+    }
+    let head = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&f.project)
+        .args(["rev-parse", "--verify", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(head.status.success());
+    let clean = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&f.project)
+        .args(["status", "--porcelain"])
+        .output()
+        .unwrap();
+    assert!(clean.status.success() && clean.stdout.is_empty());
+    assert!(
+        fs::read_to_string(f.project.join("AGENTS.md"))
+            .unwrap()
+            .contains("Dependency decisions")
+    );
+    String::from_utf8(head.stdout).unwrap().trim().into()
 }
 
 fn operations(events: &[Value]) -> Vec<Value> {

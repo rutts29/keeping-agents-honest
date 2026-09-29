@@ -86,7 +86,7 @@ fn resolve(
             "relative traversal is not a project path",
         ));
     }
-    let directory = canonical(directory)?;
+    let directory = domain_root(directory)?;
     let candidate = directory.join(name);
     let needs_creation = create
         && !candidate
@@ -127,4 +127,16 @@ fn resolve(
         relative_cwd,
         needs_creation,
     })
+}
+
+fn domain_root(directory: &Path) -> Result<PathBuf, Error> {
+    let resolved = canonical(directory)?;
+    if resolved != directory {
+        return Err(Error::new(
+            "DOMAIN_ALIAS",
+            "project",
+            "trust roots must be canonical directories, not aliases",
+        ));
+    }
+    Ok(resolved)
 }

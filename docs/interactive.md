@@ -1,4 +1,4 @@
-# Interactive launcher (Phase 2 in progress)
+# Interactive launcher
 
 `make install` installs the Rust launcher as `~/.local/bin/kah`. Use a release
 build: validating the native executable is noticeably slower in debug builds.
@@ -40,5 +40,5 @@ excluded. Herdr's existing screen detection tracks the native Codex lifecycle.
 The native UI calls its internal executor permissions “YOLO mode”; gVisor supplies
 the external Research/Untrusted boundary.
 
-The observer and unattended commands are still being implemented. Gate 2 is
-not yet accepted; see `STATUS.md` for journeys passed and outstanding.
+The observer and unattended commands are still being implemented. Gate 2 passed;
+see `STATUS.md` for journeys passed and outstanding.

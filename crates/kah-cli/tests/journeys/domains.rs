@@ -1,3 +1,4 @@
+use super::online_resume::verify as resume_online;
 use super::{
     fixture::{Fixture, prepare},
     operations,
@@ -29,15 +30,18 @@ pub fn all_domains() {
 }
 
 fn journey(home: &Path, domain: &str, online: bool) -> Value {
-    let (launch, f) = prepare(home, domain, online);
+    let (launch, mut f) = prepare(home, domain, online);
     if domain != "mine" {
         hostile_project(&f);
     }
     let mut client = Client::start_command(launch.command(true), &f.stderr);
-    let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":true}));
+    let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":!online}));
     assert_eq!(start["model"], "gpt-6-sol");
     assert_eq!(start["reasoningEffort"], "low");
     let id = start["thread"]["id"].as_str().unwrap();
+    if online {
+        f.sessions.push(id.into());
+    }
     let turn = client.turn(id,"Implement a small Node.js utility in sum.cjs exporting a function that sums an array of integers. Use native apply_patch to create it, then native exec_command with node:assert/strict to test empty array => 0, [1,2,3] => 6, [-2,5] => 3. Print SUM_TESTS_PASSED only after all three assertions pass. No dependencies, MCP, subagents, network, or commits. Report and stop.");
     assert_eq!(turn["status"], "completed");
     let task_operations = operations(&client.events);
@@ -68,7 +72,13 @@ fn journey(home: &Path, domain: &str, online: bool) -> Value {
         canary, "untouched",
         "hostile project config executed on host"
     );
-    let data = json!({"domain":domain,"online":online,"model":start["model"],"effort":start["reasoningEffort"],"taskOperations":task_operations,"hostedSearch":search,"hostCanaryUntouched":true,"passed":true});
+    drop(client);
+    let resumed = if online {
+        resume_online(home, &f, id)
+    } else {
+        Value::Null
+    };
+    let data = json!({"domain":domain,"online":online,"model":start["model"],"effort":start["reasoningEffort"],"taskOperations":task_operations,"hostedSearch":search,"onlineResume":resumed,"hostCanaryUntouched":true,"passed":true});
     eprintln!("{domain} online={online}: task and policy passed");
     data
 }

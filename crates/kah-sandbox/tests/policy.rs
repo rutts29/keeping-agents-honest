@@ -66,6 +66,20 @@ fn a_research_symlink_cannot_upgrade_to_mine_or_escape_a_project() {
     assert!(Project::select(&fixture.0, &fixture.0.join("research/alias"), None).is_ok());
 }
 
+#[cfg(unix)]
+#[test]
+fn a_domain_root_alias_cannot_change_the_trust_label() {
+    let fixture = Fixture::new("domain-alias");
+    fs::remove_dir_all(fixture.0.join("research")).unwrap();
+    std::os::unix::fs::symlink(fixture.0.join("mine"), fixture.0.join("research")).unwrap();
+    assert_eq!(
+        Project::select(&fixture.0, &fixture.0.join("research/demo"), None)
+            .unwrap_err()
+            .code,
+        "DOMAIN_ALIAS"
+    );
+}
+
 #[test]
 fn network_and_yolo_require_their_declared_domain() {
     let online = LaunchOptions {
