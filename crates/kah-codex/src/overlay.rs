@@ -5,6 +5,17 @@ use toml::{Table, Value};
 mod storage;
 pub use storage::prepare;
 
+pub fn set_executor(directory: &Path, id: &str, args: &[String]) -> Result<(), OverlayError> {
+    let settings = serde_json::json!({"default":id,"include_local":false,"environments":[{
+        "id":id,"program":"/usr/bin/docker","args":args,"initialize_timeout_sec":30
+    }]});
+    let text = toml::to_string(&settings).map_err(|e| OverlayError {
+        code: "ENVIRONMENT_ENCODE",
+        detail: e.to_string(),
+    })?;
+    storage::write_private(&directory.join("environments.toml"), text.as_bytes())
+}
+
 pub struct Policy<'a> {
     pub restricted: bool,
     pub online: bool,

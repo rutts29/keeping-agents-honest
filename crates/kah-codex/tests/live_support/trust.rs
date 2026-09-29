@@ -1,4 +1,4 @@
-use super::client::Client;
+use super::start as start_client;
 use serde_json::json;
 use std::{
     fs,
@@ -77,6 +77,6 @@ pub fn verify() {
 }
 
 fn start(overlay: &std::path::Path, project: &std::path::Path, stderr: &std::path::Path) {
-    let mut client = Client::start(overlay, project, stderr);
+    let mut client = start_client(overlay, project, stderr);
     client.request("thread/start", json!({"cwd":project,"permissions":":danger-full-access","approvalPolicy":"never","ephemeral":true}));
 }

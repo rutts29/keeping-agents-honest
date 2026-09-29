@@ -81,7 +81,7 @@ fn share(source: &Path, target: &Path) -> Result<(), OverlayError> {
     }
 }
 
-fn write_private(path: &Path, bytes: &[u8]) -> Result<(), OverlayError> {
+pub(super) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), OverlayError> {
     if let Ok(metadata) = fs::symlink_metadata(path)
         && !metadata.is_file()
     {

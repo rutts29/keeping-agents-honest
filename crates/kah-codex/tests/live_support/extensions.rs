@@ -1,4 +1,4 @@
-use super::client::Client;
+use super::start as start_client;
 use kah_codex::overlay::{Policy, prepare};
 use serde_json::{Value, json};
 use std::{
@@ -140,7 +140,7 @@ fn hostile(base: &Path, label: &str) -> String {
 }
 
 fn run(overlay: &Path, f: &Fixture, positive: bool) -> Value {
-    let mut client = Client::start(
+    let mut client = start_client(
         overlay,
         &f.project,
         &f.base.join(if positive {

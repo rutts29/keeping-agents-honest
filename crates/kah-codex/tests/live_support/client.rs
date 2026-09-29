@@ -17,13 +17,10 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn start(home: &Path, cwd: &Path, stderr: &Path) -> Self {
-        let mut child = Command::new("/home/example/.local/bin/codex")
-            .args(["app-server", "--stdio"])
-            .env("CODEX_HOME", home)
+    pub fn start_command(mut command: Command, stderr: &Path) -> Self {
+        let mut child = command
             .env_remove("HERDR_ENV")
             .env_remove("CODEX_THREAD_ID")
-            .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(File::create(stderr).unwrap())

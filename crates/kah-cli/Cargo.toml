@@ -1,0 +1,20 @@
+[package]
+name = "kah-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "kah"
+path = "src/main.rs"
+
+[dependencies]
+kah-core = { path = "../kah-core" }
+kah-codex = { path = "../kah-codex" }
+kah-sandbox = { path = "../kah-sandbox" }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
