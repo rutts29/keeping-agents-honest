@@ -15,6 +15,8 @@ pub struct Launch {
     binary: PathBuf,
     overrides: Vec<String>,
     native: Vec<String>,
+    observer_binding: Option<String>,
+    session_policy: String,
 }
 
 impl Launch {
@@ -58,11 +60,14 @@ impl Launch {
         } else {
             None
         };
-        let overrides = policy_overrides(&project, &cwd, &args);
-        if restricted && std::env::var("HERDR_ENV").as_deref() == Ok("1") {
-            let handler = home.join(".local/bin/kah");
-            overlay::install_session_hook(&binary, &overlay, &cwd, &handler)?;
-        }
+        let mut overrides = policy_overrides(&project, &cwd, &args);
+        let session_policy = serde_json::to_string(&crate::session_policy::SessionPolicy {
+            project: project.root.clone(),
+            policy: policy_name,
+            overlay: overlay.clone(),
+        })?;
+        let observer_binding = configure_observation(home, &binary, &overlay, &project, &args)?;
+        overrides.push("features.hooks=true".into());
         Ok(Self {
             project,
             overlay,
@@ -70,6 +75,8 @@ impl Launch {
             binary,
             overrides,
             native: args.native,
+            observer_binding,
+            session_policy,
         })
     }
 
@@ -78,8 +85,14 @@ impl Launch {
         let mut command = Command::new(&self.binary);
         command
             .env("CODEX_HOME", &self.overlay)
+            .env("KAH_SESSION_POLICY", &self.session_policy)
             .env_remove("CODEX_EXEC_SERVER_URL")
             .current_dir(self.project.root.join(&self.project.relative_cwd));
+        if let Some(binding) = &self.observer_binding {
+            command.env("KAH_OBSERVER_BINDING", binding);
+        } else {
+            command.env_remove("KAH_OBSERVER_BINDING");
+        }
         if app_server {
             command.args(["app-server", "--stdio"]);
             for pair in self.native.windows(2) {
@@ -191,4 +204,52 @@ fn overlay_directory(home: &Path, project: &Project, args: &Arguments) -> (Strin
         .join(&policy_name)
         .join(&hash[..16]);
     (policy_name, overlay)
+}
+
+fn configure_observation(
+    home: &Path,
+    native: &Path,
+    directory: &Path,
+    project: &Project,
+    args: &Arguments,
+) -> Result<Option<String>> {
+    let handler = home.join(".local/bin/kah");
+    let model = args.observer_model.as_deref().unwrap_or("gpt-6-luna");
+    let effort = args.observer_effort.as_deref().unwrap_or("low");
+    let config = kah_observer::semantic_resolver::CompactorConfig::new(model, Some(effort))?;
+    let binding = kah_observer::session::Binding {
+        session: String::new(),
+        project: project.root.clone(),
+        codex_home: home.join(".codex"),
+        native: native.into(),
+        model: config.model().into(),
+        effort: config.reasoning().into(),
+        timeout_secs: config.timeout().as_secs(),
+    };
+    let command = format!(
+        "'{}' __hook",
+        handler.to_string_lossy().replace('\'', "'\\''")
+    );
+    let hooks = [
+        ("SessionStart", "sessionStart", 120),
+        ("UserPromptSubmit", "userPromptSubmit", 2),
+        ("Stop", "stop", 120),
+    ]
+    .into_iter()
+    .map(|(event, api_event, timeout)| overlay::OwnedHook {
+        event,
+        api_event,
+        timeout,
+        command: command.clone(),
+    })
+    .collect::<Vec<_>>();
+    let hooks = hooks
+        .into_iter()
+        .filter(|h| !args.no_observer || h.event != "Stop")
+        .collect::<Vec<_>>();
+    overlay::install_owned_hooks(native, directory, &project.root, &hooks)?;
+    if args.no_observer {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::to_string(&binding)?))
 }

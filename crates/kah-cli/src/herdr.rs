@@ -36,15 +36,19 @@ pub fn session_report(
 
 /// Best-effort and bounded by both socket timeouts and the native hook timeout.
 pub fn report() {
+    let input: Value = match serde_json::from_reader(std::io::stdin().take(1024 * 1024)) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    report_input(&input);
+}
+
+pub fn report_input(input: &Value) {
     if env::var("HERDR_ENV").as_deref() != Ok("1") {
         return;
     }
     let (Ok(pane), Ok(socket)) = (env::var("HERDR_PANE_ID"), env::var("HERDR_SOCKET_PATH")) else {
         return;
-    };
-    let input: Value = match serde_json::from_reader(std::io::stdin().take(1024 * 1024)) {
-        Ok(v) => v,
-        Err(_) => return,
     };
     let inherited = env::var("CODEX_THREAD_ID").ok();
     let seq = SystemTime::now()
@@ -52,7 +56,7 @@ pub fn report() {
         .unwrap_or_default()
         .as_nanos()
         .min(u64::MAX as u128) as u64;
-    let Some(report) = session_report(&input, &pane, inherited.as_deref(), seq) else {
+    let Some(report) = session_report(input, &pane, inherited.as_deref(), seq) else {
         return;
     };
     if let Ok(mut stream) = UnixStream::connect(socket) {

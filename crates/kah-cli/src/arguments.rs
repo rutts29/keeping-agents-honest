@@ -7,6 +7,9 @@ pub struct Arguments {
     pub options: LaunchOptions,
     pub native: Vec<String>,
     pub help: bool,
+    pub no_observer: bool,
+    pub observer_model: Option<String>,
+    pub observer_effort: Option<String>,
 }
 
 impl Arguments {
@@ -17,6 +20,9 @@ impl Arguments {
             match arg.as_str() {
                 "--online" => result.options.online = true,
                 "--yolo" => result.options.yolo = true,
+                "--no-observer" => result.no_observer = true,
+                "--observer-model" => result.observer_model = Some(value(&mut args, &arg)?),
+                "--observer-effort" => result.observer_effort = Some(value(&mut args, &arg)?),
                 "--help" | "-h" => result.help = true,
                 "--" => {
                     result.native.extend(args);

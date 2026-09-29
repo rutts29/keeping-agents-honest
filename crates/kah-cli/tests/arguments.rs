@@ -20,6 +20,23 @@ fn domain_and_native_model_choices_are_not_pinned() {
 }
 
 #[test]
+fn observer_choices_are_separate_from_the_main_model_and_default_on() {
+    assert!(!parse(&[]).no_observer);
+    let args = parse(&[
+        "--observer-model",
+        "gpt-6-luna",
+        "--observer-effort",
+        "low",
+        "--model",
+        "chosen",
+    ]);
+    assert_eq!(args.observer_model.as_deref(), Some("gpt-6-luna"));
+    assert_eq!(args.observer_effort.as_deref(), Some("low"));
+    assert_eq!(args.native, vec!["--model", "chosen"]);
+    assert!(parse(&["--no-observer"]).no_observer);
+}
+
+#[test]
 fn restricted_native_arguments_allow_resume_and_models_but_reject_policy_bypasses() {
     for args in [
         vec!["--", "resume", "--all"],
