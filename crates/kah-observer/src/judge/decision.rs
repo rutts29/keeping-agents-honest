@@ -1,5 +1,18 @@
 use super::*;
-use crate::semantic_resolver::{Assessment, AssessmentState};
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Assessment {
+    pub state: AssessmentState,
+    pub reason: String,
+    pub action_ids: Vec<String>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssessmentState {
+    Aligned,
+    MaterialDrift,
+    Uncertain,
+}
 
 pub fn assessment(judgment: &Judgment, actions: &[Value], failed_approaches: usize) -> Assessment {
     let alignment = judgment.answers.get("alignment");
@@ -7,7 +20,7 @@ pub fn assessment(judgment: &Judgment, actions: &[Value], failed_approaches: usi
         && matches!(judgment.answers.get("drift_severity"),Some(Answer::Score{score,confidence,..}) if *score>=questions::MATERIAL_DISTANCE && *confidence>=questions::REMINDER_CONFIDENCE);
     let repeating = failed_approaches >= 2
         && matches!(judgment.answers.get("repeating_failed_approach"),Some(Answer::Noul{noul}) if *noul>=questions::STRONG_FAILURE_SIGNAL);
-    let state = if material || repeating {
+    let state = if (material || repeating) && actions.iter().any(|a| a["id"].as_str().is_some()) {
         AssessmentState::MaterialDrift
     } else if matches!(alignment,Some(Answer::Choice{choice,confidence,..}) if matches!(choice.as_str(),"on_track"|"user_authorized_scope_change") && *confidence>=questions::REMINDER_CONFIDENCE)
     {

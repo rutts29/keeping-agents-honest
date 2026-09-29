@@ -6,7 +6,7 @@ pub(super) fn update_intent(
     journal: &mut Store,
     users: &NeutralSessionBundle,
     config: CompactorConfig<'_>,
-) -> Result<ActiveProjection, String> {
+) -> Result<(ActiveProjection, bool), String> {
     let source = InspectSource::from_bundle(users).map_err(|e| e.to_string())?;
     let previous = source
         .open(&state.binding.project)
@@ -21,7 +21,7 @@ pub(super) fn update_intent(
             .as_ref()
             .ok_or("OBSERVER_CURSOR stage=observe: accepted cursor absent")?;
         match cursor.compare(source.cursor()).map_err(|e|e.to_string())? {
-            SourceCursorComparison::Current=>return Ok(previous.projection.clone()),
+            SourceCursorComparison::Current=>return Ok((previous.projection.clone(),false)),
             SourceCursorComparison::NewRecords(_)=>{
                 let delta=source.delta_bundle(users,cursor.accepted_record_count()).map_err(|e|e.to_string())?;
                 semantic_resolver::resolve_incremental(&state.binding.project,&previous.history,&previous.projection,&delta,config,ProjectionConfig::default())
@@ -48,7 +48,7 @@ pub(super) fn update_intent(
     persist(&state.binding.project, &source, previous, &resolution)?;
     state.run_id = Some(source.run_id().as_str().into());
     journal.append(&json!({"kind":"intent_update","source":"observer_interpretation","revision":resolution.projection.revision,"metadata":resolution.metadata}))?;
-    Ok(resolution.projection)
+    Ok((resolution.projection, true))
 }
 
 fn apply_user_goal_change(

@@ -14,6 +14,7 @@ fn fixture() -> Fixture {
 }
 fn binding(id: &str, root: &std::path::Path) -> Binding {
     Binding {
+        judge: kah_observer::judge::routing::Backend::Luna,
         session: id.into(),
         project: root.into(),
         codex_home: root.into(),

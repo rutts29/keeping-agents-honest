@@ -64,8 +64,8 @@ fn mismatched_answers_and_invalid_distributions_are_rejected() {
 
 #[test]
 fn domain_defaults_and_low_confidence_never_trigger_a_reminder() {
+    use kah_observer::judge::decision::AssessmentState;
     use kah_observer::judge::{Judgment, Metrics, decision, routing::Backend};
-    use kah_observer::semantic_resolver::AssessmentState;
     assert_eq!(Backend::for_domain("mine", None).unwrap(), Backend::Jev);
     for domain in ["research", "untrusted"] {
         assert_eq!(Backend::for_domain(domain, None).unwrap(), Backend::Luna);

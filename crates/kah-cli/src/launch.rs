@@ -69,6 +69,9 @@ impl Launch {
         })?;
         let observer_binding = configure_observation(home, &binary, &overlay, &project, &args)?;
         overrides.push("features.hooks=true".into());
+        // Prevent the native resume picker from loading another project's host
+        // config before SessionStart can compare the saved kah policy.
+        overrides.push("tui.resume_cwd=\"current\"".into());
         Ok(Self {
             project,
             overlay,
@@ -232,6 +235,10 @@ fn configure_observation(
         model: config.model().into(),
         effort: config.reasoning().into(),
         timeout_secs: config.timeout().as_secs(),
+        judge: kah_observer::judge::routing::Backend::for_domain(
+            project.domain.as_str(),
+            args.observer_judge.as_deref(),
+        )?,
     };
     let command = format!(
         "'{}' __hook",

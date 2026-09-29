@@ -94,17 +94,36 @@ fn read_items(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError>
 
 fn action_evidence(entries: &[Value]) -> Vec<Value> {
     let last_turn = entries.last().map(|e| &e["turnId"]);
-    entries.iter().filter(|e|Some(&e["turnId"])==last_turn).filter_map(|entry| {
-        let item=&entry["item"];
-        let content=match item["type"].as_str()? {
-            "agentMessage"=>json!({"text":item["text"]}),
-            "commandExecution"=>json!({"command":item["command"],"cwd":item["cwd"],"status":item["status"],"exitCode":item["exitCode"],"output":item["aggregatedOutput"]}),
-            "fileChange"=>json!({"changes":item["changes"],"status":item["status"]}),
-            _=>return None,
-        };
-        let text=content.to_string();let mut end=text.len().min(4096);while !text.is_char_boundary(end) {end-=1;}
-        Some(json!({"id":item["id"],"kind":item["type"],"evidence":&text[..end],"truncated":end<text.len()}))
-    }).rev().take(12).collect::<Vec<_>>().into_iter().rev().collect()
+    let mut actions = entries
+        .iter()
+        .rev()
+        .filter(|e| Some(&e["turnId"]) == last_turn)
+        .filter_map(|entry| bounded_action(&entry["item"]))
+        .take(12)
+        .collect::<Vec<_>>();
+    actions.reverse();
+    actions
+}
+
+fn bounded_action(item: &Value) -> Option<Value> {
+    let content = match item["type"].as_str()? {
+        "agentMessage" => json!({"text": item["text"]}),
+        "commandExecution" => json!({
+            "command": item["command"], "cwd": item["cwd"],
+            "status": item["status"], "exitCode": item["exitCode"],
+            "output": item["aggregatedOutput"]
+        }),
+        "fileChange" => json!({"changes": item["changes"], "status": item["status"]}),
+        _ => return None,
+    };
+    let text = content.to_string();
+    let mut end = text.len().min(4096);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(json!({"id": item["id"], "kind": item["type"],
+        "exit_code":item["exitCode"], "status":item["status"],
+        "evidence": &text[..end], "truncated": end < text.len()}))
 }
 
 fn rpc_error(error: ControlError) -> SourceError {

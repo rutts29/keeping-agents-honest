@@ -13,7 +13,14 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("No observed sessions yet.");
+            println!(
+                "{}",
+                if json_output {
+                    "[]"
+                } else {
+                    "No observed sessions yet."
+                }
+            );
             return Ok(());
         }
         Err(e) => return Err(e.into()),
@@ -76,6 +83,19 @@ fn print_ledger(state: &State) -> Result<()> {
         "Revision: {}; observer reminders: {}",
         recovered.projection.revision, state.reminders
     );
+    for entry in observations(state)?
+        .into_iter()
+        .filter(|v| v["kind"] == "judgment")
+    {
+        println!(
+            "Judgment: {} / {} — {} (question set {})",
+            entry["judgment"]["backend"].as_str().unwrap_or("unknown"),
+            entry["judgment"]["model"].as_str().unwrap_or("unknown"),
+            entry["assessment"]["state"].as_str().unwrap_or("unknown"),
+            entry["question_set"]
+        );
+    }
+
     Ok(())
 }
 
@@ -100,6 +120,12 @@ fn print_session(state: &State, ledger: bool) -> Result<()> {
         state.usage.input_tokens,
         state.usage.output_tokens
     );
+    if let Some(judgment) = state.judgments.last() {
+        println!("Judge: {} / {}", judgment.backend, judgment.model);
+        if let Some(reason) = &judgment.fallback_reason {
+            println!("Judge fallback gap: {reason}");
+        }
+    }
     if let Some(gap) = &state.gap {
         println!("Gap: {} — {}", gap.code, gap.detail);
     }
@@ -124,6 +150,21 @@ fn json_session(state: &State, ledger: bool) -> Result<serde_json::Value> {
     };
     let recovered = RunStore::open_default(&state.binding.project, id)?.recover()?;
     Ok(
-        json!({"session":state,"history":recovered.history.records(),"projection":recovered.projection}),
+        json!({"session":state,"history":recovered.history.records(),
+        "projection":recovered.projection,"observations":observations(state)?}),
     )
+}
+
+fn observations(state: &State) -> Result<Vec<serde_json::Value>> {
+    let path = Store::directory(&RunStore::default_state_root()?, &state.binding.session)
+        .join("observations.jsonl");
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e.into()),
+    };
+    text.lines()
+        .filter(|s| !s.trim().is_empty())
+        .map(|line| serde_json::from_str(line).map_err(Into::into))
+        .collect()
 }

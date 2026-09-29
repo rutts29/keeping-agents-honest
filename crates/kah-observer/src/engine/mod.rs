@@ -2,7 +2,8 @@
 //! records can change intent, and observer failures remain visible but fail open.
 use crate::{
     inspect_state::InspectSource,
-    semantic_resolver::{self, AssessmentState, CompactorConfig},
+    judge::decision::{Assessment, AssessmentState},
+    semantic_resolver::{self, CompactorConfig},
     session::{Binding, State, Store},
 };
 use kah_codex::{
@@ -19,6 +20,7 @@ use kah_core::{
 use serde_json::json;
 use std::{env, path::PathBuf, time::Duration};
 
+mod judgment;
 mod reconcile;
 use reconcile::*;
 
@@ -49,7 +51,12 @@ pub fn observe(binding: &Binding, turn: &str, allow_reminder: bool) -> Result<Ou
             Ok(outcome)
         }
         Err(error) => {
-            state.fail("OBSERVER_GAP", error.clone());
+            let code = error
+                .split_whitespace()
+                .next()
+                .unwrap_or("OBSERVER_UNKNOWN")
+                .to_owned();
+            state.fail(&code, error.clone());
             store.save(&state)?;
             store.append(&json!({"kind":"gap","source":"observer","detail":error,"at_ms":crate::session::now_ms()}))?;
             Ok(Outcome {
@@ -78,7 +85,11 @@ fn update(
     };
     let config = CompactorConfig::new(&binding.model, Some(&binding.effort))?
         .with_timeout(Duration::from_secs(binding.timeout_secs))?;
-    let projection = update_intent(state, store, users, config)?;
+    let prior = projection(state)?;
+    let (projection, new_user) = update_intent(state, store, users, config)?;
+    if new_user {
+        state.drift_active = false;
+    }
     if state.action_digest.as_deref() == Some(&snapshot.action_digest)
         || snapshot.actions.is_empty()
     {
@@ -88,17 +99,20 @@ fn update(
             gap: None,
         });
     }
-    let (assessment, metadata) =
-        match semantic_resolver::assess(&binding.project, &projection, &snapshot.actions, config) {
-            Ok(value) => value,
-            Err(error) => {
-                state.usage.record(&error.metadata);
-                return Err(error.to_string());
-            }
-        };
-    state.usage.record(&metadata);
+    let assessment = judgment::assess(
+        state,
+        store,
+        judgment::Context {
+            prior: prior.as_ref(),
+            projection: &projection,
+            users,
+            actions: &snapshot.actions,
+            new_user,
+            turn,
+        },
+        config,
+    )?;
     state.action_digest = Some(snapshot.action_digest);
-    store.append(&json!({"kind":"assessment","source":"observer","assessment":assessment,"metadata":metadata,"turn":turn}))?;
     let reminder = drift_reminder(state, &assessment, &projection, turn, allow_reminder)?;
     Ok(Outcome {
         projection: Some(projection),
@@ -150,7 +164,7 @@ fn read_source(binding: &Binding) -> Result<ObservationSnapshot, String> {
 
 fn drift_reminder(
     state: &mut State,
-    assessment: &semantic_resolver::Assessment,
+    assessment: &Assessment,
     projection: &ActiveProjection,
     turn: &str,
     allow_reminder: bool,

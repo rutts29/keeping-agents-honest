@@ -20,6 +20,8 @@ pub struct Binding {
     pub model: String,
     pub effort: String,
     pub timeout_secs: u64,
+    #[serde(default)]
+    pub judge: crate::judge::routing::Backend,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -79,6 +81,10 @@ pub struct State {
     pub reminders: u64,
     pub observations: u64,
     pub usage: Usage,
+    #[serde(default)]
+    pub judgments: Vec<crate::judge::Judgment>,
+    #[serde(default)]
+    pub failures: Vec<serde_json::Value>,
 }
 impl State {
     pub fn new(binding: Binding) -> Self {
@@ -93,6 +99,8 @@ impl State {
             reminders: 0,
             observations: 0,
             usage: Usage::default(),
+            judgments: Vec::new(),
+            failures: Vec::new(),
         }
     }
     pub fn begin(&mut self, turn: &str) {
