@@ -67,7 +67,7 @@ pub fn publish_binary(source: &Path, cache: &Path) -> Result<PathBuf, Error> {
     Ok(binary)
 }
 
-fn directory(path: &Path, uid: u32) -> Result<(), Error> {
+pub(crate) fn directory(path: &Path, uid: u32) -> Result<(), Error> {
     match DirBuilder::new().mode(0o755).create(path) {
         Ok(()) => fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(io_error)?,
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),

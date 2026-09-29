@@ -79,10 +79,9 @@ fn restored_skills_and_cross_policy_resume() {
     let start = first.request("thread/start", json!({"cwd":research.project.root}));
     let id = start["thread"]["id"].as_str().unwrap().to_owned();
     f.ids.push(id.clone());
-    let turn = first.turn(&id, "Reply exactly POLICY_SOURCE_READY. Do not use tools.");
-    assert_eq!(turn["status"], "completed");
-    let evidence = serde_json::to_string(&first.events).unwrap();
-    assert!(evidence.contains("POLICY_SOURCE_READY"), "{evidence}");
+    native_skill_read(&mut first, &id, &f.home);
+    reports
+        .push(json!({"nativeSkillRead":true,"skillWriteRejected":true,"hostSkillUnchanged":true}));
     drop(first);
     let mine = f.launch("mine");
     let mut host = Client::start_command(mine.command(true), &f.log);
@@ -140,4 +139,33 @@ fn skills(client: &mut Client, project: &Path) -> Value {
         );
     }
     json!({"domain":project.parent().unwrap().file_name().unwrap().to_str(),"restoredSkillsDiscovered":true,"enabledUserSkills":names})
+}
+
+fn native_skill_read(first: &mut Client, id: &str, home: &Path) {
+    let skill = home
+        .join(".agents/skills/ponytail/SKILL.md")
+        .canonicalize()
+        .unwrap();
+    let skill_before = fs::read(&skill).unwrap();
+    let turn = first.turn(id, &format!("Use native exec_command once: head -n 3 '{}'; test -r '{}' && echo POLICY_SOURCE_READY; if printf FORBIDDEN >> '{}'; then echo UNSAFE_SKILL_WRITE; else echo SKILL_READ_ONLY; fi. Report and stop. No other tools.",skill.display(),skill.display(),skill.display()));
+    assert_eq!(skill_before, fs::read(&skill).unwrap());
+    assert_eq!(turn["status"], "completed");
+    let evidence = serde_json::to_string(&first.events).unwrap();
+    let output = first
+        .events
+        .iter()
+        .filter(|e| {
+            e["method"] == "item/completed" && e["params"]["item"]["type"] == "commandExecution"
+        })
+        .map(|e| {
+            e["params"]["item"]["aggregatedOutput"]
+                .as_str()
+                .unwrap_or("")
+        })
+        .collect::<String>();
+    assert!(
+        output.contains("POLICY_SOURCE_READY") && output.contains("SKILL_READ_ONLY"),
+        "{evidence}"
+    );
+    assert!(!output.contains("UNSAFE_SKILL_WRITE"), "{output}");
 }

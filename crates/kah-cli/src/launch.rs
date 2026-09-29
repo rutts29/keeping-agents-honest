@@ -51,6 +51,7 @@ impl Launch {
             .map_err(|e| format!("CODEX_BINARY stage=launch: {e}"))?;
         let environment_id = if restricted {
             Some(prepare_executor(
+                home,
                 &project,
                 &args,
                 &binary,
@@ -165,6 +166,7 @@ fn service_uid() -> Result<u32> {
 }
 
 fn prepare_executor(
+    home: &Path,
     project: &Project,
     args: &Arguments,
     binary: &Path,
@@ -177,7 +179,12 @@ fn prepare_executor(
     )?;
     let image = fs::read_to_string("/usr/local/share/sbx/image-ref")
         .map_err(|e| format!("SANDBOX_IMAGE_READ stage=launch: {e}"))?;
-    let executor = Executor::new(project, args.options, &public, image.trim(), service_uid()?)?;
+    let mounts = kah_sandbox::publish_skills(
+        home,
+        &PathBuf::from(format!("/var/tmp/kah-skills-{}", current_uid()?)),
+    )?;
+    let executor = Executor::new(project, args.options, &public, image.trim(), service_uid()?)?
+        .with_read_only_mounts(&mounts)?;
     let id = format!("kah-{policy_name}");
     overlay::set_executor(overlay, &id, &executor.args)?;
     Ok(id)

@@ -41,6 +41,24 @@ pub struct Executor {
 }
 
 impl Executor {
+    pub fn with_read_only_mounts(
+        mut self,
+        mounts: &[(std::path::PathBuf, std::path::PathBuf)],
+    ) -> Result<Self, Error> {
+        for (source, target) in mounts {
+            let mount = format!(
+                "type=bind,source={},target={},readonly",
+                mount_path(source)?,
+                mount_path(target)?
+            );
+            self.args.splice(
+                self.args.len() - 5..self.args.len() - 5,
+                ["--mount".into(), mount],
+            );
+        }
+        Ok(self)
+    }
+
     pub fn read_only_project(mut self) -> Self {
         for index in 0..self.args.len().saturating_sub(1) {
             if self.args[index] == "--mount" && !self.args[index + 1].ends_with(",readonly") {
