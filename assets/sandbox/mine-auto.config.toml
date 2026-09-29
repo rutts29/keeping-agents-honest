@@ -1,0 +1,11 @@
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+default_permissions = "cx-mine-workspace"
+web_search = "cached"
+
+[permissions.cx-mine-workspace]
+description = "Trusted mine project: workspace writes and normal development network."
+extends = ":workspace"
+
+[permissions.cx-mine-workspace.network]
+enabled = true
