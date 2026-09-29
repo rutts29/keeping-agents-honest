@@ -29,3 +29,21 @@ fn history_and_projection_errors_expose_reason_and_stage() {
             .starts_with("PROJECTION_STATE stage=projection:")
     );
 }
+
+#[test]
+fn intake_and_storage_errors_expose_reason_and_stage() {
+    let bundle = kah_core::session_bundle::SessionBundleError::EmptyRecords;
+    assert!(
+        bundle
+            .to_string()
+            .starts_with("BUNDLE_EMPTY_RECORDS stage=session_intake:")
+    );
+    let cursor = kah_core::run_store::SourceCursorError::EmptyRecords;
+    assert!(
+        cursor
+            .to_string()
+            .starts_with("CURSOR_EMPTY_RECORDS stage=source_cursor:")
+    );
+    let store = kah_core::run_store::RunStoreError::Busy;
+    assert!(store.to_string().starts_with("STORE_BUSY stage=run_store:"));
+}
