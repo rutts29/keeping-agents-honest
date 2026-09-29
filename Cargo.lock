@@ -70,6 +70,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kah-codex"
+version = "0.1.0"
+dependencies = [
+ "kah-core",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "kah-core"
 version = "0.1.0"
 dependencies = [
