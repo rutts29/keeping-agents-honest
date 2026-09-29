@@ -81,7 +81,11 @@ pub(super) fn operation(name: &str, source_record: &str) -> Value {
         "alternatives":[],
     })
 }
-mod cases0;
-mod cases1;
 
 mod backend;
+mod continuity;
+mod operations;
+mod privacy;
+mod prompts;
+mod provenance;
+mod schema;

@@ -1,47 +1,5 @@
 use super::*;
 
-#[cfg(unix)]
-#[test]
-fn temporary_compactor_directory_and_files_are_private_at_creation() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let files = TemporaryCallFiles::create().expect("create temporary compactor files");
-
-    assert_eq!(
-        fs::symlink_metadata(&files.directory)
-            .expect("temporary directory metadata")
-            .permissions()
-            .mode()
-            & 0o077,
-        0
-    );
-    for path in [&files.schema, &files.final_message] {
-        let metadata = fs::symlink_metadata(path).expect("temporary file metadata");
-        assert!(metadata.is_file());
-        assert!(!metadata.file_type().is_symlink());
-        assert_eq!(metadata.permissions().mode() & 0o077, 0);
-    }
-}
-
-#[test]
-fn incremental_output_schema_requires_every_declared_root_property() {
-    let schema = incremental_proposal_schema();
-    let properties = schema["properties"]
-        .as_object()
-        .expect("root schema properties");
-    let required = schema["required"]
-        .as_array()
-        .expect("root schema required")
-        .iter()
-        .map(|value| value.as_str().expect("required property"))
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        required,
-        properties.keys().map(String::as_str).collect(),
-        "Codex structured output requires every property, including nullable properties"
-    );
-}
-
 #[test]
 fn initial_add_ignores_fields_that_have_no_add_semantics() {
     let bundle = delta("item-1", "Add one bounded retry");
@@ -119,40 +77,6 @@ fn initial_supersede_ignores_intent_keys_that_have_no_supersede_semantics() {
 }
 
 #[test]
-fn initial_prompt_explains_how_to_shape_a_new_ambiguous_choice() {
-    let bundle = delta("item-1", "I have not chosen between JSON and YAML");
-    let rendered = prompt(&bundle, None).unwrap();
-    let document: Value = serde_json::from_str(&rendered).unwrap();
-    let instructions = document["instructions"].as_str().unwrap();
-
-    assert!(instructions.contains("conflict target_key must be empty"));
-    assert!(instructions.contains("intent_keys must name earlier add or supersede keys"));
-    assert!(instructions.contains("currently active add or supersede key"));
-    assert!(instructions.contains("first add one neutral unresolved-choice clause"));
-    assert!(instructions.contains("remains unresolved at the end"));
-    assert!(instructions.contains("do not emit a transient conflict"));
-}
-
-#[test]
-fn initial_prompt_preserves_a_known_native_goal_without_false_rewording() {
-    let bundle = NeutralSessionBundle::from_records_with_native_goal(
-        SourceProvider::Codex,
-        "private-session",
-        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        NativeGoal::known("Keep the accepted native objective exact").unwrap(),
-        vec![BundleRecord::new("u1", SourceRole::User, "Continue the same objective").unwrap()],
-    )
-    .unwrap();
-
-    let rendered = prompt(&bundle, None).unwrap();
-    let document: Value = serde_json::from_str(&rendered).unwrap();
-    let instructions = document["instructions"].as_str().unwrap();
-
-    assert!(instructions.contains("copy its text verbatim"));
-    assert!(instructions.contains("explicit user record changes the overall objective"));
-}
-
-#[test]
 fn incremental_add_appends_to_history_and_keeps_existing_id() {
     let (history, projection) = accepted_state();
     let delta = delta("u3", "RAW_NEW_DELTA add another invariant");
@@ -196,54 +120,6 @@ fn incremental_add_appends_to_history_and_keeps_existing_id() {
     assert!(next_projection.frontier.iter().any(|item| {
         item.id != IntentId::new("intent-existing") && item.text == "Keep the new invariant"
     }));
-}
-
-#[test]
-fn incremental_prompt_contains_projection_and_delta_but_no_history_or_old_raw_text() {
-    let (history, projection) = accepted_state();
-    let delta = delta("u3", "RAW_NEW_DELTA add another invariant");
-
-    let prompt = incremental_prompt(&history, &projection, &delta, None).unwrap();
-
-    assert!(prompt.contains("Keep synthesized behavior"));
-    assert!(prompt.contains("RAW_NEW_DELTA"));
-    assert!(!prompt.contains("RAW_PRIOR_SECRET"));
-    assert!(!prompt.contains("immutable_history"));
-    assert!(!prompt.contains("run_started"));
-}
-
-#[test]
-fn incremental_prompt_does_not_infer_goal_change_from_session_wide_constraints() {
-    let (history, projection) = accepted_state();
-    let delta = delta("u3", "From now on, end every reply with a marker");
-
-    let rendered = incremental_prompt(&history, &projection, &delta, None).unwrap();
-    let document: Value = serde_json::from_str(&rendered).unwrap();
-    let instructions = document["instructions"].as_str().unwrap();
-
-    assert!(instructions.contains("explicitly replaces the overall goal, objective, or task"));
-    assert!(instructions.contains("Never infer a goal change from `from now on`"));
-    assert!(instructions.contains("output-format, style, tool, scope, validation"));
-}
-
-#[test]
-fn incremental_repair_names_the_validator_failure_and_conflict_shape() {
-    let (history, projection) = accepted_state();
-    let delta = delta("u3", "Choose between the incompatible active constraints");
-
-    let rendered =
-        incremental_prompt(&history, &projection, &delta, Some("conflict_shape")).unwrap();
-    let document: Value = serde_json::from_str(&rendered).unwrap();
-    let instructions = document["instructions"].as_str().unwrap();
-
-    assert_eq!(document["mode"], "repair");
-    assert_eq!(document["previous_failure"], "conflict_shape");
-    assert!(instructions.contains("correct the named previous_failure"));
-    assert!(instructions.contains("An add operation uses a non-empty key"));
-    assert!(instructions.contains("empty target_intent_id, intent_ids, evidence_id, reason"));
-    assert!(instructions.contains("A withdraw operation uses an empty key and text"));
-    assert!(instructions.contains("empty target_intent_id, evidence_id, and reason"));
-    assert!(instructions.contains("Every conflict alternative"));
 }
 
 #[test]

@@ -51,6 +51,29 @@ fn build_output_is_excluded() {
 #[test]
 fn non_rust_test_files_also_obey_the_test_size_limit() {
     let fixture = Fixture::new("shell-test");
-    fixture.write("tests/journey.sh", 601);
+    fixture.write("tests/journey.txt", 601);
+    assert!(kah_check::check_tree(&fixture.0).is_err());
+}
+
+#[test]
+fn shell_entrypoints_must_be_strictly_under_100_lines() {
+    let fixture = Fixture::new("shell-limit");
+    fixture.write("bin/kah.sh", 99);
+    assert!(kah_check::check_tree(&fixture.0).is_ok());
+    fixture.write("bin/kah.sh", 100);
+    assert!(kah_check::check_tree(&fixture.0).is_err());
+}
+
+#[test]
+fn extensionless_shell_entrypoints_are_checked_and_import_references_are_exempt() {
+    let fixture = Fixture::new("shell-shebang");
+    fixture.write("docs/imports/sandbox/sbx-run", 200);
+    assert!(kah_check::check_tree(&fixture.0).is_ok());
+    fs::create_dir_all(fixture.0.join(".githooks")).unwrap();
+    fs::write(
+        fixture.0.join(".githooks/pre-commit"),
+        format!("#!/bin/sh\n{}", "# fixture\n".repeat(99)),
+    )
+    .unwrap();
     assert!(kah_check::check_tree(&fixture.0).is_err());
 }

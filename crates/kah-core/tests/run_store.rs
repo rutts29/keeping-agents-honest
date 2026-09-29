@@ -102,7 +102,11 @@ fn pending_record(history: &History, id: &str) -> kah_core::intent_history::Even
     )
 }
 
-#[path = "run_store/cases0.rs"]
-mod cases0;
-#[path = "run_store/cases1.rs"]
-mod cases1;
+#[path = "run_store/locking.rs"]
+mod locking;
+#[path = "run_store/path_safety.rs"]
+mod path_safety;
+#[path = "run_store/recovery.rs"]
+mod recovery;
+#[path = "run_store/source_cursor.rs"]
+mod source_cursor;
