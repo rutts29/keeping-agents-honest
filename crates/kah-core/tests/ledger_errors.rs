@@ -11,3 +11,21 @@ fn io_and_json_failures_have_distinct_codes_and_stage() {
     fs::remove_file(path).unwrap();
     assert!(invalid.contains("LEDGER_JSON stage=ledger"), "{invalid}");
 }
+
+#[test]
+fn history_and_projection_errors_expose_reason_and_stage() {
+    let error = kah_core::intent_history::History::from_jsonl("").unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .starts_with("HISTORY_EMPTY stage=history:")
+    );
+    let error = kah_core::projection::ProjectionError::InvalidState {
+        reason: "fixture".into(),
+    };
+    assert!(
+        error
+            .to_string()
+            .starts_with("PROJECTION_STATE stage=projection:")
+    );
+}
