@@ -91,6 +91,7 @@ dependencies = [
 name = "kah-observer"
 version = "0.1.0"
 dependencies = [
+ "kah-codex",
  "kah-core",
  "serde",
  "serde_json",
