@@ -82,6 +82,7 @@ pub(super) fn operation(name: &str, source_record: &str) -> Value {
     })
 }
 
+mod assessment;
 mod backend;
 mod continuity;
 mod operations;

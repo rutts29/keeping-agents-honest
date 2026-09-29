@@ -42,7 +42,7 @@ impl<'a> Attempt<'a> {
             }
         }
     }
-    fn metadata(&self) -> ResolverMetadata {
+    pub(super) fn metadata(&self) -> ResolverMetadata {
         metadata_for_prompt(
             self.config,
             self.calls,
