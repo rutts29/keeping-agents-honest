@@ -13,7 +13,9 @@ fn visit(path: &Path) -> Result<(), String> {
             if !["target", ".git"].contains(&entry.file_name().to_string_lossy().as_ref()) {
                 visit(&path)?;
             }
-        } else if kind.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+        } else if kind.is_file()
+            && (is_test(&path) || path.extension().is_some_and(|ext| ext == "rs"))
+        {
             check_file(&path)?;
         }
     }
@@ -22,9 +24,7 @@ fn visit(path: &Path) -> Result<(), String> {
 
 fn check_file(path: &Path) -> Result<(), String> {
     let source = fs::read_to_string(path).map_err(io_error)?;
-    let is_test = path.components().any(|part| part.as_os_str() == "tests")
-        || path.file_name().is_some_and(|name| name == "tests.rs");
-    let limit = if is_test { 600 } else { 400 };
+    let limit = if is_test(path) { 600 } else { 400 };
     let lines = source.lines().count();
     if lines > limit {
         return Err(format!(
@@ -33,6 +33,11 @@ fn check_file(path: &Path) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn is_test(path: &Path) -> bool {
+    path.components().any(|part| part.as_os_str() == "tests")
+        || path.file_name().is_some_and(|name| name == "tests.rs")
 }
 
 fn io_error(error: std::io::Error) -> String {

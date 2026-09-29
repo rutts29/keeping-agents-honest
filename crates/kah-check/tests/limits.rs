@@ -47,3 +47,10 @@ fn build_output_is_excluded() {
     fixture.write("target/generated.rs", 1000);
     assert!(kah_check::check_tree(&fixture.0).is_ok());
 }
+
+#[test]
+fn non_rust_test_files_also_obey_the_test_size_limit() {
+    let fixture = Fixture::new("shell-test");
+    fixture.write("tests/journey.sh", 601);
+    assert!(kah_check::check_tree(&fixture.0).is_err());
+}
