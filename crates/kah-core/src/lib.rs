@@ -5,3 +5,5 @@ pub mod intent_history;
 pub mod projection;
 pub mod run_store;
 pub mod session_bundle;
+
+pub mod verification;
