@@ -51,7 +51,22 @@ pub fn enforce(input: &Value) -> Result<(), String> {
 }
 
 pub fn rejection(reason: &str) -> Value {
-    json!({"continue":false,"stopReason":reason,"decision":"block","reason":reason,"systemMessage":reason})
+    // Universal fields are accepted by SessionStart and UserPromptSubmit.
+    // SessionStart rejects the legacy decision/reason fields as invalid JSON.
+    json!({"continue":false,"stopReason":reason,"systemMessage":reason})
+}
+
+pub fn saved(base: &Path, session: &str) -> Result<Option<SessionPolicy>, String> {
+    let path = base
+        .join("session-policies")
+        .join(format!("{:x}.json", Sha256::digest(session.as_bytes())));
+    match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| format!("SESSION_POLICY_JSON stage=resume: {e}")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(io_error(e)),
+    }
 }
 
 pub fn validate(base: &Path, current: &SessionPolicy, input: &Value) -> Result<(), String> {

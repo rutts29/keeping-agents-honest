@@ -110,3 +110,84 @@ fn checks(turn: &Value) -> Value {
     assert!(outputs.contains("CURL_EXIT=6"), "{items:?}");
     json!({"status":turn["status"],"operations":items})
 }
+
+#[path = "../../kah-codex/tests/live_support/client.rs"]
+mod client;
+
+#[test]
+#[ignore = "native in-process /resume from Mine yolo to Research via a real PTY; gate only"]
+fn in_process_resume_rejects_cross_domain_history() {
+    use kah_cli::{Arguments, Launch};
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let before = fs::read(home.join(".codex/config.toml")).unwrap();
+    let (_, mut research) = fixture::prepare(&home, "research", false);
+    let source = Launch::prepare(
+        &home,
+        &research.project,
+        Arguments::parse(vec![
+            "--no-observer".into(),
+            "--model".into(),
+            "gpt-6-luna".into(),
+            "--effort".into(),
+            "low".into(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
+    let mut client = client::Client::start_command(source.command(true), &research.stderr);
+    let start = client.request("thread/start", json!({"cwd":research.project}));
+    let id = start["thread"]["id"].as_str().unwrap();
+    research.sessions.push(id.into());
+    assert_eq!(
+        client.turn(id, "Reply SOURCE_READY. No tools.")["status"],
+        "completed"
+    );
+    drop(client);
+    let (_, mut mine) = fixture::prepare(&home, "mine", false);
+    let command = format!(
+        "cd {} && {} --no-observer --yolo --model gpt-6-luna --effort low --no-alt-screen 'Reply MINE_READY. No tools.'",
+        quote(mine.project.to_str().unwrap()),
+        quote(env!("CARGO_BIN_EXE_kah"))
+    );
+    let mut terminal = Terminal::start(&command, &mine.stderr);
+    terminal.wait_for("YOLO mode");
+    // Mine preserves the user's hooks; dismiss native review of their unrelated
+    // Herdr hook without granting it trust in this disposable overlay.
+    terminal.send("\x1b\x1b");
+    let mut reader = history::connect(&home, &mine.project);
+    let mine_id = history::session(&mut reader, &mine.project, &mut terminal);
+    mine.sessions.push(mine_id.clone());
+    history::completed_turn(&mut reader, &mine_id, None);
+    terminal.send("\x1b");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    terminal.send("\x1b");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let resume_offset = terminal.log_size();
+    terminal.submit(&format!("/resume {id}"));
+    terminal.wait_for("SOURCE_READY");
+    // Codex defers SessionStart hooks until the next turn (hook_runtime.rs).
+    terminal.submit("Use native apply_patch to create unsafe-first.txt containing HOST_ESCAPE.");
+    terminal.wait_for("reopen with kah research");
+    let offset = terminal.log_size();
+    terminal.submit("Use native apply_patch to create unsafe.txt containing HOST_ESCAPE.");
+    terminal.wait_for_since("reopen with kah research", offset);
+    assert_resume_boundary(&mine, &research, resume_offset);
+    terminal.close();
+    assert_eq!(before, fs::read(home.join(".codex/config.toml")).unwrap());
+    fs::write(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/gates/evidence/phase-3/terminal-resume.json"),serde_json::to_string_pretty(&json!({"nativeTuiSlashResume":true,"fromPolicy":"mine-yolo","savedPolicy":"research-offline","resumeRejectedBeforeTools":true,"subsequentUserPromptRejected":true,"hostEditAbsent":true,"globalConfigUnchanged":true,"passed":true})).unwrap()+"\n").unwrap();
+}
+
+fn assert_resume_boundary(
+    mine: &fixture::Fixture,
+    research: &fixture::Fixture,
+    resume_offset: usize,
+) {
+    assert!(!research.project.join("unsafe.txt").exists());
+    assert!(!mine.project.join("unsafe.txt").exists());
+    assert!(!mine.project.join("unsafe-first.txt").exists());
+    assert!(!research.project.join("unsafe-first.txt").exists());
+    let log = fs::read(&mine.stderr).unwrap();
+    let resumed_output = String::from_utf8_lossy(&log[resume_offset..]);
+    assert!(!resumed_output.contains("Folder access"));
+    assert!(!resumed_output.contains("invalid session start JSON"));
+}

@@ -12,7 +12,7 @@ use std::{
 };
 
 pub(crate) fn target(home: &Path, cwd: &Path, args: &mut Arguments) -> Result<PathBuf> {
-    let Some(id) = session_id(&args.native) else {
+    let Some(id) = session_id(&args.native).map(str::to_owned) else {
         return Ok(cwd.into());
     };
     let inspection = home.join(".local/state/kah/codex/control");
@@ -43,6 +43,7 @@ pub(crate) fn target(home: &Path, cwd: &Path, args: &mut Arguments) -> Result<Pa
             .as_str()
             .ok_or("RESUME_PATH stage=resume: native session has no stored path")?,
     );
+    let saved = restore_policy(&saved, &rollout, home, &id, args)?;
     let explicit = args.project.as_ref().map(|(d, n)| (*d, n.as_str()));
     let selected = Project::select(&home.join("repos"), &saved, explicit)?;
     if !saved.starts_with(&selected.root) {
@@ -51,8 +52,30 @@ pub(crate) fn target(home: &Path, cwd: &Path, args: &mut Arguments) -> Result<Pa
                 .into(),
         );
     }
-    apply_location(home, &rollout, args);
     Ok(saved)
+}
+
+fn restore_policy(
+    cwd: &Path,
+    rollout: &Path,
+    home: &Path,
+    id: &str,
+    args: &mut Arguments,
+) -> Result<PathBuf> {
+    let base = kah_core::run_store::RunStore::default_state_root()?;
+    if let Some(policy) = crate::session_policy::saved(&base, id)? {
+        args.options.online = policy.policy == "research-online";
+        args.options.yolo = policy.policy == "mine-yolo";
+        // Native resume can persist its new cwd even when our hook rejects the
+        // turn. The immutable kah binding remains the routing authority.
+        return Ok(if cwd.starts_with(&policy.project) {
+            cwd.into()
+        } else {
+            policy.project
+        });
+    }
+    apply_location(home, rollout, args);
+    Ok(cwd.into())
 }
 
 /// Only a native session's kah-owned rollout path carries a previous opt-in.

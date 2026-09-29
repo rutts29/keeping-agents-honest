@@ -55,6 +55,14 @@ impl Terminal {
         self.input.flush().unwrap();
     }
 
+    pub fn submit(&mut self, text: &str) {
+        self.send(text);
+        // Native paste-burst detection otherwise treats a same-burst Enter as
+        // part of the pasted text rather than dispatching the slash command.
+        thread::sleep(Duration::from_millis(500));
+        self.send("\r");
+    }
+
     pub fn output(&self) -> String {
         String::from_utf8_lossy(&fs::read(&self.log).unwrap_or_default()).into_owned()
     }
