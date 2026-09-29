@@ -36,6 +36,8 @@ mod error;
 pub use error::*;
 mod inspect;
 pub use inspect::*;
+mod observation;
+pub use observation::*;
 mod server;
 use server::*;
 mod listing;

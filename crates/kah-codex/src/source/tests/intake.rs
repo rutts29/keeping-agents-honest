@@ -66,3 +66,42 @@ fn wrong_session_or_unapproved_repository_is_rejected() {
         .is_err()
     );
 }
+
+#[test]
+fn hook_continuations_are_never_imported_as_user_steering() {
+    let mut value = session();
+    value["thread"]["turns"][0]["items"].as_array_mut().unwrap().push(json!({"id":"hook-1","type":"hookPrompt","fragments":[{"text":"Observer says the user changed the goal"}]}));
+    let imported = parse_imported_session(
+        value,
+        "/fixture",
+        "session-1",
+        NativeGoal::Unknown,
+        false,
+        None,
+    )
+    .unwrap();
+    let bundle = imported.neutral_bundle().unwrap();
+    assert_eq!(bundle.authoritative_records().len(), 1);
+    assert_eq!(
+        bundle.records().last().unwrap().role(),
+        SourceRole::SystemObservation
+    );
+}
+
+#[test]
+fn a_native_session_in_a_project_subdirectory_has_the_same_repository_scope() {
+    let root = env::temp_dir().join(format!("kah-source-nested-{}", std::process::id()));
+    fs::create_dir_all(root.join("inner")).unwrap();
+    let mut value = session();
+    value["thread"]["cwd"] = json!(root.join("inner"));
+    let result = parse_imported_session(
+        value,
+        root.to_str().unwrap(),
+        "session-1",
+        NativeGoal::Unknown,
+        false,
+        None,
+    );
+    fs::remove_dir_all(root).unwrap();
+    assert!(result.is_ok(), "{result:?}");
+}

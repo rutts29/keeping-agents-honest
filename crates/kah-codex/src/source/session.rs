@@ -107,6 +107,14 @@ fn validate_repository(
     turns: &[Value],
     allow_ancestor_cwd: bool,
 ) -> Result<(), SourceError> {
+    let repository = Path::new(canonical_root);
+    if Path::new(cwd).starts_with(repository)
+        && Path::new(cwd)
+            .canonicalize()
+            .is_ok_and(|path| path.starts_with(repository))
+    {
+        return Ok(());
+    }
     if cwd != canonical_root {
         if !allow_ancestor_cwd {
             return Err(SourceError::new(
