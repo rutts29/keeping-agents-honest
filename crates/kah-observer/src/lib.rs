@@ -9,3 +9,5 @@ pub mod keeper;
 pub mod keeper_metrics;
 pub mod semantic_resolver;
 pub mod session;
+
+pub mod judge;
