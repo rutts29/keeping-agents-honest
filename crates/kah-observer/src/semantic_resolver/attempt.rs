@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) struct Attempt {
-    config: CompactorConfig,
+pub(super) struct Attempt<'a> {
+    config: CompactorConfig<'a>,
     version: u32,
     started: Instant,
     calls: u8,
@@ -9,8 +9,8 @@ pub(super) struct Attempt {
     pub(super) failure: Option<String>,
     artifacts: Vec<String>,
 }
-impl Attempt {
-    pub(super) fn new(config: CompactorConfig, version: u32) -> Self {
+impl<'a> Attempt<'a> {
+    pub(super) fn new(config: CompactorConfig<'a>, version: u32) -> Self {
         Self {
             config,
             version,

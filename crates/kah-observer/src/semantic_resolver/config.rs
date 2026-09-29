@@ -1,91 +1,48 @@
+/// Borrowed native model preferences, independent of the main agent's choices.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CompactorPreset {
-    Luna,
-    Terra,
-    Sol,
+pub struct CompactorConfig<'a> {
+    model: &'a str,
+    reasoning: &'a str,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CompactorConfig {
-    pub(super) preset: CompactorPreset,
-    pub(super) terra_medium: bool,
-}
-
-impl Default for CompactorConfig {
+impl Default for CompactorConfig<'_> {
     fn default() -> Self {
         Self {
-            preset: CompactorPreset::Luna,
-            terra_medium: false,
+            model: "gpt-6-luna",
+            reasoning: "low",
         }
     }
 }
 
-impl CompactorConfig {
-    pub fn new(preset: &str, reasoning: Option<&str>) -> Result<Self, String> {
-        match (preset, reasoning) {
-            ("luna", None) => Ok(Self::default()),
-            ("terra", None | Some("high")) => Ok(Self {
-                preset: CompactorPreset::Terra,
-                terra_medium: false,
-            }),
-            ("terra", Some("medium")) => Ok(Self {
-                preset: CompactorPreset::Terra,
-                terra_medium: true,
-            }),
-            ("sol", None) => Ok(Self {
-                preset: CompactorPreset::Sol,
-                terra_medium: false,
-            }),
-            ("luna" | "sol", Some(_)) => Err(
-                "--reasoning is only supported for the Terra preset (high or medium)".to_owned(),
-            ),
-            _ => Err("--compactor must be one of: luna, terra, sol".to_owned()),
+impl<'a> CompactorConfig<'a> {
+    pub fn new(model: &'a str, reasoning: Option<&'a str>) -> Result<Self, String> {
+        let model = match model {
+            "luna" => "gpt-6-luna",
+            "sol" => "gpt-6-sol",
+            "terra" => "gpt-5.6-terra",
+            other => other,
+        };
+        let reasoning = reasoning.unwrap_or("low");
+        if !valid_choice(model) || model.starts_with('-') {
+            return Err("OBSERVER_MODEL stage=observer_config: model must be a nonempty native model identifier".into());
         }
+        if !valid_choice(reasoning) {
+            return Err("OBSERVER_EFFORT stage=observer_config: effort must be a nonempty native reasoning value".into());
+        }
+        // Codex 0.159 advertises model-specific effort strings, not a closed enum.
+        Ok(Self { model, reasoning })
     }
 
-    #[must_use]
-    pub fn model(self) -> &'static str {
-        match self.preset {
-            CompactorPreset::Luna => "gpt-5.6-luna",
-            CompactorPreset::Terra => "gpt-5.6-terra",
-            CompactorPreset::Sol => "gpt-5.6-sol",
-        }
+    pub fn model(self) -> &'a str {
+        self.model
     }
+    pub fn reasoning(self) -> &'a str {
+        self.reasoning
+    }
+}
 
-    #[must_use]
-    pub fn reasoning(self) -> &'static str {
-        match self.preset {
-            CompactorPreset::Luna => "max",
-            CompactorPreset::Terra if self.terra_medium => "medium",
-            CompactorPreset::Terra | CompactorPreset::Sol => "high",
-        }
-    }
-
-    #[must_use]
-    pub fn preset_name(self) -> &'static str {
-        match self.preset {
-            CompactorPreset::Luna => "luna",
-            CompactorPreset::Terra => "terra",
-            CompactorPreset::Sol => "sol",
-        }
-    }
-
-    #[must_use]
-    pub fn reasoning_argument(self) -> Option<&'static str> {
-        match self.preset {
-            CompactorPreset::Terra if self.terra_medium => Some("medium"),
-            CompactorPreset::Terra => Some("high"),
-            CompactorPreset::Luna | CompactorPreset::Sol => None,
-        }
-    }
-
-    #[must_use]
-    pub fn disclosure_for_chunks(self, chunks: usize) -> String {
-        format!(
-            "compactor model: {}\nreasoning: {}\nexpected calls: {chunks}; maximum {} with repair\nuses local Codex authentication and usage allowance; model output may be incomplete or wrong; the operator owns approved intent",
-            self.model(),
-            self.reasoning(),
-            chunks.saturating_mul(2),
-        )
-    }
+fn valid_choice(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !value.chars().any(|c| c.is_whitespace() || c.is_control())
 }

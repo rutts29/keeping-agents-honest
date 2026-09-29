@@ -43,7 +43,10 @@ pub(super) fn invoke_codex_request(
     let artifact_store = ArtifactStore::open(&canonical_root)
         .map_err(|_| ExecutionFailure::new("OBSERVER_ARTIFACT_STORE", "provider_setup"))?;
     let program = env::var_os("KAH_CODEX_BIN").unwrap_or_else(|| "codex".into());
-    let reasoning = format!("model_reasoning_effort=\"{}\"", config.reasoning());
+    let reasoning = format!(
+        "model_reasoning_effort={}",
+        serde_json::to_string(config.reasoning()).expect("string serialization")
+    );
     let mut child = Command::new(program)
         .args([
             "exec",

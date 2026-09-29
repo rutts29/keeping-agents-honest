@@ -75,7 +75,7 @@ impl Enrollment {
 
     pub fn keeper_config(
         &self,
-    ) -> Result<crate::semantic_resolver::CompactorConfig, EnrollmentError> {
+    ) -> Result<crate::semantic_resolver::CompactorConfig<'_>, EnrollmentError> {
         crate::semantic_resolver::CompactorConfig::new(
             &self.keeper_preset,
             self.keeper_reasoning.as_deref(),
