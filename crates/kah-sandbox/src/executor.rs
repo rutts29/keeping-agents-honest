@@ -41,6 +41,15 @@ pub struct Executor {
 }
 
 impl Executor {
+    pub fn read_only_project(mut self) -> Self {
+        for index in 0..self.args.len().saturating_sub(1) {
+            if self.args[index] == "--mount" && !self.args[index + 1].ends_with(",readonly") {
+                self.args[index + 1].push_str(",readonly");
+            }
+        }
+        self
+    }
+
     pub fn new(
         project: &Project,
         options: LaunchOptions,

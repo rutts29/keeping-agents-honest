@@ -28,6 +28,7 @@ pub struct ResolverMetadata {
     pub calls: u8,
     pub elapsed_ms: u128,
     pub usage: ResolverUsage,
+    pub usage_complete: bool,
     pub prompt_schema_version: u32,
     pub proposal_schema_version: u32,
     pub last_validation_failure: Option<String>,
@@ -212,8 +213,6 @@ pub(super) struct CodexCall {
     pub(super) final_message: String,
     pub(super) usage: ResolverUsage,
     pub(super) artifact_id: String,
-    #[allow(dead_code)]
-    pub(super) trajectory: Vec<Value>,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -37,6 +37,7 @@ impl<'a> Attempt<'a> {
                 let mut failure = self.error(ResolverFailureKind::Execution);
                 failure.code = error.code.into();
                 failure.stage = error.stage;
+                failure.metadata.usage_complete = false;
                 Err(failure)
             }
         }

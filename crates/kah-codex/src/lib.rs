@@ -4,4 +4,5 @@ pub mod source;
 
 pub mod control;
 pub mod hooks;
+pub mod observer;
 pub mod overlay;

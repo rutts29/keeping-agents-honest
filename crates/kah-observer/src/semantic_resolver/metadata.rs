@@ -48,6 +48,7 @@ pub(super) fn metadata_for_prompt(
         calls,
         elapsed_ms,
         usage,
+        usage_complete: true,
         prompt_schema_version,
         proposal_schema_version: PROPOSAL_SCHEMA_VERSION,
         last_validation_failure,

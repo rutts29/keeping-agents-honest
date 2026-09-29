@@ -24,6 +24,19 @@ pub fn current_uid() -> Result<u32, Error> {
         .map_err(|e| Error::new("RUNTIME_UID", "executor_runtime", e))
 }
 
+/// Create an empty public executor workspace; it is never a credential store.
+pub fn prepare_public_workspace(path: &Path) -> Result<(), Error> {
+    directory(path, current_uid()?)?;
+    if fs::read_dir(path).map_err(io_error)?.next().is_some() {
+        return Err(Error::new(
+            "RUNTIME_WORKSPACE_CONTENTS",
+            "executor_runtime",
+            "observer workspace must be empty",
+        ));
+    }
+    Ok(())
+}
+
 /// Publish only the public native executable where the rootless daemon can read
 /// it. Credentials and the user's private installation directory stay private.
 pub fn publish_binary(source: &Path, cache: &Path) -> Result<PathBuf, Error> {
@@ -56,16 +69,20 @@ pub fn publish_binary(source: &Path, cache: &Path) -> Result<PathBuf, Error> {
 
 fn directory(path: &Path, uid: u32) -> Result<(), Error> {
     match DirBuilder::new().mode(0o755).create(path) {
-        Ok(()) => (),
+        Ok(()) => fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(io_error)?,
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
         Err(e) => return Err(io_error(e)),
     }
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
-    if !metadata.is_dir() || metadata.uid() != uid || metadata.mode() & 0o022 != 0 {
+    if !metadata.is_dir()
+        || metadata.uid() != uid
+        || metadata.mode() & 0o022 != 0
+        || metadata.mode() & 0o555 != 0o555
+    {
         return Err(Error::new(
             "RUNTIME_DIRECTORY",
             "executor_runtime",
-            "runtime directory must be owned by the operator, with no group/other write access",
+            "runtime directory must be operator-owned, readable/traversable publicly, and not writable by group/others",
         ));
     }
     Ok(())

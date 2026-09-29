@@ -5,7 +5,6 @@ use super::*;
 /// The immutable history is used only by deterministic validation. The model
 /// receives the serialized active projection, the new delta, and its source
 /// map; it never receives prior source records or history events.
-#[allow(dead_code)]
 pub fn resolve_incremental(
     root: &Path,
     history: &History,

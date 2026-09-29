@@ -218,6 +218,7 @@ pub(super) fn initial_records_bytes(records: &[BundleRecord]) -> Result<usize, V
 }
 
 pub(super) fn combine_metadata(current: &mut ResolverMetadata, prior: &ResolverMetadata) {
+    current.usage_complete &= prior.usage_complete;
     current.calls = current.calls.saturating_add(prior.calls);
     current.elapsed_ms = current.elapsed_ms.saturating_add(prior.elapsed_ms);
     current.usage.input_tokens = current

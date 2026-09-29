@@ -42,34 +42,24 @@ pub(super) fn invoke_codex_request(
         .map_err(|_| ExecutionFailure::new("OBSERVER_ROOT", "provider_setup"))?;
     let artifact_store = ArtifactStore::open(&canonical_root)
         .map_err(|_| ExecutionFailure::new("OBSERVER_ARTIFACT_STORE", "provider_setup"))?;
-    let program = env::var_os("KAH_CODEX_BIN").unwrap_or_else(|| "codex".into());
-    let reasoning = format!(
-        "model_reasoning_effort={}",
-        serde_json::to_string(config.reasoning()).expect("string serialization")
-    );
-    let mut child = Command::new(program)
-        .args([
-            "exec",
-            "--model",
-            config.model(),
-            "--config",
-            &reasoning,
-            "--sandbox",
-            "read-only",
-            "--ephemeral",
-            "--json",
-            "--output-schema",
-        ])
-        .arg(&files.schema)
-        .arg("--output-last-message")
-        .arg(&files.final_message)
-        .arg("-C")
-        .arg(canonical_root)
-        .arg("-")
-        // Compaction uses the installed CLI's saved local authentication, not
-        // an API key copied or inherited by Driftctl.
-        .env_remove("OPENAI_API_KEY")
-        .env_remove("CODEX_API_KEY")
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| ExecutionFailure::new("OBSERVER_HOME", "provider_setup"))?;
+    let native = env::var_os("KAH_CODEX_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".local/bin/codex"));
+    let environment = kah_codex::observer::Environment::prepare(&home, &native)
+        .map_err(|e| ExecutionFailure::new(e.code, e.stage))?;
+    let mut command = environment
+        .command(&kah_codex::observer::Request {
+            model: config.model(),
+            effort: config.reasoning(),
+            schema: &files.schema,
+            output: &files.final_message,
+            timeout: config.timeout(),
+        })
+        .map_err(|e| ExecutionFailure::new(e.code, e.stage))?;
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -96,6 +86,13 @@ fn decode_output(
     let artifact_id = artifact_store
         .retain(&output.stdout, &final_bytes)
         .map_err(|_| ExecutionFailure::new("OBSERVER_ARTIFACT_WRITE", "provider_output"))?;
+    if matches!(output.status.code(), Some(124 | 137)) {
+        return Err(ExecutionFailure {
+            code: "OBSERVER_TIMEOUT",
+            stage: "provider_wait",
+            artifact: Some(artifact_id),
+        });
+    }
     if !output.status.success() {
         return Err(ExecutionFailure::artifact("OBSERVER_EXIT", artifact_id));
     }
@@ -103,10 +100,39 @@ fn decode_output(
         .map_err(|_| ExecutionFailure::artifact("OBSERVER_UTF8", artifact_id.clone()))?;
     let (trajectory, usage) = parse_trajectory(&output.stdout)
         .map_err(|_| ExecutionFailure::artifact("OBSERVER_TRAJECTORY", artifact_id.clone()))?;
+    if !data_only_trajectory(&trajectory) {
+        return Err(ExecutionFailure::artifact(
+            "OBSERVER_UNEXPECTED_ACTIVITY",
+            artifact_id,
+        ));
+    }
     Ok(CodexCall {
         final_message,
         usage,
         artifact_id,
-        trajectory,
     })
+}
+
+pub(super) fn data_only_trajectory(events: &[Value]) -> bool {
+    let mut started = false;
+    let mut completed = false;
+    let safe = events.iter().all(|event| match event["type"].as_str() {
+        Some("thread.started") => true,
+        Some("turn.started") => {
+            started = true;
+            true
+        }
+        Some("turn.completed") => {
+            completed = true;
+            true
+        }
+        Some("item.started" | "item.updated" | "item.completed") => {
+            matches!(
+                event["item"]["type"].as_str(),
+                Some("agent_message" | "reasoning")
+            ) || (!started && event["item"]["type"] == "error")
+        }
+        _ => false,
+    });
+    safe && started && completed
 }

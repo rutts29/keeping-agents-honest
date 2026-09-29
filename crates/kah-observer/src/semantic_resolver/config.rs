@@ -3,6 +3,7 @@
 pub struct CompactorConfig<'a> {
     model: &'a str,
     reasoning: &'a str,
+    timeout: std::time::Duration,
 }
 
 impl Default for CompactorConfig<'_> {
@@ -10,6 +11,7 @@ impl Default for CompactorConfig<'_> {
         Self {
             model: "gpt-6-luna",
             reasoning: "low",
+            timeout: std::time::Duration::from_secs(45),
         }
     }
 }
@@ -30,7 +32,11 @@ impl<'a> CompactorConfig<'a> {
             return Err("OBSERVER_EFFORT stage=observer_config: effort must be a nonempty native reasoning value".into());
         }
         // Codex 0.159 advertises model-specific effort strings, not a closed enum.
-        Ok(Self { model, reasoning })
+        Ok(Self {
+            model,
+            reasoning,
+            ..Self::default()
+        })
     }
 
     pub fn model(self) -> &'a str {
@@ -38,6 +44,18 @@ impl<'a> CompactorConfig<'a> {
     }
     pub fn reasoning(self) -> &'a str {
         self.reasoning
+    }
+    pub fn timeout(self) -> std::time::Duration {
+        self.timeout
+    }
+    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Result<Self, String> {
+        if timeout.is_zero() {
+            return Err(
+                "OBSERVER_TIMEOUT_CONFIG stage=observer_config: timeout cannot be disabled".into(),
+            );
+        }
+        self.timeout = timeout;
+        Ok(self)
     }
 }
 

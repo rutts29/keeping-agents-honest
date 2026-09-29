@@ -45,7 +45,6 @@ fn incremental_resolution_repairs_once_and_records_native_goal_conflict_without_
                 },
                 usage: ResolverUsage::default(),
                 artifact_id: format!("artifact-{attempt}"),
-                trajectory: Vec::new(),
             })
         },
     )

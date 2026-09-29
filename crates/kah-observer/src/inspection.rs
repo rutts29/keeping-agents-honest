@@ -24,6 +24,7 @@ pub fn cached_resolution(
         calls: 0,
         elapsed_ms: 0,
         usage: ResolverUsage::default(),
+        usage_complete: true,
         prompt_schema_version: generated.prompt_schema_version,
         proposal_schema_version: 1,
         last_validation_failure: None,

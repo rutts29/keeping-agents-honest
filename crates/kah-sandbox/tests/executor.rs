@@ -85,3 +85,24 @@ fn online_is_explicit_and_invalid_mount_syntax_is_refused() {
         "MOUNT_PATH"
     );
 }
+
+#[test]
+fn observer_workspace_mount_can_be_read_only() {
+    let executor = Executor::new(
+        &project(Domain::Research),
+        LaunchOptions::default(),
+        Path::new("/var/tmp/public-codex"),
+        "image",
+        42420,
+    )
+    .unwrap()
+    .read_only_project();
+    let mounts: Vec<_> = executor
+        .args
+        .windows(2)
+        .filter(|p| p[0] == "--mount")
+        .map(|p| &p[1])
+        .collect();
+    assert_eq!(mounts.len(), 2);
+    assert!(mounts.iter().all(|mount| mount.ends_with(",readonly")));
+}

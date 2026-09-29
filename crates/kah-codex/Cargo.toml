@@ -10,6 +10,7 @@ workspace = true
 
 [dependencies]
 kah-core = { path = "../kah-core" }
+kah-sandbox = { path = "../kah-sandbox" }
 serde_json = "=1.0.151"
 sha2 = "=0.10.9"
 serde = { version = "=1.0.229", features = ["derive"] }

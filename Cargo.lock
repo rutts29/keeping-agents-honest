@@ -107,6 +107,7 @@ name = "kah-codex"
 version = "0.1.0"
 dependencies = [
  "kah-core",
+ "kah-sandbox",
  "serde",
  "serde_json",
  "sha2",
