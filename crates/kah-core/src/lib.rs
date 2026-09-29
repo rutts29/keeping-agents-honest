@@ -6,4 +6,5 @@ pub mod projection;
 pub mod run_store;
 pub mod session_bundle;
 
+pub mod observation;
 pub mod verification;
