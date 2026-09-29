@@ -81,10 +81,24 @@ impl Client {
     }
 
     pub fn turn(&mut self, id: &str, text: &str) -> Value {
-        self.request(
-            "turn/start",
-            json!({"threadId":id,"input":[{"type":"text","text":text}]}),
-        );
+        self.turn_with(id, text, None, None)
+    }
+
+    pub fn turn_with(
+        &mut self,
+        id: &str,
+        text: &str,
+        model: Option<&str>,
+        effort: Option<&str>,
+    ) -> Value {
+        let mut params = json!({"threadId":id,"input":[{"type":"text","text":text}]});
+        if let Some(model) = model {
+            params["model"] = model.into();
+        }
+        if let Some(effort) = effort {
+            params["effort"] = effort.into();
+        }
+        self.request("turn/start", params);
         self.wait(Duration::from_secs(180), |v| {
             v["method"] == "turn/completed" && v["params"]["threadId"] == id
         })["params"]["turn"]

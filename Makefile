@@ -1,4 +1,4 @@
-.PHONY: check size gate gates install-hooks
+.PHONY: check size gate gates install-hooks install
 check: size
 	cargo fmt --check
 	cargo clippy --workspace --all-targets -- -D warnings
@@ -17,3 +17,8 @@ gates: check
 
 install-hooks:
 	git config core.hooksPath .githooks
+
+install:
+	cargo build --release -p kah-cli
+	install -Dm755 target/release/kah "$(HOME)/.local/bin/kah"
+	install -Dm644 assets/shell/kah.sh "$(HOME)/.local/share/kah/shell.sh"
