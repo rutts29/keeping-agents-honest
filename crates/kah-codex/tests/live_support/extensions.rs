@@ -1,9 +1,9 @@
 use super::start as start_client;
-use kah_codex::overlay::{Policy, prepare};
+use kah_codex::overlay::{Policy, install_session_hook, prepare};
 use serde_json::{Value, json};
 use std::{
     fs,
-    os::unix::fs::symlink,
+    os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::Command,
     time::SystemTime,
@@ -56,13 +56,15 @@ pub fn verify() {
         "host extension escaped: {negative_hits:?}"
     );
     assert_eq!(fs::read(&global).unwrap(), before);
+    own_hook(&f, &overlay);
+    assert_eq!(fs::read(&global).unwrap(), before);
     let config = fs::read_to_string(overlay.join("config.toml")).unwrap();
     let config: toml::Value = toml::from_str(&config).unwrap();
     assert_eq!(
         config["projects"][f.project.to_str().unwrap()]["trust_level"].as_str(),
         Some("untrusted")
     );
-    let evidence = json!({"positiveControl":positive_hits,"restrictedCanaries":negative_hits,"restrictedTurnCompleted":true,"globalConfigUnchanged":true,"projectRemainedUntrusted":true,"passed":true});
+    let evidence = json!({"positiveControl":positive_hits,"restrictedCanaries":negative_hits,"restrictedTurnCompleted":true,"globalConfigUnchanged":true,"projectRemainedUntrusted":true,"onlyOwnedHookRanAfterNativeTrust":true,"passed":true});
     let output = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/gates/evidence/phase-2/host-extensions.json");
     fs::write(
@@ -149,6 +151,27 @@ fn run(overlay: &Path, f: &Fixture, positive: bool) -> Value {
             "restricted.stderr"
         }),
     );
-    let thread = client.request("thread/start", json!({"cwd":f.project,"ephemeral":true,"permissions":":danger-full-access","approvalPolicy":"never","config":{"bypass_hook_trust":true}}));
+    let thread = client.request("thread/start", json!({"cwd":f.project,"ephemeral":true,"permissions":":danger-full-access","approvalPolicy":"never","config":{"bypass_hook_trust":positive}}));
     client.turn(thread["thread"]["id"].as_str().unwrap(), "Reply with exactly READY. Do not use tools or inspect files; this is a startup configuration test.")
+}
+
+fn own_hook(f: &Fixture, overlay: &Path) {
+    let handler = f.base.join("owned-handler");
+    let canary = f.base.join("owned-hook");
+    fs::write(
+        &handler,
+        format!("#!/bin/sh\nprintf owned > '{}'\n", canary.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&handler, fs::Permissions::from_mode(0o700)).unwrap();
+    install_session_hook(
+        Path::new("/home/example/.local/bin/codex"),
+        overlay,
+        &f.project,
+        &handler,
+    )
+    .unwrap();
+    assert_eq!(run(overlay, f, false)["status"], "completed");
+    assert_eq!(fs::read_to_string(canary).unwrap(), "owned");
+    assert!(canaries(f).iter().all(|(_, hit)| !hit));
 }

@@ -27,6 +27,18 @@ Overlays are stable per domain/network policy and project under
 `~/.local/state/kah/codex`. They share native login and session/history stores,
 while keeping a separate writable config. Keep overlay paths: saved native
 rollouts reference them. No user global config is rewritten by a launch.
+Resuming by native session ID resolves its saved project before launch, including
+its prior explicit Research-online or Mine-yolo choice. This also handles Herdr
+restoring a native session from the original shell directory. Native session
+pickers still share the same history; use the displayed session ID to reopen a
+session in another project through kah.
+
+Inside Herdr, restricted sessions use one kah-owned SessionStart hook for native
+session identity. kah obtains that declaration's trust hash from Codex and trusts
+only that exact hook in the independent overlay. User/project hooks remain
+excluded. Herdr's existing screen detection tracks the native Codex lifecycle.
+The native UI calls its internal executor permissions “YOLO mode”; gVisor supplies
+the external Research/Untrusted boundary.
 
 The observer and unattended commands are still being implemented. Gate 2 is
 not yet accepted; see `STATUS.md` for journeys passed and outstanding.

@@ -2,6 +2,10 @@ use kah_cli::{Arguments, Launch, Result};
 use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
+    if env::args().nth(1).as_deref() == Some("__herdr-session") {
+        kah_cli::herdr::report();
+        return Ok(());
+    }
     let args = Arguments::parse(env::args().skip(1).collect())?;
     if args.help {
         println!(

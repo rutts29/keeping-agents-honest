@@ -2,7 +2,9 @@
 use std::{fmt, path::Path};
 use toml::{Table, Value};
 
+mod owned_hooks;
 mod storage;
+pub use owned_hooks::install_session_hook;
 pub use storage::prepare;
 
 pub fn set_executor(directory: &Path, id: &str, args: &[String]) -> Result<(), OverlayError> {

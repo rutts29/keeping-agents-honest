@@ -2,5 +2,6 @@
 pub mod plugin_control;
 pub mod source;
 
+pub mod control;
 pub mod hooks;
 pub mod overlay;

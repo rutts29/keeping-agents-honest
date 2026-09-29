@@ -18,12 +18,13 @@ pub struct Launch {
 }
 
 impl Launch {
-    pub fn prepare(home: &Path, cwd: &Path, args: Arguments) -> Result<Self> {
+    pub fn prepare(home: &Path, cwd: &Path, mut args: Arguments) -> Result<Self> {
+        let target = crate::resume::target(home, cwd, &mut args)?;
         let explicit = args
             .project
             .as_ref()
             .map(|(domain, name)| (*domain, name.as_str()));
-        let project = Project::select(&home.join("repos"), cwd, explicit)?;
+        let project = Project::select(&home.join("repos"), &target, explicit)?;
         args.options.validate(project.domain)?;
         args.validate_native(project.domain)?;
         if project.needs_creation {
@@ -31,7 +32,7 @@ impl Launch {
         }
         let cwd = project.root.join(&project.relative_cwd);
         let restricted = project.domain != Domain::Mine;
-        let (policy_name, overlay) = overlay_directory(home, &project, args.options.online);
+        let (policy_name, overlay) = overlay_directory(home, &project, &args);
         overlay::prepare(
             &home.join(".codex"),
             &overlay,
@@ -58,6 +59,10 @@ impl Launch {
             None
         };
         let overrides = policy_overrides(&project, &cwd, &args);
+        if restricted && std::env::var("HERDR_ENV").as_deref() == Ok("1") {
+            let handler = home.join(".local/bin/kah");
+            overlay::install_session_hook(&binary, &overlay, &cwd, &handler)?;
+        }
         Ok(Self {
             project,
             overlay,
@@ -165,11 +170,17 @@ fn prepare_executor(
     Ok(id)
 }
 
-fn overlay_directory(home: &Path, project: &Project, online: bool) -> (String, PathBuf) {
+fn overlay_directory(home: &Path, project: &Project, args: &Arguments) -> (String, PathBuf) {
     let policy_name = format!(
         "{}-{}",
         project.domain.as_str(),
-        if online { "online" } else { "offline" }
+        if args.options.yolo {
+            "yolo"
+        } else if args.options.online {
+            "online"
+        } else {
+            "offline"
+        }
     );
     let hash = format!(
         "{:x}",
