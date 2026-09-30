@@ -80,10 +80,16 @@ pub fn decide(
         return Err("OBSERVER_AUTHORITY stage=intake".into());
     }
     let text = text.trim_start();
-    if text.starts_with("!steer ") {
+    if text
+        .get(..6)
+        .is_some_and(|p| p.eq_ignore_ascii_case("steer:"))
+    {
         return Ok(Decision::Force);
     }
-    if text.starts_with("!aside ") {
+    if text
+        .get(..6)
+        .is_some_and(|p| p.eq_ignore_ascii_case("aside:"))
+    {
         return Ok(Decision::Aside);
     }
     judge().map(|judgment| Decision::Jev {

@@ -29,7 +29,7 @@ fn unconfirmed_context_is_visible_without_user_review() {
     let start = client.request("thread/start", json!({"cwd":fixture.project}));
     let session = start["thread"]["id"].as_str().unwrap();
     fixture.sessions.push(session.into());
-    assert_eq!(client.turn(session,"!steer Retain marker UNCONFIRMED_BETA for this disposable fixture. Reply READY without tools.")["status"],"completed");
+    assert_eq!(client.turn(session,"steer: Retain marker UNCONFIRMED_BETA for this disposable fixture. Reply READY without tools.")["status"],"completed");
     let state = seed_unconfirmed(session);
     let mut hook = Command::new(env!("CARGO_BIN_EXE_kah"))
         .arg("__hook")
@@ -59,7 +59,7 @@ fn unconfirmed_context_is_visible_without_user_review() {
     assert!(context.contains("unconfirmed_items") && context.contains("UNCONFIRMED_BETA"));
     assert!(context.contains("\"review_required\":true"));
     client.request("thread/inject_items",json!({"threadId":session,"items":[{"type":"message","role":"developer","content":[{"type":"input_text","text":context}]}]}));
-    assert_eq!(client.turn(session,"!aside Inspect the kah unconfirmed context. Use native apply_patch to write context.json with keys marker (the retained marker), review_required (the item's flag), and user_confirmed (false if absent). Do not ask for review or change the ledger. Report and stop.")["status"],"completed");
+    assert_eq!(client.turn(session,"aside: Inspect the kah unconfirmed context. Use native apply_patch to write context.json with keys marker (the retained marker), review_required (the item's flag), and user_confirmed (false if absent). Do not ask for review or change the ledger. Report and stop.")["status"],"completed");
     let observed: Value =
         serde_json::from_slice(&fs::read(fixture.project.join("context.json")).unwrap()).unwrap();
     assert_eq!(

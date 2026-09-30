@@ -191,3 +191,9 @@ fn assert_resume_boundary(
     assert!(!resumed_output.contains("Folder access"));
     assert!(!resumed_output.contains("invalid session start JSON"));
 }
+
+#[test]
+#[ignore = "real installed bashrc/cx routing and typed steer:/aside: through the native TUI"]
+fn closure_routing_and_plaintext_overrides() {
+    terminal_support::closure::run();
+}

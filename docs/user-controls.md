@@ -1,21 +1,23 @@
 # User controls and delegate messages
 
-`!steer ` forces a literal user message into the ledger with uncertainty cleared;
-`!aside ` excludes it from steering. Both skip steering inference entirely.
-Normal observation of subsequent agent actions still uses Jev. Ignored messages
-remain verbatim in private source history, including when no goal exists yet.
-Recent model-ignored messages are included in bounded drift context. Explicit
-asides, dismissed sources and already-promoted sources are excluded from that
-recheck.
+At the start of a chat message, `steer:` forces recording and `aside:` excludes
+it from steering. Prefixes are case-insensitive and allow leading whitespace.
+Both skip steering inference entirely and preserve the exact message text.
+Type them directly in the native TUI; they are ordinary text, not shell commands.
+Normal observation of subsequent actions still uses Jev. Ignored messages stay
+in private source history and remain promotable. Recent model-ignored messages
+are included in bounded drift context; explicit asides and dismissed/promoted
+sources are excluded from that recheck.
 
-Codex 0.159's **typed TUI bang prefix runs a shell command**. Do not type these
-prefixes as bare TUI commands. Submit a literal message to a live, already
-initialized conversation from another shell:
+For a live, already initialized session, the out-of-band path remains:
 
+```sh
+kah steer SESSION 'steer: Keep the API unchanged' --receipt user-change-001
+kah steer SESSION 'aside: This is only a note' --receipt user-note-001
 ```
-kah steer SESSION '!steer Keep the API unchanged' --receipt user-change-001
-kah steer SESSION '!aside This is only a note' --receipt user-note-001
-```
+
+Leading `!` invokes the native shell in both TUIs. The old bang prefixes are no
+longer deterministic overrides; old stored source decisions remain historical.
 
 This uses the supported native message API with `kah-user:operator:<receipt>`;
 it preserves the main agent's model, effort, project and execution policy.
@@ -55,7 +57,7 @@ visible receipt resolves it on retry. If it never becomes visible, deliberate
 use of a new receipt risks a duplicate and is an operator decision.
 
 Client-ID namespaces take precedence over compatibility prefixes. Delegate and
-system messages cannot become user steering, even if they contain `!steer`.
+system messages cannot become user steering, even if they contain `steer:` or `aside:`.
 Herdr's unmarked terminal paste has no recoverable sender metadata; native source
 IDs avoid that ambiguity for the new channel. These are provenance conventions
 within the accepted single-user host trust model, not authentication against

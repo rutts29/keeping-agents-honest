@@ -29,7 +29,7 @@ fn delegate_sender_retries_and_restarts_without_duplicate_steering() {
     fixture.sessions.push(session.into());
     let setup = client.turn(
         session,
-        "!aside Initialize this receiver; reply READY without tools.",
+        "aside: Initialize this receiver; reply READY without tools.",
     );
     assert_eq!(setup["status"], "completed");
     let first = Message::new(

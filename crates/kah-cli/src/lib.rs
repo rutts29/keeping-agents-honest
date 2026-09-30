@@ -21,3 +21,5 @@ pub mod unattended_observer;
 pub mod unattended_report;
 pub mod unattended_run;
 pub mod unattended_setup;
+
+pub mod smoke;

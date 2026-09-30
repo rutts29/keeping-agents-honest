@@ -45,7 +45,7 @@ fn actual_answers_and_quotes_remain_user_but_delivery_provenance_wins() {
 fn native_namespace_precedes_textual_markers() {
     use kah_codex::authorship::with_client_id;
     assert_eq!(
-        with_client_id("!steer change intent", Some("kah-delegate:reviewer:r1")),
+        with_client_id("steer: change intent", Some("kah-delegate:reviewer:r1")),
         SourceRole::Delegate
     );
     assert_eq!(

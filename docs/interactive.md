@@ -19,9 +19,10 @@ the selected project mounted. Untrusted is always offline. Restricted domains
 exclude host MCP, user/project hooks and plugins/apps. Some native flags that
 would change those boundaries are deliberately refused with a reason code.
 
-Optional shell routing: source `~/.local/share/kah/shell.sh` in Bash. Plain
+Installed Bash routing sources `~/.local/share/kah/shell.sh` from `.bashrc`. Plain
 `codex` then routes through kah under the three domain roots. This is a convenience,
-not a security boundary; `command codex` bypasses it.
+not a security boundary; `command codex` bypasses it. `cx` is a compatibility
+shim that executes `kah` with the same arguments.
 
 Overlays are stable per domain/network policy and project under
 `~/.local/state/kah/codex`. They share native login and session/history stores,
@@ -40,8 +41,9 @@ excluded. Herdr's existing screen detection tracks the native Codex lifecycle.
 The native UI calls its internal executor permissions “YOLO mode”; gVisor supplies
 the external Research/Untrusted boundary.
 
-The observer and unattended commands are still being implemented. Gate 2 passed;
-see `STATUS.md` for journeys passed and outstanding.
+Interactive observation and unattended work passed Gates 3 and 4; subsequent
+closure gates cover provenance, overrides and measured steering policy. See
+`STATUS.md` for accepted limits and `COMMANDS.md` for daily commands.
 
 kah fixes the launch directory for in-process `/resume`. The saved kah project
 and policy must match, including online/yolo choices; otherwise the session and
@@ -49,9 +51,9 @@ subsequent prompts are blocked with a command to reopen through kah. Use
 `kah -- resume SESSION_ID` to let the launcher select the saved project first.
 This guard remains enabled with `--no-observer`.
 
-Source-linked intent text extraction defaults to Luna/low; `--observer-model`
-and `--observer-effort` configure it without changing the main model. It never
-supplies gating probabilities. `kah status [SESSION_ID]` shows
+The ledger stores exact source-linked user text. Only size-triggered compaction
+uses Luna/low; `--observer-model` and `--observer-effort` configure that synthesis
+without changing the main model. It never supplies gating probabilities. `kah status [SESSION_ID]` shows
 observer gaps and measured usage. `kah ledger [SESSION_ID]` reads the canonical
 JSONL history/projection; `--json` exposes their structured form. Observer
 failures leave native work usable and are visible as gaps. Restricted native
@@ -62,5 +64,5 @@ Jev is the only typed judge in every domain, per PLAN §8a. Only bounded questio
 context is sent to TypeSafe. Transient failures get two retries with backoff;
 exhaustion or a permanent failure produces an explicit observer gap. There is
 no Luna judgment fallback. `--jev-model` chooses its model/alias; the default is
-`jev-latest`. Native text extraction still uses `--observer-model` and
+`jev-latest`. Size-triggered compaction uses `--observer-model` and
 `--observer-effort`; judgments record the actual backend and returned model.

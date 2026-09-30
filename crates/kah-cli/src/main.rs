@@ -3,6 +3,10 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments == ["smoke"] {
+        let home = PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=smoke")?);
+        return kah_cli::smoke::run(&home);
+    }
     if arguments.first().is_some_and(|s| s == "send") {
         return kah_cli::send_cli::run(&arguments);
     }

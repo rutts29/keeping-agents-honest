@@ -32,7 +32,7 @@ fn user_overrides_and_review_are_source_linked_and_durable() {
     assert_eq!(
         client.turn(
             session,
-            "!aside Initialize the receiver; reply READY without tools."
+            "aside: Initialize the receiver; reply READY without tools."
         )["status"],
         "completed"
     );
@@ -41,7 +41,7 @@ fn user_overrides_and_review_are_source_linked_and_durable() {
         &receipts,
         session,
         "force",
-        "!steer Create forced.txt containing USER_FORCED. Use native apply_patch only, then report and stop.",
+        "steer: Create forced.txt containing USER_FORCED. Use native apply_patch only, then report and stop.",
     );
     assert_eq!(
         fs::read_to_string(f.project.join("forced.txt"))
@@ -50,7 +50,7 @@ fn user_overrides_and_review_are_source_linked_and_durable() {
         "USER_FORCED"
     );
     let aside =
-        "!aside Consider notes.txt containing NOTES. Do not create it yet; reply SEEN only.";
+        "aside: Consider notes.txt containing NOTES. Do not create it yet; reply SEEN only.";
     submit(&mut client, &receipts, session, "aside", aside);
     assert!(!f.project.join("notes.txt").exists());
     let entries = verify_review(session, aside);

@@ -22,3 +22,4 @@ install:
 	cargo build --release -p kah-cli
 	install -Dm755 target/release/kah "$(HOME)/.local/bin/kah"
 	install -Dm644 assets/shell/kah.sh "$(HOME)/.local/share/kah/shell.sh"
+	install -Dm755 assets/shell/cx "$(HOME)/.local/bin/cx"

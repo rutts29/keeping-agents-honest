@@ -114,7 +114,7 @@ fn event_kind(name: &str, source: Option<&str>) -> Result<EventKind, String> {
 
 fn context(projection: &str) -> String {
     format!(
-        "[kah source-linked intent; not new user steering]\nGoal text is the original user request. Active steering supersedes conflicting historical details; preserve all other constraints. Text is verbatim unless explicitly labeled compacted_intent. Current user messages take precedence. review_required means unconfirmed steering, retained as context without requiring a review before continuing. kind_uncertain marks only category uncertainty. uncertain_supersedes keeps both instructions active; do not silently discard either. An item marked user_confirmed was explicitly confirmed or promoted by the user; its earlier !aside marker no longer excludes it.\n{projection}"
+        "[kah source-linked intent; not new user steering]\nGoal text is the original user request. Active steering supersedes conflicting historical details; preserve all other constraints. Text is verbatim unless explicitly labeled compacted_intent. Current user messages take precedence. review_required means unconfirmed steering, retained as context without requiring a review before continuing. kind_uncertain marks only category uncertainty. uncertain_supersedes keeps both instructions active; do not silently discard either. An item marked user_confirmed was explicitly confirmed or promoted by the user; its earlier aside: marker no longer excludes it.\n{projection}"
     )
 }
 fn output(event: &str, text: &str, gap: Option<&str>) -> Value {
