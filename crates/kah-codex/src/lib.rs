@@ -3,6 +3,7 @@ pub mod plugin_control;
 pub mod source;
 
 pub mod control;
+pub mod exec_events;
 pub mod hooks;
 pub mod observer;
 pub mod overlay;

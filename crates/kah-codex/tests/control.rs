@@ -15,7 +15,7 @@ fn a_closed_native_server_has_a_specific_error() {
     .err()
     .unwrap();
     fs::remove_file(script).unwrap();
-    assert_eq!(error.code, "CODEX_RPC_CLOSED");
+    assert_eq!(error.code, "CODEX_RPC_CLOSED", "{error}");
 }
 
 #[test]
@@ -32,5 +32,5 @@ fn a_silent_native_server_is_bounded_and_reaped() {
     .err()
     .unwrap();
     fs::remove_file(script).unwrap();
-    assert_eq!(error.code, "CODEX_RPC_TIMEOUT");
+    assert_eq!(error.code, "CODEX_RPC_TIMEOUT", "{error}");
 }
