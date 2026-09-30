@@ -93,6 +93,17 @@ fn private_worktree_ignores_source_hooks_filters_and_a_redirected_git_file() {
     run.save(&saved).unwrap();
     let resumed = Worktree::load(&saved).unwrap();
     assert_eq!(resumed.checkpoint("unchanged resume").unwrap(), commit);
+    fs::write(run.path.join("value.txt"), "unfinished").unwrap();
+    fs::write(run.path.join("uncommitted.txt"), "unfinished").unwrap();
+    resumed.restore_checkpoint(&commit).unwrap();
+    assert_eq!(
+        fs::read_to_string(run.path.join("value.txt")).unwrap(),
+        "after"
+    );
+    assert!(!run.path.join("uncommitted.txt").exists());
+    assert!(resumed.diff_evidence(65536).unwrap().contains("+after"));
+    assert!(resumed.diff_evidence(4).is_err());
+    assert_eq!(git(&source, &["rev-parse", "HEAD"]), head);
     resumed.export_branch().unwrap();
     assert_eq!(git(&source, &["rev-parse", "kah/run-case"]), commit);
     assert_eq!(git(&source, &["branch", "--show-current"]), "main");

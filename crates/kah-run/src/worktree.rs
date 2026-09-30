@@ -157,6 +157,51 @@ impl Worktree {
             "HEAD",
         ]))?)
     }
+    pub fn restore_checkpoint(&self, commit: &str) -> Result<(), String> {
+        if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err("RUN_COMMIT_ID stage=worktree_restore".into());
+        }
+        run(self.git().args(["reset", "--hard", commit]))?;
+        run(self.git().args(["clean", "-fd", "--", "."]))?;
+        // Reassert the trusted pointer even if an interrupted worker replaced it.
+        let pointer = self.path.join(".git");
+        fs::remove_file(&pointer).map_err(io_error)?;
+        fs::write(pointer, format!("gitdir: {}\n", self.admin.display())).map_err(io_error)
+    }
+    pub fn diff_evidence(&self, limit: usize) -> Result<String, String> {
+        use std::{io::Read, process::Stdio};
+        let mut child = self
+            .git()
+            .args([
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--full-index",
+                &self.base_commit,
+                "HEAD",
+                "--",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(io_error)?;
+        let mut bytes = Vec::new();
+        let read = child
+            .stdout
+            .take()
+            .unwrap()
+            .take(limit as u64 + 1)
+            .read_to_end(&mut bytes);
+        if read.is_err() || bytes.len() > limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("RUN_DIFF_BOUND stage=completion: diff exceeds evidence bound".into());
+        }
+        if !child.wait().map_err(io_error)?.success() {
+            return Err("RUN_DIFF_READ stage=completion".into());
+        }
+        String::from_utf8(bytes).map_err(|_| "RUN_DIFF_UTF8 stage=completion".into())
+    }
     fn git(&self) -> Command {
         let mut cmd = command();
         cmd.current_dir(&self.path)

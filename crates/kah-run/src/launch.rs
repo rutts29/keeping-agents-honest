@@ -56,7 +56,7 @@ pub struct WorkerLaunch<'a> {
 }
 impl WorkerLaunch<'_> {
     pub fn command(&self) -> Command {
-        let mut command = Command::new(self.native);
+        let mut command = parent_bound(self.native);
         command
             .args([
                 "exec",
@@ -112,4 +112,23 @@ impl WorkerLaunch<'_> {
         command.arg("-");
         command
     }
+}
+
+fn parent_bound(native: &Path) -> Command {
+    // Kernel-enforced parent death, without a privileged supervisor or a PID
+    // recovery race. Check PPID after installing the signal: the controller
+    // could have exited before setpriv configured it.
+    let mut command = Command::new("/usr/bin/setpriv");
+    command
+        .args([
+            "--pdeathsig",
+            "KILL",
+            "/bin/sh",
+            "-c",
+            "test \"$PPID\" -eq \"$1\" || exit 125; shift; exec \"$@\"",
+            "kah-worker",
+        ])
+        .arg(std::process::id().to_string())
+        .arg(native);
+    command
 }
