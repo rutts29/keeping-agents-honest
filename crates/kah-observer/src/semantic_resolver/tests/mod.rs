@@ -83,6 +83,7 @@ pub(super) fn operation(name: &str, source_record: &str) -> Value {
 }
 
 mod backend;
+mod bootstrap;
 mod continuity;
 mod goal_summary;
 mod operations;

@@ -6,9 +6,8 @@ pub fn initial_chunk_count(bundle: &NeutralSessionBundle) -> Result<usize, Strin
         .map_err(|failure| failure.code().to_owned())
 }
 
-/// Resolve an initial source in bounded chronological chunks. Small sessions
-/// retain the existing one-call path; later chunks use the same incremental
-/// validator as future steering.
+/// Bootstrap in user-message order. Only the first message defines the initial
+/// projection; later questions can use the existing no-change transition.
 pub fn resolve_initial(
     root: &Path,
     bundle: &NeutralSessionBundle,
@@ -79,7 +78,6 @@ pub(super) fn initial_chunks(
             .append(&mut pending);
     }
     let mut chunks = Vec::<Vec<BundleRecord>>::new();
-    let mut current = Vec::<BundleRecord>::new();
     for mut unit in units {
         if initial_records_bytes(&unit)? > MAX_INCREMENTAL_DELTA_PROMPT_BYTES {
             unit.retain(BundleRecord::is_authoritative);
@@ -87,20 +85,7 @@ pub(super) fn initial_chunks(
                 return Err(ValidationFailure::DeltaBound);
             }
         }
-        let mut candidate = current.clone();
-        candidate.extend(unit.iter().cloned());
-        if initial_records_bytes(&candidate)? <= MAX_INCREMENTAL_DELTA_PROMPT_BYTES {
-            current = candidate;
-            continue;
-        }
-        if current.is_empty() {
-            return Err(ValidationFailure::DeltaBound);
-        }
-        chunks.push(std::mem::take(&mut current));
-        current.append(&mut unit);
-    }
-    if !current.is_empty() {
-        chunks.push(current);
+        chunks.push(unit);
     }
     chunks
         .into_iter()
