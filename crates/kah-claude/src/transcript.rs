@@ -11,22 +11,40 @@ use std::{collections::BTreeMap, path::Path};
 pub const MAX_BYTES: usize = 32 * 1024 * 1024;
 
 pub fn parse(text: &str, session: &str, project: &Path) -> Result<ObservationSnapshot, String> {
+    parse_turn(text, session, project, None)
+}
+
+pub fn parse_turn(
+    text: &str,
+    session: &str,
+    project: &Path,
+    required_prompt: Option<&str>,
+) -> Result<ObservationSnapshot, String> {
     if text.len() > MAX_BYTES {
         return Err("CLAUDE_SOURCE_BOUND stage=transcript: transcript exceeds 32 MiB".into());
     }
     let mut records = Vec::new();
     let mut seen = BTreeMap::new();
     let mut actions = Vec::new();
+    let mut prompt_seen = required_prompt.is_none();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line)
             .map_err(|_| "CLAUDE_SOURCE_JSON stage=transcript: invalid or incomplete JSONL")?;
+        if row["type"] == "user"
+            && row["sessionId"] == session
+            && row["promptId"]
+                .as_str()
+                .is_some_and(|id| Some(id) == required_prompt)
+        {
+            prompt_seen = true;
+        }
         match row["type"].as_str() {
             Some("user") => {
                 let additions = user_records(&row, session, project)?;
                 if additions.iter().any(BundleRecord::is_authoritative) {
                     actions.clear();
                 }
-                for record in additions {
+                for record in additions.into_iter().filter(BundleRecord::is_authoritative) {
                     append(&mut records, &mut seen, record)?;
                 }
                 if row.get("toolUseResult").is_some() {
@@ -37,6 +55,20 @@ pub fn parse(text: &str, session: &str, project: &Path) -> Result<ObservationSna
             _ => (),
         }
     }
+    if !prompt_seen {
+        return Err(
+            "CLAUDE_SOURCE_PENDING stage=transcript: current prompt is not durable yet".into(),
+        );
+    }
+    snapshot(session, project, records, actions)
+}
+
+fn snapshot(
+    session: &str,
+    project: &Path,
+    records: Vec<BundleRecord>,
+    actions: Vec<Value>,
+) -> Result<ObservationSnapshot, String> {
     let users = if records.is_empty() {
         None
     } else {
@@ -71,6 +103,9 @@ fn user_records(row: &Value, session: &str, project: &Path) -> Result<Vec<Bundle
         || row["isCompactSummary"] == true
         || row["isSidechain"] == true
         || row.get("toolUseResult").is_some()
+        || row["message"]["content"]
+            .as_array()
+            .is_some_and(|parts| parts.iter().any(|p| p["type"] == "tool_result"))
         || row["message"]["role"] != "user"
     {
         return Ok(vec![]);

@@ -1,5 +1,7 @@
 //! Native agent launcher with project-scoped trust policy.
 mod arguments;
+pub mod claude_hook;
+pub mod claude_launch;
 pub mod herdr;
 pub mod inspection_cli;
 mod launch;

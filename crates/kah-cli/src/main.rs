@@ -3,6 +3,10 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = kah_cli::shell_routing::route(env::args().skip(1).collect())?;
+    if arguments.first().map(String::as_str) == Some("__claude-hook") {
+        kah_cli::claude_hook::run();
+        return Ok(());
+    }
     if arguments == ["smoke"] {
         let home = PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=smoke")?);
         return kah_cli::smoke::run(&home);
@@ -42,13 +46,28 @@ fn run() -> Result<()> {
     let args = Arguments::parse(arguments)?;
     if args.help {
         println!(
-            "kah [mine|research|untrusted PROJECT] [--online] [--yolo] [--model MODEL] [--effort EFFORT] [-- NATIVE_ARGS]\n\nStart native Codex in the current project or create a named project.\nResearch and Untrusted commands use gVisor; Research is offline unless --online.\nMine uses native workspace permissions; --yolo is Mine-only.\nNative resume: kah -- resume [SESSION] --all\nObserver: automatic, Jev in every domain; --no-observer opts out.\nUnattended: kah run --test COMMAND [--model MODEL --effort EFFORT] [--budget-tokens N --time-limit SECONDS] TASK\nControls: kah steer RUN TEXT; kah status RUN; kah logs RUN; kah stop RUN; kah resume RUN."
+            "kah [--agent codex|claude] [mine|research|untrusted PROJECT] [--online] [--yolo] [--model MODEL] [--effort EFFORT] [-- NATIVE_ARGS]\n\nStart native Codex, or Claude Code in Mine, in the current project.\nClaude resume: kah --agent claude -- --resume SESSION (from its Mine project).\nRestricted/unattended Claude is unavailable pending a proven sandbox boundary.\nResearch and Untrusted commands use gVisor; Research is offline unless --online.\nMine uses native workspace permissions; --yolo is Mine-only.\nNative resume: kah -- resume [SESSION] --all\nObserver: automatic, Jev in every domain; --no-observer opts out.\nUnattended: kah run --test COMMAND [--model MODEL --effort EFFORT] [--budget-tokens N --time-limit SECONDS] TASK\nControls: kah steer RUN TEXT; kah status RUN; kah logs RUN; kah stop RUN; kah resume RUN."
         );
         return Ok(());
     }
+    launch(args)
+}
+
+fn launch(args: Arguments) -> Result<()> {
     let home =
         PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=launch: HOME is unset")?);
     let cwd = env::current_dir().map_err(|e| format!("CWD_READ stage=launch: {e}"))?;
+    if args.agent.as_deref() == Some("claude") {
+        eprintln!("kah: Claude Code with project policy");
+        return Err(format!(
+            "CLAUDE_EXEC stage=launch: {}",
+            kah_cli::claude_launch::prepare(&home, &cwd, args)?.exec()
+        )
+        .into());
+    }
+    if args.agent.as_deref().is_some_and(|s| s != "codex") {
+        return Err("AGENT_UNSUPPORTED stage=arguments: choose codex or claude".into());
+    }
     let launch = Launch::prepare(&home, &cwd, args)?;
     eprintln!(
         "kah: {} project {}{}",

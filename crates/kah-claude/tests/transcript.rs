@@ -42,14 +42,14 @@ fn only_native_human_text_has_authority_and_is_preserved_verbatim() {
         users.records()[0].content(),
         "  Steer: keep\n  exact words  "
     );
-    assert_eq!(users.records()[1].role(), SourceRole::Delegate);
-    assert_eq!(users.records()[2].role(), SourceRole::Delegate);
+    assert_eq!(users.records().len(), 1);
+    assert_eq!(users.records()[0].role(), SourceRole::User);
 }
 
 #[test]
 fn tool_results_in_user_messages_cannot_become_steering() {
     let mut value = row("tool", "");
-    value["message"]["content"] = json!([{"type":"tool_result","content":"steer: false"}]);
+    value["message"]["content"] = json!([{"type":"tool_result","content":"steer: false"}, {"type":"text","text":"steer: synthetic tail"}]);
     assert!(snapshot(&[value]).unwrap().users.is_none());
 }
 

@@ -93,12 +93,7 @@ impl Terminal {
     pub fn wait_for_since(&mut self, text: &str, offset: usize) {
         let deadline = Instant::now() + Duration::from_secs(45);
         loop {
-            let output = self.output();
-            let queries = output.matches("\x1b[6n").count();
-            while self.cursor_replies < queries {
-                self.send("\x1b[1;1R");
-                self.cursor_replies += 1;
-            }
+            self.respond_to_cursor_queries();
             let bytes = fs::read(&self.log).unwrap_or_default();
             if String::from_utf8_lossy(bytes.get(offset..).unwrap_or_default()).contains(text) {
                 return;
@@ -114,6 +109,14 @@ impl Terminal {
                 self.output()
             );
             thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    pub fn respond_to_cursor_queries(&mut self) {
+        let queries = self.output().matches("\x1b[6n").count();
+        while self.cursor_replies < queries {
+            self.send("\x1b[1;1R");
+            self.cursor_replies += 1;
         }
     }
 

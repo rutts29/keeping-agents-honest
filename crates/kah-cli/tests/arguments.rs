@@ -19,6 +19,17 @@ fn domain_and_native_model_choices_are_not_pinned() {
 }
 
 #[test]
+fn claude_selection_preserves_native_choices_and_resume_arguments() {
+    let args = parse(&[
+        "--agent", "claude", "--model", "chosen", "--effort", "high", "--", "--resume", "id",
+    ]);
+    assert_eq!(args.agent.as_deref(), Some("claude"));
+    assert_eq!(args.native, ["--model", "chosen", "--resume", "id"]);
+    assert_eq!(args.effort.as_deref(), Some("high"));
+    assert!(parse(&[]).agent.is_none());
+}
+
+#[test]
 fn observer_choices_are_separate_from_the_main_model_and_default_on() {
     assert!(!parse(&[]).no_observer);
     let args = parse(&[

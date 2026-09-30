@@ -17,8 +17,27 @@ kah -- resume SESSION_ID                  # restores saved project and policy
 ```
 
 Plain `codex` in these roots routes through kah via `.bashrc`; `cx` forwards to kah.
+Native Codex management commands pass through, including app-server, login,
+update and features. Existing shells can refresh the function with
+`source ~/.local/share/kah/shell.sh`.
 `command codex` bypasses the convenience function. In-TUI `/resume` must match
 the current project/policy; use `kah -- resume SESSION_ID` across projects.
+
+Claude Code is currently available in Mine only:
+
+```sh
+kah --agent claude
+kah --agent claude --model MODEL --effort EFFORT
+kah --agent claude -- --resume SESSION_ID
+kah --agent claude -- --resume SESSION_ID --fork-session
+```
+
+Start in the saved Mine project when resuming. Omitted model and effort use native
+choices. kah adds invocation-local hooks; global settings/hooks stay intact.
+Safe/bare mode and settings overrides that disable kah hooks are refused unless
+you explicitly use `--no-observer`. Research/Untrusted and unattended Claude are
+unavailable pending the [boundary decision](claude-adapter.md). Native Claude
+send/steer transport is not implemented; type overrides in chat or use Herdr.
 
 Type ordinary chat messages beginning `steer: Keep the API unchanged` or
 `aside: This is only a note`. Case and leading whitespace do not matter. `steer:`

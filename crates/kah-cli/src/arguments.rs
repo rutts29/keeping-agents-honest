@@ -3,6 +3,7 @@ use kah_sandbox::{Domain, LaunchOptions};
 
 #[derive(Debug, Default)]
 pub struct Arguments {
+    pub agent: Option<String>,
     pub project: Option<(Domain, String)>,
     pub options: LaunchOptions,
     pub native: Vec<String>,
@@ -21,6 +22,7 @@ impl Arguments {
         let mut args = input.into_iter();
         while let Some(arg) = args.next() {
             match arg.as_str() {
+                "--agent" => result.agent = Some(value(&mut args, &arg)?),
                 "--online" => result.options.online = true,
                 "--yolo" => result.options.yolo = true,
                 "--no-observer" => result.no_observer = true,
