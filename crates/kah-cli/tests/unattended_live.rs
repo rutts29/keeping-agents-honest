@@ -33,7 +33,7 @@ fn a_real_task_finishes_on_a_reviewable_branch() {
     let file = fs::File::create(&output).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_kah"))
         .current_dir(&project.root)
-        .args(["run", "--model", "gpt-6-sol", "--effort", "low", "--time-limit", "180", "--test", "set -e; cc -Wall -Werror greet.c -o ./kah-greet-check; ./kah-greet-check > /tmp/kah-actual; printf 'BETA\\n' > /tmp/kah-expected; cmp /tmp/kah-expected /tmp/kah-actual; rm ./kah-greet-check", "Update greet.c so the executable prints exactly BETA followed by a newline. Use only the C standard library, without adding external dependencies. The delivered Git branch must change only greet.c. Do not spawn native subagents."])
+        .args(["run", "--model", "gpt-6-sol", "--effort", "low", "--time-limit", "600", "--test", "set -e; cc -Wall -Werror greet.c -o ./kah-greet-check; ./kah-greet-check > /tmp/kah-actual; printf 'BETA\\n' > /tmp/kah-expected; cmp /tmp/kah-expected /tmp/kah-actual; rm ./kah-greet-check", "Update greet.c so the executable prints exactly BETA followed by a newline. Use only the C standard library, without adding external dependencies. The delivered Git branch must change only greet.c. Do not spawn native subagents."])
         .stdout(Stdio::from(file.try_clone().unwrap())).stderr(Stdio::from(file))
         .spawn().unwrap();
     let exit = wait(&mut child, &output);
@@ -75,7 +75,7 @@ fn a_real_task_finishes_on_a_reviewable_branch() {
 }
 
 fn wait(child: &mut std::process::Child, log: &std::path::Path) -> std::process::ExitStatus {
-    let deadline = Instant::now() + Duration::from_secs(300);
+    let deadline = Instant::now() + Duration::from_secs(660);
     loop {
         if let Some(exit) = child.try_wait().unwrap() {
             return exit;
