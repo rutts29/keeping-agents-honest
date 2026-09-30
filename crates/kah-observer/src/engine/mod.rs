@@ -132,7 +132,6 @@ fn update(
             new_user,
             turn,
         },
-        config,
     )?;
     state.action_digest = Some(snapshot.action_digest);
     let reminder = drift_reminder(state, &assessment, &projection, turn, allow_reminder)?;

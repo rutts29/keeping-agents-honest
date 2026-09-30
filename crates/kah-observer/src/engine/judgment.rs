@@ -16,7 +16,6 @@ pub(super) fn assess(
     state: &mut State,
     store: &mut Store,
     context: Context<'_>,
-    config: CompactorConfig<'_>,
 ) -> Result<judge::decision::Assessment, String> {
     let prior_items = context.prior.map(items).unwrap_or_default();
     let questions = judge::questions::observation(&prior_items);
@@ -26,10 +25,8 @@ pub(super) fn assess(
         .ok_or("JUDGE_HOME stage=observe")?;
     let judgment = match judge::routing::evaluate(
         &home,
-        &state.binding.project,
         state.binding.judge,
         &state.binding.jev_model,
-        config,
         &input,
         &questions,
     ) {
@@ -43,9 +40,6 @@ pub(super) fn assess(
     let assessment = judge::decision::assessment(&judgment, context.actions, state.failures.len());
     let digest = format!("sha256:{:x}", Sha256::digest(input.to_string().as_bytes()));
     store.append(&json!({"kind":"judgment","source":"observer","question_set":judge::questions::VERSION,"state_digest":digest,"judgment":judgment,"assessment":assessment,"turn":context.turn,"at_ms":crate::session::now_ms()}))?;
-    if let Some(reason) = &judgment.fallback_reason {
-        store.append(&json!({"kind":"gap","source":"judge_backend","preferred":"jev","fallback":"luna","reason":reason,"usage_complete":false,"turn":context.turn}))?;
-    }
     state.judgments.push(judgment);
     if state.judgments.len() > 16 {
         state.judgments.remove(0);
@@ -101,9 +95,7 @@ fn record_usage(state: &mut State, judgment: &Judgment) {
     state.usage.cached_input_tokens += judgment.metrics.cached_input_tokens;
     state.usage.output_tokens += judgment.metrics.output_tokens;
     state.usage.elapsed_ms += judgment.metrics.elapsed_ms;
-    if judgment.fallback_reason.is_some() {
-        state.usage.incomplete_calls += 1;
-    }
+    state.usage.incomplete_calls += judgment.metrics.failed_calls;
 }
 fn record_failures(state: &mut State, actions: &[Value]) {
     for action in actions {

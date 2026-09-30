@@ -15,7 +15,7 @@ fn fixture() -> Fixture {
 fn binding(id: &str, root: &std::path::Path) -> Binding {
     Binding {
         jev_model: "jev-latest".into(),
-        judge: kah_observer::judge::routing::Backend::Luna,
+        judge: kah_observer::judge::routing::Backend::Jev,
         session: id.into(),
         project: root.into(),
         codex_home: root.into(),

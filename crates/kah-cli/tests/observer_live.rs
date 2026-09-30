@@ -83,7 +83,7 @@ fn main_usage(client: &Client) -> serde_json::Value {
 }
 
 fn assert_backend(state: &kah_observer::session::State) {
-    let expected = std::env::var("KAH_TEST_JUDGE").unwrap_or_else(|_| "luna".into());
+    let expected = std::env::var("KAH_TEST_JUDGE").unwrap_or_else(|_| "jev".into());
     assert!(!state.judgments.is_empty());
     assert!(
         state
@@ -96,7 +96,7 @@ fn assert_backend(state: &kah_observer::session::State) {
 }
 
 fn begin_evidence(name: &str) -> PathBuf {
-    let backend = std::env::var("KAH_TEST_JUDGE").unwrap_or_else(|_| "luna".into());
+    let backend = std::env::var("KAH_TEST_JUDGE").unwrap_or_else(|_| "jev".into());
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
         "../../docs/gates/evidence/phase-3/{name}-{backend}.json"
     ));

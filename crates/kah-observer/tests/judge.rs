@@ -68,13 +68,13 @@ fn domain_defaults_and_low_confidence_never_trigger_a_reminder() {
     use kah_observer::judge::{Judgment, Metrics, decision, routing::Backend};
     assert_eq!(Backend::for_domain("mine", None).unwrap(), Backend::Jev);
     for domain in ["research", "untrusted"] {
-        assert_eq!(Backend::for_domain(domain, None).unwrap(), Backend::Luna);
+        assert_eq!(Backend::for_domain(domain, None).unwrap(), Backend::Jev);
         assert_eq!(
             Backend::for_domain(domain, Some("jev")).unwrap(),
             Backend::Jev
         );
     }
-    let mut judgment=Judgment{backend:"fake".into(),model:"test".into(),answers:serde_json::from_value(json!({
+    let mut judgment=Judgment{backend:"jev".into(),model:"test".into(),answers:serde_json::from_value(json!({
         "alignment":{"type":"choice","choice":"accidental_drift","confidence":0.6,"probabilities":{"accidental_drift":0.8,"unclear":0.2}},
         "drift_severity":{"type":"score","score":2.0,"confidence":1.0,"legend":{"0":"none","1":"minor","2":"material"},"probabilities":{"0":0.0,"1":0.0,"2":1.0}}
     })).unwrap(),metrics:Metrics::default(),fallback_reason:None};
@@ -91,4 +91,17 @@ fn domain_defaults_and_low_confidence_never_trigger_a_reminder() {
         AssessmentState::MaterialDrift
     );
     assert!(!decision::complete(&judgment, &[]));
+    judgment.backend = "luna".into();
+    assert_eq!(
+        decision::assessment(&judgment, &actions, 2).state,
+        AssessmentState::Uncertain
+    );
+    judgment.answers = serde_json::from_value(json!({
+        "outcome_met.one":{"type":"noul","noul":1.0},
+        "completion":{"type":"choice","choice":"complete","probabilities":{"complete":1.0},"confidence":1.0}
+    })).unwrap();
+    assert!(!decision::complete(
+        &judgment,
+        &[("one".into(), "required outcome".into())]
+    ));
 }

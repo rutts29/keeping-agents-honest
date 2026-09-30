@@ -15,6 +15,13 @@ pub enum AssessmentState {
 }
 
 pub fn assessment(judgment: &Judgment, actions: &[Value], failed_approaches: usize) -> Assessment {
+    if judgment.backend != "jev" {
+        return Assessment {
+            state: AssessmentState::Uncertain,
+            reason: "This backend cannot gate actions under the current user policy.".into(),
+            action_ids: vec![],
+        };
+    }
     let alignment = judgment.answers.get("alignment");
     let material = matches!(alignment,Some(Answer::Choice{choice,confidence,..}) if choice=="accidental_drift" && *confidence>=questions::REMINDER_CONFIDENCE)
         && matches!(judgment.answers.get("drift_severity"),Some(Answer::Score{score,confidence,..}) if *score>=questions::MATERIAL_DISTANCE && *confidence>=questions::REMINDER_CONFIDENCE);
@@ -46,7 +53,7 @@ pub fn assessment(judgment: &Judgment, actions: &[Value], failed_approaches: usi
 }
 
 pub fn complete(judgment: &Judgment, outcomes: &[(String, String)]) -> bool {
-    !outcomes.is_empty() && outcomes.len()<=24
+    judgment.backend == "jev" && !outcomes.is_empty() && outcomes.len()<=24
         && outcomes.iter().all(|(id,_)| matches!(judgment.answers.get(&format!("outcome_met.{id}")),Some(Answer::Noul{noul}) if *noul>=questions::COMPLETE_PROBABILITY))
         && matches!(judgment.answers.get("completion"),Some(Answer::Choice{choice,confidence,..}) if choice=="complete" && *confidence>=questions::COMPLETE_CONFIDENCE)
 }

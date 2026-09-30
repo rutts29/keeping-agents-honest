@@ -1,57 +1,78 @@
 use super::*;
-use crate::semantic_resolver::CompactorConfig;
-use std::path::Path;
+use std::{
+    path::Path,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
-    Jev,
+    // Old stored bindings migrate to the current user policy. Historical
+    // judgments retain their original backend string and cannot gate actions.
     #[default]
-    Luna,
+    #[serde(alias = "luna")]
+    Jev,
 }
 impl Backend {
     pub fn parse(value: &str) -> Result<Self, Error> {
         match value {
             "jev" => Ok(Self::Jev),
-            "luna" => Ok(Self::Luna),
             _ => Err(Error::new("JUDGE_BACKEND")),
         }
     }
-    pub fn for_domain(domain: &str, explicit: Option<&str>) -> Result<Self, Error> {
-        match explicit {
-            Some(value) => Self::parse(value),
-            None if domain == "mine" => Ok(Self::Jev),
-            None => Ok(Self::Luna),
-        }
+    pub fn for_domain(_domain: &str, explicit: Option<&str>) -> Result<Self, Error> {
+        explicit.map_or(Ok(Self::Jev), Self::parse)
     }
 }
 
 pub fn evaluate(
     home: &Path,
-    root: &Path,
     backend: Backend,
     jev_model: &str,
-    config: CompactorConfig<'_>,
     state: &Value,
     questions: &Questions,
 ) -> Result<Judgment, Error> {
-    let baseline = luna::Luna { root, config };
-    if backend == Backend::Luna {
-        return baseline.evaluate(state, questions);
-    }
-    let result = jev::HttpClient::from_home(home).and_then(|client| {
-        jev::Jev {
-            client,
-            model: jev_model.into(),
-        }
-        .evaluate(state, questions)
-    });
-    match result {
-        Ok(result) => Ok(result),
-        Err(error) => {
-            let mut fallback = baseline.evaluate(state, questions)?;
-            fallback.fallback_reason = Some(error.to_string());
-            Ok(fallback)
+    match backend {
+        Backend::Jev => {
+            let judge = jev::Jev {
+                client: jev::HttpClient::from_home(home)?,
+                model: jev_model.into(),
+            };
+            retry(|| judge.evaluate(state, questions), std::thread::sleep)
         }
     }
 }
+
+fn retry(
+    mut call: impl FnMut() -> Result<Judgment, Error>,
+    mut sleep: impl FnMut(Duration),
+) -> Result<Judgment, Error> {
+    let started = Instant::now();
+    for attempt in 1..=3 {
+        match call() {
+            Ok(mut judgment) => {
+                judgment.metrics.calls = attempt;
+                judgment.metrics.failed_calls = attempt - 1;
+                judgment.metrics.elapsed_ms = started.elapsed().as_millis() as u64;
+                return Ok(judgment);
+            }
+            Err(error) if attempt < 3 && transient(&error) => {
+                sleep(Duration::from_millis(if attempt == 1 { 250 } else { 1000 }));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("final attempt returns its result")
+}
+fn transient(error: &Error) -> bool {
+    matches!(
+        error.code.as_str(),
+        "JEV_HTTP_TIMEOUT" | "JEV_HTTP_TRANSPORT"
+    ) || error
+        .status
+        .is_some_and(|s| matches!(s, 408 | 429) || (500..600).contains(&s))
+}
+
+#[cfg(test)]
+#[path = "tests/retries.rs"]
+mod tests;

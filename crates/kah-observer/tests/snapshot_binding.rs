@@ -17,7 +17,7 @@ fn supplied_worker_evidence_cannot_be_attached_to_another_session() {
         model: "gpt-6-luna".into(),
         effort: "low".into(),
         timeout_secs: 1,
-        judge: Backend::Luna,
+        judge: Backend::Jev,
         jev_model: "jev-latest".into(),
     };
     let users = NeutralSessionBundle::from_records(

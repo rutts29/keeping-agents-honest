@@ -78,6 +78,3 @@ use attempt::*;
 
 mod execution_error;
 use execution_error::*;
-
-mod typed;
-pub use typed::judge_call;

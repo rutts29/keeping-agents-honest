@@ -16,20 +16,6 @@ fn live_jev_atomic_contract() {
     contract(&judge, "jev");
 }
 
-#[test]
-#[ignore = "live Luna baseline for the same typed questions; not a gate journey"]
-fn live_luna_atomic_contract() {
-    use kah_observer::{judge::luna::Luna, semantic_resolver::CompactorConfig};
-    let root = std::env::current_dir().unwrap();
-    contract(
-        &Luna {
-            root: &root,
-            config: CompactorConfig::default(),
-        },
-        "luna",
-    );
-}
-
 fn contract(judge: &dyn Judge, label: &str) {
     let questions:Questions=serde_json::from_value(json!({
         "correction":{"type":"noul","instructions":"Does `user_message` instruct the agent to replace the marker required by `previous_intent`?"},

@@ -49,17 +49,18 @@ subsequent prompts are blocked with a command to reopen through kah. Use
 `kah -- resume SESSION_ID` to let the launcher select the saved project first.
 This guard remains enabled with `--no-observer`.
 
-The observer defaults to Luna/low; `--observer-model` and `--observer-effort`
-configure it without changing the main model. `kah status [SESSION_ID]` shows
+Source-linked intent text extraction defaults to Luna/low; `--observer-model`
+and `--observer-effort` configure it without changing the main model. It never
+supplies gating probabilities. `kah status [SESSION_ID]` shows
 observer gaps and measured usage. `kah ledger [SESSION_ID]` reads the canonical
 JSONL history/projection; `--json` exposes their structured form. Observer
 failures leave native work usable and are visible as gaps. Restricted native
 tools can read immutable snapshots of installed `~/.agents/skills` trees; their
 scripts run inside gVisor. Restricted sessions continue to exclude user hooks, MCP, apps and plugins.
 
-`--observer-judge jev|luna` selects the typed judge for this launch. Mine defaults
-to Jev with Luna fallback; Research and Untrusted default to Luna. Selecting Jev
-explicitly in a restricted domain opts that session into sending bounded question
-context to TypeSafe. `--jev-model` chooses its model/alias; the default is
+Jev is the only typed judge in every domain, per PLAN §8a. Only bounded question
+context is sent to TypeSafe. Transient failures get two retries with backoff;
+exhaustion or a permanent failure produces an explicit observer gap. There is
+no Luna judgment fallback. `--jev-model` chooses its model/alias; the default is
 `jev-latest`. Native text extraction still uses `--observer-model` and
 `--observer-effort`; judgments record the actual backend and returned model.

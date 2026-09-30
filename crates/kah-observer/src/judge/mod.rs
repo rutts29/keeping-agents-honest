@@ -25,6 +25,8 @@ pub struct Judgment {
 pub struct Metrics {
     #[serde(default = "one_call")]
     pub calls: u64,
+    #[serde(default)]
+    pub failed_calls: u64,
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
     pub output_tokens: u64,
@@ -59,8 +61,6 @@ impl fmt::Display for Error {
     }
 }
 impl std::error::Error for Error {}
-
-pub mod luna;
 
 pub mod decision;
 pub mod questions;
