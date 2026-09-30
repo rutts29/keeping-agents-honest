@@ -7,4 +7,5 @@ pub mod run_store;
 pub mod session_bundle;
 
 pub mod observation;
+pub mod unattended;
 pub mod verification;
