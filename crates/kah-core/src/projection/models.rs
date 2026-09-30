@@ -141,7 +141,9 @@ impl ActiveProjection {
             return serde_json::to_string(&serde_json::json!({
                 "goal": self.goal, "compacted_intent": compaction,
                 "review_required": self.needs_review(),
-                "authority": "Goal is original user text. Active steering supersedes historical details. Summary is an interpretation; retrieve originals from kah ledger before resolving ambiguity."
+                "unconfirmed_items": self.preserve.iter().chain(&self.frontier).chain(&self.validation)
+                    .filter(|i| i.review_required || !i.uncertain_supersedes.is_empty()).collect::<Vec<_>>(),
+                "authority": "Goal is original user text. Active steering supersedes historical details. Unconfirmed items remain relevant context, explicitly unconfirmed; do not silently resolve replacements. Summary is an interpretation; retrieve originals from kah ledger before resolving ambiguity."
             })).map_err(ProjectionError::from);
         }
         serde_json::to_string(&PromptPayload {

@@ -61,3 +61,23 @@ IDs avoid that ambiguity for the new channel. These are provenance conventions
 within the accepted single-user host trust model, not authentication against
 another process with operator authority. Research and Untrusted executors cannot
 reach the host control sockets, Herdr binary or HERDR_* environment.
+
+Steering presence and kind have separate meanings. Jev records presence at
+`>=0.8`; at `<=0.2` the source is ignored but remains promotable. Between those
+bands the exact text is injected with `review_required: true`, including after
+compaction. The agent continues with that unconfirmed context without waiting
+for a review action. `kind_uncertain` labels an uncertain category and does not
+prevent recording. `replacement_review` is separate: a proposed replacement
+was not sufficiently certain, so both instructions remain active. Confirming
+an item accepts its text; it does not certify its category or remove another item.
+
+Existing persisted decisions remain historical; this change does not rewrite
+old ledger events or silently confirm old review flags. User review can resolve
+those flags. Unresolved presence or replacement flags still conservatively
+suppress automatic drift reminders and unattended completion; context injection
+continues. If exact unconfirmed text itself exceeds the compaction budget, kah
+reports an explicit compaction gap instead of silently dropping it.
+
+Thresholds are explicit project policy. Future retuning uses actual
+operator review decisions after about a week of use, with a development/validation
+split and misses-first comparison. It is never automatic.

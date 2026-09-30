@@ -213,3 +213,36 @@ fn a_partial_goal_change_cannot_supersede_the_original_task() {
     assert!(h.intent(&original).unwrap().is_active());
     assert_eq!(h.goal().text, text);
 }
+
+#[test]
+fn clear_presence_records_an_uncertain_kind_without_a_review_requirement() {
+    let mut h = history();
+    let mut j = judgment("unclear", "none", 0.4);
+    if let Answer::Choice { confidence, .. } = j.answers.get_mut("steer_kind").unwrap() {
+        *confidence = 0.4;
+    }
+    verbatim::apply(&mut h, "Keep BETA too", source("u2"), &j).unwrap();
+    let item = h.intent(verbatim::item_id(&source("u2"))).unwrap();
+    assert!(!item.review_required);
+    assert!(item.kind_uncertain);
+    assert!(item.uncertain_supersedes.is_empty());
+    let p = kah_core::projection::ActiveProjection::from_history(&h, 32768).unwrap();
+    assert!(!p.needs_review());
+    assert!(p.rendered_prompt().contains("Keep BETA too"));
+}
+
+#[test]
+fn replacement_review_is_independent_of_recording_review() {
+    let mut h = history();
+    let old = h.intents().keys().next().unwrap().to_string();
+    let mut j = judgment("correction", &old, 0.99);
+    if let Answer::Choice { confidence, .. } = j.answers.get_mut("steer_kind").unwrap() {
+        *confidence = 0.4;
+    }
+    verbatim::apply(&mut h, "BETA replaces ALPHA", source("u2"), &j).unwrap();
+    let item = h.intent(verbatim::item_id(&source("u2"))).unwrap();
+    assert!(!item.review_required);
+    assert!(item.kind_uncertain);
+    assert_eq!(item.uncertain_supersedes, vec![old.into()]);
+    assert!(h.intents().values().all(|i| i.is_active()));
+}

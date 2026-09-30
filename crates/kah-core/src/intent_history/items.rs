@@ -70,9 +70,12 @@ pub struct IntentItem {
     /// Uncertain replacement targets; both sides remain active for review.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uncertain_supersedes: Vec<IntentId>,
-    /// Retained user text whose classification/replacement is unresolved.
+    /// Retained user text whose steering presence is unconfirmed.
     #[serde(default, skip_serializing_if = "is_false")]
     pub review_required: bool,
+    /// Category is uncertain; this alone never blocks recording.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub kind_uncertain: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub user_confirmed: bool,
 }
@@ -97,6 +100,7 @@ impl IntentItem {
             evidence: Vec::new(),
             uncertain_supersedes: Vec::new(),
             review_required: false,
+            kind_uncertain: false,
             user_confirmed: false,
         }
     }
@@ -122,6 +126,7 @@ impl IntentItem {
             evidence: Vec::new(),
             uncertain_supersedes: Vec::new(),
             review_required: false,
+            kind_uncertain: false,
             user_confirmed: false,
         }
     }

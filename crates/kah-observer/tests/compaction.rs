@@ -83,3 +83,29 @@ fn live_size_triggered_compaction_retains_verbatim_originals() {
     );
     std::fs::write(path.join("compaction.json"), serde_json::to_string_pretty(&serde_json::json!({"passed":true,"rawBytes":original[0].text.len(),"renderedBytes":p.rendered_bytes(),"originalsUnchanged":true,"summary":summary,"metadata":metadata})).unwrap()).unwrap();
 }
+
+#[test]
+fn compacted_prompt_keeps_unconfirmed_text_and_sources_verbatim() {
+    let mut p = projection();
+    p.frontier[0].review_required = true;
+    let item = p.frontier[0].clone();
+    let c = CompactedIntent {
+        source_digest: compaction::digest(&p),
+        summary: "A summary that omits the pending instruction".into(),
+        originals: vec!["a".into()],
+        model: "fake".into(),
+    };
+    compaction::attach(&mut p, Some(&c));
+    let rendered: serde_json::Value = serde_json::from_str(&p.rendered_prompt()).unwrap();
+    assert_eq!(
+        rendered["unconfirmed_items"][0],
+        serde_json::to_value(item).unwrap()
+    );
+    assert!(
+        rendered["authority"]
+            .as_str()
+            .unwrap()
+            .contains("unconfirmed")
+    );
+    assert!(!p.continuation_blocked());
+}

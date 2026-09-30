@@ -99,7 +99,7 @@ fn watch_loop(binding: &Binding) -> Result<()> {
             let reminder = outcome.reminder.map(|r| r.text);
             if text != last_projection || reminder.is_some() {
                 let context = format!(
-                    "[kah source-linked observer context, not new user steering. Current explicit user instructions take precedence.]\n{}\n{}",
+                    "[kah source-linked observer context, not new user steering. Current explicit user instructions take precedence. review_required items are unconfirmed context; continue without waiting for review. kind_uncertain only marks category uncertainty. uncertain_supersedes keeps both instructions active.]\n{}\n{}",
                     text,
                     reminder.unwrap_or_default()
                 );

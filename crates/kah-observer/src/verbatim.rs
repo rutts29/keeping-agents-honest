@@ -1,5 +1,8 @@
 //! Jev chooses typed operations; code copies exact source text into history.
-use crate::judge::{Answer, Judgment};
+use crate::{
+    intake::{IGNORE_PROBABILITY, Presence, presence},
+    judge::{Answer, Judgment},
+};
 use kah_core::intent_history::*;
 use sha2::{Digest, Sha256};
 
@@ -13,6 +16,9 @@ pub fn apply(
     source: SourceRef,
     judgment: &Judgment,
 ) -> Result<(), String> {
+    if source.role != SourceRole::User || judgment.backend != "jev" {
+        return Err("OBSERVER_AUTHORITY stage=verbatim".into());
+    }
     let mut next = history.clone();
     apply_inner(&mut next, text, source, judgment)?;
     *history = next;
@@ -24,9 +30,6 @@ fn apply_inner(
     source: SourceRef,
     judgment: &Judgment,
 ) -> Result<(), String> {
-    if source.role != SourceRole::User || judgment.backend != "jev" {
-        return Err("OBSERVER_AUTHORITY stage=verbatim".into());
-    }
     if let Some(item) = history.intent(item_id(&source)) {
         return if item.text == text && item.introduced_by == [source] {
             Ok(())
@@ -37,12 +40,13 @@ fn apply_inner(
     let Some(Answer::Noul { noul }) = judgment.answers.get("is_steering") else {
         return Err("OBSERVER_TYPING stage=verbatim".into());
     };
-    if *noul <= 0.2 {
+    let presence = presence(*noul, STEERING_PROBABILITY, IGNORE_PROBABILITY);
+    if presence == Presence::Ignore {
         return Ok(());
     }
     let (kind, probability, confidence) = choice(judgment, "steer_kind")?;
-    let kind_certain = *noul >= STEERING_PROBABILITY
-        && probability >= TYPE_CONFIDENCE
+    let recorded = presence == Presence::Record;
+    let kind_certain = probability >= TYPE_CONFIDENCE
         && confidence >= TYPE_CONFIDENCE
         && !matches!(kind, "unclear" | "none" | "question_only");
     let (target, probability, confidence) = if judgment.answers.contains_key("supersedes") {
@@ -64,40 +68,38 @@ fn apply_inner(
                 .iter()
                 .any(|r| history.goal().source_refs.contains(r))
         });
-    apply_operation(
-        history,
-        text,
-        source,
-        kind,
-        target,
-        probability >= REPLACE_PROBABILITY
-            && confidence >= REPLACE_CONFIDENCE
-            && replacing
-            && kind_certain
-            && !protected_goal,
-        protected_goal
-            || !kind_certain
-            || probability < REPLACE_PROBABILITY
-            || confidence < REPLACE_CONFIDENCE,
-    )
-}
-
-fn apply_operation(
-    history: &mut History,
-    text: &str,
-    source: SourceRef,
-    kind: &str,
-    target: &str,
-    replace: bool,
-    uncertain: bool,
-) -> Result<(), String> {
-    let selected = history.intent(target);
     let mut item = IntentItem::new(
         item_id(&source),
         intent_kind(kind)?,
         text,
         vec![source.clone()],
     );
+    item.review_required = !recorded;
+    item.kind_uncertain = !kind_certain;
+    apply_operation(
+        history,
+        item,
+        source,
+        kind,
+        target,
+        probability >= REPLACE_PROBABILITY
+            && confidence >= REPLACE_CONFIDENCE
+            && replacing
+            && recorded
+            && kind_certain
+            && !protected_goal,
+    )
+}
+
+fn apply_operation(
+    history: &mut History,
+    mut item: IntentItem,
+    source: SourceRef,
+    kind: &str,
+    target: &str,
+    replace: bool,
+) -> Result<(), String> {
+    let selected = history.intent(target);
     let event = if let Some(selected) = selected.filter(|_| replace) {
         let previous_id = selected.id.clone();
         if kind == "scope_reduction" {
@@ -123,14 +125,8 @@ fn apply_operation(
             }
         }
     } else {
-        if uncertain || target != "none" {
-            item.review_required = true;
-            item.uncertain_supersedes = history
-                .intents()
-                .values()
-                .filter(|i| i.is_active())
-                .map(|i| i.id.clone())
-                .collect();
+        if target != "none" {
+            item.uncertain_supersedes.push(target.into());
         }
         Event::RequirementAdded {
             item,

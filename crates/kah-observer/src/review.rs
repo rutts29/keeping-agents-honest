@@ -27,10 +27,10 @@ pub fn list(session: &str) -> Result<Value, String> {
     let mut ignored = 0;
     let items=sources.iter().rev().filter_map(|input|{
         let status=input.status(history.as_ref());
-        if status!="review_required" {
+        if !matches!(status,"review_required"|"replacement_review") {
             if !matches!(status,"ignored"|"aside"|"gap") || ignored>=12{return None;} ignored+=1;
         }
-        Some(json!({"id":input.id(),"text":input.text,"source":input.source,"status":status,"actions":if status=="review_required"{vec!["confirm","dismiss"]}else{vec!["promote","dismiss"]}}))
+        Some(json!({"id":input.id(),"text":input.text,"source":input.source,"status":status,"actions":if matches!(status,"review_required"|"replacement_review"){vec!["confirm","dismiss"]}else{vec!["promote","dismiss"]}}))
     }).collect::<Vec<_>>();
     Ok(json!({"session":session,"items":items}))
 }

@@ -5,6 +5,22 @@ use crate::{
 };
 use kah_core::intent_history::{Event, History, IntentItem, IntentKind, SourceRef, SourceRole};
 use serde::{Deserialize, Serialize};
+pub const IGNORE_PROBABILITY: f64 = 0.2;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Presence {
+    Ignore,
+    Review,
+    Record,
+}
+pub fn presence(probability: f64, record: f64, ignore: f64) -> Presence {
+    if probability >= record {
+        Presence::Record
+    } else if probability <= ignore {
+        Presence::Ignore
+    } else {
+        Presence::Review
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Decision {
@@ -27,7 +43,7 @@ impl Input {
     pub fn recently_ignored(&self) -> bool {
         !self.dismissed
             && !self.promoted
-            && matches!(&self.decision,Some(Decision::Jev{judgment}) if matches!(judgment.answers.get("is_steering"),Some(Answer::Noul{noul}) if *noul<=0.2))
+            && matches!(&self.decision,Some(Decision::Jev{judgment}) if matches!(judgment.answers.get("is_steering"),Some(Answer::Noul{noul}) if *noul<=IGNORE_PROBABILITY))
     }
     pub fn id(&self) -> String {
         verbatim::item_id(&self.source)
@@ -37,8 +53,10 @@ impl Input {
             if !item.is_active() {
                 return "inactive";
             }
-            return if item.review_required || !item.uncertain_supersedes.is_empty() {
+            return if item.review_required {
                 "review_required"
+            } else if !item.uncertain_supersedes.is_empty() {
+                "replacement_review"
             } else {
                 "active"
             };
@@ -77,7 +95,7 @@ impl Decision {
         match self {
             Self::Force => true,
             Self::Jev { judgment } => {
-                matches!(judgment.answers.get("is_steering"),Some(Answer::Noul{noul}) if *noul>0.2)
+                matches!(judgment.answers.get("is_steering"),Some(Answer::Noul{noul}) if *noul>IGNORE_PROBABILITY)
             }
             _ => false,
         }
