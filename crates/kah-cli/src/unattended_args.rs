@@ -7,6 +7,9 @@ pub struct RunArguments {
     pub test: String,
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub observer_model: Option<String>,
+    pub observer_effort: Option<String>,
+    pub jev_model: Option<String>,
     pub domain: Option<Domain>,
     pub limits: Limits,
 }
@@ -23,6 +26,9 @@ impl RunArguments {
                 match arg.as_str() {
                     "--model" => result.model = Some(value),
                     "--effort" => result.effort = Some(value),
+                    "--observer-model" => result.observer_model = Some(value),
+                    "--observer-effort" => result.observer_effort = Some(value),
+                    "--jev-model" => result.jev_model = Some(value),
                     "--test" => result.test = value,
                     "--domain" => {
                         result.domain = Some(
