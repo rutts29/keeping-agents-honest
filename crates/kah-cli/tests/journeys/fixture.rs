@@ -15,6 +15,7 @@ pub(super) struct Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         for id in &self.sessions {
+            cleanup_observer(&self.project, id);
             let _ = Command::new("/home/example/.local/bin/codex")
                 .args(["delete", "--force", id])
                 .env_remove("HERDR_ENV")
@@ -64,6 +65,9 @@ pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixtu
         "--effort".into(),
         "low".into(),
     ];
+    if let Ok(backend) = std::env::var("KAH_TEST_JUDGE") {
+        input.extend(["--observer-judge".into(), backend]);
+    }
     if online {
         input.push("--online".into());
     }
@@ -78,4 +82,24 @@ pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixtu
     };
     fs::write(&f.canary, "untouched").unwrap();
     (launch, f)
+}
+
+fn cleanup_observer(project: &Path, id: &str) {
+    use kah_core::run_store::RunStore;
+    use kah_observer::session::Store;
+    use sha2::{Digest, Sha256};
+    let Ok(base) = RunStore::default_state_root() else {
+        return;
+    };
+    if let Ok(Some(state)) = Store::read(&base, id)
+        && let Some(run) = state.run_id
+        && let Ok(path) = RunStore::path_for(&base, project, run)
+    {
+        let _ = fs::remove_dir_all(path);
+    }
+    let _ = fs::remove_dir_all(Store::directory(&base, id));
+    let _ = fs::remove_file(
+        base.join("session-policies")
+            .join(format!("{:x}.json", Sha256::digest(id.as_bytes()))),
+    );
 }
