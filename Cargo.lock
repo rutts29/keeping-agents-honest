@@ -423,6 +423,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kah-claude"
+version = "0.1.0"
+dependencies = [
+ "kah-core",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "kah-cli"
 version = "0.1.0"
 dependencies = [

@@ -89,6 +89,7 @@ pub struct LockedInspectRun {
 fn provider_name(provider: &SourceProvider) -> &'static str {
     match provider {
         SourceProvider::Codex => "codex",
+        SourceProvider::Claude => "claude",
         SourceProvider::Bundle => "bundle",
     }
 }

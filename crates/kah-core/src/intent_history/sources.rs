@@ -67,6 +67,7 @@ typed_id!(EvidenceId);
 #[serde(rename_all = "snake_case")]
 pub enum SourceProvider {
     Codex,
+    Claude,
     Bundle,
 }
 
