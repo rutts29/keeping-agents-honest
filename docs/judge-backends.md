@@ -52,3 +52,10 @@ per-call cash charge. See [models and pricing](https://docs.typesafe.ai/models).
 Gate 3 reports Jev labels, false reminders, missed drift, tokens and latency,
 including the separate extraction overhead; it is a small journey set, not a
 broad accuracy benchmark.
+
+Phase 4 question set 4 asks one Choice per requirement (satisfied, violated,
+unclear). Code combines all required results at the unchanged 0.90 probability
+and 0.85 confidence thresholds; two independent calls must agree. A redundant
+whole-task classification was removed after it vetoed a live candidate whose
+individual requirements all passed. Tests and current user-sequence/commit checks
+remain independent mandatory gates. No generation model supplies the numbers.

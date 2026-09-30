@@ -2,7 +2,7 @@
 //! Docs: https://docs.typesafe.ai/patterns and /model-jaggedness/jev-1.13 .
 use super::*;
 
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 pub const REMINDER_CONFIDENCE: f64 = 0.75;
 pub const MATERIAL_DISTANCE: f64 = 1.5;
 pub const STRONG_FAILURE_SIGNAL: f64 = 0.9;
@@ -65,11 +65,6 @@ pub fn completion(outcomes: &[(String, String)]) -> Questions {
             ("unclear", "The available evidence cannot establish whether the requirement is met.")
         ]));
     }
-    questions.insert("completion".into(),choice("Does the recorded evidence demonstrate all outcomes in `intent.outcomes`? Judge evidence, not the agent's assertion of completion.",&[
-        ("complete","Every required outcome is demonstrated by the supplied evidence."),
-        ("incomplete","At least one required outcome is unsatisfied."),
-        ("unclear","Evidence is missing or does not establish completion.")
-    ]));
     questions
 }
 fn noul(instructions: &str) -> Question {

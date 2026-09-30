@@ -30,8 +30,7 @@ run in the verification checkout, since `/tmp` is non-executable.
 Completion requires passing verification without candidate changes, fresh user
 sequence/checkpoint matching, and two independent Jev judgments satisfying every
 recorded outcome. Per-outcome Choices distinguish satisfied, violated and unclear.
-The required probability is 0.90 and confidence is 0.85; an overall completion
-Choice must also pass. Worker assertions are not completion. Failed or uncertain
+The required probability is 0.90 and confidence is 0.85. Worker assertions are not completion. Failed or uncertain
 runs stop with a report; a steer and `kah resume` can continue them.
 
 The observer records the task and explicit `kah steer` messages as user authority.

@@ -33,6 +33,12 @@ fn completion_distinguishes_satisfied_violated_and_missing_evidence() {
         );
         reports.push(json!({"expected":expected,"judgment":result}));
     }
+    let missing = judge.evaluate(&json!({"intent":{"goal":"Make greet.c print BETA followed by a newline.","outcomes":outcomes},"event":{"actions":{}}}), &questions).unwrap();
+    assert!(
+        matches!(&missing.answers["outcome_met.greeting"], Answer::Choice{choice,..} if choice=="unclear")
+    );
+    assert!(!judge::decision::complete(&missing, &outcomes));
+    reports.push(json!({"expected":"unclear","judgment":missing}));
     fs::write(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../docs/gates/evidence/phase-4/completion-contract.json"),

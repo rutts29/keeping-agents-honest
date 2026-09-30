@@ -130,3 +130,22 @@ fn score_consistency_tolerance_is_not_defeated_by_float_representation() {
     )]);
     assert!(judge::validate_response(&questions, &answers).is_ok());
 }
+
+#[test]
+fn completion_requires_every_jev_requirement_to_be_confidently_satisfied() {
+    use judge::{Judgment, Metrics, decision};
+    let outcomes = vec![("one".into(), "Required behavior".into())];
+    let mut judgment = Judgment {backend:"jev".into(), model:"fixture".into(), metrics:Metrics::default(), fallback_reason:None, answers:serde_json::from_value(json!({
+        "completion":{"type":"choice","choice":"complete","confidence":0.99,"probabilities":{"complete":0.99,"incomplete":0.0,"unclear":0.01}},
+        "outcome_met.one":{"type":"choice","choice":"satisfied","confidence":0.95,"probabilities":{"satisfied":0.96,"violated":0.0,"unclear":0.04}}
+    })).unwrap()};
+    judgment.answers.remove("completion");
+    assert!(decision::complete(&judgment, &outcomes));
+    if let Answer::Choice { confidence, .. } = judgment.answers.get_mut("outcome_met.one").unwrap()
+    {
+        *confidence = 0.8;
+    }
+    assert!(!decision::complete(&judgment, &outcomes));
+    judgment.answers.insert("outcome_met.one".into(), serde_json::from_value(json!({"type":"choice","choice":"unclear","confidence":1.0,"probabilities":{"unclear":1.0,"satisfied":0.0,"violated":0.0}})).unwrap());
+    assert!(!decision::complete(&judgment, &outcomes));
+}
