@@ -29,7 +29,6 @@ Claude Code is currently available in Mine only:
 kah --agent claude
 kah --agent claude --model MODEL --effort EFFORT
 kah --agent claude -- --resume SESSION_ID
-kah --agent claude -- --resume SESSION_ID --fork-session
 ```
 
 Start in the saved Mine project when resuming. Omitted model and effort use native

@@ -114,7 +114,10 @@ pub fn fixture_containers() -> Result<Vec<String>, String> {
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter(|l| {
-            l.contains("/kah-gate") || l.contains("/kah-phase1-") || l.contains("/kah-fixture-")
+            l.contains("/kah-gate")
+                || l.contains("/kah-claude-")
+                || l.contains("/kah-phase1-")
+                || l.contains("/kah-fixture-")
         })
         .filter_map(|l| l.split_whitespace().next().map(str::to_owned))
         .collect())
