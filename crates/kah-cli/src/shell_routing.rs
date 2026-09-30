@@ -69,6 +69,7 @@ fn listed_command(help: Option<&str>, command: &str) -> bool {
         .is_some_and(|section| {
             section
                 .lines()
+                .filter(|line| line.starts_with("  ") && !line.starts_with("   "))
                 .any(|line| line.split_whitespace().next() == Some(command))
         })
 }

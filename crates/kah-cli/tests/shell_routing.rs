@@ -64,7 +64,7 @@ fn native(args: &[&str]) -> bool {
 
 #[test]
 fn newly_installed_commands_are_discovered_without_rerouting_resume_or_prompts() {
-    let help = "Usage: codex [OPTIONS]\n\nCommands:\n  future-admin  New management\n  resume  Resume\n  fork  Fork\n\nOptions:\n  --help  Help\n";
+    let help = "Usage: codex [OPTIONS]\n\nCommands:\n  future-admin  New management\n                task description continued\n  resume  Resume\n  fork  Fork\n\nOptions:\n  --help  Help\n";
     for (arg, expected) in [
         ("future-admin", true),
         ("resume", false),
