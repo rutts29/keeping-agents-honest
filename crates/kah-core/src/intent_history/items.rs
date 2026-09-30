@@ -67,6 +67,9 @@ pub struct IntentItem {
     pub changed_by: Vec<SourceRef>,
     pub supersedes: Vec<IntentId>,
     pub evidence: Vec<EvidenceRef>,
+    /// Uncertain replacement targets; both sides remain active for review.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uncertain_supersedes: Vec<IntentId>,
 }
 
 impl IntentItem {
@@ -87,6 +90,7 @@ impl IntentItem {
             changed_by: Vec::new(),
             supersedes: Vec::new(),
             evidence: Vec::new(),
+            uncertain_supersedes: Vec::new(),
         }
     }
 
@@ -109,6 +113,7 @@ impl IntentItem {
             introduced_by,
             supersedes: vec![previous_id.into()],
             evidence: Vec::new(),
+            uncertain_supersedes: Vec::new(),
         }
     }
 

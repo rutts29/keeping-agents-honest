@@ -43,7 +43,7 @@ fn round_trips_a_versioned_bundle_without_reordering_records_or_losing_source_re
     );
     assert_eq!(
         reparsed.records()[0].content(),
-        "Add retries.\nKeep auth safe."
+        "Add retries.\r\nKeep auth safe."
     );
     assert_eq!(reparsed.authoritative_records().len(), 2);
     assert_eq!(reparsed.source_refs()[2].record, "turn-3:0");

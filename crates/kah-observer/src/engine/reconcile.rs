@@ -1,45 +1,8 @@
 use super::*;
-use kah_core::intent_history::{Event, GoalRevision, SourceRole};
+use crate::{compaction, judge, verbatim};
+use kah_core::intent_history::{GoalRevision, History};
 
 pub(super) fn update_intent(
-    state: &mut State,
-    journal: &mut Store,
-    users: &NeutralSessionBundle,
-    config: CompactorConfig<'_>,
-) -> Result<(ActiveProjection, bool), String> {
-    let source = InspectSource::from_bundle(users).map_err(|e| e.to_string())?;
-    let accepted = source
-        .open(&state.binding.project)
-        .map_err(|e| e.to_string())?
-        .and_then(|locked| locked.recovered.source_cursor)
-        .map(|cursor| cursor.accepted_record_count())
-        .unwrap_or(0);
-    if users
-        .records()
-        .iter()
-        .all(|record| record.is_authoritative())
-        && users.records().len() > accepted + 1
-    {
-        let mut last = None;
-        for end in accepted + 1..=users.records().len() {
-            let prefix = NeutralSessionBundle::from_records_with_native_goal(
-                users.source().provider(),
-                users.source().session_ref_private(),
-                users.source().repository_digest(),
-                users.native_goal().clone(),
-                users.records()[..end].to_vec(),
-            )
-            .map_err(|e| e.to_string())?;
-            last = Some(update_once(state, journal, &prefix, config)?);
-            // A later timeout cannot discard already accepted source and usage.
-            journal.save(state)?;
-        }
-        return last.ok_or_else(|| "OBSERVER_BATCH_EMPTY stage=observe".into());
-    }
-    update_once(state, journal, users, config)
-}
-
-fn update_once(
     state: &mut State,
     journal: &mut Store,
     users: &NeutralSessionBundle,
@@ -49,95 +12,147 @@ fn update_once(
     let previous = source
         .open(&state.binding.project)
         .map_err(|e| e.to_string())?
-        .map(|locked| locked.recovered);
-    if previous.is_some() {
-        state.run_id = Some(source.run_id().as_str().into());
-    }
-    let result = if let Some(previous) = &previous {
-        let cursor = previous
-            .source_cursor
-            .as_ref()
-            .ok_or("OBSERVER_CURSOR stage=observe: accepted cursor absent")?;
-        match cursor.compare(source.cursor()).map_err(|e|e.to_string())? {
-            SourceCursorComparison::Current=>return Ok((previous.projection.clone(),false)),
-            SourceCursorComparison::NewRecords(_)=>{
-                let delta=source.delta_bundle(users,cursor.accepted_record_count()).map_err(|e|e.to_string())?;
-                semantic_resolver::resolve_incremental(&state.binding.project,&previous.history,&previous.projection,&delta,config,ProjectionConfig::default())
+        .map(|r| r.recovered);
+    state.run_id = previous.as_ref().map(|_| source.run_id().to_string());
+    let accepted = match &previous {
+        Some(run) => {
+            let cursor = run
+                .source_cursor
+                .as_ref()
+                .ok_or("OBSERVER_CURSOR stage=verbatim")?;
+            match cursor.compare(source.cursor()).map_err(|e| e.to_string())? {
+                SourceCursorComparison::Current | SourceCursorComparison::NewRecords(_) => {
+                    cursor.accepted_record_count()
+                }
+                _ => return Err("OBSERVER_SOURCE_REWRITE stage=verbatim".into()),
             }
-            _=>return Err("OBSERVER_SOURCE_REWRITE stage=observe: accepted user source changed or moved backwards".into()),
         }
-    } else {
-        semantic_resolver::resolve_initial(
-            &state.binding.project,
-            users,
-            config,
-            ProjectionConfig::default(),
+        None => 0,
+    };
+    let mut result = previous.map(|p| p.projection);
+    for end in accepted + 1..=users.records().len() {
+        let prefix = NeutralSessionBundle::from_records_with_native_goal(
+            users.source().provider(),
+            users.source().session_ref_private(),
+            users.source().repository_digest(),
+            users.native_goal().clone(),
+            users.records()[..end].to_vec(),
         )
-    };
-    let mut resolution = match result {
-        Ok(r) => r,
-        Err(e) => {
-            state.usage.record(&e.metadata);
-            return Err(e.to_string());
-        }
-    };
-    state.usage.record(&resolution.metadata);
-    apply_user_goal_change(&mut resolution)?;
-    persist(&state.binding.project, &source, previous, &resolution)?;
-    state.run_id = Some(source.run_id().as_str().into());
-    journal.append(&json!({"kind":"intent_update","source":"observer_interpretation","revision":resolution.projection.revision,"metadata":resolution.metadata}))?;
-    Ok((resolution.projection, true))
+        .map_err(|e| e.to_string())?;
+        result = Some(update_once(state, journal, &prefix)?);
+        journal.save(state)?;
+    }
+    let mut projection = result.ok_or("OBSERVER_SOURCE_EMPTY stage=verbatim")?;
+    if projection.is_overflowed()
+        && state
+            .compaction
+            .as_ref()
+            .is_none_or(|c| c.source_digest != compaction::digest(&projection))
+    {
+        let (summary, metadata) = compaction::compact(&state.binding.project, &projection, config)
+            .inspect_err(|_| state.usage.incomplete_calls += 1)?;
+        state.usage.record(&metadata);
+        journal.append(&json!({"kind":"compaction","summary":summary,"metadata":metadata}))?;
+        state.compaction = Some(summary);
+    }
+    compaction::attach(&mut projection, state.compaction.as_ref());
+    Ok((projection, accepted < users.records().len()))
 }
 
-fn apply_user_goal_change(
-    resolution: &mut semantic_resolver::InspectResolution,
-) -> Result<(), String> {
-    if let Some(change) = resolution.goal_change.take() {
-        if !change
-            .source_refs
-            .iter()
-            .all(|s| s.role == SourceRole::User)
-        {
-            return Err(
-                "OBSERVER_GOAL_AUTHORITY stage=observe: goal change has a non-user source".into(),
-            );
-        }
-        let current = resolution.history.goal().revision;
-        let mut goal = GoalRevision::new(current + 1, change.proposed_goal, change.source_refs);
-        goal.supersedes_revision = Some(current);
-        resolution
-            .history
-            .append(Event::GoalRevised { goal })
-            .map_err(|e| e.to_string())?;
-        let generated_by = resolution.projection.generated_by.clone();
-        resolution.projection =
-            ActiveProjection::from_history(&resolution.history, ProjectionConfig::default())
-                .map_err(|e| e.to_string())?;
-        resolution.projection.generated_by = generated_by;
+fn update_once(
+    state: &mut State,
+    journal: &mut Store,
+    users: &NeutralSessionBundle,
+) -> Result<ActiveProjection, String> {
+    let source = InspectSource::from_bundle(users).map_err(|e| e.to_string())?;
+    let previous = source
+        .open(&state.binding.project)
+        .map_err(|e| e.to_string())?
+        .map(|r| r.recovered);
+    let record = users
+        .records()
+        .last()
+        .ok_or("OBSERVER_SOURCE_EMPTY stage=verbatim")?;
+    if !record.is_authoritative() {
+        return Err("OBSERVER_AUTHORITY stage=verbatim".into());
     }
-    Ok(())
+    let reference = users
+        .source_refs()
+        .pop()
+        .ok_or("OBSERVER_SOURCE_EMPTY stage=verbatim")?;
+    let mut history = match &previous {
+        Some(run) => run.history.clone(),
+        None => History::new(GoalRevision::new(
+            1,
+            record.content(),
+            vec![reference.clone()],
+        ))
+        .map_err(|e| e.to_string())?,
+    };
+    let cached = journal.intake(&reference)?;
+    let judgment = match &cached {
+        Some(judgment) => judgment.clone(),
+        None => type_message(state, journal, &history, record.content())?,
+    };
+    verbatim::apply(&mut history, record.content(), reference.clone(), &judgment)?;
+    if cached.is_none() {
+        journal.append(&json!({"kind":"verbatim_decision","source":"user_verbatim","text":record.content(),"source_ref":reference,"judgment":judgment}))?;
+    }
+    let mut projection = ActiveProjection::from_history(&history, ProjectionConfig::default())
+        .map_err(|e| e.to_string())?;
+    projection.generated_by.component = "kah.verbatim".into();
+    persist(
+        &state.binding.project,
+        &source,
+        previous.as_ref(),
+        &history,
+        &projection,
+    )?;
+    state.run_id = Some(source.run_id().to_string());
+    journal.append(&json!({"kind":"intent_update","source":"user_verbatim","text":record.content(),"source_ref":reference,"revision":projection.revision}))?;
+    Ok(projection)
+}
+
+fn type_message(
+    state: &mut State,
+    journal: &mut Store,
+    history: &History,
+    text: &str,
+) -> Result<judge::Judgment, String> {
+    let items = history
+        .intents()
+        .values()
+        .filter(|i| i.is_active())
+        .map(|i| (i.id.to_string(), i.text.clone()))
+        .collect::<Vec<_>>();
+    let questions = judge::questions::steering(&items);
+    let prior_goal = (history.records().len() > 1).then(|| history.goal().text.as_str());
+    let input =
+        json!({"prior_intent":{"goal":prior_goal,"items":items},"event":{"user_text":text}});
+    super::judgment::evaluate(state, journal, &input, &questions, "steering")
 }
 
 fn persist(
     project: &std::path::Path,
     source: &InspectSource,
-    previous: Option<kah_core::run_store::RecoveredRun>,
-    resolution: &semantic_resolver::InspectResolution,
+    previous: Option<&kah_core::run_store::RecoveredRun>,
+    history: &History,
+    projection: &ActiveProjection,
 ) -> Result<(), String> {
     if let Some(previous) = previous {
         let store =
             RunStore::open_default(project, source.run_id().as_str()).map_err(|e| e.to_string())?;
-        for record in &resolution.history.records()[previous.history.records().len()..] {
+        for record in &history.records()[previous.history.records().len()..] {
             store
                 .append_pending(record.clone())
                 .map_err(|e| e.to_string())?;
         }
         store
-            .commit_projection_with_source_cursor(&resolution.projection, source.cursor())
+            .commit_projection_with_source_cursor(projection, source.cursor())
             .map_err(|e| e.to_string())?;
     } else {
         source
-            .create(project, &resolution.history, &resolution.projection)
+            .create(project, history, projection)
             .map_err(|e| e.to_string())?;
     }
     Ok(())

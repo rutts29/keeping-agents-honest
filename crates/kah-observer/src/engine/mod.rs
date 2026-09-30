@@ -1,9 +1,9 @@
 //! Event-driven observation. Native hooks schedule work; only native user
 //! records can change intent, and observer failures remain visible but fail open.
 use crate::{
+    compaction::CompactorConfig,
     inspect_state::InspectSource,
     judge::decision::{Assessment, AssessmentState},
-    semantic_resolver::{self, CompactorConfig},
     session::{Binding, State, Store},
 };
 use kah_codex::{
@@ -147,7 +147,9 @@ pub fn projection(state: &State) -> Result<Option<ActiveProjection>, String> {
         return Ok(None);
     };
     let store = RunStore::open_default(&state.binding.project, id).map_err(|e| e.to_string())?;
-    Ok(Some(store.recover().map_err(|e| e.to_string())?.projection))
+    let mut projection = store.recover().map_err(|e| e.to_string())?.projection;
+    crate::compaction::attach(&mut projection, state.compaction.as_ref());
+    Ok(Some(projection))
 }
 
 fn read_source(binding: &Binding) -> Result<ObservationSnapshot, String> {

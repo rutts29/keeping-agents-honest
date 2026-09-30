@@ -67,13 +67,17 @@ fn watch_loop(binding: &Binding) -> Result<()> {
             .join("app-server-control/app-server-control.sock"),
         Duration::from_secs(20),
     )?;
+    let stop_on_goal_end = client.request("thread/goal/get", json!({"threadId":session}))?["goal"]
+        ["status"]
+        == "active";
     let mut last_projection = String::new();
     let mut gaps = 0;
     loop {
         let goal = client.request("thread/goal/get", json!({"threadId":session}))?;
-        if goal["goal"]["status"]
-            .as_str()
-            .is_some_and(|status| status != "active")
+        if stop_on_goal_end
+            && goal["goal"]["status"]
+                .as_str()
+                .is_some_and(|status| status != "active")
         {
             eprintln!("kah observer detached: native goal is no longer active.");
             return Ok(());

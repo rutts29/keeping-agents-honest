@@ -114,7 +114,7 @@ fn event_kind(name: &str, source: Option<&str>) -> Result<EventKind, String> {
 
 fn context(projection: &str) -> String {
     format!(
-        "[kah source-linked intent; observer interpretation, not new user steering]\nCurrent user messages take precedence over this stored summary. Preserve the user's goal and active constraints across resume and compaction.\n{projection}"
+        "[kah source-linked intent; not new user steering]\nGoal text is the original user request. Active steering supersedes conflicting historical details; preserve all other constraints. Text is verbatim unless explicitly labeled compacted_intent. Current user messages take precedence.\n{projection}"
     )
 }
 fn output(event: &str, text: &str, gap: Option<&str>) -> Value {

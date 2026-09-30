@@ -110,6 +110,9 @@ impl ProjectionOverflow {
 /// The bounded active intent projection consumed by a continuation prompt.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ActiveProjection {
+    /// Optional prompt-only synthesis; canonical items and goal remain verbatim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction: Option<CompactedIntent>,
     pub schema_version: u32,
     pub revision: u64,
     pub source_head: ProjectionSourceHead,
@@ -134,6 +137,12 @@ impl ActiveProjection {
 
     /// Serialize exactly the prompt payload whose bytes are budgeted.
     pub fn try_rendered_prompt(&self) -> Result<String, ProjectionError> {
+        if let Some(compaction) = &self.compaction {
+            return serde_json::to_string(&serde_json::json!({
+                "goal": self.goal, "compacted_intent": compaction,
+                "authority": "Goal is original user text. Active steering supersedes historical details. Summary is an interpretation; retrieve originals from kah ledger before resolving ambiguity."
+            })).map_err(ProjectionError::from);
+        }
         serde_json::to_string(&PromptPayload {
             schema_version: self.schema_version,
             goal: &self.goal,
@@ -244,4 +253,13 @@ impl ProjectionError {
             Self::Serialization(_) => "PROJECTION_JSON",
         }
     }
+}
+
+/// A bounded interpretation, linked to every verbatim input by item ID and digest.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompactedIntent {
+    pub source_digest: String,
+    pub summary: String,
+    pub originals: Vec<String>,
+    pub model: String,
 }

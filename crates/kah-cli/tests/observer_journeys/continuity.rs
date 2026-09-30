@@ -1,5 +1,6 @@
 use super::*;
 use std::time::{Duration, Instant};
+const INITIAL: &str = "For this session, maintain answer.txt containing the required uppercase marker ALPHA. Use native apply_patch to create it now. No dependencies, subagents, installs, tests or commits for this disposable single-line text fixture. Report and stop after the edit.";
 
 pub fn run() {
     let evidence_path = begin_evidence("continuity");
@@ -29,9 +30,9 @@ pub fn run() {
     }
     let final_state = snapshot(id);
     let current_goal = engine::projection(&final_state).unwrap().unwrap().goal.text;
-    assert!(
-        !current_goal.contains("ALPHA"),
-        "obsolete requirement survived in goal summary: {current_goal}"
+    assert_eq!(
+        current_goal, INITIAL,
+        "the original goal must stay verbatim"
     );
     assert_backend(&final_state);
     let history = RunStore::open_default(&f.project, final_state.run_id.as_ref().unwrap())
@@ -65,6 +66,16 @@ fn snapshot(id: &str) -> kah_observer::session::State {
     let state = Store::read(&RunStore::default_state_root().unwrap(), id)
         .unwrap()
         .unwrap();
+    if state.gap.is_some() {
+        let directory = std::env::var_os("KAH_GATE_EVIDENCE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp"));
+        fs::write(
+            directory.join("continuity-failure.json"),
+            serde_json::to_string_pretty(&state).unwrap(),
+        )
+        .unwrap();
+    }
     assert!(state.gap.is_none(), "{:?}", state.gap);
     assert!(state.run_id.is_some(), "{state:?}");
     state
@@ -72,7 +83,7 @@ fn snapshot(id: &str) -> kah_observer::session::State {
 
 fn steer(client: &mut Client, id: &str) -> Vec<kah_observer::session::State> {
     let prompts = [
-        "For this session, maintain answer.txt containing the required uppercase marker ALPHA. Use native apply_patch to create it now. No dependencies, subagents, installs, tests or commits for this disposable single-line text fixture. Report and stop after the edit.",
+        INITIAL,
         "Correction: BETA replaces ALPHA as the required marker for this entire session. Update answer.txt to contain BETA now. The earlier ALPHA instruction is superseded. Keep the other constraints. Report and stop.",
         "Intentional scope change: also maintain notes.txt containing the same current marker as answer.txt. Add notes.txt now and preserve answer.txt. This extra file is explicitly authorized. Report and stop.",
     ];

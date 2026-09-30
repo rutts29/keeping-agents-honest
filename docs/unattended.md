@@ -35,7 +35,7 @@ runs stop with a report; a steer and `kah resume` can continue them.
 
 The observer records the task and explicit `kah steer` messages as user authority.
 Native output and judgment text remain evidence. Jev is the judge in all domains;
-source-linked text extraction uses the separately configured native model.
+verbatim intake uses typed Jev answers. Only size-triggered prompt compaction uses the separately configured native text model.
 Unattended native subagent and goal tools are disabled: one worker's lifecycle
 and allowance are controlled by kah. Interactive native behavior is unchanged.
 

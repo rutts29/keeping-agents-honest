@@ -50,10 +50,6 @@ pub(super) fn validate_sha256(value: &str, field: &'static str) -> Result<(), Se
     Ok(())
 }
 
-pub(super) fn normalize_content(content: String) -> String {
-    content.replace("\r\n", "\n").replace('\r', "\n")
-}
-
 pub(super) fn record_digest(id: &str, role: &SourceRole, content: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(id.as_bytes());

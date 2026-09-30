@@ -63,6 +63,7 @@ where
             .sum::<usize>();
     let source_head = source_head(history)?;
     let mut projection = ActiveProjection {
+        compaction: None,
         schema_version: PROJECTION_SCHEMA_VERSION,
         revision: source_head.pending_sequence,
         source_head,

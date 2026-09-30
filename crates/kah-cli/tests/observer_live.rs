@@ -97,9 +97,8 @@ fn assert_backend(state: &kah_observer::session::State) {
 
 fn begin_evidence(name: &str) -> PathBuf {
     let backend = std::env::var("KAH_TEST_JUDGE").unwrap_or_else(|_| "jev".into());
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../docs/gates/evidence/phase-3/{name}-{backend}.json"
-    ));
+    let directory = evidence_directory();
+    let path = directory.join(format!("{name}-{backend}.json"));
     fs::write(&path,serde_json::to_string_pretty(&json!({"passed":false,"status":"running","backend":backend,"questionSetVersion":kah_observer::judge::questions::VERSION})).unwrap()+"\n").unwrap();
     path
 }
@@ -109,4 +108,12 @@ fn assert_config(home: &Path, before: &[u8]) {
         before == fs::read(home.join(".codex/config.toml")).unwrap(),
         "GLOBAL_CONFIG_CHANGED stage=journey"
     );
+}
+
+fn evidence_directory() -> PathBuf {
+    std::env::var_os("KAH_GATE_EVIDENCE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/gates/evidence/phase-3")
+        })
 }

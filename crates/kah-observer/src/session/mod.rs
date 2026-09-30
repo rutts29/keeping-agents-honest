@@ -1,5 +1,5 @@
 //! Per-session observer state; model inference never supplies user source records.
-use crate::semantic_resolver::ResolverMetadata;
+use crate::compaction::ResolverMetadata;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -75,6 +75,8 @@ impl Usage {
 pub struct State {
     pub binding: Binding,
     pub run_id: Option<String>,
+    #[serde(default)]
+    pub compaction: Option<kah_core::projection::CompactedIntent>,
     pub action_digest: Option<String>,
     pub inflight: Option<Flight>,
     pub gap: Option<Gap>,
@@ -93,6 +95,7 @@ impl State {
         Self {
             binding,
             run_id: None,
+            compaction: None,
             action_digest: None,
             inflight: None,
             gap: None,

@@ -1,4 +1,4 @@
-use kah_observer::semantic_resolver::CompactorConfig;
+use kah_observer::compaction::CompactorConfig;
 
 #[test]
 fn observer_defaults_to_requested_luna_low() {

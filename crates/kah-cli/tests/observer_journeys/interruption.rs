@@ -62,8 +62,7 @@ pub fn run() {
     assert_config(&home, &before);
     let report = json!({"observerKilled":killed,"gapVisibleInStatus":status[0]["gap"],"mainSessionContinued":true,"concurrentSeparateLedgers":true,"research":state_a,"untrusted":state_b,"globalConfigUnchanged":true,"passed":true});
     fs::write(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/gates/evidence/phase-3/interruption-concurrency.json"),
+        evidence_directory().join("interruption-concurrency.json"),
         serde_json::to_string_pretty(&report).unwrap() + "\n",
     )
     .unwrap();
@@ -93,19 +92,14 @@ fn kill_observer(id: &str) -> u32 {
         if let Some(state) = Store::read(&RunStore::default_state_root().unwrap(), id).unwrap()
             && let Some(flight) = state.inflight
         {
-            let children =
-                fs::read_to_string(format!("/proc/{}/task/{}/children", flight.pid, flight.pid))
-                    .unwrap_or_default();
-            if !children.trim().is_empty() {
-                assert!(
-                    Command::new("/bin/kill")
-                        .args(["-KILL", &flight.pid.to_string()])
-                        .status()
-                        .unwrap()
-                        .success()
-                );
-                return flight.pid;
-            }
+            assert!(
+                Command::new("/bin/kill")
+                    .args(["-KILL", &flight.pid.to_string()])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            return flight.pid;
         }
         assert!(Instant::now() < deadline, "observer never became active");
         thread::sleep(Duration::from_millis(100));

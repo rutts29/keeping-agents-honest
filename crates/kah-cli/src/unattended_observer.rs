@@ -110,6 +110,17 @@ pub fn complete(
     changed_paths: &[String],
     tests: &Receipt,
 ) -> Result<Completion, String> {
+    if projection
+        .preserve
+        .iter()
+        .chain(&projection.frontier)
+        .chain(&projection.validation)
+        .any(|i| !i.uncertain_supersedes.is_empty())
+    {
+        return Err(
+            "RUN_INTENT_UNCERTAIN stage=completion: unresolved steering replacement".into(),
+        );
+    }
     let mut outcomes = vec![("goal".into(), projection.goal.text.clone())];
     outcomes.extend(
         projection

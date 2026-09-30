@@ -57,11 +57,6 @@ impl TryFrom<WireBundle> for NeutralSessionBundle {
             .map(|record| {
                 validate_identifier(&record.id, "record id")?;
                 validate_content(&record.content)?;
-                if record.content != normalize_content(record.content.clone()) {
-                    return Err(SessionBundleError::InvalidField(
-                        "record content must be normalized",
-                    ));
-                }
                 validate_sha256(&record.content_digest, "record content_digest")?;
                 if record.content_digest != record_digest(&record.id, &record.role, &record.content)
                 {

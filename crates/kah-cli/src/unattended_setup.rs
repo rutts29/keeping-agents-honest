@@ -18,7 +18,7 @@ use std::{
 
 pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     let mut control = RunControl::new(&args.task, args.limits)?;
-    let observer = kah_observer::semantic_resolver::CompactorConfig::new(
+    let observer = kah_observer::compaction::CompactorConfig::new(
         args.observer_model.as_deref().unwrap_or("gpt-6-luna"),
         Some(args.observer_effort.as_deref().unwrap_or("low")),
     )?;

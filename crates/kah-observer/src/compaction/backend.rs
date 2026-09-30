@@ -1,42 +1,5 @@
 use super::*;
 
-pub(super) fn invoke_codex(
-    root: &Path,
-    bundle: &NeutralSessionBundle,
-    config: CompactorConfig,
-    repair: Option<&RepairContext>,
-) -> Result<CodexCall, ExecutionFailure> {
-    let prompt = prompt(bundle, repair)
-        .map_err(|_| ExecutionFailure::new("OBSERVER_PROMPT", "proposal_prompt"))?;
-    invoke_codex_request(
-        root,
-        config,
-        constrain_sources(proposal_schema(), bundle),
-        &prompt,
-    )
-}
-
-pub(super) fn invoke_codex_incremental(
-    root: &Path,
-    history: &History,
-    projection: &ActiveProjection,
-    delta: &NeutralSessionBundle,
-    config: CompactorConfig,
-    repair_failure: Option<&str>,
-) -> Result<CodexCall, ExecutionFailure> {
-    let prompt = incremental_prompt(history, projection, delta, repair_failure)
-        .map_err(|_| ExecutionFailure::new("OBSERVER_INCREMENTAL_PROMPT", "proposal_prompt"))?;
-    invoke_codex_request(
-        root,
-        config,
-        constrain_sources(
-            constrain_base(incremental_proposal_schema(), history, projection),
-            delta,
-        ),
-        &prompt,
-    )
-}
-
 pub(super) fn invoke_codex_request(
     root: &Path,
     config: CompactorConfig,

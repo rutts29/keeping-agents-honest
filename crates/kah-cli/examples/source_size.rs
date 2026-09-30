@@ -16,7 +16,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             serde_json::json!({
                 "userRecords":users.authoritative_records().len(),
                 "userBytes":users.authoritative_records().iter().map(|r|r.content().len()).sum::<usize>(),
-                "initialChunks":kah_observer::semantic_resolver::initial_chunk_count(&users)?,
                 "boundedActions":snapshot.actions.len()
             })
         );

@@ -7,12 +7,32 @@ removed. Historical Luna numbers are not acceptance evidence. Old saved observer
 bindings migrate to Jev; old recorded judgments retain their original backend
 and are refused by the drift/completion decision functions.
 
-Source-linked intent text extraction remains a separate generative operation,
-defaulting to Luna/low through Codex login. It proposes text backed by explicit
-user records, never gating probabilities. Rust checks provenance and owns policy,
-arithmetic, persistence and execution. Jev never generates a summary.
-See [coding-agent guidance](https://docs.typesafe.ai/introduction/coding-agents)
-and the [extraction cascade](https://docs.typesafe.ai/cookbooks/sde_cascade).
+Per §8b, steering is now stored verbatim with its native record reference.
+Jev classifies `is_steering` and `steer_kind` and selects a superseded active ID
+(or `none`). Rust applies the operation. Ambiguous replacement retains both
+items with explicit `uncertain_supersedes` links. The original goal never changes.
+A confident withdrawal retains the exact withdrawal message as an active scope
+constraint and the withdrawn text in history.
+
+Luna/low synthesis is now **compaction only**, above the 32 KiB rendered budget.
+Its separate prompt summary links to original item IDs and a content digest;
+canonical items and the goal remain unchanged. `kah ledger SESSION` retrieves
+history, including inactive originals. Jev completion reads canonical text, never
+the summary, and unresolved replacement flags block completion.
+
+New verbatim runs have a separate stable identity. Existing synthesized ledgers
+remain on disk; source replay rebuilds from native user records rather than
+claiming old generated text was verbatim. Accepted decisions are journaled before
+history mutation so an interrupted intake reuses the same decision. No model
+call happens for an already accepted cursor.
+
+Local reference: `~/.local/share/typesafe-docs`, pinned 2026-09-30. Checked against
+`sdk/js-v0.6.0/types.ts`: kah sends `{model,state,questions}`; its nonempty string
+instructions/criteria are a supported subset of SDK `EntryType`. Responses match
+Noul (no confidence), Choice (choice/probabilities/confidence), Score
+(score/legend/probabilities/confidence), model and input/output token usage.
+kah's stricter request limits are application bounds. Oversize inputs record a
+gap; candidate IDs are never silently dropped. No mirror auto-update is used.
 
 The HTTP adapter follows the [API reference](https://docs.typesafe.ai/api),
 [Python](https://docs.typesafe.ai/sdk/python) and
@@ -47,10 +67,10 @@ journeys rather than treated as calibration guarantees. See
 
 For returned snapshot jev-1.13.0, the estimated cost uses the documented $0.042
 per million input tokens, output free (checked 2026-09-29). Unknown snapshots get
-no invented price. Native text extraction through Codex login has no available
+no invented price. Native compaction through Codex login has no available
 per-call cash charge. See [models and pricing](https://docs.typesafe.ai/models).
 Gate 3 reports Jev labels, false reminders, missed drift, tokens and latency,
-including the separate extraction overhead; it is a small journey set, not a
+including any size-triggered compaction overhead; it is a small journey set, not a
 broad accuracy benchmark.
 
 Phase 4 question set 4 asks one Choice per requirement (satisfied, violated,
@@ -59,3 +79,13 @@ and 0.85 confidence thresholds; two independent calls must agree. A redundant
 whole-task classification was removed after it vetoed a live candidate whose
 individual requirements all passed. Tests and current user-sequence/commit checks
 remain independent mandatory gates. No generation model supplies the numbers.
+
+Gate 3b question set 5 separates message typing (before deterministic intake)
+from action assessment (after intake). The dependency requires two calls when
+both are new; independent questions in each call still fan out. Steering needs
+Noul >=0.80; low kind confidence preserves the exact message with uncertainty
+links instead of dropping it. Replacement needs kind probability/confidence
+>=0.70 and target
+probability >=0.90 and confidence >=0.85. Uncertain steering presence records a gap; uncertain
+replacement preserves both exact messages. These are evaluated policy thresholds,
+not a general accuracy guarantee.

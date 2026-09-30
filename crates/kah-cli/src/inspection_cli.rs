@@ -53,14 +53,14 @@ fn print_ledger(state: &State) -> Result<()> {
     // Recovered history is parsed from the canonical JSONL segments; there is
     // no duplicate markdown ledger or model-authored source record.
     println!("Goal: {}", recovered.history.goal().text);
-    for item in recovered
-        .projection
-        .preserve
-        .iter()
-        .chain(&recovered.projection.frontier)
-        .chain(&recovered.projection.validation)
-    {
-        println!("- {} ({})", item.text, item.id);
+    for item in recovered.history.intents().values() {
+        println!("- {} ({}, {:?})", item.text, item.id, item.lifecycle);
+        if !item.uncertain_supersedes.is_empty() {
+            println!(
+                "  Uncertain replacement; retained with: {:?}",
+                item.uncertain_supersedes
+            );
+        }
     }
     println!(
         "Revision: {}; observer reminders: {}",

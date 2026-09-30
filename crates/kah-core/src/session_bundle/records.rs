@@ -50,7 +50,7 @@ impl fmt::Debug for BundleSource {
     }
 }
 
-/// One normalized source message, retained in the provider's original order.
+/// One source message, retained in the provider's original order.
 #[derive(Clone, Eq, PartialEq, Serialize)]
 pub struct BundleRecord {
     pub(super) id: String,
@@ -60,7 +60,7 @@ pub struct BundleRecord {
 }
 
 impl BundleRecord {
-    /// Creates a record and calculates its SHA-256 digest from its normalized
+    /// Creates a record and calculates its SHA-256 digest from its
     /// identifier, role, and text.
     pub fn new(
         id: impl Into<String>,
@@ -68,7 +68,7 @@ impl BundleRecord {
         content: impl Into<String>,
     ) -> Result<Self, SessionBundleError> {
         let id = id.into();
-        let content = normalize_content(content.into());
+        let content = content.into();
         validate_identifier(&id, "record id")?;
         validate_content(&content)?;
         let content_digest = record_digest(&id, &role, &content);

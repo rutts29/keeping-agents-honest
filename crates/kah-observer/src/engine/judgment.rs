@@ -18,32 +18,11 @@ pub(super) fn assess(
     context: Context<'_>,
 ) -> Result<judge::decision::Assessment, String> {
     let prior_items = context.prior.map(items).unwrap_or_default();
-    let questions = judge::questions::observation(&prior_items);
+    let questions = judge::questions::drift();
     let input = bounded_state(state, &context, &prior_items);
-    let home = env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or("JUDGE_HOME stage=observe")?;
-    let judgment = match judge::routing::evaluate(
-        &home,
-        state.binding.judge,
-        &state.binding.jev_model,
-        &input,
-        &questions,
-    ) {
-        Ok(result) => result,
-        Err(error) => {
-            state.usage.incomplete_calls += 1;
-            return Err(error.to_string());
-        }
-    };
-    record_usage(state, &judgment);
+    let judgment = evaluate(state, store, &input, &questions, "drift")?;
     let assessment = judge::decision::assessment(&judgment, context.actions, state.failures.len());
-    let digest = format!("sha256:{:x}", Sha256::digest(input.to_string().as_bytes()));
-    store.append(&json!({"kind":"judgment","source":"observer","question_set":judge::questions::VERSION,"state_digest":digest,"judgment":judgment,"assessment":assessment,"turn":context.turn,"at_ms":crate::session::now_ms()}))?;
-    state.judgments.push(judgment);
-    if state.judgments.len() > 16 {
-        state.judgments.remove(0);
-    }
+    store.append(&json!({"kind":"assessment","source":"observer","assessment":assessment,"turn":context.turn}))?;
     record_failures(state, context.actions);
     Ok(assessment)
 }
@@ -113,4 +92,35 @@ fn record_failures(state: &mut State, actions: &[Value]) {
     if state.failures.len() > 8 {
         state.failures.drain(..state.failures.len() - 8);
     }
+}
+
+pub(super) fn evaluate(
+    state: &mut State,
+    store: &mut Store,
+    input: &Value,
+    questions: &judge::Questions,
+    purpose: &str,
+) -> Result<Judgment, String> {
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or("JUDGE_HOME stage=observe")?;
+    let judgment = judge::routing::evaluate(
+        &home,
+        state.binding.judge,
+        &state.binding.jev_model,
+        input,
+        questions,
+    )
+    .map_err(|e| {
+        state.usage.incomplete_calls += 1;
+        e.to_string()
+    })?;
+    record_usage(state, &judgment);
+    let digest = format!("sha256:{:x}", Sha256::digest(input.to_string().as_bytes()));
+    store.append(&json!({"kind":"judgment","source":"observer","purpose":purpose,"question_set":judge::questions::VERSION,"state_digest":digest,"judgment":judgment,"at_ms":crate::session::now_ms()}))?;
+    state.judgments.push(judgment.clone());
+    if state.judgments.len() > 16 {
+        state.judgments.remove(0);
+    }
+    Ok(judgment)
 }
