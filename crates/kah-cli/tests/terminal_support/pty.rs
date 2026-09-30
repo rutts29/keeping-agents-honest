@@ -1,6 +1,7 @@
+#[path = "input.rs"]
+mod input;
 use std::{
     fs,
-    io::Write,
     os::unix::{
         fs::{OpenOptionsExt, PermissionsExt},
         process::CommandExt,
@@ -74,8 +75,8 @@ impl Terminal {
     }
 
     pub fn send(&mut self, input: &str) {
-        self.input.write_all(input.as_bytes()).unwrap();
-        self.input.flush().unwrap();
+        let output = fs::read(&self.log).expect("FIXTURE_TERMINAL_READ stage=input: abort");
+        input::send(&output, input, &mut self.input).unwrap();
     }
 
     pub fn submit(&mut self, text: &str) {
