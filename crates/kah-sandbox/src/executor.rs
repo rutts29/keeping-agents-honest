@@ -35,13 +35,22 @@ const BASE_ARGS: &[&str] = &[
     "GIT_CONFIG_KEY_0=safe.directory",
 ];
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Executor {
     pub args: Vec<String>,
     image_index: usize,
 }
 
 impl Executor {
+    pub fn add_writable_mount(&mut self, source: &Path, target: &Path) -> Result<(), Error> {
+        let mount = format!(
+            "type=bind,source={},target={}",
+            mount_path(source)?,
+            mount_path(target)?
+        );
+        self.insert_options(["--mount".into(), mount]);
+        Ok(())
+    }
     pub fn with_read_only_mounts(
         mut self,
         mounts: &[(std::path::PathBuf, std::path::PathBuf)],

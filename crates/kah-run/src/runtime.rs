@@ -16,6 +16,7 @@ pub struct Runtime {
     image: String,
     service_uid: u32,
     skills: Vec<(PathBuf, PathBuf)>,
+    pub(crate) fetch_mounts: Option<(PathBuf, PathBuf)>,
 }
 impl Runtime {
     pub fn prepare(
@@ -32,25 +33,18 @@ impl Runtime {
             .join(".local/bin/codex")
             .canonicalize()
             .map_err(io_error)?;
+        let uid = current_uid().map_err(|e| e.to_string())?;
         let public = publish_binary(
             &native,
-            &PathBuf::from(format!(
-                "/var/tmp/kah-runtime-{}",
-                current_uid().map_err(|e| e.to_string())?
-            )),
+            &PathBuf::from(format!("/var/tmp/kah-runtime-{uid}")),
         )
         .map_err(|e| e.to_string())?;
         let image = fs::read_to_string("/usr/local/share/sbx/image-ref").map_err(io_error)?;
         let domain = domain(record)?;
         let service_uid = service_uid()?;
-        let mounts = kah_sandbox::publish_skills(
-            home,
-            &PathBuf::from(format!(
-                "/var/tmp/kah-skills-{}",
-                current_uid().map_err(|e| e.to_string())?
-            )),
-        )
-        .map_err(|e| e.to_string())?;
+        let mounts =
+            kah_sandbox::publish_skills(home, &PathBuf::from(format!("/var/tmp/kah-skills-{uid}")))
+                .map_err(|e| e.to_string())?;
         let executor = launch::sandbox(
             domain,
             &tree.path,
@@ -84,6 +78,7 @@ impl Runtime {
             image: image.trim().into(),
             service_uid,
             skills: mounts,
+            fetch_mounts: None,
         })
     }
     pub fn verification_executor(
@@ -93,7 +88,7 @@ impl Runtime {
         id: &str,
     ) -> Result<Executor, String> {
         crate::access::share_tree(&tree.path, self.service_uid, true)?;
-        launch::sandbox(
+        let executor = launch::sandbox(
             domain,
             &tree.path,
             &tree.git_dir,
@@ -103,7 +98,12 @@ impl Runtime {
             id,
         )?
         .with_read_only_mounts(&self.skills)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        if let Some((directory, binary)) = &self.fetch_mounts {
+            crate::fetch_runtime::mount(executor, directory, binary)
+        } else {
+            Ok(executor)
+        }
     }
     pub fn command(&self, record: &Record) -> Command {
         launch::WorkerLaunch {
