@@ -321,6 +321,7 @@ dependencies = [
  "kah-codex",
  "kah-core",
  "kah-observer",
+ "kah-run",
  "kah-sandbox",
  "serde",
  "serde_json",
@@ -358,6 +359,18 @@ dependencies = [
  "serde_json",
  "sha2",
  "ureq",
+]
+
+[[package]]
+name = "kah-run"
+version = "0.1.0"
+dependencies = [
+ "kah-codex",
+ "kah-core",
+ "kah-sandbox",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
