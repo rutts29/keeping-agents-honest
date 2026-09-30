@@ -126,7 +126,9 @@ fn rpc_error(error: ControlError) -> SourceError {
     SourceError::new(error.code, "codex_control", error.detail)
 }
 
-fn user_bundle(imported: &ImportedSession) -> Result<Option<NeutralSessionBundle>, SourceError> {
+pub(super) fn user_bundle(
+    imported: &ImportedSession,
+) -> Result<Option<NeutralSessionBundle>, SourceError> {
     let users = imported
         .records
         .iter()
@@ -157,4 +159,29 @@ fn user_bundle(imported: &ImportedSession) -> Result<Option<NeutralSessionBundle
         )
     };
     Ok(users)
+}
+
+/// Redacted provenance audit of native user-role transport records; no text leaves this function.
+pub fn provenance_audit(client: &mut Control, id: &str) -> Result<Value, SourceError> {
+    let entries = read_items(client, &validate_explicit_session_id(id)?)?;
+    let mut records = Vec::new();
+    for entry in entries {
+        let item = &entry["item"];
+        if item["type"] != "userMessage" {
+            continue;
+        }
+        let mut imported = Vec::new();
+        parse_user_message(item, "provenance_audit", &mut imported)?;
+        for record in imported {
+            let source = match record.role {
+                SourceRole::User => "user",
+                SourceRole::Delegate => "delegate",
+                _ => "system",
+            };
+            records.push(json!({"record_hash":format!("{:x}",Sha256::digest(record.id.as_bytes())),"source":source}));
+        }
+    }
+    Ok(
+        json!({"records":records,"scope":"Native user-role records classified by explicit source markers. Bare terminal paste has no sender identity in Codex thread/read."}),
+    )
 }

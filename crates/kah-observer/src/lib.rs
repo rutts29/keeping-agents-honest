@@ -7,4 +7,5 @@ pub mod session;
 pub mod judge;
 
 pub mod compaction;
+pub mod evaluation;
 pub mod verbatim;

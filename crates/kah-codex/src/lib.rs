@@ -2,6 +2,7 @@
 pub mod plugin_control;
 pub mod source;
 
+pub mod authorship;
 pub mod control;
 pub mod exec_events;
 pub mod hooks;

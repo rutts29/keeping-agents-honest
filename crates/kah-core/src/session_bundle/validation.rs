@@ -74,6 +74,7 @@ pub(super) fn source_digest(records: &[BundleRecord]) -> String {
 pub(super) fn role_name(role: &SourceRole) -> &'static str {
     match role {
         SourceRole::User => "user",
+        SourceRole::Delegate => "delegate",
         SourceRole::Assistant => "assistant",
         SourceRole::Tool => "tool",
         SourceRole::SystemObservation => "system_observation",

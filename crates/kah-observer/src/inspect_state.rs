@@ -34,7 +34,7 @@ impl InspectSource {
                 .collect(),
         )?;
         let mut digest = Sha256::new();
-        digest.update(b"kah.verbatim-run.v1\0");
+        digest.update(b"kah.verbatim-human-run.v2\0");
         digest.update(provider_name(cursor.provider()).as_bytes());
         digest.update([0]);
         digest.update(cursor.session_locator_private().as_bytes());

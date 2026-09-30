@@ -15,7 +15,7 @@ pub fn validate_request(state: &Value, questions: &Questions) -> Result<(), Erro
             Question::Choice {
                 instructions,
                 criteria,
-            } => !instructions.trim().is_empty() && (2..=32).contains(&criteria.len()),
+            } => !instructions.trim().is_empty() && (2..=255).contains(&criteria.len()),
             Question::Score {
                 instructions,
                 criteria,

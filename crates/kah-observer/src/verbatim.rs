@@ -58,6 +58,12 @@ fn apply_inner(
     if target != "none" && selected.is_none() {
         return Err("OBSERVER_TARGET stage=verbatim".into());
     }
+    let protected_goal = kind != "goal_change"
+        && selected.is_some_and(|i| {
+            i.introduced_by
+                .iter()
+                .any(|r| history.goal().source_refs.contains(r))
+        });
     apply_operation(
         history,
         text,
@@ -67,8 +73,12 @@ fn apply_inner(
         probability >= REPLACE_PROBABILITY
             && confidence >= REPLACE_CONFIDENCE
             && replacing
-            && kind_certain,
-        !kind_certain || probability < REPLACE_PROBABILITY || confidence < REPLACE_CONFIDENCE,
+            && kind_certain
+            && !protected_goal,
+        protected_goal
+            || !kind_certain
+            || probability < REPLACE_PROBABILITY
+            || confidence < REPLACE_CONFIDENCE,
     )
 }
 
@@ -113,10 +123,7 @@ fn apply_operation(
             }
         }
     } else {
-        if uncertain
-            || matches!(kind, "correction" | "scope_reduction" | "goal_change")
-            || target != "none"
-        {
+        if uncertain || target != "none" {
             item.review_required = true;
             item.uncertain_supersedes = history
                 .intents()

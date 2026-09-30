@@ -75,6 +75,7 @@ pub enum SourceProvider {
 #[serde(rename_all = "snake_case")]
 pub enum SourceRole {
     User,
+    Delegate,
     Assistant,
     Tool,
     SystemObservation,

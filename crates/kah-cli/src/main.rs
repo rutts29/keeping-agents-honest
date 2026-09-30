@@ -3,6 +3,9 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments.first().is_some_and(|s| s == "eval") {
+        return kah_cli::evaluation_cli::run(&arguments);
+    }
     if arguments.first().is_some_and(|s| s == "__fetch") {
         return kah_cli::fetch_cli::run(&arguments);
     }

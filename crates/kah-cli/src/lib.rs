@@ -11,6 +11,7 @@ pub use launch::Launch;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub mod attached_observer;
+pub mod evaluation_cli;
 pub mod fetch_cli;
 pub mod run_commands;
 pub mod unattended_args;

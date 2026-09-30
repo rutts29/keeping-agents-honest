@@ -15,7 +15,12 @@ pub(super) fn parse_user_message(
             let role = if crate::plugin_control::parse(&content).is_some() {
                 SourceRole::SystemObservation
             } else {
-                SourceRole::User
+                crate::authorship::classify(
+                    &content,
+                    item["clientId"]
+                        .as_str()
+                        .is_some_and(|id| id.starts_with("kah-delegate:")),
+                )
             };
             (role, content)
         } else {
