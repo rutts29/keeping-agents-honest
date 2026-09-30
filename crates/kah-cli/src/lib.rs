@@ -10,6 +10,7 @@ pub use arguments::Arguments;
 pub use launch::Launch;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+pub mod attached_observer;
 pub mod run_commands;
 pub mod unattended_args;
 pub mod unattended_observer;

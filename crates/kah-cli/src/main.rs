@@ -3,6 +3,14 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments.first().is_some_and(|s| s == "__attach-observer") {
+        let session = arguments
+            .get(1)
+            .filter(|_| arguments.len() == 2)
+            .ok_or("ATTACH_SESSION_REQUIRED stage=arguments")?;
+        let home = PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=attach")?);
+        return kah_cli::attached_observer::watch(&home, &env::current_dir()?, session);
+    }
     if kah_cli::run_commands::handles(&arguments) {
         return kah_cli::run_commands::run(arguments);
     }
