@@ -43,6 +43,7 @@ impl<C: Client> Judge for Jev<C> {
             model,
             answers,
             metrics: Metrics {
+                calls: 1,
                 input_tokens: input,
                 output_tokens: output,
                 elapsed_ms: started.elapsed().as_millis() as u64,

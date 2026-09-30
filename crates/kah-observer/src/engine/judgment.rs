@@ -96,7 +96,7 @@ fn bounded(text: &str, limit: usize) -> &str {
     &text[..end]
 }
 fn record_usage(state: &mut State, judgment: &Judgment) {
-    state.usage.calls += 1;
+    state.usage.calls += judgment.metrics.calls;
     state.usage.input_tokens += judgment.metrics.input_tokens;
     state.usage.cached_input_tokens += judgment.metrics.cached_input_tokens;
     state.usage.output_tokens += judgment.metrics.output_tokens;

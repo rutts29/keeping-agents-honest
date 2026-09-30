@@ -23,11 +23,16 @@ pub struct Judgment {
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Metrics {
+    #[serde(default = "one_call")]
+    pub calls: u64,
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
     pub output_tokens: u64,
     pub elapsed_ms: u64,
     pub estimated_cost_usd: Option<f64>,
+}
+fn one_call() -> u64 {
+    1
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {

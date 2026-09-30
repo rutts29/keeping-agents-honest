@@ -87,7 +87,11 @@ fn metrics(judgments: &[&Value]) -> Value {
         .iter()
         .map(|j| j["metrics"]["estimated_cost_usd"].as_f64())
         .collect::<Option<Vec<_>>>();
-    json!({"calls":judgments.len(),"inputTokens":input,"outputTokens":output,"estimatedCostUsd":costs.map(|v|v.iter().sum::<f64>()),"p50LatencyMs":latency[(latency.len()-1)/2],"p95LatencyMs":latency[(latency.len()*95).div_ceil(100)-1],"latenciesMs":latency})
+    let calls = judgments
+        .iter()
+        .map(|j| j["metrics"]["calls"].as_u64().unwrap_or(1))
+        .sum::<u64>();
+    json!({"judgments":judgments.len(),"calls":calls,"inputTokens":input,"outputTokens":output,"estimatedCostUsd":costs.map(|v|v.iter().sum::<f64>()),"p50LatencyMs":latency[(latency.len()-1)/2],"p95LatencyMs":latency[(latency.len()*95).div_ceil(100)-1],"latenciesMs":latency})
 }
 fn number(value: &Value, key: &str) -> u64 {
     value[key].as_u64().unwrap()
