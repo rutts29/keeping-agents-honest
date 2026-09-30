@@ -132,8 +132,12 @@ impl Fixture {
     }
     pub fn save(&self, name: &str, value: &serde_json::Value) {
         fs::write(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("../../docs/gates/evidence/phase-4/{name}.json")),
+            std::env::var_os("KAH_GATE_EVIDENCE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/gates/evidence/phase-4")
+                })
+                .join(format!("{name}.json")),
             serde_json::to_string_pretty(value).unwrap() + "\n",
         )
         .unwrap();

@@ -67,8 +67,7 @@ fn a_real_task_finishes_on_a_reviewable_branch() {
     );
     let evidence = json!({"passed":true,"report":report,"sourceHeadUnchanged":true,"globalConfigUnchanged":true});
     fs::write(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/gates/evidence/phase-4/complete.json"),
+        evidence_directory().join("complete.json"),
         serde_json::to_string_pretty(&evidence).unwrap() + "\n",
     )
     .unwrap();
@@ -107,4 +106,12 @@ fn git(root: &std::path::Path, args: &[&str]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout).unwrap().trim().into()
+}
+
+fn evidence_directory() -> PathBuf {
+    std::env::var_os("KAH_GATE_EVIDENCE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/gates/evidence/phase-4")
+        })
 }

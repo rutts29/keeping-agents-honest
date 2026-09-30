@@ -178,3 +178,15 @@ fn uncertain_kind_preserves_clear_steering_without_replacing_anything() {
             .any(|i| !i.uncertain_supersedes.is_empty())
     );
 }
+
+#[test]
+fn uncertain_presence_is_retained_for_review_without_supersession() {
+    let mut h = history();
+    let old = h.intents().keys().next().unwrap().to_string();
+    let mut j = judgment("correction", &old, 0.99);
+    j.answers
+        .insert("is_steering".into(), Answer::Noul { noul: 0.63 });
+    verbatim::apply(&mut h, "Remove the previously configured usage limit.", source("u2"), &j).unwrap();
+    assert_eq!(h.intents().values().filter(|i| i.is_active()).count(), 2);
+    assert!(h.intents().values().any(|i| i.review_required));
+}

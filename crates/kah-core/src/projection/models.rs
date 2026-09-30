@@ -140,6 +140,7 @@ impl ActiveProjection {
         if let Some(compaction) = &self.compaction {
             return serde_json::to_string(&serde_json::json!({
                 "goal": self.goal, "compacted_intent": compaction,
+                "review_required": self.needs_review(),
                 "authority": "Goal is original user text. Active steering supersedes historical details. Summary is an interpretation; retrieve originals from kah ledger before resolving ambiguity."
             })).map_err(ProjectionError::from);
         }
@@ -170,6 +171,15 @@ impl ActiveProjection {
     #[must_use]
     pub fn is_overflowed(&self) -> bool {
         self.overflow.is_overflow()
+    }
+
+    #[must_use]
+    pub fn needs_review(&self) -> bool {
+        self.preserve
+            .iter()
+            .chain(&self.frontier)
+            .chain(&self.validation)
+            .any(|i| i.review_required || !i.uncertain_supersedes.is_empty())
     }
 
     #[must_use]

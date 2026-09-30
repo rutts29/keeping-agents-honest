@@ -82,10 +82,11 @@ remain independent mandatory gates. No generation model supplies the numbers.
 
 Gate 3b question set 5 separates message typing (before deterministic intake)
 from action assessment (after intake). The dependency requires two calls when
-both are new; independent questions in each call still fan out. Steering needs
-Noul >=0.80; low kind confidence preserves the exact message with uncertainty
-links instead of dropping it. Replacement needs kind probability/confidence
+both are new; independent questions in each call still fan out. Confident steering uses
+Noul >=0.80. At <=0.20, no steering operation is applied. Intermediate presence
+or low kind confidence retains the exact message with `review_required` and
+uncertainty links; it cannot replace anything or authorize automated completion
+or drift reminders. Later source records still advance. Replacement needs kind probability/confidence
 >=0.70 and target
-probability >=0.90 and confidence >=0.85. Uncertain steering presence records a gap; uncertain
-replacement preserves both exact messages. These are evaluated policy thresholds,
+probability >=0.90 and confidence >=0.85. API/validation errors record gaps; uncertain replacement preserves both exact messages. These are evaluated policy thresholds,
 not a general accuracy guarantee.

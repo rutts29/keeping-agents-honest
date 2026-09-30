@@ -52,6 +52,8 @@ fn compaction_links_originals_and_cannot_change_ledger_or_survive_new_input() {
     assert!(p.rendered_prompt().contains("Generated summary"));
     assert!(p.rendered_prompt().contains("Exact original goal"));
     assert_eq!(p.frontier, original);
+    p.frontier[0].review_required = true;
+    assert!(p.needs_review());
     p.frontier[0].text.push('!');
     compaction::attach(&mut p, Some(&c));
     assert!(p.compaction.is_none());

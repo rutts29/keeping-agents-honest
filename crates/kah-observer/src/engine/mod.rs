@@ -192,6 +192,9 @@ fn drift_reminder(
     turn: &str,
     allow_reminder: bool,
 ) -> Result<Option<ContextInjection>, String> {
+    if projection.needs_review() {
+        return Ok(None);
+    }
     let reminder = if assessment.state == AssessmentState::MaterialDrift {
         let should_remind =
             allow_reminder && !state.drift_active && state.reminded_turn.as_deref() != Some(turn);

@@ -3,10 +3,9 @@ use crate::judge::{Answer, Judgment};
 use kah_core::intent_history::*;
 use sha2::{Digest, Sha256};
 
-pub const STEERING_PROBABILITY: f64 = 0.8;
-pub const TYPE_CONFIDENCE: f64 = 0.7;
-pub const REPLACE_CONFIDENCE: f64 = 0.85;
-pub const REPLACE_PROBABILITY: f64 = 0.9;
+use crate::judge::questions::{
+    REPLACE_CONFIDENCE, REPLACE_PROBABILITY, STEERING_PROBABILITY, TYPE_CONFIDENCE,
+};
 
 pub fn apply(
     history: &mut History,
@@ -42,10 +41,8 @@ fn apply_inner(
         return Ok(());
     }
     let (kind, probability, confidence) = choice(judgment, "steer_kind")?;
-    if *noul < STEERING_PROBABILITY {
-        return Err("OBSERVER_TYPING_UNCERTAIN stage=verbatim".into());
-    }
-    let kind_certain = probability >= TYPE_CONFIDENCE
+    let kind_certain = *noul >= STEERING_PROBABILITY
+        && probability >= TYPE_CONFIDENCE
         && confidence >= TYPE_CONFIDENCE
         && !matches!(kind, "unclear" | "none" | "question_only");
     let (target, probability, confidence) = if judgment.answers.contains_key("supersedes") {
@@ -120,6 +117,7 @@ fn apply_operation(
             || matches!(kind, "correction" | "scope_reduction" | "goal_change")
             || target != "none"
         {
+            item.review_required = true;
             item.uncertain_supersedes = history
                 .intents()
                 .values()

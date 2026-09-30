@@ -55,7 +55,7 @@ fn print_ledger(state: &State) -> Result<()> {
     println!("Goal: {}", recovered.history.goal().text);
     for item in recovered.history.intents().values() {
         println!("- {} ({}, {:?})", item.text, item.id, item.lifecycle);
-        if !item.uncertain_supersedes.is_empty() {
+        if item.review_required || !item.uncertain_supersedes.is_empty() {
             println!(
                 "  Uncertain replacement; retained with: {:?}",
                 item.uncertain_supersedes

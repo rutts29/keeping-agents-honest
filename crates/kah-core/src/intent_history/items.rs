@@ -70,6 +70,9 @@ pub struct IntentItem {
     /// Uncertain replacement targets; both sides remain active for review.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uncertain_supersedes: Vec<IntentId>,
+    /// Retained user text whose classification/replacement is unresolved.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub review_required: bool,
 }
 
 impl IntentItem {
@@ -91,6 +94,7 @@ impl IntentItem {
             supersedes: Vec::new(),
             evidence: Vec::new(),
             uncertain_supersedes: Vec::new(),
+            review_required: false,
         }
     }
 
@@ -114,6 +118,7 @@ impl IntentItem {
             supersedes: vec![previous_id.into()],
             evidence: Vec::new(),
             uncertain_supersedes: Vec::new(),
+            review_required: false,
         }
     }
 
@@ -216,4 +221,8 @@ impl ConflictResolution {
             approval,
         }
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }

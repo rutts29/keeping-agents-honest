@@ -3,6 +3,11 @@
 use super::*;
 
 pub const VERSION: u32 = 5;
+pub const STEERING_PROBABILITY: f64 = 0.8;
+pub const TYPE_CONFIDENCE: f64 = 0.7;
+pub const REPLACE_CONFIDENCE: f64 = 0.85;
+pub const REPLACE_PROBABILITY: f64 = 0.9;
+
 pub const REMINDER_CONFIDENCE: f64 = 0.75;
 pub const MATERIAL_DISTANCE: f64 = 1.5;
 pub const STRONG_FAILURE_SIGNAL: f64 = 0.9;
