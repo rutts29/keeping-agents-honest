@@ -63,20 +63,42 @@ fn native(args: &[&str]) -> bool {
 }
 
 #[test]
-#[ignore = "installed Bash routing and native daemon version; no restart or configuration writes"]
+fn newly_installed_commands_are_discovered_without_rerouting_resume_or_prompts() {
+    let help = "Usage: codex [OPTIONS]\n\nCommands:\n  future-admin  New management\n  resume  Resume\n  fork  Fork\n\nOptions:\n  --help  Help\n";
+    for (arg, expected) in [
+        ("future-admin", true),
+        ("resume", false),
+        ("fork", false),
+        ("task", false),
+    ] {
+        assert_eq!(
+            kah_cli::shell_routing::with_help(&[arg.into()], Some(help)),
+            expected
+        );
+    }
+    assert!(kah_cli::shell_routing::with_help(
+        &["login".into()],
+        Some("unparseable")
+    ));
+}
+
+#[test]
+#[ignore = "installed Bash routing and native restart help in a disposable CODEX_HOME"]
 fn installed_management_routing() {
     let home = std::env::var("HOME").unwrap();
     let mut results = vec![];
+    let isolated = std::env::temp_dir().join(format!("kah-routing-{}", std::process::id()));
+    std::fs::create_dir_all(&isolated).unwrap();
     for domain in ["mine", "research", "untrusted"] {
         let output = Command::new("bash")
             .args([
                 "--noprofile",
                 "--norc",
                 "-c",
-                "source \"$HOME/.local/share/kah/shell.sh\"; codex app-server daemon version",
+                "source \"$HOME/.local/share/kah/shell.sh\"; codex app-server daemon restart --help",
             ])
             .current_dir(format!("{home}/repos/{domain}"))
-            .env_remove("CODEX_HOME")
+            .env("CODEX_HOME", &isolated)
             .output()
             .unwrap();
         assert!(
@@ -84,8 +106,10 @@ fn installed_management_routing() {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let version: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        results.push(serde_json::json!({"domain":domain,"nativeDaemonVersion":version}));
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("codex app-server daemon restart")
+        );
+        results.push(serde_json::json!({"domain":domain,"nativeRestartHelp":true,"isolatedHome":true,"daemonRestarted":false}));
     }
     let path = std::path::PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
     std::fs::write(
@@ -93,4 +117,5 @@ fn installed_management_routing() {
         serde_json::to_vec_pretty(&results).unwrap(),
     )
     .unwrap();
+    std::fs::remove_dir_all(isolated).unwrap();
 }
