@@ -7,9 +7,11 @@ use std::{
     process::Command,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+mod cleanup;
 
 pub struct Fixture {
-    pub root: PathBuf,
+    root: PathBuf,
+    created_root: PathBuf,
     pub id: String,
     pub base: PathBuf,
     pub evidence: PathBuf,
@@ -25,6 +27,7 @@ impl Fixture {
         let id = format!("00000000-0000-4000-8000-{:012x}", nonce & 0xffffffffffff);
         let root = home.join(format!("repos/mine/kah-claude-live-{nonce}"));
         fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
         assert!(
             Command::new("git")
                 .args(["init", "--quiet"])
@@ -35,6 +38,7 @@ impl Fixture {
         );
         let encoded = root.to_string_lossy().replace('/', "-");
         Self {
+            created_root: root.clone(),
             root,
             id,
             base: RunStore::default_state_root().unwrap(),
@@ -44,14 +48,23 @@ impl Fixture {
     }
     pub fn start(&self, resume: bool) -> Terminal {
         let native = if resume {
-            format!("--resume {}", self.id)
+            format!("--resume {} --permission-mode acceptEdits", self.id)
         } else {
-            format!("--session-id {} --permission-mode acceptEdits", self.id)
+            format!(
+                "--session-id {} --permission-mode acceptEdits --allowedTools Bash",
+                self.id
+            )
+        };
+        let choices = if resume {
+            ""
+        } else {
+            "--model haiku --effort low"
         };
         let command = format!(
-            "cd {} && {} --agent claude --model haiku --effort low -- {}",
+            "cd {} && {} --agent claude {} -- {}",
             quote(self.root.to_str().unwrap()),
             quote(env!("CARGO_BIN_EXE_kah")),
+            choices,
             native
         );
         Terminal::start(&command, &self.root.join("terminal.log"))
@@ -96,6 +109,26 @@ impl Fixture {
         // Claude's own PTY reply path uses bracketed paste, then Enter.
         terminal.submit(&format!("\x1b[200~{text}\x1b[201~"));
     }
+    pub fn rows(&self) -> Vec<serde_json::Value> {
+        fs::read_to_string(self.transcript_directory.join(format!("{}.jsonl", self.id)))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|s| serde_json::from_str(s).ok())
+            .collect()
+    }
+    pub fn child_transcripts(&self) -> usize {
+        fs::read_dir(self.transcript_directory.join(&self.id).join("subagents"))
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| e.path().extension().is_some_and(|s| s == "jsonl"))
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+    pub fn has_file(&self, file: &str, text: &str) -> bool {
+        fs::read_to_string(self.root.join(file)).is_ok_and(|s| s.trim() == text)
+    }
     pub fn settled(&self, terminal: &mut Terminal, text: &str) {
         self.wait(terminal, || {
             let Ok(Some(state)) = Store::read(&self.base, &self.id) else {
@@ -137,6 +170,10 @@ fn screen(raw: &str) -> String {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
+        let Ok(mut purge) = cleanup::command(&self.root, &self.created_root) else {
+            eprintln!("Claude fixture cleanup refused: created project identity changed");
+            return;
+        };
         if let Ok(Some(state)) = Store::read(&self.base, &self.id)
             && let Some(run) = state.run_id
             && let Ok(path) = RunStore::path_for(&self.base, &self.root, run)
@@ -144,10 +181,7 @@ impl Drop for Fixture {
             let _ = fs::remove_dir_all(path);
         }
         let _ = fs::remove_dir_all(Store::directory(&self.base, &self.id));
-        let cleanup = Command::new("claude")
-            .args(["project", "purge", "--yes"])
-            .arg(&self.root)
-            .output();
+        let cleanup = purge.output();
         if !cleanup.is_ok_and(|o| o.status.success()) {
             eprintln!("Claude fixture project-state purge failed");
         }

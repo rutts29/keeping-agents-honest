@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 mod claude_support;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
