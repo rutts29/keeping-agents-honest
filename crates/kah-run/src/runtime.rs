@@ -12,6 +12,10 @@ pub struct Runtime {
     pub native: PathBuf,
     pub overlay: PathBuf,
     pub executor: Executor,
+    public_native: PathBuf,
+    image: String,
+    service_uid: u32,
+    skills: Vec<(PathBuf, PathBuf)>,
 }
 impl Runtime {
     pub fn prepare(
@@ -37,19 +41,27 @@ impl Runtime {
         )
         .map_err(|e| e.to_string())?;
         let image = fs::read_to_string("/usr/local/share/sbx/image-ref").map_err(io_error)?;
-        let domain = Domain::ALL
-            .into_iter()
-            .find(|d| d.as_str() == record.domain)
-            .ok_or("RUN_DOMAIN stage=worker_prepare")?;
+        let domain = domain(record)?;
+        let service_uid = service_uid()?;
+        let mounts = kah_sandbox::publish_skills(
+            home,
+            &PathBuf::from(format!(
+                "/var/tmp/kah-skills-{}",
+                current_uid().map_err(|e| e.to_string())?
+            )),
+        )
+        .map_err(|e| e.to_string())?;
         let executor = launch::sandbox(
             domain,
             &tree.path,
             &tree.git_dir,
             &public,
             image.trim(),
-            service_uid()?,
+            service_uid,
             id,
-        )?;
+        )?
+        .with_read_only_mounts(&mounts)
+        .map_err(|e| e.to_string())?;
         let overlay = state.join("codex");
         overlay::prepare(
             &home.join(".codex"),
@@ -68,7 +80,30 @@ impl Runtime {
             native,
             overlay,
             executor,
+            public_native: public,
+            image: image.trim().into(),
+            service_uid,
+            skills: mounts,
         })
+    }
+    pub fn verification_executor(
+        &self,
+        domain: Domain,
+        tree: &Worktree,
+        id: &str,
+    ) -> Result<Executor, String> {
+        crate::access::share_tree(&tree.path, self.service_uid, true)?;
+        launch::sandbox(
+            domain,
+            &tree.path,
+            &tree.git_dir,
+            &self.public_native,
+            &self.image,
+            self.service_uid,
+            id,
+        )?
+        .with_read_only_mounts(&self.skills)
+        .map_err(|e| e.to_string())
     }
     pub fn command(&self, record: &Record) -> Command {
         launch::WorkerLaunch {
@@ -104,6 +139,12 @@ impl Runtime {
         }
         Ok(())
     }
+}
+fn domain(record: &Record) -> Result<Domain, String> {
+    Domain::ALL
+        .into_iter()
+        .find(|d| d.as_str() == record.domain)
+        .ok_or_else(|| "RUN_DOMAIN stage=worker_prepare".into())
 }
 pub fn service_uid() -> Result<u32, String> {
     let output = Command::new("/usr/bin/id")

@@ -66,6 +66,16 @@ pub fn run(
 }
 impl Monitor {
     fn tick(&mut self, base: &Path, id: &str, event: Option<&Event>) -> Result<Directive, String> {
+        if let Some(Event::Action(value)) = event
+            && matches!(
+                value["evidence"]["native_type"].as_str(),
+                Some("collab_tool_call" | "mcp_tool_call" | "web_search")
+            )
+        {
+            return Err(
+                "RUN_HOST_TOOL_POLICY stage=attempt: a disabled host-side tool was invoked".into(),
+            );
+        }
         self.capture(event);
         let mut store = locked(base, id)?;
         let mut record = store.load()?;

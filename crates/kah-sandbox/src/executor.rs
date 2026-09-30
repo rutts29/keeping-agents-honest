@@ -38,6 +38,7 @@ const BASE_ARGS: &[&str] = &[
 #[derive(Debug)]
 pub struct Executor {
     pub args: Vec<String>,
+    image_index: usize,
 }
 
 impl Executor {
@@ -51,12 +52,19 @@ impl Executor {
                 mount_path(source)?,
                 mount_path(target)?
             );
-            self.args.splice(
-                self.args.len() - 5..self.args.len() - 5,
-                ["--mount".into(), mount],
-            );
+            self.insert_options(["--mount".into(), mount]);
         }
         Ok(self)
+    }
+
+    /// Docker options stay before the image even when an adapter wraps the
+    /// container command. Paths still pass through the mount validator above.
+    pub fn insert_options(&mut self, options: impl IntoIterator<Item = String>) {
+        let options = options.into_iter().collect::<Vec<_>>();
+        let count = options.len();
+        self.args
+            .splice(self.image_index..self.image_index, options);
+        self.image_index += count;
     }
 
     pub fn read_only_project(mut self) -> Self {
@@ -131,7 +139,8 @@ impl Executor {
                 format!("unix:///run/user/{uid}/docker.sock"),
             ],
         );
-        Ok(Self { args })
+        let image_index = args.len() - 5;
+        Ok(Self { args, image_index })
     }
 }
 

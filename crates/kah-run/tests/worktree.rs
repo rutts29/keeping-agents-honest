@@ -8,7 +8,12 @@ use std::{
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
-        let root = std::env::temp_dir().join(format!("kah-worktree-test-{}", std::process::id()));
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("kah-worktree-test-{}-{nonce}", std::process::id()));
         fs::create_dir_all(root.join("source")).unwrap();
         git(
             &root.join("source"),
@@ -19,6 +24,27 @@ impl Fixture {
         git(&root.join("source"), &["commit", "--quiet", "-m", "base"]);
         Self(root)
     }
+}
+
+#[test]
+fn verification_starts_from_the_commit_without_ignored_worker_files() {
+    let f = Fixture::new();
+    let run = Worktree::create(&f.0.join("source"), &f.0.join("run"), "run-verify").unwrap();
+    fs::write(run.path.join(".gitignore"), "ignored.txt\n").unwrap();
+    let commit = run.checkpoint("ignore generated files").unwrap();
+    fs::write(run.path.join("ignored.txt"), "not part of the branch").unwrap();
+    let verification = run
+        .verification_snapshot(&run.path.parent().unwrap().join("verification"), &commit)
+        .unwrap();
+    assert!(!verification.path.join("ignored.txt").exists());
+    assert_eq!(verification.checkpoint("unchanged").unwrap(), commit);
+    fs::write(verification.path.join("value.txt"), "changed by test").unwrap();
+    assert_ne!(verification.checkpoint("changed").unwrap(), commit);
+    assert_eq!(run.checkpoint("source unchanged").unwrap(), commit);
+    let path = verification.path.clone();
+    verification.remove_verification().unwrap();
+    assert!(!path.exists());
+    assert!(run.path.exists());
 }
 impl Drop for Fixture {
     fn drop(&mut self) {

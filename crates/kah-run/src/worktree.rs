@@ -130,6 +130,54 @@ impl Worktree {
         }
         text(run(self.git().args(["rev-parse", "HEAD"]))?)
     }
+    /// A fresh detached checkout prevents verification from relying on ignored
+    /// files left by the worker. Tests may write here, never in the candidate.
+    pub fn verification_snapshot(&self, path: &Path, commit: &str) -> Result<Self, String> {
+        if path.parent() != self.path.parent()
+            || !matches!(commit.len(), 40 | 64)
+            || !commit.bytes().all(|c| c.is_ascii_hexdigit())
+        {
+            return Err("RUN_VERIFICATION_PATH stage=verification".into());
+        }
+        run(command()
+            .arg("--git-dir")
+            .arg(&self.git_dir)
+            .args([
+                "worktree",
+                "add",
+                "--quiet",
+                "--detach",
+                "--no-guess-remote",
+            ])
+            .arg(path)
+            .arg(commit))?;
+        let admin = PathBuf::from(text(run(command()
+            .arg("-C")
+            .arg(path)
+            .args(["rev-parse", "--absolute-git-dir"]))?)?);
+        if !admin.starts_with(&self.git_dir) {
+            return Err("RUN_GIT_DIRECTORY stage=verification".into());
+        }
+        Ok(Self {
+            path: path.into(),
+            git_dir: self.git_dir.clone(),
+            base_commit: commit.into(),
+            source: self.source.clone(),
+            admin,
+            branch: String::new(),
+        })
+    }
+    pub fn remove_verification(self) -> Result<(), String> {
+        if !self.branch.is_empty() {
+            return Err("RUN_NOT_VERIFICATION_TREE stage=verification_cleanup".into());
+        }
+        run(command()
+            .arg("--git-dir")
+            .arg(&self.git_dir)
+            .args(["worktree", "remove", "--force"])
+            .arg(&self.path))?;
+        Ok(())
+    }
     pub fn export_branch(&self) -> Result<(), String> {
         // Local ref transfer only. No remote, credentials, deploy or push.
         let reference = format!("refs/heads/{}:refs/heads/{}", self.branch, self.branch);
@@ -156,6 +204,29 @@ impl Worktree {
             &self.base_commit,
             "HEAD",
         ]))?)
+    }
+    pub fn changed_paths(&self) -> Result<Vec<String>, String> {
+        let output = run(self.git().args([
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-only",
+            "-z",
+            &self.base_commit,
+            "HEAD",
+            "--",
+        ]))?;
+        if output.stdout.len() > 64 * 1024 {
+            return Err("RUN_PATHS_BOUND stage=completion".into());
+        }
+        output
+            .stdout
+            .split(|b| *b == 0)
+            .filter(|p| !p.is_empty())
+            .map(|p| {
+                String::from_utf8(p.to_vec()).map_err(|_| "RUN_PATHS_UTF8 stage=completion".into())
+            })
+            .collect()
     }
     pub fn restore_checkpoint(&self, commit: &str) -> Result<(), String> {
         if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|c| c.is_ascii_hexdigit()) {

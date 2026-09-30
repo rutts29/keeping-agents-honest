@@ -108,3 +108,22 @@ fn malformed_native_output_stops_the_run_and_preserves_elapsed_time() {
     assert_eq!(record.control.status(), RunStatus::Stopped);
     assert!(record.control.elapsed_ms() >= 100);
 }
+
+#[test]
+fn a_host_side_tool_event_cannot_silently_escape_the_single_worker_policy() {
+    let f = Fixture::new(Limits::default());
+    let mut command = Command::new("/bin/sh");
+    command.args(["-c", r#"read -r input; printf '%s\n' '{"type":"item.completed","item":{"id":"bad","type":"collab_tool_call","status":"completed"}}'"#]);
+    let result = attempt::run(
+        &f.0,
+        "run-test",
+        command,
+        "task\n",
+        &f.0.join("run-test/attempt-1.log"),
+    );
+    assert!(result.err().unwrap().starts_with("RUN_HOST_TOOL_POLICY"));
+    assert_eq!(
+        commands::view(&f.0, "run-test").unwrap().control.status(),
+        RunStatus::Stopped
+    );
+}

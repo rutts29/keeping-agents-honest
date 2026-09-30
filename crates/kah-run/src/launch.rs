@@ -37,20 +37,16 @@ pub fn sandbox(
             arg.push_str(",uid=65534,gid=65534");
         }
     }
-    let at = executor.args.len() - 5;
-    executor.args.splice(
-        at..at,
-        [
-            "--label".into(),
-            format!("dev.kah.run={id}"),
-            "--env".into(),
-            "GIT_OPTIONAL_LOCKS=0".into(),
-            "--env".into(),
-            "GIT_CONFIG_NOSYSTEM=1".into(),
-            "--env".into(),
-            "GIT_CONFIG_GLOBAL=/dev/null".into(),
-        ],
-    );
+    executor.insert_options([
+        "--label".into(),
+        format!("dev.kah.run={id}"),
+        "--env".into(),
+        "GIT_OPTIONAL_LOCKS=0".into(),
+        "--env".into(),
+        "GIT_CONFIG_NOSYSTEM=1".into(),
+        "--env".into(),
+        "GIT_CONFIG_GLOBAL=/dev/null".into(),
+    ]);
     // gVisor maps operator-owned files to nobody. Use that unprivileged
     // identity, and preserve group write access for the host's inherited ACLs.
     let at = executor.args.len() - 4;
@@ -116,6 +112,9 @@ impl WorkerLaunch<'_> {
             "features.apps=false",
             "features.plugins=false",
             "features.remote_plugin=false",
+            "features.multi_agent=false",
+            "features.multi_agent_v2=false",
+            "features.goals=false",
         ] {
             command.args(["-c", setting]);
         }

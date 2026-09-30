@@ -34,6 +34,22 @@ fn every_unattended_domain_uses_gvisor_and_read_only_git_metadata() {
         assert!(!mounts.iter().any(|p| p.contains("auth.json")
             || p.contains("docker.sock")
             || p.contains("typesafe.key")));
+        let mounted = executor
+            .with_read_only_mounts(&[("/skills/source".into(), "/skills/target".into())])
+            .unwrap();
+        let image = mounted
+            .args
+            .iter()
+            .position(|a| a == "fixture-image")
+            .unwrap();
+        assert!(
+            mounted
+                .args
+                .iter()
+                .position(|a| a == "type=bind,source=/skills/source,target=/skills/target,readonly")
+                .unwrap()
+                < image
+        );
     }
 }
 #[test]
@@ -56,6 +72,9 @@ fn native_exec_preserves_model_choices_and_uses_ephemeral_history() {
     assert!(args.windows(2).any(|p| p == ["--model", "chosen-model"]));
     assert!(args.contains(&"model_reasoning_effort=\"chosen-effort\""));
     assert!(args.contains(&"features.hooks=false"));
+    assert!(args.contains(&"features.multi_agent=false"));
+    assert!(args.contains(&"features.multi_agent_v2=false"));
+    assert!(args.contains(&"features.goals=false"));
 }
 
 #[test]
