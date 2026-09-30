@@ -24,6 +24,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     )?;
     let project = Project::select(&home.join("repos"), cwd, None)?;
     let domain = args.domain.unwrap_or(project.domain);
+    kah_run::fetch_policy::FetchPolicy::new(domain.as_str(), args.allow_hosts.clone())?;
     let id = format!(
         "run-{}-{}",
         SystemTime::now()
@@ -51,6 +52,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     tree.save(&store.directory().join("worktree.json"))?;
     let settings = Settings {
         test: args.test,
+        allow_hosts: args.allow_hosts,
         observer: Binding {
             session: id.clone(),
             project: tree.path.clone(),

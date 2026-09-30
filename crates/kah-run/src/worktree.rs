@@ -1,6 +1,7 @@
 //! A private Git repository backs the run worktree. Mount its metadata read-only
 //! in gVisor; the controller owns checkpoints and exports only the run ref.
 use serde::{Deserialize, Serialize};
+mod evidence;
 use std::{
     fs,
     path::{Path, PathBuf},

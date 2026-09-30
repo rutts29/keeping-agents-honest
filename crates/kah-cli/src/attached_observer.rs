@@ -11,7 +11,10 @@ use kah_observer::{
 use serde_json::json;
 use std::{fs, os::unix::fs::OpenOptionsExt, path::Path, time::Duration};
 
-pub fn watch(home: &Path, project: &Path, session: &str) -> Result<()> {
+pub fn watch(home: &Path, project: &Path, session: &str, timeout_secs: u64) -> Result<()> {
+    if !(1..=300).contains(&timeout_secs) {
+        return Err("ATTACH_TIMEOUT stage=arguments: deadline must be 1–300 seconds".into());
+    }
     let project = project.canonicalize()?;
     if kah_sandbox::Project::select(&home.join("repos"), &project, None)?.domain
         != kah_sandbox::Domain::Mine
@@ -39,7 +42,7 @@ pub fn watch(home: &Path, project: &Path, session: &str) -> Result<()> {
         native: native.clone(),
         model: "gpt-6-luna".into(),
         effort: "low".into(),
-        timeout_secs: 45,
+        timeout_secs,
         judge: Backend::Jev,
         jev_model: "jev-latest".into(),
     };
