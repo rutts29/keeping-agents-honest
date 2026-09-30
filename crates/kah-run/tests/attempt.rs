@@ -90,3 +90,21 @@ fn usage_guard_stops_after_accounting_reported_native_tokens() {
     assert_eq!(record.control.tokens_used(), 12);
     assert_eq!(record.control.status(), RunStatus::BudgetStopped);
 }
+
+#[test]
+fn malformed_native_output_stops_the_run_and_preserves_elapsed_time() {
+    let f = Fixture::new(Limits::default());
+    let mut command = Command::new("/bin/sh");
+    command.args(["-c", "read -r input; sleep 0.1; printf 'invalid-json\n'"]);
+    let result = attempt::run(
+        &f.0,
+        "run-test",
+        command,
+        "task\n",
+        &f.0.join("run-test/attempt-1.log"),
+    );
+    assert!(result.err().unwrap().starts_with("CODEX_EXEC_JSON"));
+    let record = commands::view(&f.0, "run-test").unwrap();
+    assert_eq!(record.control.status(), RunStatus::Stopped);
+    assert!(record.control.elapsed_ms() >= 100);
+}

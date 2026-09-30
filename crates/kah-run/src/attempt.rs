@@ -42,16 +42,21 @@ pub fn run(
         thread: None,
         actions: vec![],
     };
-    let result = process::execute(command, prompt, log, |event| monitor.tick(base, id, event))?;
+    let result = process::execute(command, prompt, log, |event| monitor.tick(base, id, event));
     let mut store = locked(base, id)?;
     let mut record = store.load()?;
     record
         .control
         .account(0, 0, monitor.last.elapsed().as_millis() as u64);
-    if result.stopped.as_deref() == Some("RUN_USER_STOP") {
+    if result.is_err()
+        || result
+            .as_ref()
+            .is_ok_and(|r| r.stopped.as_deref() == Some("RUN_USER_STOP"))
+    {
         record.control.stop();
     }
     store.save(&record)?;
+    let result = result?;
     Ok(Outcome {
         success: result.success,
         stopped: result.stopped,
