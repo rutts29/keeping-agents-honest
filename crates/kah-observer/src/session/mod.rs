@@ -22,6 +22,8 @@ pub struct Binding {
     pub timeout_secs: u64,
     #[serde(default)]
     pub judge: crate::judge::routing::Backend,
+    #[serde(default = "default_jev_model")]
+    pub jev_model: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -148,4 +150,8 @@ pub fn now_ms() -> u64 {
         .unwrap_or_default()
         .as_millis()
         .min(u64::MAX as u128) as u64
+}
+
+fn default_jev_model() -> String {
+    "jev-latest".into()
 }

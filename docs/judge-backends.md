@@ -51,3 +51,6 @@ For the returned model jev-1.13.0, estimated cost uses the documented $0.042 per
 million input tokens, output free, checked 2026-09-29. An unknown returned model
 gets no invented price. The Codex-login baseline has no per-call cash charge
 available to measure, so its dollar estimate remains null. See [models and pricing](https://docs.typesafe.ai/models).
+
+Jev records the returned model snapshot. The native Codex baseline records its
+configured model slug; the CLI does not provide a separate deployment snapshot.

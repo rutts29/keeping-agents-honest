@@ -11,6 +11,7 @@ pub struct Arguments {
     pub observer_model: Option<String>,
     pub observer_effort: Option<String>,
     pub observer_judge: Option<String>,
+    pub jev_model: Option<String>,
 }
 
 impl Arguments {
@@ -25,6 +26,7 @@ impl Arguments {
                 "--observer-model" => result.observer_model = Some(value(&mut args, &arg)?),
                 "--observer-effort" => result.observer_effort = Some(value(&mut args, &arg)?),
                 "--observer-judge" => result.observer_judge = Some(value(&mut args, &arg)?),
+                "--jev-model" => result.jev_model = Some(value(&mut args, &arg)?),
                 "--help" | "-h" => result.help = true,
                 "--" => {
                     result.native.extend(args);

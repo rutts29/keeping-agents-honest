@@ -30,6 +30,7 @@ pub fn evaluate(
     home: &Path,
     root: &Path,
     backend: Backend,
+    jev_model: &str,
     config: CompactorConfig<'_>,
     state: &Value,
     questions: &Questions,
@@ -41,7 +42,7 @@ pub fn evaluate(
     let result = jev::HttpClient::from_home(home).and_then(|client| {
         jev::Jev {
             client,
-            model: "jev-latest".into(),
+            model: jev_model.into(),
         }
         .evaluate(state, questions)
     });

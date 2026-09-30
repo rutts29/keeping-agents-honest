@@ -235,6 +235,7 @@ fn configure_observation(
         model: config.model().into(),
         effort: config.reasoning().into(),
         timeout_secs: config.timeout().as_secs(),
+        jev_model: args.jev_model.as_deref().unwrap_or("jev-latest").into(),
         judge: kah_observer::judge::routing::Backend::for_domain(
             project.domain.as_str(),
             args.observer_judge.as_deref(),

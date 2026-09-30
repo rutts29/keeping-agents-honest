@@ -42,3 +42,24 @@ the external Research/Untrusted boundary.
 
 The observer and unattended commands are still being implemented. Gate 2 passed;
 see `STATUS.md` for journeys passed and outstanding.
+
+kah fixes the launch directory for in-process `/resume`. The saved kah project
+and policy must match, including online/yolo choices; otherwise the session and
+subsequent prompts are blocked with a command to reopen through kah. Use
+`kah -- resume SESSION_ID` to let the launcher select the saved project first.
+This guard remains enabled with `--no-observer`.
+
+The observer defaults to Luna/low; `--observer-model` and `--observer-effort`
+configure it without changing the main model. `kah status [SESSION_ID]` shows
+observer gaps and measured usage. `kah ledger [SESSION_ID]` reads the canonical
+JSONL history/projection; `--json` exposes their structured form. Observer
+failures leave native work usable and are visible as gaps. Restricted native
+tools can read immutable snapshots of installed `~/.agents/skills` trees; their
+scripts run inside gVisor. Restricted sessions continue to exclude user hooks, MCP, apps and plugins.
+
+`--observer-judge jev|luna` selects the typed judge for this launch. Mine defaults
+to Jev with Luna fallback; Research and Untrusted default to Luna. Selecting Jev
+explicitly in a restricted domain opts that session into sending bounded question
+context to TypeSafe. `--jev-model` chooses its model/alias; the default is
+`jev-latest`. Native text extraction still uses `--observer-model` and
+`--observer-effort`; judgments record the actual backend and returned model.

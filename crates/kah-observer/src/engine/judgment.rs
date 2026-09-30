@@ -28,6 +28,7 @@ pub(super) fn assess(
         &home,
         &state.binding.project,
         state.binding.judge,
+        &state.binding.jev_model,
         config,
         &input,
         &questions,
@@ -65,7 +66,11 @@ fn bounded_state(state: &State, context: &Context<'_>, prior_items: &[(String, S
         .actions
         .iter()
         .filter(|a| a["kind"] == "agentMessage")
-        .filter_map(|a| a["evidence"].as_str())
+        .filter_map(|a| {
+            a["evidence"]["text"]
+                .as_str()
+                .or_else(|| a["evidence"].as_str())
+        })
         .collect::<Vec<_>>()
         .join("\n");
     json!({

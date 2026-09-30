@@ -9,10 +9,10 @@ use crate::{
 use kah_codex::{
     control::Control,
     overlay::{self, Policy},
-    source::{self, ObservationSnapshot},
+    source,
 };
 use kah_core::{
-    observation::{ContextInjection, InjectionKind},
+    observation::{ContextInjection, InjectionKind, ObservationSnapshot},
     projection::{ActiveProjection, ProjectionConfig},
     run_store::{RunStore, SourceCursorComparison},
     session_bundle::NeutralSessionBundle,
@@ -31,6 +31,27 @@ pub struct Outcome {
 }
 
 pub fn observe(binding: &Binding, turn: &str, allow_reminder: bool) -> Result<Outcome, String> {
+    observe_with(binding, turn, allow_reminder, || read_source(binding))
+}
+
+/// Ephemeral workers provide their operator-owned bundle and native event
+/// evidence directly; they have no persistent native rollout to read.
+pub fn observe_snapshot(
+    binding: &Binding,
+    turn: &str,
+    allow_reminder: bool,
+    snapshot: ObservationSnapshot,
+) -> Result<Outcome, String> {
+    validate_snapshot(binding, &snapshot)?;
+    observe_with(binding, turn, allow_reminder, || Ok(snapshot))
+}
+
+fn observe_with(
+    binding: &Binding,
+    turn: &str,
+    allow_reminder: bool,
+    source: impl FnOnce() -> Result<ObservationSnapshot, String>,
+) -> Result<Outcome, String> {
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     let mut store = Store::open(&base, &binding.session, Duration::from_secs(110))?;
     let mut state = store.load()?.unwrap_or_else(|| State::new(binding.clone()));
@@ -41,7 +62,8 @@ pub fn observe(binding: &Binding, turn: &str, allow_reminder: bool) -> Result<Ou
     state.binding = binding.clone();
     state.begin(turn);
     store.save(&state)?;
-    let result = update(&mut state, &mut store, turn, allow_reminder);
+    let result = source()
+        .and_then(|snapshot| update(&mut state, &mut store, turn, allow_reminder, snapshot));
     match result {
         Ok(outcome) => {
             state.inflight = None;
@@ -73,9 +95,9 @@ fn update(
     store: &mut Store,
     turn: &str,
     allow_reminder: bool,
+    snapshot: ObservationSnapshot,
 ) -> Result<Outcome, String> {
     let binding = state.binding.clone();
-    let snapshot = read_source(&binding)?;
     let Some(users) = &snapshot.users else {
         return Ok(Outcome {
             projection: None,
@@ -195,4 +217,39 @@ fn drift_reminder(
         None
     };
     Ok(reminder)
+}
+
+fn validate_snapshot(binding: &Binding, snapshot: &ObservationSnapshot) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    if let Some(users) = &snapshot.users {
+        if users.source().session_ref_private() != binding.session {
+            return Err(
+                "OBSERVER_SOURCE_SESSION stage=worker_intake: source belongs to another session"
+                    .into(),
+            );
+        }
+        let project = binding
+            .project
+            .canonicalize()
+            .map_err(|e| format!("OBSERVER_SOURCE_PROJECT stage=worker_intake: {e}"))?;
+        let digest = format!(
+            "sha256:{:x}",
+            Sha256::digest(project.as_os_str().as_encoded_bytes())
+        );
+        if users.source().repository_digest() != digest {
+            return Err(
+                "OBSERVER_SOURCE_PROJECT stage=worker_intake: source belongs to another project"
+                    .into(),
+            );
+        }
+    }
+    let bytes = serde_json::to_vec(&snapshot.actions).map_err(|e| e.to_string())?;
+    if bytes.len() > 64 * 1024 || snapshot.actions.len() > 32 {
+        return Err("OBSERVER_ACTION_BOUND stage=worker_intake".into());
+    }
+    let digest = format!("sha256:{:x}", Sha256::digest(bytes));
+    if snapshot.action_digest != digest {
+        return Err("OBSERVER_ACTION_DIGEST stage=worker_intake".into());
+    }
+    Ok(())
 }

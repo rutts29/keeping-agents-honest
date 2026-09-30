@@ -140,3 +140,11 @@ impl ContextInjection {
         BundleRecord::new(id, SourceRole::SystemObservation, &self.text)
     }
 }
+
+/// Bounded input to the observer, supplied by a provider or the run controller.
+/// Only `users` carries authority; actions are evidence about agent behavior.
+pub struct ObservationSnapshot {
+    pub users: Option<crate::session_bundle::NeutralSessionBundle>,
+    pub actions: Vec<serde_json::Value>,
+    pub action_digest: String,
+}

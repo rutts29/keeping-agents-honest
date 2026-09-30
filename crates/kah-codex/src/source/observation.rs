@@ -3,11 +3,7 @@
 use super::*;
 use crate::control::{Control, ControlError};
 
-pub struct ObservationSnapshot {
-    pub users: Option<NeutralSessionBundle>,
-    pub actions: Vec<Value>,
-    pub action_digest: String,
-}
+pub use kah_core::observation::ObservationSnapshot;
 
 pub fn observe(
     client: &mut Control,
