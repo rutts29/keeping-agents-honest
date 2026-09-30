@@ -8,6 +8,44 @@ pub(super) fn update_intent(
     config: CompactorConfig<'_>,
 ) -> Result<(ActiveProjection, bool), String> {
     let source = InspectSource::from_bundle(users).map_err(|e| e.to_string())?;
+    let accepted = source
+        .open(&state.binding.project)
+        .map_err(|e| e.to_string())?
+        .and_then(|locked| locked.recovered.source_cursor)
+        .map(|cursor| cursor.accepted_record_count())
+        .unwrap_or(0);
+    if users
+        .records()
+        .iter()
+        .all(|record| record.is_authoritative())
+        && users.records().len() > accepted + 1
+    {
+        let mut last = None;
+        for end in accepted + 1..=users.records().len() {
+            let prefix = NeutralSessionBundle::from_records_with_native_goal(
+                users.source().provider(),
+                users.source().session_ref_private(),
+                users.source().repository_digest(),
+                users.native_goal().clone(),
+                users.records()[..end].to_vec(),
+            )
+            .map_err(|e| e.to_string())?;
+            last = Some(update_once(state, journal, &prefix, config)?);
+            // A later timeout cannot discard already accepted source and usage.
+            journal.save(state)?;
+        }
+        return last.ok_or_else(|| "OBSERVER_BATCH_EMPTY stage=observe".into());
+    }
+    update_once(state, journal, users, config)
+}
+
+fn update_once(
+    state: &mut State,
+    journal: &mut Store,
+    users: &NeutralSessionBundle,
+    config: CompactorConfig<'_>,
+) -> Result<(ActiveProjection, bool), String> {
+    let source = InspectSource::from_bundle(users).map_err(|e| e.to_string())?;
     let previous = source
         .open(&state.binding.project)
         .map_err(|e| e.to_string())?

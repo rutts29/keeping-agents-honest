@@ -8,7 +8,12 @@ pub(super) fn invoke_codex(
 ) -> Result<CodexCall, ExecutionFailure> {
     let prompt = prompt(bundle, repair)
         .map_err(|_| ExecutionFailure::new("OBSERVER_PROMPT", "proposal_prompt"))?;
-    invoke_codex_request(root, config, proposal_schema(), &prompt)
+    invoke_codex_request(
+        root,
+        config,
+        constrain_sources(proposal_schema(), bundle),
+        &prompt,
+    )
 }
 
 pub(super) fn invoke_codex_incremental(
@@ -21,7 +26,15 @@ pub(super) fn invoke_codex_incremental(
 ) -> Result<CodexCall, ExecutionFailure> {
     let prompt = incremental_prompt(history, projection, delta, repair_failure)
         .map_err(|_| ExecutionFailure::new("OBSERVER_INCREMENTAL_PROMPT", "proposal_prompt"))?;
-    invoke_codex_request(root, config, incremental_proposal_schema(), &prompt)
+    invoke_codex_request(
+        root,
+        config,
+        constrain_sources(
+            constrain_base(incremental_proposal_schema(), history, projection),
+            delta,
+        ),
+        &prompt,
+    )
 }
 
 pub(super) fn invoke_codex_request(

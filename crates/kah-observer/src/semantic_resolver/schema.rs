@@ -1,5 +1,64 @@
 use super::*;
 
+pub(super) fn constrain_sources(mut schema: Value, bundle: &NeutralSessionBundle) -> Value {
+    let ids = json!(
+        bundle
+            .authoritative_records()
+            .iter()
+            .map(|record| record.id())
+            .collect::<Vec<_>>()
+    );
+    restrict_source_fields(&mut schema, &ids);
+    schema
+}
+pub(super) fn constrain_base(
+    mut schema: Value,
+    history: &History,
+    projection: &ActiveProjection,
+) -> Value {
+    let ids = history
+        .intents()
+        .keys()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let mut targets = ids.clone();
+    targets.push(String::new());
+    let properties = &mut schema["properties"];
+    properties["base_projection_revision"]["enum"] = json!([projection.revision]);
+    properties["base_event_sequence"]["enum"] = json!([history.records().last().unwrap().sequence]);
+    let active = projection_intent_ids(projection);
+    if !active.is_empty() {
+        properties["accounted_active_intent_ids"]["items"]["enum"] = json!(active);
+    }
+    properties["operations"]["items"]["properties"]["target_intent_id"]["enum"] = json!(targets);
+    if !ids.is_empty() {
+        properties["operations"]["items"]["properties"]["intent_ids"]["items"]["enum"] = json!(ids);
+    }
+    schema
+}
+fn restrict_source_fields(value: &mut Value, ids: &Value) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::Object(properties)) = object.get_mut("properties") {
+                for name in ["source_record_ids", "accounted_source_record_ids"] {
+                    if let Some(definition) = properties.get_mut(name) {
+                        definition["items"]["enum"] = ids.clone();
+                    }
+                }
+            }
+            for child in object.values_mut() {
+                restrict_source_fields(child, ids);
+            }
+        }
+        Value::Array(array) => {
+            for child in array {
+                restrict_source_fields(child, ids);
+            }
+        }
+        _ => (),
+    }
+}
+
 pub(super) fn proposal_schema() -> Value {
     let source_ids = json!({"type":"array","items":{"type":"string"}});
     let alternative = json!({
