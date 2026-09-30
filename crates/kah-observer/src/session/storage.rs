@@ -10,7 +10,7 @@ use std::{
 };
 
 pub struct Store {
-    path: PathBuf,
+    pub(super) path: PathBuf,
     _lock: File,
 }
 impl Store {
@@ -83,31 +83,6 @@ impl Store {
             .map_err(io_error)?;
         fs::rename(temporary, path).map_err(io_error)
     }
-    pub fn intake(
-        &self,
-        source: &kah_core::intent_history::SourceRef,
-    ) -> Result<Option<crate::judge::Judgment>, String> {
-        use std::io::{BufRead, BufReader};
-        let path = self.path.join("observations.jsonl");
-        reject_symlink(&path)?;
-        let file = match File::open(path) {
-            Ok(file) => file,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(io_error(e)),
-        };
-        let reference =
-            serde_json::to_value(source).map_err(|_| "OBSERVER_SOURCE_JSON stage=session_store")?;
-        for line in BufReader::new(file).lines() {
-            let value: serde_json::Value = serde_json::from_str(&line.map_err(io_error)?)
-                .map_err(|_| "OBSERVER_JOURNAL_JSON stage=session_store")?;
-            if value["kind"] == "verbatim_decision" && value["source_ref"] == reference {
-                return serde_json::from_value(value["judgment"].clone())
-                    .map(Some)
-                    .map_err(|_| "OBSERVER_JUDGMENT_JSON stage=session_store".into());
-            }
-        }
-        Ok(None)
-    }
     pub fn append(&mut self, value: &serde_json::Value) -> Result<(), String> {
         let path = self.path.join("observations.jsonl");
         reject_symlink(&path)?;
@@ -117,7 +92,10 @@ impl Store {
             .mode(0o600)
             .open(path)
             .map_err(io_error)?;
-        writeln!(file, "{value}")
+        let mut bytes =
+            serde_json::to_vec(value).map_err(|_| "OBSERVER_SOURCE_JSON stage=session_store")?;
+        bytes.push(b'\n');
+        file.write_all(&bytes)
             .and_then(|()| file.sync_all())
             .map_err(io_error)
     }

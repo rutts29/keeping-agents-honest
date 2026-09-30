@@ -14,14 +14,14 @@ use kah_codex::{
 use kah_core::{
     observation::{ContextInjection, InjectionKind, ObservationSnapshot},
     projection::{ActiveProjection, ProjectionConfig},
-    run_store::{RunStore, SourceCursorComparison},
+    run_store::RunStore,
     session_bundle::NeutralSessionBundle,
 };
 use serde_json::json;
 use std::{env, path::PathBuf, time::Duration};
 
 mod judgment;
-mod reconcile;
+pub(crate) mod reconcile;
 use reconcile::*;
 
 pub struct Outcome {
@@ -109,6 +109,13 @@ fn update(
         .with_timeout(Duration::from_secs(binding.timeout_secs))?;
     let prior = projection(state)?;
     let (projection, new_user) = update_intent(state, store, users, config)?;
+    let Some(projection) = projection else {
+        return Ok(Outcome {
+            projection: None,
+            reminder: None,
+            gap: None,
+        });
+    };
     if new_user {
         state.drift_active = false;
     }

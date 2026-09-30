@@ -6,6 +6,16 @@ use std::{fs, time::Duration};
 
 pub fn run(args: Vec<String>) -> Result<()> {
     let ledger = args[0] == "ledger";
+    if ledger
+        && args.iter().any(|s| {
+            matches!(
+                s.as_str(),
+                "--review" | "--confirm" | "--dismiss" | "--promote"
+            )
+        })
+    {
+        return crate::review_cli::run(&args);
+    }
     let id = args.iter().skip(1).find(|s| s.as_str() != "--json");
     let json_output = args.iter().any(|s| s == "--json");
     let base = RunStore::default_state_root()?;
@@ -152,7 +162,7 @@ fn observations(state: &State) -> Result<Vec<serde_json::Value>> {
         .collect()
 }
 
-fn load_sessions(base: &std::path::Path, id: Option<&String>) -> Result<Vec<State>> {
+pub(crate) fn load_sessions(base: &std::path::Path, id: Option<&String>) -> Result<Vec<State>> {
     let path = base.join("observer-sessions");
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,

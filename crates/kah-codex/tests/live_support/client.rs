@@ -57,12 +57,19 @@ impl Client {
     }
 
     pub fn request(&mut self, method: &str, params: Value) -> Value {
+        self.request_result(method, params)
+            .unwrap_or_else(|error| panic!("{method}: {error}"))
+    }
+    pub fn request_result(&mut self, method: &str, params: Value) -> Result<Value, Value> {
         let id = self.next;
         self.next += 1;
         self.send(json!({"id":id,"method":method,"params":params}));
         let response = self.wait(Duration::from_secs(45), |value| value["id"] == id);
-        assert!(response.get("error").is_none(), "{method}: {response}");
-        response["result"].clone()
+        if let Some(error) = response.get("error") {
+            Err(error.clone())
+        } else {
+            Ok(response["result"].clone())
+        }
     }
 
     pub fn wait(&mut self, timeout: Duration, matches: impl Fn(&Value) -> bool) -> Value {

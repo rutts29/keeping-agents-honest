@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 pub mod dataset;
+mod privacy;
 mod scoring;
 mod storage;
 use dataset::{Case, Row};
@@ -57,7 +58,7 @@ pub fn run(home: &Path, input: &Path, validation: bool) -> Result<PathBuf, Strin
             }
         };
         if !scores.add(case, &record) {
-            disagreements.push(json!({"id":case.row.id,"session":case.row.session,"ts":case.row.ts,"gold":case.row.gold,"result":record}));
+            disagreements.push(json!({"id":case.row.id,"session":case.row.session,"ts":case.row.ts,"gold":{"is_steering":case.row.gold.is_steering,"steer_kind":case.row.gold.steer_kind,"supersedes":case.row.gold.supersedes,"tags":case.row.gold.tags},"result":record}));
         }
         if (index + 1) % 25 == 0 {
             eprintln!(
@@ -86,6 +87,10 @@ fn evaluate(home: &Path, case: &Case, request_digest: String) -> Record {
         judgment: None,
         error: None,
     };
+    if privacy::credential_shape(&case.state.to_string()) {
+        record.error = Some("EVAL_CREDENTIAL_SHAPE stage=replay_privacy".into());
+        return record;
+    }
     if source != "user" {
         return record;
     }

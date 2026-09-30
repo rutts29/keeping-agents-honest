@@ -151,7 +151,8 @@ pub(super) fn event_source_record(event: &Event) -> Option<&str> {
         | Event::RequirementSuperseded {
             replacement: item, ..
         } => item.introduced_by.first(),
-        Event::RequirementWithdrawn { source_refs, .. }
+        Event::RequirementConfirmed { source_refs, .. }
+        | Event::RequirementWithdrawn { source_refs, .. }
         | Event::EvidenceInvalidated { source_refs, .. }
         | Event::RunClosed { source_refs, .. } => source_refs.first(),
         Event::ConflictRaised { conflict, .. } => conflict.source_refs.first(),

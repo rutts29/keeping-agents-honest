@@ -1,6 +1,6 @@
 use super::*;
 use std::time::{Duration, Instant};
-const INITIAL: &str = "For this session, maintain answer.txt containing the required uppercase marker ALPHA. Use native apply_patch to create it now. No dependencies, subagents, installs, tests or commits for this disposable single-line text fixture. Report and stop after the edit.";
+const INITIAL: &str = "Maintain a disposable marker-file fixture and follow my upcoming marker and file instructions. No dependencies, subagents, installs, tests or commits. Reply READY without tools and stop.";
 
 pub fn run() {
     let evidence_path = begin_evidence("continuity");
@@ -53,7 +53,7 @@ pub fn run() {
         .filter(|v| v["method"].as_str().is_some_and(|s| s.contains("hook")))
         .cloned()
         .collect::<Vec<_>>();
-    let report = json!({"mainAgentUsage":main_usage(&resumed),"steeringFollowedAfterResumeAndCompaction":true,"correctionReplacedEarlierMarker":true,"intentionalScopeChangeReminders":stages[2].reminders,"stages":stages,"finalState":final_state,"projection":history.projection,"hooks":hooks,"wallElapsedMs":started.elapsed().as_millis(),"passed":true});
+    let report = json!({"mainAgentUsage":main_usage(&resumed),"steeringFollowedAfterResumeAndCompaction":true,"correctionReplacedEarlierMarker":true,"intentionalScopeChangeReminders":stages[3].reminders,"stages":stages,"finalState":final_state,"projection":history.projection,"hooks":hooks,"wallElapsedMs":started.elapsed().as_millis(),"passed":true});
     assert_config(&home, &before);
     fs::write(
         evidence_path,
@@ -84,6 +84,7 @@ fn snapshot(id: &str) -> kah_observer::session::State {
 fn steer(client: &mut Client, id: &str) -> Vec<kah_observer::session::State> {
     let prompts = [
         INITIAL,
+        "Use uppercase marker ALPHA in answer.txt. Create it now with native apply_patch, preserve the other constraints, report and stop.",
         "Correction: BETA replaces ALPHA as the required marker for this entire session. Update answer.txt to contain BETA now. The earlier ALPHA instruction is superseded. Keep the other constraints. Report and stop.",
         "Intentional scope change: also maintain notes.txt containing the same current marker as answer.txt. Add notes.txt now and preserve answer.txt. This extra file is explicitly authorized. Report and stop.",
     ];
@@ -94,10 +95,10 @@ fn steer(client: &mut Client, id: &str) -> Vec<kah_observer::session::State> {
         stages.push(snapshot(id));
     }
     assert_eq!(
-        stages[2].reminders, 0,
+        stages[3].reminders, 0,
         "intentional steering was treated as drift"
     );
-    let projection = engine::projection(&stages[2]).unwrap().unwrap();
+    let projection = engine::projection(&stages[3]).unwrap().unwrap();
     let active = projection
         .preserve
         .iter()

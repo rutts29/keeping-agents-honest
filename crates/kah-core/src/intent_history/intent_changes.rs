@@ -162,3 +162,26 @@ pub(super) fn run_closed(
     state.closed = true;
     Ok(())
 }
+
+pub(super) fn requirement_confirmed(
+    state: &mut ReplayState,
+    id: &IntentId,
+    sources: &[SourceRef],
+) -> Result<(), HistoryError> {
+    validate_authority(sources, None, "requirement_confirmed")?;
+    let item = state
+        .intents
+        .get_mut(id)
+        .ok_or_else(|| HistoryError::UnknownIntent { id: id.clone() })?;
+    if !item.is_active() {
+        return Err(HistoryError::InvalidTransition {
+            event: "requirement_confirmed",
+            reason: "only active intent can be confirmed".into(),
+        });
+    }
+    item.review_required = false;
+    item.user_confirmed = true;
+    item.uncertain_supersedes.clear();
+    append_sources(&mut item.changed_by, sources);
+    Ok(())
+}

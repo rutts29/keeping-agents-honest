@@ -3,6 +3,9 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments.first().is_some_and(|s| s == "send") {
+        return kah_cli::send_cli::run(&arguments);
+    }
     if arguments.first().is_some_and(|s| s == "eval") {
         return kah_cli::evaluation_cli::run(&arguments);
     }
@@ -13,18 +16,7 @@ fn run() -> Result<()> {
         return kah_cli::unattended_run::run_cli(arguments);
     }
     if arguments.first().is_some_and(|s| s == "__attach-observer") {
-        let session = arguments
-            .get(1)
-            .filter(|_| matches!(arguments.len(), 2 | 3))
-            .ok_or("ATTACH_SESSION_REQUIRED stage=arguments")?;
-        let home = PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=attach")?);
-        let timeout = arguments
-            .get(2)
-            .map(|s| s.parse::<u64>())
-            .transpose()
-            .map_err(|_| "ATTACH_TIMEOUT stage=arguments")?
-            .unwrap_or(120);
-        return kah_cli::attached_observer::watch(&home, &env::current_dir()?, session, timeout);
+        return attach(&arguments);
     }
     if kah_cli::run_commands::handles(&arguments) {
         return kah_cli::run_commands::run(arguments);
@@ -62,6 +54,21 @@ fn run() -> Result<()> {
         }
     );
     Err(format!("CODEX_EXEC stage=launch: {}", launch.command(false).exec()).into())
+}
+
+fn attach(arguments: &[String]) -> Result<()> {
+    let session = arguments
+        .get(1)
+        .filter(|_| matches!(arguments.len(), 2 | 3))
+        .ok_or("ATTACH_SESSION_REQUIRED stage=arguments")?;
+    let home = PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=attach")?);
+    let timeout = arguments
+        .get(2)
+        .map(|s| s.parse::<u64>())
+        .transpose()
+        .map_err(|_| "ATTACH_TIMEOUT stage=arguments")?
+        .unwrap_or(120);
+    kah_cli::attached_observer::watch(&home, &env::current_dir()?, session, timeout)
 }
 
 fn main() {

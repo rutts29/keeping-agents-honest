@@ -37,7 +37,7 @@ fn apply_inner(
     let Some(Answer::Noul { noul }) = judgment.answers.get("is_steering") else {
         return Err("OBSERVER_TYPING stage=verbatim".into());
     };
-    if *noul <= 1.0 - STEERING_PROBABILITY {
+    if *noul <= 0.2 {
         return Ok(());
     }
     let (kind, probability, confidence) = choice(judgment, "steer_kind")?;

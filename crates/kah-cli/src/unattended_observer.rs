@@ -142,7 +142,7 @@ pub fn complete(
     let evidence = json!({"evaluation_scope":"The candidate branch delivered for review. Temporary compiler/test files live in a separate verification checkout and are not delivered project changes.","observed_activity":activity,"git_diff":diff,"committed_files":files,"tests":tests,
         "controller_facts":{"changed_paths":changed_paths,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true},
         "enforced_policy":{"gvisor":true,"container_network":"none","allowed_https_get_hosts":settings.allow_hosts,"credentials":"not mounted","git_metadata":"read only","native_subagent_tools":"disabled","native_goal_tools":"disabled","worker_count":1}});
-    let input = json!({"intent":{"goal":projection.goal.text,"outcomes":outcomes},"event":{"actions":evidence}});
+    let input = json!({"intent":{"goal":projection.goal.text,"outcomes":outcomes,"user_confirmed_ids":projection.frontier.iter().filter(|i|i.user_confirmed).map(|i|i.id.to_string()).collect::<Vec<_>>()},"event":{"actions":evidence}});
     let mut judgments = vec![];
     for _ in 0..2 {
         let result = judge::routing::evaluate(

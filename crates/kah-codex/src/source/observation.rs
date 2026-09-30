@@ -61,12 +61,16 @@ fn read_items(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError>
     let mut cursor = Value::Null;
     let mut seen = BTreeSet::new();
     for _ in 0..1000 {
-        let page = client
-            .request(
-                "thread/items/list",
-                json!({"threadId":id,"cursor":cursor,"limit":25,"sortDirection":"asc"}),
-            )
-            .map_err(rpc_error)?;
+        let page = match client.request(
+            "thread/items/list",
+            json!({"threadId":id,"cursor":cursor,"limit":25,"sortDirection":"asc"}),
+        ) {
+            Ok(page) => page,
+            Err(e) if e.code == "CODEX_RPC_REJECTED" && e.detail.contains("-32601") => {
+                return legacy_items(client, id);
+            }
+            Err(e) => return Err(rpc_error(e)),
+        };
         let items = required_array(&page, "data", "thread/items/list")?;
         result.extend(items.iter().cloned());
         cursor = page["nextCursor"].clone();
@@ -178,10 +182,25 @@ pub fn provenance_audit(client: &mut Control, id: &str) -> Result<Value, SourceE
                 SourceRole::Delegate => "delegate",
                 _ => "system",
             };
-            records.push(json!({"record_hash":format!("{:x}",Sha256::digest(record.id.as_bytes())),"source":source}));
+            records.push(json!({"record_hash":format!("{:x}",Sha256::digest(record.id.as_bytes())),"source":source,"client_id":item["clientId"]}));
         }
     }
     Ok(
         json!({"records":records,"scope":"Native user-role records classified by explicit source markers. Bare terminal paste has no sender identity in Codex thread/read."}),
     )
+}
+
+fn legacy_items(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError> {
+    let read = client
+        .request("thread/read", json!({"threadId":id,"includeTurns":true}))
+        .map_err(rpc_error)?;
+    let turns = required_array(&read["thread"], "turns", "legacy thread/read")?;
+    let mut items = vec![];
+    for turn in turns {
+        let id = required_string(turn, "id", "legacy turn")?;
+        for item in required_array(turn, "items", "legacy turn")? {
+            items.push(json!({"turnId":id,"item":item}));
+        }
+    }
+    Ok(items)
 }

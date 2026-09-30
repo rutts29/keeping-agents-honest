@@ -14,7 +14,6 @@ pub struct Gold {
     pub steer_kind: String,
     pub supersedes: Option<String>,
     pub tags: Vec<String>,
-    pub note: String,
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct Row {

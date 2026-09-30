@@ -12,6 +12,14 @@ pub fn handles(args: &[String]) -> bool {
 pub fn run(args: Vec<String>) -> Result<()> {
     let base = RunStore::default_state_root()?.join("runs");
     let id = args.get(1).ok_or("RUN_ID_REQUIRED stage=arguments")?;
+    if args[0] == "steer" && !id.starts_with("run-") {
+        if args.len() != 3 && !(args.len() == 5 && args[3] == "--receipt") {
+            return Err(
+                "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID]".into(),
+            );
+        }
+        return crate::send_cli::user(id, &args[2], args.get(4).map(String::as_str));
+    }
     match args[0].as_str() {
         "steer" if args.len()==3=>{
             let sequence=commands::steer(&base,id,&args[2])?;

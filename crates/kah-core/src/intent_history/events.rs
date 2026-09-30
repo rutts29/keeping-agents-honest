@@ -22,6 +22,10 @@ pub enum Event {
         source_refs: Vec<SourceRef>,
         approval: Option<Approval>,
     },
+    RequirementConfirmed {
+        intent_id: IntentId,
+        source_refs: Vec<SourceRef>,
+    },
     ConflictRaised {
         conflict: Conflict,
         approval: Option<Approval>,

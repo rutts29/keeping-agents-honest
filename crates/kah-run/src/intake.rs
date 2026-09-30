@@ -24,7 +24,7 @@ pub fn user_bundle(
         .iter()
         .map(|input| {
             BundleRecord::new(
-                format!("user-{}", input.sequence),
+                format!("kah-user:{id}:{}", input.sequence),
                 SourceRole::User,
                 &input.text,
             )

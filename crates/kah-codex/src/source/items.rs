@@ -12,16 +12,7 @@ pub(super) fn parse_user_message(
         let provider_type = required_string(part, "type", &part_location)?;
         let (role, content) = if provider_type == "text" {
             let content = required_text(part, "text", &part_location)?;
-            let role = if crate::plugin_control::parse(&content).is_some() {
-                SourceRole::SystemObservation
-            } else {
-                crate::authorship::classify(
-                    &content,
-                    item["clientId"]
-                        .as_str()
-                        .is_some_and(|id| id.starts_with("kah-delegate:")),
-                )
-            };
+            let role = crate::authorship::with_client_id(&content, item["clientId"].as_str());
             (role, content)
         } else {
             validate_user_attachment(part, &provider_type, &part_location)?;

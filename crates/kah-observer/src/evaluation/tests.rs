@@ -56,3 +56,15 @@ fn metrics_count_abstentions_and_threshold_sweeps_without_changing_policy() {
     assert_eq!(report["metrics"]["callsRepresented"], 1);
     assert_eq!(judge::questions::STEERING_PROBABILITY, before);
 }
+
+#[test]
+fn credential_shaped_samples_are_quarantined_without_including_values_in_errors() {
+    assert!(privacy::credential_shape(&format!(
+        "sk-or-v1-{}",
+        "x".repeat(40)
+    )));
+    assert!(!privacy::credential_shape(
+        "Read ~/.config/kah/typesafe.key without printing it"
+    ));
+    assert!(!privacy::credential_shape("API placeholder sk-example"));
+}

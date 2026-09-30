@@ -19,7 +19,9 @@ pub(super) fn assess(
 ) -> Result<judge::decision::Assessment, String> {
     let prior_items = context.prior.map(items).unwrap_or_default();
     let questions = judge::questions::drift();
-    let input = bounded_state(state, &context, &prior_items);
+    let mut input = bounded_state(state, &context, &prior_items);
+    let ignored = store.sources()?.into_iter().rev().filter(crate::intake::Input::recently_ignored).take(4).map(|i|json!({"source_record":i.source.record,"text":bounded(&i.text,1200),"classification":"previously ignored; user source, not accepted intent"})).collect::<Vec<_>>();
+    input["intent"]["recent_ignored_user_messages"] = json!(ignored);
     let judgment = evaluate(state, store, &input, &questions, "drift")?;
     let assessment = judge::decision::assessment(&judgment, context.actions, state.failures.len());
     store.append(&json!({"kind":"assessment","source":"observer","assessment":assessment,"turn":context.turn}))?;
@@ -49,7 +51,7 @@ fn bounded_state(state: &State, context: &Context<'_>, prior_items: &[(String, S
     json!({
         "prior_intent":{"goal":context.prior.map(|p|&p.goal.text),"items":prior_items},
         "intent":{"goal":context.projection.goal.text,"items":items(context.projection),"failures":state.failures,"completed_outcomes":[],"open_outcomes":[]},
-        "event":{"user_text":bounded(user,4096),"agent_text":bounded(&agent,4096),"actions":context.actions}
+        "event":{"user_text":bounded(user,4096),"agent_text":bounded(&agent,4096),"actions":bounded_actions(context.actions)}
     })
 }
 fn items(projection: &ActiveProjection) -> Vec<(String, String)> {
@@ -123,4 +125,19 @@ pub(super) fn evaluate(
         state.judgments.remove(0);
     }
     Ok(judgment)
+}
+
+fn bounded_actions(actions: &[Value]) -> Vec<Value> {
+    let mut bytes = 0;
+    let mut selected = actions
+        .iter()
+        .rev()
+        .take_while(|action| {
+            bytes += action.to_string().len();
+            bytes <= 24 * 1024
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    selected.reverse();
+    selected
 }

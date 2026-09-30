@@ -8,4 +8,6 @@ pub mod judge;
 
 pub mod compaction;
 pub mod evaluation;
+pub mod intake;
+pub mod review;
 pub mod verbatim;

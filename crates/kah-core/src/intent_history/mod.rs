@@ -262,6 +262,10 @@ fn apply_event(state: &mut ReplayState, event: &Event) -> Result<(), HistoryErro
             source_refs,
             approval,
         } => intent_changes::requirement_withdrawn(state, intent_id, source_refs, approval),
+        Event::RequirementConfirmed {
+            intent_id,
+            source_refs,
+        } => intent_changes::requirement_confirmed(state, intent_id, source_refs),
         Event::ConflictRaised { conflict, approval } => {
             conflict_changes::conflict_raised(state, conflict, approval)
         }

@@ -73,6 +73,8 @@ pub struct IntentItem {
     /// Retained user text whose classification/replacement is unresolved.
     #[serde(default, skip_serializing_if = "is_false")]
     pub review_required: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub user_confirmed: bool,
 }
 
 impl IntentItem {
@@ -95,6 +97,7 @@ impl IntentItem {
             evidence: Vec::new(),
             uncertain_supersedes: Vec::new(),
             review_required: false,
+            user_confirmed: false,
         }
     }
 
@@ -119,6 +122,7 @@ impl IntentItem {
             evidence: Vec::new(),
             uncertain_supersedes: Vec::new(),
             review_required: false,
+            user_confirmed: false,
         }
     }
 

@@ -21,6 +21,8 @@ pub fn classify(text: &str, delivered_by_agent: bool) -> SourceRole {
         "<codex_internal_context",
         "<goal_context>",
         "<subagent_notification>",
+        "<agent_message_board_notification>",
+        "<user_shell_command>",
         "<environment_context>",
         "# AGENTS.md instructions",
         "<skill>",
@@ -37,4 +39,14 @@ pub fn classify(text: &str, delivered_by_agent: bool) -> SourceRole {
 fn starts(text: &str, prefix: &str) -> bool {
     text.get(..prefix.len())
         .is_some_and(|s| s.eq_ignore_ascii_case(prefix))
+}
+
+/// kah's reserved native client-ID namespaces precede textual compatibility markers.
+pub fn with_client_id(text: &str, client_id: Option<&str>) -> SourceRole {
+    match client_id {
+        Some(id) if id.starts_with("kah-delegate:") => SourceRole::Delegate,
+        Some(id) if id.starts_with("kah-user:") => SourceRole::User,
+        _ if crate::plugin_control::parse(text).is_some() => SourceRole::SystemObservation,
+        _ => classify(text, false),
+    }
 }
