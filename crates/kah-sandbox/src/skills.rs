@@ -94,6 +94,7 @@ fn publish(version: &Path, files: &Files) -> Result<(), Error> {
         {
             Ok(mut file) => {
                 file.write_all(bytes)
+                    .and_then(|()| file.set_permissions(fs::Permissions::from_mode(mode)))
                     .and_then(|()| file.sync_all())
                     .map_err(io_error)?;
             }
