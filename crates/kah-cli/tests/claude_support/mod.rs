@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 mod cleanup;
+mod completion;
 
 pub struct Fixture {
     root: PathBuf,
@@ -47,6 +48,9 @@ impl Fixture {
         }
     }
     pub fn start(&self, resume: bool) -> Terminal {
+        self.start_with(resume, "haiku", "low", &[])
+    }
+    pub fn start_with(&self, resume: bool, model: &str, effort: &str, extra: &[&str]) -> Terminal {
         let native = if resume {
             format!("--resume {} --permission-mode acceptEdits", self.id)
         } else {
@@ -56,16 +60,18 @@ impl Fixture {
             )
         };
         let choices = if resume {
-            ""
+            String::new()
         } else {
-            "--model haiku --effort low"
+            format!("--model {} --effort {}", quote(model), quote(effort))
         };
+        let extra = extra.iter().map(|s| quote(s)).collect::<Vec<_>>().join(" ");
         let command = format!(
-            "cd {} && {} --agent claude {} -- {}",
+            "cd {} && {} --agent claude {} -- {} {}",
             quote(self.root.to_str().unwrap()),
             quote(env!("CARGO_BIN_EXE_kah")),
             choices,
-            native
+            native,
+            extra
         );
         Terminal::start(&command, &self.root.join("terminal.log"))
     }
@@ -109,6 +115,18 @@ impl Fixture {
         // Claude's own PTY reply path uses bracketed paste, then Enter.
         terminal.submit(&format!("\x1b[200~{text}\x1b[201~"));
     }
+    pub fn wait_text(&self, terminal: &mut Terminal, text: &str, offset: usize) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            terminal.respond_to_cursor_queries();
+            let output = terminal.output();
+            if screen(output.get(offset..).unwrap_or("")).contains(text) {
+                return;
+            }
+            assert!(Instant::now() < deadline, "native UI did not show {text}");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
     pub fn rows(&self) -> Vec<serde_json::Value> {
         fs::read_to_string(self.transcript_directory.join(format!("{}.jsonl", self.id)))
             .unwrap_or_default()
@@ -142,10 +160,13 @@ impl Fixture {
                 .is_ok_and(|sources| {
                     sources
                         .iter()
-                        .any(|i| i.text.contains(text) && i.decision.is_some())
+                        .rev()
+                        .find(|i| i.text.contains(text) && i.decision.is_some())
+                        .is_some_and(|i| {
+                            completion::completed_after(&self.rows(), &i.source.record)
+                        })
                 })
         });
-        std::thread::sleep(Duration::from_secs(2));
     }
 }
 

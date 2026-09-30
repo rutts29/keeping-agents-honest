@@ -84,7 +84,7 @@ fn handle(input: &Value) -> Result<Value, String> {
     ))
 }
 
-fn initialize(base: &Path, binding: &Binding) -> Result<(), String> {
+pub(crate) fn initialize(base: &Path, binding: &Binding) -> Result<(), String> {
     let mut store = match Store::open(base, &binding.session, Duration::ZERO) {
         Ok(store) => store,
         Err(error) if error.starts_with("OBSERVER_BUSY") => return Ok(()),

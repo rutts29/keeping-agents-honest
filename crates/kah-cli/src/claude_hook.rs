@@ -5,6 +5,7 @@ use kah_observer::{
     session::{Binding, State, Store},
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     env, fs,
     io::Read,
@@ -36,7 +37,7 @@ pub fn handle(input: &Value) -> Result<Value, String> {
         .ok_or("CLAUDE_SESSION stage=hook: session absent")?
         .into();
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
-    initialize(&base, &binding)?;
+    crate::observer_hook::initialize(&base, &binding)?;
     let outcome = observe(input, &binding);
     match outcome {
         Ok(outcome) => {
@@ -80,7 +81,13 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
     if !cwd.starts_with(&binding.project) {
         return Err("CLAUDE_SCOPE stage=hook: cwd outside bound project".into());
     }
-    let snapshot = snapshot(input, binding)?;
+    let mut snapshot = snapshot(input, binding)?;
+    // Non-Stop hooks synchronize intent, not proposed or historical actions.
+    // Judging before execution can suppress the eventual turn-end reminder.
+    if input["hook_event_name"] != "Stop" {
+        snapshot.actions.clear();
+        snapshot.action_digest = format!("sha256:{:x}", Sha256::digest(b"[]"));
+    }
     let turn = input["prompt_id"].as_str().unwrap_or("session");
     engine::observe_snapshot(
         binding,
@@ -161,16 +168,4 @@ fn transcript(input: &Value, binding: &Binding) -> Result<String, String> {
         .read_to_string(&mut text)
         .map_err(|e| format!("CLAUDE_TRANSCRIPT_READ stage=hook: {e}"))?;
     Ok(text)
-}
-
-fn initialize(base: &Path, binding: &Binding) -> Result<(), String> {
-    let mut store = Store::open(base, &binding.session, Duration::from_secs(2))?;
-    if let Some(state) = store.load()? {
-        if state.binding.project != binding.project {
-            return Err("CLAUDE_BINDING stage=hook: project changed".into());
-        }
-    } else {
-        store.save(&State::new(binding.clone()))?;
-    }
-    Ok(())
 }

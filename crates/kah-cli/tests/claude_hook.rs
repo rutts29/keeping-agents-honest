@@ -172,3 +172,35 @@ fn a_stop_before_the_current_prompt_is_durable_records_a_gap() {
             .is_some()
     );
 }
+
+#[test]
+fn interrupted_observation_is_journaled_before_recovery() {
+    let f = Fixture::new();
+    f.run(f.input());
+    let base = f.home.join("state/kah");
+    {
+        let mut store = Store::open(&base, "session", std::time::Duration::ZERO).unwrap();
+        let mut state = store.load().unwrap().unwrap();
+        state.begin("interrupted");
+        state.inflight.as_mut().unwrap().pid = u32::MAX;
+        store.save(&state).unwrap();
+    }
+    f.run(f.input());
+    let journal =
+        fs::read_to_string(Store::directory(&base, "session").join("observations.jsonl")).unwrap();
+    assert!(journal.contains("OBSERVER_INTERRUPTED"));
+}
+
+#[test]
+fn pre_tool_hooks_sync_intent_without_judging_unexecuted_actions() {
+    let f = Fixture::new();
+    let mut text = fs::read_to_string(&f.transcript).unwrap();
+    text.push_str(&format!("{}\n", json!({"type":"assistant","uuid":"planned",
+        "message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"marker.txt","content":"WRONG"}}]}})));
+    fs::write(&f.transcript, text).unwrap();
+    let mut input = f.input();
+    input["hook_event_name"] = "PreToolUse".into();
+    let output = f.run(input);
+    assert!(output.get("systemMessage").is_none(), "{output}");
+    assert!(output["hookSpecificOutput"]["additionalContext"].is_string());
+}
