@@ -30,6 +30,13 @@ pub fn sandbox(
     )
     .and_then(|e| e.with_read_only_mounts(&mounts))
     .map_err(|e| e.to_string())?;
+    for arg in &mut executor.args {
+        if arg == "0:0" {
+            *arg = "65534:65534".into();
+        } else if arg == "/home/sandbox:rw,nosuid,nodev,size=512m,mode=700" {
+            arg.push_str(",uid=65534,gid=65534");
+        }
+    }
     let at = executor.args.len() - 5;
     executor.args.splice(
         at..at,
@@ -42,6 +49,18 @@ pub fn sandbox(
             "GIT_CONFIG_NOSYSTEM=1".into(),
             "--env".into(),
             "GIT_CONFIG_GLOBAL=/dev/null".into(),
+        ],
+    );
+    // gVisor maps operator-owned files to nobody. Use that unprivileged
+    // identity, and preserve group write access for the host's inherited ACLs.
+    let at = executor.args.len() - 4;
+    executor.args.splice(
+        at..at,
+        [
+            "/bin/sh".into(),
+            "-c".into(),
+            "umask 0002; exec \"$@\"".into(),
+            "kah-executor".into(),
         ],
     );
     Ok(executor)

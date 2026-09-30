@@ -22,6 +22,9 @@ fn verification_runs_in_the_same_confined_worktree_and_has_a_deadline() {
     assert!(args.contains(&"/usr/bin/docker"));
     assert!(args.windows(2).any(|a| a == ["--runtime", "runsc"]));
     assert!(args.windows(2).any(|a| a == ["--network", "none"]));
-    assert_eq!(&args[args.len() - 3..], ["/bin/sh", "-lc", "node --test"]);
+    assert_eq!(
+        &args[args.len() - 3..],
+        ["/bin/sh", "-lc", "umask 0002; node --test"]
+    );
     assert!(!args.contains(&"exec-server"));
 }
