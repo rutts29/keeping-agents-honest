@@ -28,7 +28,7 @@ use kah_core::session_bundle::{BundleRecord, NativeGoal, NeutralSessionBundle};
 
 const PROPOSAL_SCHEMA_VERSION: u32 = 1;
 const PROMPT_SCHEMA_VERSION: u32 = 4;
-const INCREMENTAL_PROMPT_SCHEMA_VERSION: u32 = 2;
+const INCREMENTAL_PROMPT_SCHEMA_VERSION: u32 = 3;
 const MAX_INCREMENTAL_DELTA_PROMPT_BYTES: usize = 64 * 1024;
 static ARTIFACT_COUNTER: AtomicU64 = AtomicU64::new(0);
 

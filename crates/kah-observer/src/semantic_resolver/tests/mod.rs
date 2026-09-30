@@ -84,6 +84,7 @@ pub(super) fn operation(name: &str, source_record: &str) -> Value {
 
 mod backend;
 mod continuity;
+mod goal_summary;
 mod operations;
 mod privacy;
 mod prompts;

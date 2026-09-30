@@ -71,9 +71,11 @@ fn apply_user_goal_change(
             .history
             .append(Event::GoalRevised { goal })
             .map_err(|e| e.to_string())?;
+        let generated_by = resolution.projection.generated_by.clone();
         resolution.projection =
             ActiveProjection::from_history(&resolution.history, ProjectionConfig::default())
                 .map_err(|e| e.to_string())?;
+        resolution.projection.generated_by = generated_by;
     }
     Ok(())
 }

@@ -48,15 +48,13 @@ pub(super) fn validate_incremental_classification(
     let valid = match classification {
         IncrementalClassification::NoChange => proposed_goal.is_none() && operations.is_empty(),
         IncrementalClassification::Additive => {
-            proposed_goal.is_none()
-                && !operations.is_empty()
+            !operations.is_empty()
                 && operations
                     .iter()
                     .all(|operation| operation.operation == IncrementalOperationName::Add)
         }
         IncrementalClassification::Supersession => {
-            proposed_goal.is_none()
-                && !operations.is_empty()
+            !operations.is_empty()
                 && operations.iter().all(|operation| {
                     matches!(
                         operation.operation,
@@ -68,8 +66,7 @@ pub(super) fn validate_incremental_classification(
                     .any(|operation| operation.operation == IncrementalOperationName::Supersede)
         }
         IncrementalClassification::Withdrawal => {
-            proposed_goal.is_none()
-                && !operations.is_empty()
+            !operations.is_empty()
                 && operations.iter().all(|operation| {
                     matches!(
                         operation.operation,
