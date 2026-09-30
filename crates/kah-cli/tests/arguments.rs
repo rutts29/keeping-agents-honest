@@ -12,10 +12,9 @@ fn domain_and_native_model_choices_are_not_pinned() {
     ]);
     assert_eq!(args.project, Some((Domain::Research, "demo".into())));
     assert!(args.options.online);
-    assert_eq!(
-        args.native,
-        vec!["--model", "chosen", "-c", "model_reasoning_effort=\"high\""]
-    );
+    assert_eq!(args.native, vec!["--model", "chosen"]);
+    assert_eq!(args.effort.as_deref(), Some("high"));
+    assert!(parse(&[]).effort.is_none());
     assert!(parse(&[]).native.is_empty());
 }
 
@@ -50,6 +49,7 @@ fn restricted_native_arguments_allow_resume_and_models_but_reject_policy_bypasse
         vec!["--", "-c", "features.apps=true"],
         vec!["--", "--remote", "unix:///socket"],
         vec!["--", "exec", "task"],
+        vec!["--", "agents"],
         vec!["--", "--yolo"],
         vec!["--", "--config=web_search=live"],
     ] {

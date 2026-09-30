@@ -6,6 +6,7 @@ pub struct Arguments {
     pub project: Option<(Domain, String)>,
     pub options: LaunchOptions,
     pub native: Vec<String>,
+    pub effort: Option<String>,
     pub help: bool,
     pub no_observer: bool,
     pub observer_model: Option<String>,
@@ -35,13 +36,7 @@ impl Arguments {
                 "--model" | "-m" => result
                     .native
                     .extend(["--model".into(), value(&mut args, &arg)?]),
-                "--effort" => result.native.extend([
-                    "-c".into(),
-                    format!(
-                        "model_reasoning_effort={}",
-                        serde_json::to_string(&value(&mut args, &arg)?)?
-                    ),
-                ]),
+                "--effort" => result.effort = Some(value(&mut args, &arg)?),
                 "mine" | "research" | "untrusted" if result.project.is_none() => {
                     let domain = Domain::ALL.into_iter().find(|d| d.as_str() == arg).unwrap();
                     result.project = Some((domain, value(&mut args, &arg)?));
@@ -75,9 +70,10 @@ impl Arguments {
                         return Err("NATIVE_CONFIG_POLICY stage=arguments: restricted domains accept only model/effort overrides".into());
                     }
                 }
-                "resume" | "fork" | "--all" | "--last" | "--no-alt-screen" | "--help" => (),
-                "exec" | "e" | "review" | "app-server" | "exec-server" | "sandbox" | "mcp"
-                | "plugin" | "remote-control" | "apply" | "a" | "cloud" => {
+                "resume" | "fork" | "--all" | "--last" | "--no-alt-screen" | "--no-daemon"
+                | "--help" => (),
+                "agents" | "exec" | "e" | "review" | "app-server" | "exec-server" | "sandbox"
+                | "mcp" | "plugin" | "remote-control" | "apply" | "a" | "cloud" => {
                     return Err("NATIVE_COMMAND_POLICY stage=arguments: kah interactive launch accepts prompts, resume and fork; use kah run for unattended work".into());
                 }
                 _ if domain != Domain::Mine && arg.starts_with('-') => {

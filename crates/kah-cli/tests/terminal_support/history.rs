@@ -77,3 +77,32 @@ pub fn completed_turn(client: &mut Control, id: &str, after: Option<&str>) -> Va
         thread::sleep(Duration::from_millis(300));
     }
 }
+
+/// Cursor-position startup probes can consume the first folder-menu Enter.
+/// Empty Enter is idempotent; stop sending as soon as the resumed turn starts.
+pub fn resumed_turn(
+    client: &mut Control,
+    id: &str,
+    after: &str,
+    terminal: &mut super::pty::Terminal,
+) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        let page = client
+            .request(
+                "thread/turns/list",
+                json!({"threadId":id,"limit":1,"sortDirection":"desc","itemsView":"full"}),
+            )
+            .unwrap();
+        if page["data"]
+            .as_array()
+            .and_then(|v| v.first())
+            .is_some_and(|v| v["id"].as_str() != Some(after))
+        {
+            return completed_turn(client, id, Some(after));
+        }
+        assert!(Instant::now() < deadline, "resumed turn did not start");
+        terminal.send("\r");
+        thread::sleep(Duration::from_millis(500));
+    }
+}

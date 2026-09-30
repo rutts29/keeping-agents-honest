@@ -10,10 +10,10 @@ size:
 
 gate: check
 	@test -n "$(PHASE)" && test -d "demos/phase-$(PHASE)" || { echo 'Use make gate PHASE=N' >&2; exit 2; }
-	@for demo in demos/phase-$(PHASE)/*.sh; do bash "$$demo" || exit $$?; done
+	@bash demos/run-gate.sh "$(PHASE)"
 
 gates: check
-	@for demo in demos/phase-*/*.sh; do bash "$$demo" || exit $$?; done
+	@bash demos/run-gate.sh all
 
 install-hooks:
 	git config core.hooksPath .githooks

@@ -2,6 +2,7 @@
 use std::{fmt, path::Path};
 use toml::{Table, Value};
 
+mod hook_file;
 mod owned_hooks;
 mod storage;
 pub use owned_hooks::{OwnedHook, install_owned_hooks, install_session_hook};
@@ -90,4 +91,42 @@ fn restrict(config: &mut Table, policy: &Policy<'_>) {
         projects.insert(path.to_string_lossy().into_owned(), Value::Table(settings));
     }
     config.insert("projects".into(), Value::Table(projects));
+}
+
+/// Merge kah-owned settings into this independent home, never the shared config.
+pub fn write_settings(directory: &Path, settings: serde_json::Value) -> Result<(), OverlayError> {
+    let path = directory.join("config.toml");
+    let mut config: Value =
+        toml::from_str(&std::fs::read_to_string(&path).map_err(settings_failure)?)
+            .map_err(settings_failure)?;
+    merge_settings(
+        &mut config,
+        Value::try_from(settings).map_err(settings_failure)?,
+    );
+    storage::write_private(
+        &path,
+        toml::to_string(&config)
+            .map_err(settings_failure)?
+            .as_bytes(),
+    )
+}
+fn merge_settings(target: &mut Value, incoming: Value) {
+    if let (Some(target), Some(incoming)) = (target.as_table_mut(), incoming.as_table()) {
+        for (key, value) in incoming {
+            if let Some(existing) = target.get_mut(key) {
+                merge_settings(existing, value.clone());
+            } else {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+    } else {
+        *target = incoming;
+    }
+}
+
+fn settings_failure(error: impl ToString) -> OverlayError {
+    OverlayError {
+        code: "OVERLAY_SETTINGS",
+        detail: error.to_string(),
+    }
 }

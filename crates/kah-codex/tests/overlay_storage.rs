@@ -44,7 +44,11 @@ fn native_config_writes_do_not_reach_original_but_login_and_history_are_shared()
             f.0.join("original").join(name)
         );
     }
-    assert!(!overlay.join("hooks.json").exists());
+    assert!(
+        fs::symlink_metadata(overlay.join("hooks.json"))
+            .unwrap()
+            .is_file()
+    );
     f.prepare().unwrap();
 }
 
@@ -61,5 +65,111 @@ fn a_previous_config_symlink_is_refused_without_touching_the_global_target() {
     assert_eq!(
         fs::read_to_string(f.0.join("original/config.toml")).unwrap(),
         "model='user-choice'"
+    );
+}
+
+#[test]
+fn mine_merges_hooks_into_a_regular_file_and_migrates_only_its_old_symlink() {
+    let f = Fixture::new("merged-hooks");
+    let original = f.0.join("original");
+    let overlay = f.0.join("overlay");
+    let hooks =
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"user-hook"}]}]}}"#;
+    fs::write(original.join("hooks.json"), hooks).unwrap();
+    fs::create_dir(&overlay).unwrap();
+    symlink(original.join("hooks.json"), overlay.join("hooks.json")).unwrap();
+    prepare(
+        &original,
+        &overlay,
+        &Policy {
+            restricted: false,
+            online: false,
+            root: &f.0,
+            cwd: &f.0,
+        },
+    )
+    .unwrap();
+    assert!(
+        fs::symlink_metadata(overlay.join("hooks.json"))
+            .unwrap()
+            .is_file()
+    );
+    assert_eq!(
+        fs::read_to_string(original.join("hooks.json")).unwrap(),
+        hooks
+    );
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(overlay.join("config.toml")).unwrap()).unwrap();
+    assert!(
+        config
+            .get("hooks")
+            .is_none_or(|h| h.as_table().unwrap().keys().all(|k| k == "state"))
+    );
+    f.prepare().unwrap();
+    let restricted: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(overlay.join("hooks.json")).unwrap()).unwrap();
+    assert!(restricted["hooks"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn merged_json_and_toml_hooks_preserve_order_and_remap_trust_without_approving_changes() {
+    let f = Fixture::new("trust-map");
+    let original = f.0.join("original");
+    let target = f.0.join("overlay/hooks.json");
+    fs::write(
+        original.join("hooks.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"json-command"}]}]}}"#,
+    )
+    .unwrap();
+    fs::write(
+        original.join("config.toml"),
+        format!(
+            r#"
+[[hooks.SessionStart]]
+hooks = [{{type='command', command='toml-command'}}]
+[hooks.state.'{}:session_start:0:0']
+enabled = false
+trusted_hash = 'unchanged-hash'
+[hooks.state.'{}:session_start:0:0']
+trusted_hash = 'second-hash'
+[hooks.state.'stale']
+trusted_hash = 'never-copy'
+"#,
+            original.join("hooks.json").display(),
+            original.join("config.toml").display()
+        ),
+    )
+    .unwrap();
+    prepare(
+        &original,
+        &f.0.join("overlay"),
+        &Policy {
+            restricted: false,
+            online: false,
+            root: &f.0,
+            cwd: &f.0,
+        },
+    )
+    .unwrap();
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(f.0.join("overlay/config.toml")).unwrap()).unwrap();
+    let states = config["hooks"]["state"].as_table().unwrap();
+    assert_eq!(states.len(), 2);
+    assert_eq!(
+        states[&format!("{}:session_start:0:0", target.display())]["enabled"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        states[&format!("{}:session_start:1:0", target.display())]["trusted_hash"].as_str(),
+        Some("second-hash")
+    );
+    let file: serde_json::Value = serde_json::from_slice(&fs::read(target).unwrap()).unwrap();
+    assert_eq!(
+        file["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+        "json-command"
+    );
+    assert_eq!(
+        file["hooks"]["SessionStart"][1]["hooks"][0]["command"],
+        "toml-command"
     );
 }

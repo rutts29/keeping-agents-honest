@@ -36,7 +36,8 @@ kah steer SESSION_ID 'steer: Keep the API unchanged' --receipt change-001
 kah send SESSION_ID '[kah-reviewer] Review findings' --sender kah-reviewer --receipt review-001
 ```
 
-Native send/steer needs an initialized live conversation. Reuse the same receipt
+Native send/steer needs an initialized live conversation with a control socket.
+Embedded kah TUIs currently lack that socket; type steer:/aside: in their chat. Reuse the same receipt
 and exact text on retry; use a new receipt for each new message. `kah send` marks
 delegate provenance and cannot create user intent. Review commands require user
 authority and call no judge. Add `--json` to status/ledger for structured output.

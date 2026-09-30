@@ -13,7 +13,6 @@ pub struct Launch {
     pub overlay: PathBuf,
     pub environment_id: Option<String>,
     binary: PathBuf,
-    overrides: Vec<String>,
     native: Vec<String>,
     observer_binding: Option<String>,
     session_policy: String,
@@ -61,23 +60,18 @@ impl Launch {
         } else {
             None
         };
-        let mut overrides = policy_overrides(&project, &cwd, &args);
+        overlay::write_settings(&overlay, policy_settings(&project, &args))?;
         let session_policy = serde_json::to_string(&crate::session_policy::SessionPolicy {
             project: project.root.clone(),
             policy: policy_name,
             overlay: overlay.clone(),
         })?;
         let observer_binding = configure_observation(home, &binary, &overlay, &project, &args)?;
-        overrides.push("features.hooks=true".into());
-        // Prevent the native resume picker from loading another project's host
-        // config before SessionStart can compare the saved kah policy.
-        overrides.push("tui.resume_cwd=\"current\"".into());
         Ok(Self {
             project,
             overlay,
             environment_id,
             binary,
-            overrides,
             native: args.native,
             observer_binding,
             session_policy,
@@ -99,62 +93,45 @@ impl Launch {
         }
         if app_server {
             command.args(["app-server", "--stdio"]);
-            for pair in self.native.windows(2) {
-                if pair[0] == "--model" || pair[0] == "-m" {
-                    command.args([
-                        "-c",
-                        &format!("model={}", serde_json::to_string(&pair[1]).unwrap()),
-                    ]);
-                } else if pair[0] == "-c" || pair[0] == "--config" {
-                    command.args(["-c", &pair[1]]);
-                }
-            }
-        }
-        for setting in &self.overrides {
-            command.args(["-c", setting]);
         }
         if !app_server {
+            if self.environment_id.is_some() {
+                command
+                    .arg("--cd")
+                    .arg(self.project.root.join(&self.project.relative_cwd));
+            }
+            if !self.native.iter().any(|arg| arg == "--no-daemon") {
+                command.arg("--no-daemon");
+            }
             command.args(&self.native);
         }
         command
     }
 }
 
-fn policy_overrides(project: &Project, cwd: &Path, args: &Arguments) -> Vec<String> {
-    if project.domain == Domain::Mine {
-        if args.options.yolo {
-            return vec![
-                "default_permissions=\":danger-full-access\"".into(),
-                "approval_policy=\"never\"".into(),
-            ];
+fn policy_settings(project: &Project, args: &Arguments) -> serde_json::Value {
+    use serde_json::json;
+    let mut settings = json!({"features":{"hooks":true},"tui":{"resume_cwd":"current"}});
+    if project.domain == Domain::Mine && !args.options.yolo {
+        settings["default_permissions"] = "kah-mine-workspace".into();
+        settings["permissions"] =
+            json!({"kah-mine-workspace":{"extends":":workspace","network":{"enabled":true}}});
+        settings["approval_policy"] = "on-request".into();
+        settings["approvals_reviewer"] = "auto_review".into();
+    } else {
+        settings["default_permissions"] = ":danger-full-access".into();
+        settings["approval_policy"] = "never".into();
+    }
+    if let Some(effort) = &args.effort {
+        settings["model_reasoning_effort"] = effort.clone().into();
+    }
+    // app-server has no --model flag; the explicit choice also configures its home.
+    for pair in args.native.windows(2) {
+        if matches!(pair[0].as_str(), "--model" | "-m") {
+            settings["model"] = pair[1].clone().into();
         }
-        return vec![
-            "default_permissions=\"kah-mine-workspace\"".into(),
-            "permissions.kah-mine-workspace.extends=\":workspace\"".into(),
-            "permissions.kah-mine-workspace.network.enabled=true".into(),
-            "approval_policy=\"on-request\"".into(),
-            "approvals_reviewer=\"auto_review\"".into(),
-        ];
     }
-    let mut result = vec![
-        "default_permissions=\":danger-full-access\"".into(),
-        "approval_policy=\"never\"".into(),
-        format!(
-            "web_search=\"{}\"",
-            if args.options.online {
-                "live"
-            } else {
-                "disabled"
-            }
-        ),
-    ];
-    for path in [&project.root, &cwd.to_path_buf()] {
-        result.push(format!(
-            "projects.{}.trust_level=\"untrusted\"",
-            serde_json::to_string(path).expect("path encoding validated")
-        ));
-    }
-    result
+    settings
 }
 
 fn service_uid() -> Result<u32> {

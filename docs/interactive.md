@@ -66,3 +66,12 @@ exhaustion or a permanent failure produces an explicit observer gap. There is
 no Luna judgment fallback. `--jev-model` chooses its model/alias; the default is
 `jev-latest`. Size-triggered compaction uses `--observer-model` and
 `--observer-effort`; judgments record the actual backend and returned model.
+
+
+Startup mode is currently **embedded** in every domain, with policy in the
+project's regular overlay config and one merged hooks.json. See
+[startup modes and app visibility](startup-modes.md). Saved native history is
+shared; live control through the global daemon or Mac/phone apps is not proven.
+An embedded TUI has no control socket for kah send/native-session kah steer;
+use in-chat steer:/aside:. Run-ID steering remains available. Mine shared mode
+requires a separately verified daemon configuration and new-session proof.

@@ -42,6 +42,7 @@ pub fn prepare(original: &Path, directory: &Path, policy: &Policy<'_>) -> Result
         "sqlite_home".into(),
         toml::Value::String(original.to_string_lossy().into_owned()),
     );
+    super::hook_file::prepare(original, directory, &mut config, policy.restricted)?;
     let text = toml::to_string(&config).map_err(|e| OverlayError {
         code: "CONFIG_ENCODE",
         detail: e.to_string(),
@@ -58,7 +59,7 @@ pub fn prepare(original: &Path, directory: &Path, policy: &Policy<'_>) -> Result
         share(&original.join(name), &directory.join(name))?;
     }
     if !policy.restricted {
-        for name in ["hooks.json", "skills", "plugins", "packages"] {
+        for name in ["skills", "plugins", "packages"] {
             if original.join(name).exists() {
                 share(&original.join(name), &directory.join(name))?;
             }

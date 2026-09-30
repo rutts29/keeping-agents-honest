@@ -9,7 +9,8 @@ in private source history and remain promotable. Recent model-ignored messages
 are included in bounded drift context; explicit asides and dismissed/promoted
 sources are excluded from that recheck.
 
-For a live, already initialized session, the out-of-band path remains:
+For a live, initialized session with a reachable native control socket, the
+out-of-band path remains (embedded kah TUIs currently have no such socket):
 
 ```sh
 kah steer SESSION 'steer: Keep the API unchanged' --receipt user-change-001
@@ -43,7 +44,7 @@ Promote makes an ignored original active, marked `user_confirmed`; the original
 text remains unchanged. These local operator decisions call no judge. Inactive
 and ignored originals remain retrievable with `kah ledger SESSION --json`.
 
-Delegate delivery:
+Delegate delivery to a reachable native control socket:
 
 ```
 kah send SESSION '[kah-reviewer] Review message' --sender kah-reviewer --receipt review-001
@@ -83,3 +84,10 @@ reports an explicit compaction gap instead of silently dropping it.
 Thresholds are explicit project policy. Future retuning uses actual
 operator review decisions after about a week of use, with a development/validation
 split and misses-first comparison. It is never automatic.
+
+
+Gate 3f verified that embedded kah TUIs have no control socket. Their history is
+shared, but kah send and native-session kah steer fail closed rather than delivering
+through the global daemon. Use typed steer:/aside: in those TUIs. Native delivery
+to the existing managed-daemon sessions and run-ID steering are separate paths.
+See startup-modes.md for the pending shared Mine proof and app visibility limits.

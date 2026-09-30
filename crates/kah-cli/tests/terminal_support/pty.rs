@@ -1,6 +1,7 @@
 use std::{
     fs,
     io::Write,
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     thread,
@@ -16,13 +17,24 @@ pub struct Terminal {
     input: ChildStdin,
     log: PathBuf,
     cursor_replies: usize,
+    tag: String,
 }
 impl Terminal {
     pub fn start(command: &str, log: &Path) -> Self {
         // A resumed terminal may reuse this fixture log. Clear it before spawn
         // so readiness checks cannot consume the previous process's prompt.
         fs::File::create(log).unwrap();
+        let tag = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
         let mut child = Command::new("/usr/bin/script")
+            .process_group(0)
+            .env("KAH_LIVE_FIXTURE", &tag)
             .args([
                 "--quiet",
                 "--return",
@@ -47,6 +59,7 @@ impl Terminal {
             input,
             log: log.into(),
             cursor_replies: 0,
+            tag,
         }
     }
 
@@ -128,6 +141,7 @@ impl Drop for Terminal {
             let _ = fs::copy(&self.log, &diagnostic);
             eprintln!("terminal diagnostic: {diagnostic}");
         }
+        super::processes::reap(self.child.id(), &self.tag);
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
