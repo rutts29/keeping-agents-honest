@@ -1,5 +1,6 @@
 pub mod closure;
 pub mod herdr;
+pub mod herdr_probe;
 pub mod history;
 pub mod processes;
 pub mod pty;

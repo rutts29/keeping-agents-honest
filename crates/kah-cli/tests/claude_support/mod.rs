@@ -88,7 +88,7 @@ impl Fixture {
                 terminal.submit("\x1b[B");
                 trusted = true;
             }
-            if terminal.output().contains("\x1b[?1049h")
+            if text.contains("Claude Code v")
                 && Store::read(&self.base, &self.id).ok().flatten().is_some()
             {
                 return;
@@ -120,7 +120,7 @@ impl Fixture {
         loop {
             terminal.respond_to_cursor_queries();
             let output = terminal.output();
-            if screen(output.get(offset..).unwrap_or("")).contains(text) {
+            if output.len() > offset && screen(&output).contains(text) {
                 return;
             }
             assert!(Instant::now() < deadline, "native UI did not show {text}");
@@ -147,6 +147,14 @@ impl Fixture {
     pub fn has_file(&self, file: &str, text: &str) -> bool {
         fs::read_to_string(self.root.join(file)).is_ok_and(|s| s.trim() == text)
     }
+    pub fn project(&self) -> &std::path::Path {
+        &self.root
+    }
+    pub fn reserve_for_creation(&self) {
+        assert!(cleanup::command(&self.root, &self.created_root).is_ok());
+        fs::remove_dir_all(self.root.join(".git")).unwrap();
+        fs::remove_dir(&self.root).unwrap();
+    }
     pub fn settled(&self, terminal: &mut Terminal, text: &str) {
         self.wait(terminal, || {
             let Ok(Some(state)) = Store::read(&self.base, &self.id) else {
@@ -171,23 +179,14 @@ impl Fixture {
 }
 
 fn screen(raw: &str) -> String {
-    let mut text = String::new();
-    let mut chars = raw.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            if chars.next() == Some('[') {
-                for c in chars.by_ref() {
-                    if ('@'..='~').contains(&c) {
-                        break;
-                    }
-                }
-            }
-            text.push(' ');
-        } else {
-            text.push(ch);
-        }
-    }
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut parser = vt100::Parser::new(36, 120, 0);
+    parser.process(raw.as_bytes());
+    parser
+        .screen()
+        .contents()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 impl Drop for Fixture {
     fn drop(&mut self) {

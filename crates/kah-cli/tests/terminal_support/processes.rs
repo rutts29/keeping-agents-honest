@@ -83,6 +83,7 @@ pub fn leftovers() -> Vec<Process> {
         .filter(|p| {
             p.cwd.split('/').any(|s| {
                 s.starts_with("kah-gate")
+                    || s.starts_with("kah-claude-")
                     || s.starts_with("kah-phase1-")
                     || s.starts_with("kah-fixture-")
             }) || fs::read(format!("/proc/{}/environ", p.pid)).is_ok_and(|b| {

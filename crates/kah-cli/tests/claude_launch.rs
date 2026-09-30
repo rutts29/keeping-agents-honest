@@ -51,6 +51,30 @@ fn inherited_modes_that_disable_hooks_are_reported_before_native_startup() {
     fs::remove_dir_all(home).unwrap();
 }
 
+#[test]
+fn versioned_native_install_preserves_the_claude_process_name() {
+    let home = fixture();
+    let version = home.join("versions/2.1.286");
+    fs::create_dir(version.parent().unwrap()).unwrap();
+    fs::copy("/usr/bin/sleep", &version).unwrap();
+    fs::remove_file(home.join(".local/bin/claude")).unwrap();
+    std::os::unix::fs::symlink(&version, home.join(".local/bin/claude")).unwrap();
+    let args = Arguments {
+        no_observer: true,
+        native: vec!["10".into()],
+        ..Arguments::default()
+    };
+    let mut child = claude_launch::prepare(&home, &home.join("repos/mine/project"), args)
+        .unwrap()
+        .spawn()
+        .unwrap();
+    let name = fs::read_to_string(format!("/proc/{}/comm", child.id()));
+    let _ = child.kill();
+    child.wait().unwrap();
+    fs::remove_dir_all(home).unwrap();
+    assert_eq!(name.unwrap().trim(), "claude");
+}
+
 fn fixture() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
         "kah-claude-launch-{}-{:?}",

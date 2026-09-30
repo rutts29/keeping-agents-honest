@@ -16,10 +16,12 @@ pub fn prepare(home: &Path, cwd: &Path, args: Arguments) -> Result<Command> {
     if project.needs_creation {
         project.initialize()?;
     }
-    let binary = home
-        .join(".local/bin/claude")
+    let binary = home.join(".local/bin/claude");
+    binary
         .canonicalize()
         .map_err(|e| format!("CLAUDE_BINARY stage=launch: {e}"))?;
+    // Preserve stock argv[0]/comm through the installed symlink. Versioned
+    // target names (for example 2.1.286) are not recognizable agent names.
     let mut command = Command::new(binary);
     command
         .current_dir(project.root.join(&project.relative_cwd))

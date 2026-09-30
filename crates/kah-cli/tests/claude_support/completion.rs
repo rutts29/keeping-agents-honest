@@ -24,3 +24,8 @@ fn a_stop_hook_or_tool_result_does_not_prove_the_native_turn_finished() {
     rows.push(json!({"uuid":"user-2","type":"user"}));
     assert!(!completed_after(&rows, "user-2:0"));
 }
+
+#[test]
+fn terminal_text_applies_cursor_overwrites() {
+    assert!(super::screen("\x1b[2J\x1b[HSwitch mod l?\x1b[1;11He").contains("Switch model?"));
+}

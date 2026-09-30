@@ -1,7 +1,10 @@
 use std::{
     fs,
     io::Write,
-    os::unix::process::CommandExt,
+    os::unix::{
+        fs::{OpenOptionsExt, PermissionsExt},
+        process::CommandExt,
+    },
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     thread,
@@ -23,7 +26,14 @@ impl Terminal {
     pub fn start(command: &str, log: &Path) -> Self {
         // A resumed terminal may reuse this fixture log. Clear it before spawn
         // so readiness checks cannot consume the previous process's prompt.
-        fs::File::create(log).unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(log)
+            .unwrap();
+        fs::set_permissions(log, fs::Permissions::from_mode(0o600)).unwrap();
         let tag = format!(
             "{}-{}",
             std::process::id(),
@@ -142,6 +152,7 @@ impl Drop for Terminal {
         if std::thread::panicking() {
             let diagnostic = format!("/tmp/kah-terminal-failure-{}.log", std::process::id());
             let _ = fs::copy(&self.log, &diagnostic);
+            let _ = fs::set_permissions(&diagnostic, fs::Permissions::from_mode(0o600));
             eprintln!("terminal diagnostic: {diagnostic}");
         }
         super::processes::reap(self.child.id(), &self.tag);
