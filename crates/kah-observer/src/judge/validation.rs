@@ -84,12 +84,18 @@ pub fn validate_response(
                     .iter()
                     .map(|(level, p)| level.parse::<f64>().unwrap() * p)
                     .sum::<f64>();
-                if !score.is_finite() || (score - mean).abs() > 0.02 {
-                    return Err(Error::new("JUDGE_SCORE"));
-                }
+                validate_score(*score, mean)?;
             }
             _ => return Err(Error::new("JUDGE_ANSWER_TYPE")),
         }
+    }
+    Ok(())
+}
+fn validate_score(score: f64, mean: f64) -> Result<(), Error> {
+    if !score.is_finite() || (score - mean).abs() > 0.02 + 1e-9 {
+        let mut error = Error::new("JUDGE_SCORE");
+        error.numeric_detail = Some(format!("reported_score={score} distribution_mean={mean}"));
+        return Err(error);
     }
     Ok(())
 }

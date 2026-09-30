@@ -41,6 +41,7 @@ pub struct Error {
     pub code: String,
     pub stage: &'static str,
     pub status: Option<u16>,
+    pub numeric_detail: Option<String>,
 }
 impl Error {
     pub fn new(code: &'static str) -> Self {
@@ -48,6 +49,7 @@ impl Error {
             code: code.into(),
             stage: "judge",
             status: None,
+            numeric_detail: None,
         }
     }
 }
@@ -56,6 +58,9 @@ impl fmt::Display for Error {
         write!(f, "{} stage={}", self.code, self.stage)?;
         if let Some(status) = self.status {
             write!(f, " http_status={status}")?;
+        }
+        if let Some(detail) = &self.numeric_detail {
+            write!(f, " {detail}")?;
         }
         Ok(())
     }

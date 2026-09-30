@@ -5,6 +5,7 @@ fn failure(status: u16) -> Error {
         code: "JEV_HTTP_STATUS".into(),
         stage: "judge_http",
         status: Some(status),
+        numeric_detail: None,
     }
 }
 #[test]

@@ -105,3 +105,28 @@ fn domain_defaults_and_low_confidence_never_trigger_a_reminder() {
         &[("one".into(), "required outcome".into())]
     ));
 }
+
+#[test]
+fn score_consistency_tolerance_is_not_defeated_by_float_representation() {
+    let criteria = vec!["none".into(), "some".into()];
+    let questions = Questions::from([(
+        "distance".into(),
+        Question::Score {
+            instructions: "Rate deviation".into(),
+            criteria: criteria.clone(),
+        },
+    )]);
+    let answers = BTreeMap::from([(
+        "distance".into(),
+        Answer::Score {
+            score: 0.07,
+            confidence: 0.9,
+            legend: BTreeMap::from([
+                ("0".into(), criteria[0].clone()),
+                ("1".into(), criteria[1].clone()),
+            ]),
+            probabilities: BTreeMap::from([("0".into(), 0.95), ("1".into(), 0.05)]),
+        },
+    )]);
+    assert!(judge::validate_response(&questions, &answers).is_ok());
+}

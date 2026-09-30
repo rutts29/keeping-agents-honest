@@ -108,6 +108,7 @@ impl Client for HttpClient {
                 code: "JEV_HTTP_STATUS".into(),
                 stage: "judge_http",
                 status: Some(response.status().as_u16()),
+                numeric_detail: None,
             });
         }
         response
@@ -126,6 +127,7 @@ fn http_error(error: ureq::Error) -> Error {
             code: "JEV_HTTP_STATUS".into(),
             stage: "judge_http",
             status: Some(status),
+            numeric_detail: None,
         },
         ureq::Error::Timeout(_) => Error::new("JEV_HTTP_TIMEOUT"),
         _ => Error::new("JEV_HTTP_TRANSPORT"),
