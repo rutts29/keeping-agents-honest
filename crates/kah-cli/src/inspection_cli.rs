@@ -9,53 +9,36 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let id = args.iter().skip(1).find(|s| s.as_str() != "--json");
     let json_output = args.iter().any(|s| s == "--json");
     let base = RunStore::default_state_root()?;
-    let path = base.join("observer-sessions");
-    let entries = match fs::read_dir(path) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!(
-                "{}",
-                if json_output {
-                    "[]"
-                } else {
-                    "No observed sessions yet."
-                }
-            );
-            return Ok(());
-        }
-        Err(e) => return Err(e.into()),
+    let sessions = load_sessions(&base, id)?;
+    let runs = if !ledger && id.is_none() {
+        kah_run::commands::list(&base.join("runs"))?
+    } else {
+        vec![]
     };
-    let mut sessions = Vec::<State>::new();
-    for entry in entries {
-        let path = entry?.path().join("state.json");
-        if !path.is_file() {
-            continue;
-        }
-        let mut state: State = serde_json::from_slice(&fs::read(path)?)?;
-        if id.is_some_and(|id| id != &state.binding.session) {
-            continue;
-        }
-        if state.recover_interrupted()
-            && let Ok(mut store) = Store::open(&base, &state.binding.session, Duration::ZERO)
-        {
-            state = store.load()?.unwrap_or(state);
-            if state.recover_interrupted() {
-                store.save(&state)?;
-                store.append(&json!({"kind":"gap","source":"observer","gap":state.gap}))?;
-            }
-        }
-        sessions.push(state);
-    }
     if json_output {
         let data = sessions
             .iter()
             .map(|s| json_session(s, ledger))
             .collect::<Result<Vec<_>>>()?;
-        println!("{}", serde_json::to_string_pretty(&data)?);
+        if !ledger && id.is_none() {
+            let runs = runs
+                .into_iter()
+                .map(|(id, record)| json!({"id":id,"record":record}))
+                .collect::<Vec<_>>();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({"sessions":data,"runs":runs}))?
+            );
+        } else {
+            println!("{}", serde_json::to_string_pretty(&data)?);
+        }
         return Ok(());
     }
     for state in sessions {
         print_session(&state, ledger)?;
+    }
+    for (id, record) in runs {
+        crate::run_commands::print_status(&id, &record);
     }
     Ok(())
 }
@@ -167,4 +150,35 @@ fn observations(state: &State) -> Result<Vec<serde_json::Value>> {
         .filter(|s| !s.trim().is_empty())
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
+}
+
+fn load_sessions(base: &std::path::Path, id: Option<&String>) -> Result<Vec<State>> {
+    let path = base.join("observer-sessions");
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e.into()),
+    };
+    let mut sessions = Vec::<State>::new();
+    for entry in entries {
+        let path = entry?.path().join("state.json");
+        if !path.is_file() {
+            continue;
+        }
+        let mut state: State = serde_json::from_slice(&fs::read(path)?)?;
+        if id.is_some_and(|id| id != &state.binding.session) {
+            continue;
+        }
+        if state.recover_interrupted()
+            && let Ok(mut store) = Store::open(base, &state.binding.session, Duration::ZERO)
+        {
+            state = store.load()?.unwrap_or(state);
+            if state.recover_interrupted() {
+                store.save(&state)?;
+                store.append(&json!({"kind":"gap","source":"observer","gap":state.gap}))?;
+            }
+        }
+        sessions.push(state);
+    }
+    Ok(sessions)
 }

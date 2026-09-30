@@ -2,6 +2,10 @@ use kah_cli::{Arguments, Launch, Result};
 use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if kah_cli::run_commands::handles(&arguments) {
+        return kah_cli::run_commands::run(arguments);
+    }
     if matches!(env::args().nth(1).as_deref(), Some("status" | "ledger")) {
         return kah_cli::inspection_cli::run(env::args().skip(1).collect());
     }
