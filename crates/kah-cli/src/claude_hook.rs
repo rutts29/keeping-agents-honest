@@ -58,6 +58,10 @@ pub fn handle(input: &Value) -> Result<Value, String> {
             if let Some(gap) = outcome.gap {
                 output["systemMessage"] = format!("kah observer gap: {gap}").into();
             }
+            if let Err(error) = crate::interactive_name::claude(&base, &binding, input, &mut output)
+            {
+                eprintln!("{error}");
+            }
             Ok(output)
         }
         Err(error) => {

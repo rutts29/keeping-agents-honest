@@ -75,3 +75,9 @@ shared; live control through the global daemon or Mac/phone apps is not proven.
 An embedded TUI has no control socket for kah send/native-session kah steer;
 use in-chat steer:/aside:. Run-ID steering remains available. Mine shared mode
 requires a separately verified daemon configuration and new-session proof.
+
+With the observer attached, kah gives new sessions a native name after the first
+prompt/turn, based on the project, session ID and prompt. Claude's explicit
+`--name`, existing names on resume and later user renames are preserved. Native
+resume shows these names; they are labels, not session identity. `--no-observer`
+disables the hooks that supply automatic naming.

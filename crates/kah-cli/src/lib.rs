@@ -6,6 +6,7 @@ pub mod claude_policy;
 pub mod claude_setup;
 pub mod herdr;
 pub mod inspection_cli;
+pub mod interactive_name;
 mod launch;
 pub mod observer_hook;
 pub mod resume;

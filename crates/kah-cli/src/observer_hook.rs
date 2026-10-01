@@ -63,6 +63,12 @@ fn handle(input: &Value) -> Result<Value, String> {
             turn.unwrap_or("continuity"),
             event.kind == EventKind::TurnEnded && input["stop_hook_active"] != true,
         )?;
+        if matches!(event.kind, EventKind::TurnEnded | EventKind::Resumed)
+            && let Err(error) =
+                crate::interactive_name::codex(&base, &binding, event.kind == EventKind::Resumed)
+        {
+            eprintln!("{error}");
+        }
         if let Some(reminder) = outcome.reminder {
             return Ok(json!({"decision":"block","reason":reminder.text}));
         }
@@ -77,11 +83,8 @@ fn handle(input: &Value) -> Result<Value, String> {
     let text = engine::projection(&state)?
         .map(|p| context(&p.rendered_prompt()))
         .unwrap_or_default();
-    Ok(output(
-        name,
-        &text,
-        state.gap.as_ref().map(|g| g.detail.as_str()),
-    ))
+    let gap = state.gap.as_ref().map(|g| g.detail.as_str());
+    Ok(output(name, &text, gap))
 }
 
 pub(crate) fn initialize(base: &Path, binding: &Binding) -> Result<(), String> {
