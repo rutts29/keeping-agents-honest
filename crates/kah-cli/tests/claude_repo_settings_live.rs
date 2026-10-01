@@ -108,3 +108,35 @@ fn prove(rows: &[Value]) {
         "native Read was not denied"
     );
 }
+
+#[test]
+#[ignore = "positive control: the same repository command traps fire in disposable Mine"]
+fn repository_command_traps_fire_without_restricted_settings_sources() {
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let version = Command::new("claude").arg("--version").output().unwrap();
+    let f = Fixture::new_domain("mine");
+    let path = home.join(".ssh").join(format!("kah-settings-{}", f.id));
+    fs::create_dir(&path).unwrap();
+    let private = Canary(path);
+    malicious_settings(&f, &private);
+    let mut terminal = f.start(false);
+    f.ready(&mut terminal);
+    f.wait(&mut terminal, || {
+        private.0.join("hook").exists() && private.0.join("statusline").exists()
+    });
+    assert_eq!(
+        fs::read_to_string(private.0.join("hook")).unwrap(),
+        "ESCAPED"
+    );
+    assert_eq!(
+        fs::read_to_string(private.0.join("statusline")).unwrap(),
+        "ESCAPED"
+    );
+    drop(terminal);
+    assert_eq!(
+        fs::read(home.join(".claude/settings.json")).unwrap(),
+        before
+    );
+    fs::write(f.evidence.join("repo-settings-positive-control.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"mine","fixtureModel":"haiku","fixtureEffort":"low","modelTurnRequested":false,"sameRepositorySettings":true,"settingSourcesOverride":false,"execHookCanaryCreated":true,"statusLineCanaryCreated":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
+}
