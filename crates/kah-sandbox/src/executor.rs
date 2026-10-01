@@ -39,13 +39,35 @@ const BASE_ARGS: &[&str] = &[
     "GIT_CONFIG_KEY_0=safe.directory",
 ];
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Executor {
     pub args: Vec<String>,
     image_index: usize,
 }
 
 impl Executor {
+    /// Reuse containment and mount policy for a native command hook or shell
+    /// prefix. The native command stays argv, never part of the entrypoint text.
+    pub fn command(&self, cwd: &Path, command: &[String]) -> Result<std::process::Command, Error> {
+        if self.image_index >= self.args.len() || command.is_empty() {
+            return Err(Error::new(
+                "EXECUTOR_COMMAND",
+                "executor",
+                "invalid command specification",
+            ));
+        }
+        let mut args = self.args[..=self.image_index].to_vec();
+        let workdir = args
+            .windows(2)
+            .position(|pair| pair[0] == "--workdir")
+            .ok_or_else(|| Error::new("EXECUTOR_WORKDIR", "executor", "workdir is absent"))?;
+        args[workdir + 1] = mount_path(cwd)?.into();
+        let mut process = std::process::Command::new("/usr/bin/docker");
+        process.args(args).args(ENTRYPOINT).args(command);
+        Ok(process)
+    }
+
     pub fn add_writable_mount(&mut self, source: &Path, target: &Path) -> Result<(), Error> {
         let mount = format!(
             "type=bind,source={},target={}",

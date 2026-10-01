@@ -16,7 +16,10 @@ use std::{
 pub fn run() {
     let result = serde_json::from_reader::<_, Value>(std::io::stdin().take(1024 * 1024))
         .map_err(|_| "CLAUDE_HOOK_JSON stage=hook: invalid hook input".into())
-        .and_then(|input| handle(&input));
+        .and_then(|input| {
+            crate::herdr::report_claude_input(&input);
+            handle(&input)
+        });
     println!(
         "{}",
         result

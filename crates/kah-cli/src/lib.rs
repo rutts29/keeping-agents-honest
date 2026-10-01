@@ -24,5 +24,6 @@ pub mod unattended_report;
 pub mod unattended_run;
 pub mod unattended_setup;
 
+pub mod sandbox_command;
 pub mod shell_routing;
 pub mod smoke;

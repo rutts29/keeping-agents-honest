@@ -80,19 +80,20 @@ impl Restricted {
         executor
             .add_writable_mount(&self.temporary, &self.temporary)
             .unwrap();
-        executor.args.truncate(executor.args.len() - 4);
-        let command = std::iter::once("/usr/bin/docker".to_owned())
-            .chain(executor.args)
-            .map(|s| quote(&s))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let temporary = quote(self.temporary.to_str().unwrap());
-        let owner = current_uid().unwrap();
-        fs::write(
-            &self.prefix,
-            format!("#!/bin/sh\nset -eu\nfind -P {temporary} -user {owner} -exec setfacl -m u:{uid}:rwX -- {{}} +\nexec {command} /bin/bash -c \"$1\"\n"),
-        )
+        let spec = self.private.join("control/executor.json");
+        kah_cli::sandbox_command::Spec {
+            executor,
+            temporary: Some(self.temporary.clone()),
+            service_uid: uid,
+        }
+        .save(&spec)
         .unwrap();
+        let command = format!(
+            "{} --sandbox-shell {}",
+            quote(env!("CARGO_BIN_EXE_kah")),
+            quote(spec.to_str().unwrap())
+        );
+        fs::write(&self.prefix, format!("#!/bin/sh\nexec {command} \"$1\"\n")).unwrap();
         fs::set_permissions(&self.prefix, fs::Permissions::from_mode(0o700)).unwrap();
     }
     pub fn verify_cwd_file(&self) {

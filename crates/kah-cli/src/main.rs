@@ -3,6 +3,12 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = kah_cli::shell_routing::route(env::args().skip(1).collect())?;
+    if arguments
+        .first()
+        .is_some_and(|arg| matches!(arg.as_str(), "--sandbox-shell" | "--sandbox-exec"))
+    {
+        return kah_cli::sandbox_command::run(&arguments);
+    }
     if arguments.first().map(String::as_str) == Some("__claude-hook") {
         kah_cli::claude_hook::run();
         return Ok(());

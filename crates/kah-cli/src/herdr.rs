@@ -34,6 +34,17 @@ pub fn session_report(
     )
 }
 
+pub fn claude_session_report(input: &Value, pane: &str, seq: u64) -> Option<Value> {
+    if input.get("agent_id").is_some() || input.get("cursor_version").is_some() {
+        return None;
+    }
+    let mut report = session_report(input, pane, None, seq)?;
+    report["params"]["agent"] = "claude".into();
+    report["params"]["source"] = "herdr:claude".into();
+    report["params"]["agent_session_path"] = input["transcript_path"].clone();
+    Some(report)
+}
+
 /// Best-effort and bounded by both socket timeouts and the native hook timeout.
 pub fn report() {
     let input: Value = match serde_json::from_reader(std::io::stdin().take(1024 * 1024)) {
@@ -44,6 +55,16 @@ pub fn report() {
 }
 
 pub fn report_input(input: &Value) {
+    report_native(input, false);
+}
+
+pub fn report_claude_input(input: &Value) {
+    if env::var_os("CURSOR_VERSION").is_none() {
+        report_native(input, true);
+    }
+}
+
+fn report_native(input: &Value, claude: bool) {
     if env::var("HERDR_ENV").as_deref() != Ok("1") {
         return;
     }
@@ -56,7 +77,12 @@ pub fn report_input(input: &Value) {
         .unwrap_or_default()
         .as_nanos()
         .min(u64::MAX as u128) as u64;
-    let Some(report) = session_report(input, &pane, inherited.as_deref(), seq) else {
+    let report = if claude {
+        claude_session_report(input, &pane, seq)
+    } else {
+        session_report(input, &pane, inherited.as_deref(), seq)
+    };
+    let Some(report) = report else {
         return;
     };
     if let Ok(mut stream) = UnixStream::connect(socket) {
