@@ -24,6 +24,7 @@ pub fn command(executor: &Executor, script: &str, timeout: Duration) -> Result<C
         return Err("RUN_EXECUTOR_SHAPE stage=verification".into());
     }
     let mut command = Command::new("/usr/bin/timeout");
+    command.stdin(std::process::Stdio::null());
     command
         .args([
             "--signal=TERM",

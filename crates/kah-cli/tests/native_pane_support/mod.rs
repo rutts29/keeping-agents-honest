@@ -1,3 +1,4 @@
+mod checkpoint;
 use kah_cli::{Arguments, native_run, run_pane::Pane};
 use kah_run::worktree::Worktree;
 use kah_sandbox::{Domain, Project};
@@ -22,29 +23,31 @@ impl Drop for Fixture {
             let _ = pane.close();
         }
         if let Some(session) = &self.session {
-            let _ = Command::new("codex")
-                .args(["delete", "--force", session])
-                .env_remove("CODEX_THREAD_ID")
-                .output();
-        }
-        if let Some(session) = &self.session {
             let base = kah_core::run_store::RunStore::default_state_root().unwrap();
             if let Ok(Some(state)) = kah_observer::session::Store::read(&base, session)
-                && let Some(run) = state.run_id
-                && let Ok(path) = kah_core::run_store::RunStore::path_for(
-                    &base,
-                    self.directory.join("worktree"),
-                    run,
-                )
+                && state.binding.project == self.directory.join("worktree")
+                && state.binding.session == *session
             {
-                let _ = fs::remove_dir_all(path);
+                let _ = Command::new("codex")
+                    .args(["delete", "--force", session])
+                    .env_remove("CODEX_THREAD_ID")
+                    .output();
+                if let Some(run) = state.run_id
+                    && let Ok(path) = kah_core::run_store::RunStore::path_for(
+                        &base,
+                        self.directory.join("worktree"),
+                        run,
+                    )
+                {
+                    let _ = fs::remove_dir_all(path);
+                }
+                let _ = fs::remove_dir_all(kah_observer::session::Store::directory(&base, session));
+                use sha2::{Digest, Sha256};
+                let _ = fs::remove_file(
+                    base.join("session-policies")
+                        .join(format!("{:x}.json", Sha256::digest(session.as_bytes()))),
+                );
             }
-            let _ = fs::remove_dir_all(kah_observer::session::Store::directory(&base, session));
-            use sha2::{Digest, Sha256};
-            let _ = fs::remove_file(
-                base.join("session-policies")
-                    .join(format!("{:x}.json", Sha256::digest(session.as_bytes()))),
-            );
         }
         if let Some(overlay) = &self.overlay {
             let _ = fs::remove_dir_all(overlay);
@@ -68,6 +71,7 @@ pub fn run(root: &Path) -> Value {
         session: None,
         overlay: None,
     };
+    save_cleanup(root, None);
     let tree = Worktree::create(&project.root, &directory, "run-native-pane").unwrap();
     let uid = kah_run::runtime::service_uid().unwrap();
     for path in [&directory, root] {
@@ -83,7 +87,7 @@ pub fn run(root: &Path) -> Value {
         effort: Some("low".into()),
         ..Default::default()
     };
-    let task = "Please use native exec_command once to run: test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?; git status --short && echo GIT_OK; printf BASH_OK > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Work only on this disposable worktree; no other tools, subagents, commits or installs. Report and stop.";
+    let task = "Please use native exec_command once to run: test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?; git status --short && echo GIT_OK; printf BASH_OK > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Work only on this disposable worktree. The external fixture controller will commit a checkpoint and verify the result afterward; that is authorized. You should use no other tools or subagents, and make no commits or installs yourself. Report and stop.";
     let command = native_run::command(&home, &tree, args, task, None).unwrap();
     fixture.overlay = command
         .get_envs()
@@ -110,7 +114,9 @@ pub fn run(root: &Path) -> Value {
         .unwrap();
     assert!(state.gap.is_none() && state.inflight.is_none());
     assert!(kah_observer::engine::projection(&state).unwrap().is_some());
-    json!({"passed":true,"fullNativeSession":true,"paneIdentity":native["agent"],"sessionIdentity":true,"worktreeOnlyWrite":true,"observerAttached":true,"nativeSubprocessGitWorks":true})
+    save_cleanup(root, fixture.session.as_deref());
+    let checkpoint = checkpoint::prove(&home, &project.root, &tree, root, &state);
+    json!({"checkpoint":checkpoint,"passed":true,"fullNativeSession":true,"paneIdentity":native["agent"],"sessionIdentity":true,"worktreeOnlyWrite":true,"observerAttached":true,"nativeSubprocessGitWorks":true})
 }
 
 fn wait(pane: &Pane, worktree: &Path, session: &mut Option<String>) -> Value {
@@ -155,4 +161,37 @@ fn wait(pane: &Pane, worktree: &Path, session: &mut Option<String>) -> Value {
         );
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+fn save_cleanup(root: &Path, session: Option<&str>) {
+    fs::write(
+        root.join("cleanup.json"),
+        json!({"pid":std::process::id(),"session":session}).to_string(),
+    )
+    .unwrap();
+}
+pub fn cleanup_saved(root: &Path) {
+    let Ok(bytes) = fs::read(root.join("cleanup.json")) else {
+        return;
+    };
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    let pid = value["pid"].as_u64().filter(|p| *p > 0).unwrap();
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let directory = PathBuf::from(format!("/var/tmp/kah-native-pane-{pid}"));
+    use sha2::{Digest, Sha256};
+    let digest = format!(
+        "{:x}",
+        Sha256::digest(directory.join("worktree").as_os_str().as_encoded_bytes())
+    );
+    let fixture = Fixture {
+        source: home.join(format!("repos/mine/kah-pane-{pid}")),
+        directory,
+        pane: None,
+        session: value["session"].as_str().map(str::to_owned),
+        overlay: Some(
+            home.join(".local/state/kah/codex/research-offline")
+                .join(&digest[..16]),
+        ),
+    };
+    drop(fixture);
 }

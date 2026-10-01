@@ -40,14 +40,17 @@ fn native_codex_worktree_pane() {
         if let Ok(bytes) = fs::read(probe.root.join("result.json")) {
             break serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
         }
-        assert!(
-            Instant::now() < deadline,
-            "native pane helper timed out: {}",
-            fs::read_to_string(probe.root.join("helper.log")).unwrap_or_default()
-        );
+        if Instant::now() >= deadline {
+            break json!({"passed":false,"failure":"native pane helper timed out"});
+        }
         std::thread::sleep(Duration::from_millis(200));
     };
+    let _stopped = Command::new("herdr")
+        .args(["session", "stop", &probe.name, "--json"])
+        .output()
+        .unwrap();
     drop(terminal);
+    support::cleanup_saved(&probe.root);
     if evidence["passed"] != true {
         use std::os::unix::fs::PermissionsExt;
         let diagnostic = std::env::temp_dir().join(format!(

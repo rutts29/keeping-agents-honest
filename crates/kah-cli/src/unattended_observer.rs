@@ -110,6 +110,47 @@ pub fn complete(
     changed_paths: &[String],
     tests: &Receipt,
 ) -> Result<Completion, String> {
+    let directory = kah_core::run_store::RunStore::default_state_root()
+        .map_err(|e| e.to_string())?
+        .join("runs")
+        .join(&settings.observer.session);
+    let files =
+        kah_run::worktree::Worktree::load(&directory.join("worktree.json"))?.file_evidence()?;
+    let activity = actions.iter().filter(|a| a["kind"] != "agentMessage").map(|a| json!({
+        "kind":a["kind"],"command":a["evidence"]["command"],"changes":a["evidence"]["changes"],"exit_code":a["exit_code"],"status":a["status"]
+    })).collect::<Vec<_>>();
+    let evidence = json!({"evaluation_scope":"The candidate branch delivered for review. Temporary compiler/test files live in a separate verification checkout and are not delivered project changes.","observed_activity":activity,"git_diff":diff,"committed_files":files,"tests":tests,
+        "controller_facts":{"changed_paths":changed_paths,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true},
+        "enforced_policy":{"gvisor":true,"container_network":"none","allowed_https_get_hosts":settings.allow_hosts,"credentials":"not mounted","git_metadata":"read only","native_subagent_tools":"disabled","native_goal_tools":"disabled","worker_count":1}});
+    judge_completion(home, settings, projection, &evidence, tests)
+}
+
+pub fn complete_candidate(
+    home: &Path,
+    settings: &Settings,
+    projection: &ActiveProjection,
+    actions: &[Value],
+    candidate: &kah_run::worktree::Worktree,
+    tests: &Receipt,
+    online: bool,
+) -> Result<Completion, String> {
+    let evidence = json!({
+        "evaluation_scope":"Only the imported candidate commit is delivered. Native agent text and tool outputs are observations, not proof of completion.",
+        "observed_activity":actions.iter().filter(|a| a["kind"] != "agentMessage").collect::<Vec<_>>(),
+        "git_diff":candidate.diff_evidence(24 * 1024)?,"committed_files":candidate.file_evidence()?,"tests":tests,
+        "controller_facts":{"changed_paths":candidate.changed_paths()?,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true,"candidate_imported_into_trusted_git_with_fsck":true},
+        "enforced_policy":{"command_execution":"gVisor","workspace_online":online,"model_login":"host only","native_capabilities":"full","source_repository_writable_mount":false}
+    });
+    judge_completion(home, settings, projection, &evidence, tests)
+}
+
+fn judge_completion(
+    home: &Path,
+    settings: &Settings,
+    projection: &ActiveProjection,
+    evidence: &Value,
+    tests: &Receipt,
+) -> Result<Completion, String> {
     if projection.needs_review() {
         return Err(
             "RUN_INTENT_UNCERTAIN stage=completion: unresolved steering replacement".into(),
@@ -130,18 +171,6 @@ pub fn complete(
         );
     }
     let questions = judge::questions::completion(&outcomes);
-    let directory = kah_core::run_store::RunStore::default_state_root()
-        .map_err(|e| e.to_string())?
-        .join("runs")
-        .join(&settings.observer.session);
-    let files =
-        kah_run::worktree::Worktree::load(&directory.join("worktree.json"))?.file_evidence()?;
-    let activity = actions.iter().filter(|a| a["kind"] != "agentMessage").map(|a| json!({
-        "kind":a["kind"],"command":a["evidence"]["command"],"changes":a["evidence"]["changes"],"exit_code":a["exit_code"],"status":a["status"]
-    })).collect::<Vec<_>>();
-    let evidence = json!({"evaluation_scope":"The candidate branch delivered for review. Temporary compiler/test files live in a separate verification checkout and are not delivered project changes.","observed_activity":activity,"git_diff":diff,"committed_files":files,"tests":tests,
-        "controller_facts":{"changed_paths":changed_paths,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true},
-        "enforced_policy":{"gvisor":true,"container_network":"none","allowed_https_get_hosts":settings.allow_hosts,"credentials":"not mounted","git_metadata":"read only","native_subagent_tools":"disabled","native_goal_tools":"disabled","worker_count":1}});
     let input = json!({"intent":{"goal":projection.goal.text,"outcomes":outcomes,"user_confirmed_ids":projection.frontier.iter().filter(|i|i.user_confirmed).map(|i|i.id.to_string()).collect::<Vec<_>>()},"event":{"actions":evidence}});
     let mut judgments = vec![];
     for _ in 0..2 {

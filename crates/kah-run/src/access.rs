@@ -8,11 +8,13 @@ pub fn share_tree(root: &Path, service_uid: u32, writable: bool) -> Result<(), S
     }
     let operator = kah_sandbox::current_uid().map_err(|e| e.to_string())?;
     let access = if writable { "rwX" } else { "r-X" };
-    acl(root, &format!("u:{service_uid}:{access}"), true)?;
+    owned(root, &format!("u:{service_uid}:{access}"), operator, false)?;
     if writable {
-        inherit(
+        owned(
             root,
             &format!("d:u:{operator}:rwx,d:u:{service_uid}:rwx,d:o::---"),
+            operator,
+            true,
         )?;
     }
     Ok(())
@@ -23,24 +25,44 @@ pub fn traverse(root: &Path, service_uid: u32) -> Result<(), String> {
     if !fs::symlink_metadata(root).map_err(io_error)?.is_dir() {
         return Err("RUN_SHARE_ROOT stage=worker_prepare: expected real directory".into());
     }
-    acl(root, &format!("u:{service_uid}:--x"), false)
+    acl(root, &format!("u:{service_uid}:--x"))
 }
-fn inherit(directory: &Path, entries: &str) -> Result<(), String> {
-    acl(directory, entries, false)?;
-    for entry in fs::read_dir(directory).map_err(io_error)? {
-        let entry = entry.map_err(io_error)?;
-        if entry.file_type().map_err(io_error)?.is_dir() {
-            inherit(&entry.path(), entries)?;
-        }
+// Native programs replace files under a different mapped UID. Their inherited
+// ACL already grants operator access; only owners may edit the ACL itself.
+fn owned(root: &Path, entries: &str, operator: u32, directories_only: bool) -> Result<(), String> {
+    let mut command = Command::new("/usr/bin/find");
+    command
+        .arg("-P")
+        .arg(root)
+        .args(["-uid", &operator.to_string()]);
+    if directories_only {
+        command.args(["-type", "d"]);
+    }
+    let result = command
+        .args([
+            "-execdir",
+            "/usr/bin/setfacl",
+            "-P",
+            "-m",
+            entries,
+            "--",
+            "{}",
+            "+",
+        ])
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .map_err(io_error)?;
+    if !result.status.success() {
+        return Err(format!(
+            "RUN_SHARE_ACL stage=worker_prepare: {}",
+            String::from_utf8_lossy(&result.stderr)
+        ));
     }
     Ok(())
 }
-fn acl(path: &Path, entries: &str, recursive: bool) -> Result<(), String> {
+fn acl(path: &Path, entries: &str) -> Result<(), String> {
     let mut command = Command::new("/usr/bin/setfacl");
     command.arg("-P");
-    if recursive {
-        command.arg("-R");
-    }
     let result = command
         .args(["-m", entries, "--"])
         .arg(path)

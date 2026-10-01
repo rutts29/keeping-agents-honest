@@ -1,7 +1,8 @@
-//! A private Git repository backs the run worktree. Mount its metadata read-only
-//! in gVisor; the controller owns checkpoints and exports only the run ref.
+//! Git worktrees for native workers and trusted candidates. Mutable worker
+//! metadata stays in gVisor; only verified bundles enter host-side candidates.
 use serde::{Deserialize, Serialize};
 mod evidence;
+mod transfer;
 use std::{
     fs,
     path::{Path, PathBuf},

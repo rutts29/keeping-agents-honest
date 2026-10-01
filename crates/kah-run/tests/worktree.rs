@@ -134,3 +134,39 @@ fn private_worktree_ignores_source_hooks_filters_and_a_redirected_git_file() {
     assert_eq!(git(&source, &["rev-parse", "kah/run-case"]), commit);
     assert_eq!(git(&source, &["branch", "--show-current"]), "main");
 }
+
+#[test]
+fn bundles_import_into_separate_trusted_metadata_and_verify_the_commit() {
+    let f = Fixture::new();
+    let worker = Worktree::create(&f.0.join("source"), &f.0.join("worker"), "run-worker").unwrap();
+    let candidate =
+        Worktree::create(&f.0.join("source"), &f.0.join("candidate"), "run-candidate").unwrap();
+    fs::write(worker.path.join("value.txt"), "worker result").unwrap();
+    let commit = worker.checkpoint("candidate").unwrap();
+    let bundle = f.0.join("candidate.bundle");
+    git(
+        &worker.path,
+        &["bundle", "create", bundle.to_str().unwrap(), "HEAD"],
+    );
+    assert!(candidate.import_bundle(&bundle, &"a".repeat(40)).is_err());
+    assert_eq!(
+        fs::read_to_string(candidate.path.join("value.txt")).unwrap(),
+        "before"
+    );
+    candidate.import_bundle(&bundle, &commit).unwrap();
+    fs::remove_dir_all(&worker.git_dir).unwrap();
+    assert_eq!(candidate.checkpoint("unchanged").unwrap(), commit);
+    assert_eq!(
+        fs::read_to_string(candidate.path.join("value.txt")).unwrap(),
+        "worker result"
+    );
+    assert_eq!(
+        fs::read_to_string(f.0.join("source/value.txt")).unwrap(),
+        "before"
+    );
+    let snapshot = candidate
+        .verification_snapshot(&f.0.join("candidate/verify"), &commit)
+        .unwrap();
+    assert_eq!(snapshot.checkpoint("unchanged").unwrap(), commit);
+    snapshot.remove_verification().unwrap();
+}
