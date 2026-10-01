@@ -195,6 +195,7 @@ fn configure_observation(
         ("UserPromptSubmit", "userPromptSubmit", 2),
         ("Stop", "stop", 120),
         ("PostToolUse", "postToolUse", 120),
+        ("PreToolUse", "preToolUse", 120),
     ]
     .into_iter()
     .map(|(event, api_event, timeout)| overlay::OwnedHook {

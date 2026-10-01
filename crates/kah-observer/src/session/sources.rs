@@ -34,7 +34,7 @@ impl Store {
                         .map_err(|_| "OBSERVER_SOURCE_SCHEMA stage=source_history")?;
                     if input.source.role != SourceRole::User
                         || positions
-                            .insert(input.source.record.clone(), inputs.len())
+                            .insert(input.key().to_owned(), inputs.len())
                             .is_some()
                     {
                         return Err("OBSERVER_SOURCE_AUTHORITY stage=source_history".into());

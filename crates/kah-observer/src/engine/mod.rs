@@ -113,9 +113,10 @@ fn update(
     store: &mut Store,
     turn: &str,
     allow_reminder: bool,
-    snapshot: ObservationSnapshot,
+    mut snapshot: ObservationSnapshot,
 ) -> Result<Outcome, String> {
     let binding = state.binding.clone();
+    snapshot.users = crate::inherited::merge(&binding, store, snapshot.users)?;
     let Some(users) = &snapshot.users else {
         return Ok(Outcome {
             projection: None,

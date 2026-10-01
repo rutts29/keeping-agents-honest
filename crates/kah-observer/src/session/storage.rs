@@ -19,6 +19,14 @@ impl Store {
         base.join("observer-sessions").join(&digest[..24])
     }
     pub fn open(base: &Path, session: &str, wait: Duration) -> Result<Self, String> {
+        Self::open_lock(base, session, wait, "lock")
+    }
+    pub(super) fn open_lock(
+        base: &Path,
+        session: &str,
+        wait: Duration,
+        name: &str,
+    ) -> Result<Self, String> {
         if session.is_empty() || session.len() > 512 || session.chars().any(char::is_control) {
             return Err("OBSERVER_SESSION_ID stage=session_store: invalid session identity".into());
         }
@@ -32,7 +40,7 @@ impl Store {
         if !metadata.is_dir() || metadata.permissions().mode() & 0o077 != 0 {
             return Err("OBSERVER_STATE_PRIVATE stage=session_store: state directory must be private and not a symlink".into());
         }
-        let lock_path = path.join("lock");
+        let lock_path = path.join(name);
         reject_symlink(&lock_path)?;
         let lock = OpenOptions::new()
             .read(true)

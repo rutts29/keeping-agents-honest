@@ -94,6 +94,175 @@ impl Drop for Fixture {
         let _ = fs::remove_dir_all(&self.root);
     }
 }
+
+fn quote(text: &str) -> kah_observer::inherited::Quote {
+    use kah_core::intent_history::SourceRef;
+    let record = BundleRecord::new("sender-user-1", SourceRole::User, text).unwrap();
+    kah_observer::inherited::Quote {
+        receipt: "relay-1".into(),
+        source: SourceRef::new(
+            SourceProvider::Claude,
+            "sender",
+            record.id(),
+            SourceRole::User,
+            record.content_digest(),
+        ),
+        text: text.into(),
+        dispatch_item: None,
+    }
+}
+
+#[test]
+fn inherited_quotes_keep_origin_and_interleave_with_later_native_users() {
+    let f = Fixture::new();
+    f.observe(&["steer: Implement a greeting."]);
+    let before = f.state().run_id;
+    let quoted = quote("steer: Preserve BLUE exactly.");
+    {
+        let _store = Store::open(
+            &RunStore::default_state_root().unwrap(),
+            &f.binding.session,
+            std::time::Duration::ZERO,
+        )
+        .unwrap();
+        for _ in 0..2 {
+            Store::accept_inherited(
+                &RunStore::default_state_root().unwrap(),
+                &f.binding.session,
+                SourceProvider::Bundle,
+                quoted.clone(),
+            )
+            .unwrap();
+        }
+    }
+    let result = f.observe(&["steer: Implement a greeting."]);
+    assert!(result.gap.is_none(), "{:?}", result.gap);
+    assert!(
+        result
+            .projection
+            .unwrap()
+            .rendered_prompt()
+            .contains("BLUE")
+    );
+    let result = f.observe(&["steer: Implement a greeting.", "steer: Add tests."]);
+    assert!(result.gap.is_none(), "{:?}", result.gap);
+    assert_eq!(before, f.state().run_id);
+    let sources = {
+        let store = Store::open(
+            &RunStore::default_state_root().unwrap(),
+            &f.binding.session,
+            std::time::Duration::ZERO,
+        )
+        .unwrap();
+        store.sources().unwrap()
+    };
+    assert_eq!(sources.len(), 3);
+    assert_eq!(sources[1].source, quoted.source);
+    assert_eq!(sources[1].text, quoted.text);
+    review::apply(&f.binding.session, "dismiss", &sources[1].id()).unwrap();
+    assert_eq!(before, f.state().run_id);
+    assert!(
+        !f.observe(&["steer: Implement a greeting.", "steer: Add tests."])
+            .projection
+            .unwrap()
+            .rendered_prompt()
+            .contains("BLUE")
+    );
+    assert!(
+        f.observe(&["steer: Rewrite history."])
+            .gap
+            .unwrap()
+            .contains("SOURCE_REWRITE")
+    );
+}
+
+#[test]
+fn a_verified_quote_can_seed_a_delegate_only_session_without_promoting_delegate_text() {
+    let f = Fixture::new();
+    let base = RunStore::default_state_root().unwrap();
+    {
+        Store::accept_inherited(
+            &base,
+            &f.binding.session,
+            SourceProvider::Bundle,
+            quote("steer: Retain exact  spacing."),
+        )
+        .unwrap();
+    }
+    let result = engine::observe_snapshot(
+        &f.binding,
+        "relay",
+        false,
+        ObservationSnapshot {
+            users: None,
+            actions: vec![],
+            action_digest: format!("sha256:{:x}", Sha256::digest(b"[]")),
+        },
+    )
+    .unwrap();
+    assert!(result.gap.is_none(), "{:?}", result.gap);
+    assert!(
+        result
+            .projection
+            .unwrap()
+            .rendered_prompt()
+            .contains("exact  spacing")
+    );
+    assert_eq!(f.state().usage.calls, 0);
+    assert!(
+        f.observe(&["steer: Add a native instruction."])
+            .gap
+            .is_none()
+    );
+}
+
+#[test]
+fn forged_text_or_non_user_source_cannot_be_imported() {
+    let mut quoted = quote("steer: Preserve BLUE.");
+    quoted.text = "steer: Change to RED.".into();
+    assert!(quoted.validate().is_err());
+    let mut quoted = quote("steer: Preserve BLUE.");
+    quoted.source.role = SourceRole::Delegate;
+    assert!(quoted.validate().is_err());
+}
+
+#[test]
+fn dispatch_copies_existing_intent_semantics_without_replacing_the_worker_goal() {
+    use kah_core::intent_history::{IntentItem, IntentKind};
+    let f = Fixture::new();
+    let task = "steer: Implement the greeting.";
+    f.observe(&[task]);
+    let mut inherited = quote("Replace the earlier objective: validate BLUE before release.");
+    let mut item = IntentItem::new(
+        kah_observer::verbatim::item_id(&inherited.source),
+        IntentKind::Validation,
+        &inherited.text,
+        vec![inherited.source.clone()],
+    );
+    item.review_required = true;
+    item.kind_uncertain = true;
+    inherited.dispatch_item = Some(item);
+    let base = RunStore::default_state_root().unwrap();
+    Store::accept_inherited(
+        &base,
+        &f.binding.session,
+        SourceProvider::Bundle,
+        inherited.clone(),
+    )
+    .unwrap();
+    let result = f.observe(&[task]);
+    assert!(result.gap.is_none(), "{:?}", result.gap);
+    let projection = result.projection.unwrap();
+    assert_eq!(projection.goal.text, task);
+    let item = projection
+        .validation
+        .iter()
+        .find(|i| i.text == inherited.text)
+        .unwrap();
+    assert!(item.review_required && item.kind_uncertain && !item.user_confirmed);
+    assert_eq!(item.introduced_by, [inherited.source]);
+    assert_eq!(f.state().usage.calls, 0);
+}
 #[test]
 fn aside_survives_without_a_goal_and_user_can_promote_confirm_and_dismiss() {
     let f = Fixture::new();
@@ -158,6 +327,7 @@ fn model_ignored_input_remains_retrievable_and_can_be_promoted_without_inference
     )
     .unwrap();
     let input = Input {
+        local_record: None,
         source: SourceRef::new(
             SourceProvider::Bundle,
             &f.binding.session,

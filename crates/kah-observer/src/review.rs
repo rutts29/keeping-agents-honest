@@ -46,7 +46,7 @@ pub fn apply(session: &str, action: &str, id: &str) -> Result<(), String> {
         .iter()
         .find(|i| i.id() == id)
         .ok_or("REVIEW_SOURCE_UNKNOWN stage=review")?;
-    let source = inspect_source(&state, &inputs)?;
+    let source = inspect_source(&state, &inputs, &store)?;
     let previous = source
         .open(&state.binding.project)
         .map_err(|e| e.to_string())?
@@ -67,7 +67,7 @@ pub fn apply(session: &str, action: &str, id: &str) -> Result<(), String> {
         )?;
         state.run_id = Some(source.run_id().to_string());
     }
-    store.append(&json!({"kind":"source_review_v1","record":input.source.record,"action":action,"source":"user","receipt":receipt}))?;
+    store.append(&json!({"kind":"source_review_v1","record":input.key(),"action":action,"source":"user","receipt":receipt}))?;
     state.compaction = None;
     state.action_digest = None;
     state.drift_active = false;
@@ -130,7 +130,7 @@ fn apply_history(
     }
     Ok(())
 }
-fn inspect_source(state: &State, inputs: &[Input]) -> Result<InspectSource, String> {
+fn inspect_source(state: &State, inputs: &[Input], store: &Store) -> Result<InspectSource, String> {
     let first = inputs.first().ok_or("REVIEW_SOURCE_EMPTY stage=review")?;
     let project = state
         .binding
@@ -143,11 +143,14 @@ fn inspect_source(state: &State, inputs: &[Input]) -> Result<InspectSource, Stri
     );
     let records = inputs
         .iter()
-        .map(|i| BundleRecord::new(&i.source.record, SourceRole::User, &i.text))
+        .map(|i| BundleRecord::new(i.key(), SourceRole::User, &i.text))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     let bundle = NeutralSessionBundle::from_records(
-        first.source.provider.clone(),
+        store
+            .inherited()?
+            .map(|i| i.provider)
+            .unwrap_or_else(|| first.source.provider.clone()),
         &state.binding.session,
         digest,
         records,

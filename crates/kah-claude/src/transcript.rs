@@ -185,8 +185,13 @@ fn role(row: &Value, text: &str) -> SourceRole {
     {
         return SourceRole::SystemObservation;
     }
-    let text = text.trim_start().to_ascii_lowercase();
-    if text.starts_with("[kah-reviewer]") || text.starts_with("[kah-builder]") {
+    let text = crate::paste::content_start(text)
+        .trim_start()
+        .to_ascii_lowercase();
+    if ["[kah-reviewer]", "[kah-builder]", "[kah-relay]"]
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+    {
         SourceRole::Delegate
     } else if text.starts_with("<system-reminder>")
         || text.starts_with("<local-command-")

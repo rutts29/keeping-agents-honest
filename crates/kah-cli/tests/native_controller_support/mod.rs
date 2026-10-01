@@ -11,6 +11,8 @@ use std::{
 mod capture;
 mod cleanup;
 mod comparison;
+#[allow(dead_code)]
+pub mod inherited;
 mod proof;
 pub use cleanup::cleanup;
 mod empty;
@@ -225,7 +227,7 @@ fn accept_consent(id: &str, pane: &str, agent: &str) {
     assert!(String::from_utf8_lossy(&status.stdout).contains("Needs attention:"));
     native_consent(pane, agent);
 }
-fn native_consent(pane: &str, agent: &str) {
+pub(crate) fn native_consent(pane: &str, agent: &str) {
     std::thread::sleep(Duration::from_millis(400));
     let keys: &[&str] = if agent == "claude" {
         &["Down", "Enter"]

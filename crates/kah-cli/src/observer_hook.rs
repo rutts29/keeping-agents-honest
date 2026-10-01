@@ -31,11 +31,7 @@ fn handle(input: &Value) -> Result<Value, String> {
         return Ok(json!({}));
     };
     let session = binding.session.as_str();
-    validate_cwd(input, &binding)?;
-    if crate::in_turn::event(input) {
-        return crate::in_turn::codex(&binding, input);
-    }
-    if let Some(output) = crate::in_turn_worker::pending(&binding, input)? {
+    if let Some(output) = early(&binding, input)? {
         return Ok(output);
     }
     let name = input["hook_event_name"].as_str().unwrap_or("");
@@ -47,20 +43,63 @@ fn handle(input: &Value) -> Result<Value, String> {
         kind,
         turn,
     )?;
+    observe_event(&binding, input, event, name, turn)
+}
+
+fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
+    validate_cwd(input, binding)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
-    initialize(&base, &binding)?;
+    initialize(&base, binding)?;
+    crate::relay_hook::handle(binding, input, "codex").map_err(|e| e.to_string())?;
+    if let Some(context) =
+        crate::dispatch::startup_context(binding, input, "codex").map_err(|e| e.to_string())?
+    {
+        return Ok(Some(context));
+    }
+    let dispatched =
+        crate::dispatch::receive(binding, input, "codex").map_err(|e| e.to_string())?;
+    if input["hook_event_name"] == "PreToolUse" {
+        return if dispatched {
+            let outcome = engine::observe(binding, "dispatch", false)?;
+            Ok(Some(output(
+                "PreToolUse",
+                &outcome
+                    .projection
+                    .map(|p| context(&p.rendered_prompt()))
+                    .unwrap_or_default(),
+                outcome.gap.as_deref(),
+            )))
+        } else {
+            Ok(Some(
+                crate::in_turn_worker::pending(binding, input)?.unwrap_or_else(|| json!({})),
+            ))
+        };
+    }
+    if crate::in_turn::event(input) {
+        return crate::in_turn::codex(binding, input).map(Some);
+    }
+    crate::in_turn_worker::pending(binding, input)
+}
+fn observe_event(
+    binding: &Binding,
+    input: &Value,
+    event: SessionEvent,
+    name: &str,
+    turn: Option<&str>,
+) -> Result<Value, String> {
+    let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     if matches!(
         event.kind,
         EventKind::TurnEnded | EventKind::Compacted | EventKind::Resumed
     ) {
         let outcome = engine::observe(
-            &binding,
+            binding,
             turn.unwrap_or("continuity"),
             event.kind == EventKind::TurnEnded && input["stop_hook_active"] != true,
         )?;
         if matches!(event.kind, EventKind::TurnEnded | EventKind::Resumed)
             && let Err(error) =
-                crate::interactive_name::codex(&base, &binding, event.kind == EventKind::Resumed)
+                crate::interactive_name::codex(&base, binding, event.kind == EventKind::Resumed)
         {
             eprintln!("{error}");
         }
@@ -73,8 +112,8 @@ fn handle(input: &Value) -> Result<Value, String> {
             .unwrap_or_default();
         return Ok(output(name, &text, outcome.gap.as_deref()));
     }
-    let state =
-        Store::read(&base, session)?.ok_or("OBSERVER_STATE stage=hook: session state absent")?;
+    let state = Store::read(&base, &binding.session)?
+        .ok_or("OBSERVER_STATE stage=hook: session state absent")?;
     let text = engine::projection(&state)?
         .map(|p| context(&p.rendered_prompt()))
         .unwrap_or_default();

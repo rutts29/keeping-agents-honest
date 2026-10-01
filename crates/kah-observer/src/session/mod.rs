@@ -7,6 +7,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+mod inherited;
 mod sources;
 mod storage;
 pub use storage::Store;

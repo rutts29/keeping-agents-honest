@@ -102,6 +102,13 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
 
 fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
+    crate::relay_hook::handle(binding, input, "claude").map_err(|e| e.to_string())?;
+    if let Some(context) =
+        crate::dispatch::startup_context(binding, input, "claude").map_err(|e| e.to_string())?
+    {
+        return Ok(Some(context));
+    }
+    crate::dispatch::receive(binding, input, "claude").map_err(|e| e.to_string())?;
     if crate::in_turn::event(input) {
         return crate::in_turn::claude(binding, input).map(Some);
     }

@@ -17,6 +17,7 @@ use std::{
 };
 
 pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
+    let dispatch = crate::dispatch::prepare(args.parent.as_deref(), &args.task)?;
     let mut control = RunControl::new(&args.task, args.limits)?;
     let observer = kah_observer::compaction::CompactorConfig::new(
         args.observer_model.as_deref().unwrap_or("gpt-6-luna"),
@@ -53,6 +54,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     };
     let store = Store::create(&base, &id, record)?;
     tree.save(&store.directory().join("worktree.json"))?;
+    save(&store.directory().join("dispatch.json"), &dispatch)?;
     let settings = Settings {
         test: args.test,
         allow_hosts: vec![],

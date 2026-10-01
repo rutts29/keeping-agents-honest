@@ -21,13 +21,22 @@ pub(super) fn update_intent(
     let mut history = previous.as_ref().map(|p| p.history.clone());
     let before = history.as_ref().map_or(0, |h| h.records().len());
     let mut inputs = journal.sources()?;
+    let inherited = journal.inherited()?;
     validate_sources(&inputs, users)?;
     for (index, record) in users.records().iter().enumerate() {
         if index == inputs.len() {
+            let quote = inherited.as_ref().and_then(|inbox| inbox.find(record.id()));
             let input = Input {
-                source: users.source_refs()[index].clone(),
+                source: quote
+                    .map(|q| q.source.clone())
+                    .unwrap_or_else(|| users.source_refs()[index].clone()),
+                local_record: quote.map(|_| record.id().to_owned()),
                 text: record.content().into(),
-                decision: None,
+                decision: quote.and_then(crate::inherited::worker_item).map(|item| {
+                    Decision::Inherited {
+                        item: Box::new(item),
+                    }
+                }),
                 dismissed: false,
                 promoted: false,
             };
@@ -71,7 +80,7 @@ fn resolve_input(
             type_message(state, journal, history.as_ref(), &input.text)
         })
         .unwrap_or_else(|reason| Decision::Gap { reason });
-        journal.source_decision(&input.source.record, &decision)?;
+        journal.source_decision(input.key(), &decision)?;
         input.decision = Some(decision);
     }
     let decision = input.decision.as_ref().unwrap();
@@ -96,8 +105,8 @@ fn validate_sources(inputs: &[Input], users: &NeutralSessionBundle) -> Result<()
     }
     if inputs.len() > users.records().len()
         || !inputs.iter().zip(users.records()).all(|(i, r)| {
-            i.source.record == r.id()
-                && i.source.content_digest == r.content_digest()
+            i.key() == r.id()
+                && (i.local_record.is_some() || i.source.content_digest == r.content_digest())
                 && i.text == r.content()
                 && r.is_authoritative()
         })

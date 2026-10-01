@@ -91,6 +91,20 @@ impl Run<'_> {
         state: &session::State,
         snapshot: &kah_core::observation::ObservationSnapshot,
     ) -> Result<kah_core::projection::ActiveProjection> {
+        let record = self.record()?;
+        let native = record
+            .native
+            .as_ref()
+            .ok_or("DISPATCH_NATIVE stage=completion")?;
+        crate::dispatch::apply(
+            &state.binding,
+            self.id,
+            native
+                .instance
+                .as_deref()
+                .ok_or("DISPATCH_INSTANCE stage=completion")?,
+            &native.provider,
+        )?;
         // Native writers may append the final assistant record after Stop.
         // Once idle, refresh the existing observer from provider-owned history;
         // its intake remains the only authority and its Jev questions are unchanged.

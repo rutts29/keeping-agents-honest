@@ -57,6 +57,10 @@ pub fn cleanup(root: &Path) {
 }
 fn cleanup_native(base: &Path, record: &Record) {
     let native = record.native.as_ref().unwrap();
+    if let (Some(pane), Some(socket)) = (&native.pane, &native.herdr_socket) {
+        assert!(socket.to_string_lossy().contains("kah-gate-"));
+        let _ = fs::remove_file(kah_cli::relay_store::pane_path(pane, socket).unwrap());
+    }
     // The harness already stopped its exact named server. Pane IDs are scoped
     // to that server and must never be closed through the caller's connection.
     if let Some(id) = &native.session {

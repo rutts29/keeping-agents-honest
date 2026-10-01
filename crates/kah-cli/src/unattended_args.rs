@@ -6,6 +6,7 @@ pub struct RunArguments {
     pub online: bool,
     pub agent: Option<String>,
     pub task: String,
+    pub parent: Option<String>,
     pub test: String,
     pub model: Option<String>,
     pub effort: Option<String>,
@@ -34,6 +35,7 @@ impl RunArguments {
                         result.agent = Some(value)
                     }
                     "--model" => result.model = Some(value),
+                    "--parent" => result.parent = Some(value),
                     "--effort" => result.effort = Some(value),
                     "--observer-model" => result.observer_model = Some(value),
                     "--observer-effort" => result.observer_effort = Some(value),

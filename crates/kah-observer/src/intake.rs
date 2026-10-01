@@ -26,12 +26,15 @@ pub fn presence(probability: f64, record: f64, ignore: f64) -> Presence {
 pub enum Decision {
     Force,
     Aside,
+    Inherited { item: Box<IntentItem> },
     Jev { judgment: Box<Judgment> },
     Gap { reason: String },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Input {
     pub source: SourceRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_record: Option<String>,
     pub text: String,
     pub decision: Option<Decision>,
     #[serde(default)]
@@ -40,6 +43,9 @@ pub struct Input {
     pub promoted: bool,
 }
 impl Input {
+    pub fn key(&self) -> &str {
+        self.local_record.as_deref().unwrap_or(&self.source.record)
+    }
     pub fn recently_ignored(&self) -> bool {
         !self.dismissed
             && !self.promoted
@@ -99,7 +105,7 @@ pub fn decide(
 impl Decision {
     pub fn records_intent(&self) -> bool {
         match self {
-            Self::Force => true,
+            Self::Force | Self::Inherited { .. } => true,
             Self::Jev { judgment } => {
                 matches!(judgment.answers.get("is_steering"),Some(Answer::Noul{noul}) if *noul>IGNORE_PROBABILITY)
             }
@@ -114,6 +120,23 @@ impl Decision {
     ) -> Result<(), String> {
         match self {
             Self::Force => force(history, text, source),
+            Self::Inherited { item } => {
+                if item.id.as_str() != verbatim::item_id(&source)
+                    || item.text != text
+                    || item.introduced_by != [source]
+                {
+                    return Err("INHERITED_ITEM stage=intake".into());
+                }
+                if history.intent(item.id.as_str()).is_none() {
+                    history
+                        .append(Event::RequirementAdded {
+                            item: item.as_ref().clone(),
+                            approval: None,
+                        })
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(())
+            }
             Self::Jev { judgment } => verbatim::apply(history, text, source, judgment),
             Self::Aside | Self::Gap { .. } => Ok(()),
         }
