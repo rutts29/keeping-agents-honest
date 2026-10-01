@@ -91,6 +91,7 @@ pub fn runtime_directory(project: &Project) -> Result<PathBuf> {
 impl Setup {
     pub fn apply(&self, command: &mut Command) {
         command
+            .args(["--setting-sources", "user"])
             .env_remove("CLAUDE_CONFIG_DIR")
             .env("CLAUDE_CODE_SHELL_PREFIX", &self.prefix)
             .env("CLAUDE_CODE_TMPDIR", &self.temporary)

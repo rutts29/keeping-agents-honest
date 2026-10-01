@@ -18,7 +18,10 @@ fn restricted_launch_uses_the_single_native_credential_store() {
             .get_envs()
             .any(|(name, value)| { name == OsStr::new("CLAUDE_CONFIG_DIR") && value.is_none() })
     );
-    assert_eq!(command.get_args().count(), 0);
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["--setting-sources", "user"]
+    );
 }
 
 #[test]
@@ -33,7 +36,12 @@ fn mcp_configuration_is_passed_by_private_path_not_secret_bearing_json() {
     setup.apply(&mut command);
     assert_eq!(
         command.get_args().collect::<Vec<_>>(),
-        ["--mcp-config", "/private/control/mcp.json"]
+        [
+            "--setting-sources",
+            "user",
+            "--mcp-config",
+            "/private/control/mcp.json"
+        ]
     );
 }
 

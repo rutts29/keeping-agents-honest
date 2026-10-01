@@ -39,3 +39,9 @@ per-domain CLAUDE_CONFIG_DIR. Invocation-local --settings adds permissions and
 observer hooks; the native shell prefix routes existing shell hooks. Native
 --mcp-config overlays route declared stdio servers without editing user config;
 secret-bearing declarations use the native deniedMcpServers setting until enabled.
+
+Research and Untrusted use native --setting-sources user: repository
+.claude/settings.json and settings.local.json cannot supply host helpers,
+exec-form hooks, or environment overrides. Project CLAUDE.md, skills and agents
+remain available as native instructions. The user's own exec-form hooks remain
+host-side, an accepted limit; shell-form hooks use the gVisor prefix.

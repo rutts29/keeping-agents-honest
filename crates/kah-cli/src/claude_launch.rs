@@ -118,7 +118,7 @@ fn validate(args: &Arguments, restricted: bool) -> Result<()> {
     for arg in &args.native {
         let flag = arg.split('=').next().unwrap_or(arg);
         if matches!(flag, "-p" | "--print" | "--bg" | "--background") {
-            return Err("CLAUDE_UNATTENDED_BOUNDARY stage=arguments: unattended Claude requires a proven gVisor inference boundary".into());
+            return Err("CLAUDE_UNATTENDED_BOUNDARY stage=arguments: kah user workflows require a full native session".into());
         }
         if (!args.no_observer || restricted)
             && matches!(
