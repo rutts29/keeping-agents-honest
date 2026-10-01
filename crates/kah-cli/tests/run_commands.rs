@@ -23,6 +23,7 @@ fn cli_steer_stop_status_and_logs_use_private_run_state() {
     let mut control = RunControl::new("Implement sum", Limits::default()).unwrap();
     control.start().unwrap();
     let record = Record {
+        native: None,
         project: PathBuf::from("/project"),
         domain: "mine".into(),
         worktree: PathBuf::from("/worktree"),

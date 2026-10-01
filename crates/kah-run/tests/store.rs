@@ -23,6 +23,7 @@ impl Drop for Fixture {
 }
 fn record() -> Record {
     Record {
+        native: None,
         project: PathBuf::from("/fixture/project"),
         domain: "mine".into(),
         worktree: PathBuf::from("/fixture/run"),

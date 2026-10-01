@@ -17,6 +17,8 @@ pub struct Record {
     pub model: Option<String>,
     pub effort: Option<String>,
     pub control: RunControl,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<crate::native::Native>,
 }
 impl Record {
     fn validate(&self) -> Result<(), String> {

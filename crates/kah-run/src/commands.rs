@@ -6,6 +6,9 @@ pub fn steer(base: &Path, id: &str, text: &str) -> Result<u64, String> {
     let mut store = Store::open(base, id)?;
     let mut record = store.load()?;
     let sequence = record.control.steer(text)?;
+    if let Some(native) = &mut record.native {
+        native.pending.push_back(sequence);
+    }
     store.save(&record)?;
     Ok(sequence)
 }

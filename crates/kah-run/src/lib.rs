@@ -13,3 +13,5 @@ pub mod runtime;
 pub mod store;
 pub mod verification;
 pub mod worktree;
+
+pub mod native;

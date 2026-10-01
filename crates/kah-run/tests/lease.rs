@@ -9,6 +9,7 @@ use std::{fs, path::PathBuf};
 fn worker_lease_is_exclusive_but_does_not_block_operator_steering() {
     let root = std::env::temp_dir().join(format!("kah-run-lease-{}", std::process::id()));
     let record = Record {
+        native: None,
         project: PathBuf::from("/project"),
         domain: "mine".into(),
         worktree: PathBuf::from("/worktree"),

@@ -59,6 +59,7 @@ fn execute_probe(root: &std::path::Path, source: &std::path::Path, tree: &Worktr
     .unwrap();
     control.start().unwrap();
     let record = Record {
+        native: None,
         project: source.into(),
         domain: "mine".into(),
         worktree: tree.path.clone(),

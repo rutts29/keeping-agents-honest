@@ -41,6 +41,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     access::share_tree(&tree.git_dir, service_uid()?, false)?;
     control.checkpoint(tree.base_commit.clone())?;
     let record = Record {
+        native: None,
         project: project.root,
         domain: domain.as_str().into(),
         worktree: tree.path.clone(),

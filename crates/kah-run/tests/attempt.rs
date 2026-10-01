@@ -27,6 +27,7 @@ impl Fixture {
                 &root,
                 "run-test",
                 Record {
+                    native: None,
                     project: PathBuf::from("/project"),
                     domain: "mine".into(),
                     worktree: PathBuf::from("/worktree"),
