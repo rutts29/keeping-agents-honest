@@ -29,6 +29,56 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn native_restricted_launch_preserves_the_users_full_setup() {
+    let f = Fixture::new("native-setup");
+    let original = f.0.join("original");
+    fs::write(
+        original.join("config.toml"),
+        "model='chosen'\n[features]\nplugins=true\n[mcp_servers.example]\ncommand='node'\n",
+    )
+    .unwrap();
+    fs::write(
+        original.join("hooks.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"user-hook"}]}]}}"#,
+    )
+    .unwrap();
+    fs::write(original.join("AGENTS.md"), "user guidance").unwrap();
+    fs::create_dir(original.join("skills")).unwrap();
+    kah_codex::overlay::prepare_native(
+        &original,
+        &f.0.join("overlay"),
+        &Policy {
+            restricted: true,
+            online: false,
+            root: &f.0,
+            cwd: &f.0,
+        },
+    )
+    .unwrap();
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(f.0.join("overlay/config.toml")).unwrap()).unwrap();
+    assert_eq!(config["features"]["plugins"].as_bool(), Some(true));
+    assert_eq!(
+        config["mcp_servers"]["example"]["command"].as_str(),
+        Some("node")
+    );
+    assert_eq!(
+        fs::read_to_string(f.0.join("overlay/AGENTS.md")).unwrap(),
+        "user guidance"
+    );
+    assert_eq!(
+        fs::read_link(f.0.join("overlay/skills")).unwrap(),
+        original.join("skills")
+    );
+    let hooks: serde_json::Value =
+        serde_json::from_slice(&fs::read(f.0.join("overlay/hooks.json")).unwrap()).unwrap();
+    assert_eq!(
+        hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+        "user-hook"
+    );
+}
+
+#[test]
 fn mcp_can_select_an_online_executor_without_changing_the_offline_default() {
     let f = Fixture::new("multiple-executors");
     fs::create_dir(f.0.join("overlay")).unwrap();

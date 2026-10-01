@@ -2,11 +2,47 @@
 use std::{fmt, path::Path};
 use toml::{Table, Value};
 
+mod extensions;
+mod sandbox_hooks;
+pub use sandbox_hooks::sandbox_hooks;
 mod hook_file;
 mod owned_hooks;
 mod storage;
+pub use extensions::{route_mcp, wrap_hook_commands};
 pub use owned_hooks::{OwnedHook, install_owned_hooks, install_session_hook};
 pub use storage::prepare;
+
+pub fn prepare_native(
+    original: &Path,
+    directory: &Path,
+    policy: &Policy<'_>,
+) -> Result<(), OverlayError> {
+    // Native user sessions keep extensions; inspection homes remain minimal.
+    prepare(
+        original,
+        directory,
+        &Policy {
+            restricted: false,
+            online: policy.online,
+            root: policy.root,
+            cwd: policy.cwd,
+        },
+    )?;
+    if policy.restricted {
+        let mut projects = serde_json::Map::new();
+        for path in [policy.root, policy.cwd] {
+            projects.insert(
+                path.to_string_lossy().into_owned(),
+                serde_json::json!({"trust_level":"untrusted"}),
+            );
+        }
+        write_settings(
+            directory,
+            serde_json::json!({"projects":projects,"web_search":"live"}),
+        )?;
+    }
+    Ok(())
+}
 
 pub fn set_executor(directory: &Path, id: &str, args: &[String]) -> Result<(), OverlayError> {
     set_executors(directory, id, &[(id, args)])

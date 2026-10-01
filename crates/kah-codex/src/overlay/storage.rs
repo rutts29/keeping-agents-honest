@@ -59,7 +59,15 @@ pub fn prepare(original: &Path, directory: &Path, policy: &Policy<'_>) -> Result
         share(&original.join(name), &directory.join(name))?;
     }
     if !policy.restricted {
-        for name in ["skills", "plugins", "packages"] {
+        for name in [
+            "skills",
+            "plugins",
+            "packages",
+            "rules",
+            "agents",
+            "AGENTS.md",
+            "AGENTS.override.md",
+        ] {
             if original.join(name).exists() {
                 share(&original.join(name), &directory.join(name))?;
             }
