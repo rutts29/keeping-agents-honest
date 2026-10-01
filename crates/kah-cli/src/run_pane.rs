@@ -76,6 +76,18 @@ impl Pane {
         invoke(&["agent", "prompt", &self.id, text])?;
         Ok(())
     }
+    pub fn notify_waiting(&self, run: &str, reason: &str) -> Result<()> {
+        invoke(&[
+            "notification",
+            "show",
+            "kah run needs attention",
+            "--body",
+            &format!("{run}: {reason}. Open pane {}. kah status {run}", self.id),
+            "--sound",
+            "request",
+        ])?;
+        Ok(())
+    }
     pub fn logs(&self, session: Option<&str>) -> Result<String> {
         let pane = self.inspect()?;
         if session.is_some_and(|id| {
@@ -93,6 +105,17 @@ impl Pane {
     pub fn close(&self) -> Result<()> {
         invoke(&["pane", "close", &self.id])?;
         Ok(())
+    }
+}
+/// Herdr owns dialog detection. Unknown startup is reported without guessing
+/// at terminal text or submitting keys to native consent/permission dialogs.
+pub fn waiting_reason(pane: &Value, submitted: bool, seconds: u64) -> Option<&'static str> {
+    if pane["agent_status"] == "blocked" {
+        Some("native agent is waiting for consent, permission or input")
+    } else if !submitted && seconds >= 15 {
+        Some("startup has not submitted the task; inspect native consent or startup")
+    } else {
+        None
     }
 }
 fn call(arguments: &[&str]) -> Result<Value> {

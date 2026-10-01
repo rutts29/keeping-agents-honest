@@ -41,6 +41,9 @@ pub fn launch(home: &Path, id: &str, resume: bool) -> Result<()> {
         .current_dir(&record.worktree);
     let pane = Pane::start(&command)?;
     println!("Run {id}; native pane {}; kah status {id}", pane.id);
+    println!(
+        "Native startup may need your consent in that pane; kah will report waits through Herdr and kah status."
+    );
     Ok(())
 }
 
@@ -77,6 +80,7 @@ fn execute_owned(home: &Path, base: PathBuf, id: &str, resume: bool) -> Result<(
             return Err("RUN_ALREADY_STARTED stage=run_launch".into());
         }
         r.native.as_mut().unwrap().pane = Some(run.pane.id.clone());
+        r.native.as_mut().unwrap().waiting = None;
         Ok(())
     })?;
     stop_executors(&run.tree.path)?;
@@ -133,6 +137,7 @@ struct Run<'a> {
     pane: Pane,
     history: Option<History>,
     clock: Instant,
+    started: Instant,
     sampled: Instant,
     tests: Option<kah_run::verification::Receipt>,
     unsuccessful: u8,
@@ -176,6 +181,7 @@ impl<'a> Run<'a> {
             pane,
             history: None,
             clock: Instant::now(),
+            started: Instant::now(),
             sampled: Instant::now() - Duration::from_secs(2),
             tests: None,
             unsuccessful: 0,
@@ -246,6 +252,7 @@ impl<'a> Run<'a> {
                 })?;
                 return Ok(());
             }
+            self.attention(&pane)?;
             if let Some(state) = state {
                 self.deliver(&pane)?;
                 if matches!(pane["agent_status"].as_str(), Some("idle" | "done"))

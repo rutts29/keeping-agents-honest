@@ -2,6 +2,26 @@ use super::*;
 use serde_json::Value;
 
 impl Run<'_> {
+    pub(super) fn attention(&self, pane: &Value) -> Result<()> {
+        let record = self.record()?;
+        let native = record.native.as_ref().unwrap();
+        let reason = crate::run_pane::waiting_reason(
+            pane,
+            native.source_cursor > 0,
+            self.started.elapsed().as_secs(),
+        );
+        if reason == native.waiting.as_deref() {
+            return Ok(());
+        }
+        if let Some(reason) = reason {
+            self.pane.notify_waiting(self.id, reason)?;
+        }
+        self.update(|r| {
+            r.native.as_mut().unwrap().waiting = reason.map(str::to_owned);
+            Ok(())
+        })?;
+        Ok(())
+    }
     fn bind_session(&self, pane: &Value) -> Result<()> {
         let before = self.record()?;
         let native = before

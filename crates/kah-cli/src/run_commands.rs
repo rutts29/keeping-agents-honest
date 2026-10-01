@@ -46,6 +46,11 @@ pub fn print_status(id: &str, record: &Record) {
             native.session.as_deref().unwrap_or("starting"),
             native.pane.as_deref().unwrap_or("starting")
         );
+        if let Some(reason) = &native.waiting
+            && record.control.status() == kah_core::unattended::RunStatus::Running
+        {
+            println!("Needs attention: {reason}");
+        }
     }
     println!("Branch: kah/{id}; project: {}", record.project.display());
     println!(

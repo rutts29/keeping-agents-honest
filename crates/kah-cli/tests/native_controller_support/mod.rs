@@ -26,11 +26,7 @@ pub fn run(root: &Path, agent: &str) -> Value {
     let project = Project::select(&home.join("repos"), &home, Some((Domain::Mine, &name))).unwrap();
     assert!(project.needs_creation);
     project.initialize().unwrap();
-    let model = if agent == "claude" {
-        "haiku"
-    } else {
-        "gpt-6-sol"
-    };
+    let model = fixture_model(agent);
     let (file_tool, shell_tool) = if agent == "claude" {
         ("Write", "Bash")
     } else {
@@ -52,6 +48,9 @@ pub fn run(root: &Path, agent: &str) -> Value {
     let base = RunStore::default_state_root().unwrap().join("runs");
     let record = wait(&base, id, agent);
     let report = diagnostics(&Store::path(&base, id).unwrap(), &record.worktree);
+    if std::env::var_os("KAH_GATE_CONSENT_ONLY").is_some() {
+        return consent_result(&home, agent, &record, &before);
+    }
     capture::capture(&home, &Store::path(&base, id).unwrap(), &record, &report);
     assert_eq!(
         record.control.status(),
@@ -62,6 +61,10 @@ pub fn run(root: &Path, agent: &str) -> Value {
     assert_eq!(record.control.task(), task);
     assert!(record.control.tokens_used() > 0);
     let native = record.native.as_ref().unwrap();
+    assert!(
+        native.waiting.is_none(),
+        "consent wait must clear after submission"
+    );
     assert!(native.native_tokens > 0 && native.observer_tokens > 0);
     assert!(native.synchronized());
     assert!(!project.root.join("double.js").exists());
@@ -70,11 +73,36 @@ pub fn run(root: &Path, agent: &str) -> Value {
     for (path, bytes) in before {
         assert_eq!(bytes, fs::read(path).unwrap());
     }
-    let version = Command::new(home.join(".local/bin").join(agent))
+    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":"mine","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":true,"consentWaitCleared":true,"passed":true})
+}
+fn consent_result(
+    home: &Path,
+    agent: &str,
+    record: &Record,
+    before: &[(PathBuf, Vec<u8>)],
+) -> Value {
+    assert_eq!(record.control.status(), RunStatus::Stopped);
+    let native = record.native.as_ref().unwrap();
+    assert!(native.waiting.is_none());
+    assert!(native.source_cursor > 0 && native.synchronized());
+    for (path, bytes) in before {
+        assert_eq!(*bytes, fs::read(path).unwrap());
+    }
+    json!({"agent":agent,"version":version(home, agent),"fixtureModel":record.model,"fixtureEffort":record.effort,"consentNotificationBeforeFixtureAcceptance":true,"consentWaitCleared":true,"primaryTaskAcknowledged":true,"operatorStop":"stopped","globalConfigUnchanged":true,"passed":true})
+}
+fn version(home: &Path, agent: &str) -> String {
+    let output = Command::new(home.join(".local/bin").join(agent))
         .arg("--version")
         .output()
         .unwrap();
-    json!({"agent":agent,"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":"mine","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"passed":true})
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).unwrap().trim().into()
+}
+fn fixture_model(agent: &str) -> &'static str {
+    match agent {
+        "claude" => "haiku",
+        _ => "gpt-6-sol",
+    }
 }
 fn launch(home: &Path, project: &Path, agent: &str, model: &str, task: &str) -> String {
     let result = Command::new(home.join(".local/bin/kah"))
@@ -103,8 +131,25 @@ fn launch(home: &Path, project: &Path, agent: &str, model: &str, task: &str) -> 
 fn wait(base: &Path, id: &str, agent: &str) -> Record {
     let deadline = Instant::now() + Duration::from_secs(250);
     let mut accepted = false;
+    let mut stopped = false;
     loop {
         let record = Store::read(base, id).unwrap();
+        if std::env::var_os("KAH_GATE_CONSENT_ONLY").is_some()
+            && accepted
+            && !stopped
+            && record.native.as_ref().unwrap().source_cursor > 0
+            && record.native.as_ref().unwrap().waiting.is_none()
+        {
+            assert!(
+                Command::new("kah")
+                    .args(["stop", id])
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+            stopped = true;
+        }
         if let Some(pane) = record.native.as_ref().unwrap().pane.as_ref() {
             let output = Command::new("herdr")
                 .args([
@@ -114,18 +159,11 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
                 .unwrap();
             let screen = String::from_utf8_lossy(&output.stdout);
             if !accepted
+                && record.native.as_ref().unwrap().waiting.is_some()
                 && (screen.contains("Open restricted")
                     || screen.contains("Yes, I trust this folder"))
             {
-                std::thread::sleep(Duration::from_millis(400));
-                let keys = if agent == "claude" {
-                    vec!["Down", "Enter"]
-                } else {
-                    vec!["Enter"]
-                };
-                for key in keys {
-                    send_key(pane, key);
-                }
+                accept_consent(id, pane, agent);
                 accepted = true;
             }
             if !matches!(
@@ -146,6 +184,19 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
             "controller did not register its pane"
         );
         std::thread::sleep(Duration::from_millis(300));
+    }
+}
+fn accept_consent(id: &str, pane: &str, agent: &str) {
+    let status = Command::new("kah").args(["status", id]).output().unwrap();
+    assert!(String::from_utf8_lossy(&status.stdout).contains("Needs attention:"));
+    std::thread::sleep(Duration::from_millis(400));
+    let keys: &[&str] = if agent == "claude" {
+        &["Down", "Enter"]
+    } else {
+        &["Enter"]
+    };
+    for key in keys {
+        send_key(pane, key);
     }
 }
 fn send_key(pane: &str, key: &str) {

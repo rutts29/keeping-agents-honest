@@ -12,6 +12,8 @@ pub struct Native {
     pub provider: String,
     pub session: Option<String>,
     pub pane: Option<String>,
+    #[serde(default)]
+    pub waiting: Option<String>,
     pub source_cursor: usize,
     pub pending: VecDeque<u64>,
     pub sending: Option<u64>,
@@ -30,6 +32,7 @@ impl Native {
             provider: provider.into(),
             session: None,
             pane: None,
+            waiting: None,
             source_cursor: 0,
             pending: VecDeque::new(),
             sending: None,

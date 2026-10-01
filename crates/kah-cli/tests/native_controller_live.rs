@@ -34,6 +34,15 @@ fn native_runs_complete_in_their_own_panes() {
 }
 fn journey(agent: &str) {
     let probe = herdr_probe::setup();
+    let config = probe.root.join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "{}\n[ui.toast]\ndelivery='herdr'\n",
+            fs::read_to_string(&config).unwrap()
+        ),
+    )
+    .unwrap();
     let command = format!(
         "HERDR_CONFIG_PATH={} herdr --session {}",
         pty::quote(probe.root.join("config.toml").to_str().unwrap()),
@@ -53,6 +62,7 @@ fn journey(agent: &str) {
         }
         std::thread::sleep(Duration::from_millis(200));
     };
+    let notification_rendered = terminal.output().contains("kah run needs attention");
     let _ = Command::new("herdr")
         .args(["session", "stop", &probe.name, "--json"])
         .output();
@@ -68,6 +78,10 @@ fn journey(agent: &str) {
         fs::set_permissions(&diagnostic, fs::Permissions::from_mode(0o600)).unwrap();
         panic!("native run journey failed: {}", diagnostic.display());
     }
+    assert!(
+        notification_rendered,
+        "Herdr must render the consent notification"
+    );
     fs::write(
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
             .join(format!("native-run-{agent}.json")),

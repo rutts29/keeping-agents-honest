@@ -21,8 +21,22 @@ observer's compactor and Jev alias use the separate `--observer-model`,
 A run starts at committed HEAD in a private worktree and its own Herdr pane.
 Uncommitted source edits are not imported. The task is the first native prompt;
 there is no exec/print worker or required JSON reply. Native consent and prompts
-remain native. Attach through Herdr; status shows the native session and pane IDs.
-Logs show that pane's recent output.
+remain native. Fresh worktree paths currently require a person to accept startup
+consent for both providers before work can proceed. kah shows a Herdr notification
+when the agent is blocked, and a startup notice after 15 seconds without the first
+task submission. `kah status` records the wait and the native pane ID. Attach to
+that pane to answer; kah never sends consent keys. The wait clears after submission.
+Logs show that pane's recent output. Run time limits continue during this wait.
+Notifications honor Herdr's configured `[ui.toast]` delivery, including `off`;
+kah also prints the consent notice at launch and retains the wait in status.
+
+Claude 2.1.286 has no documented invocation-local interactive trust flag; print
+mode skips trust but would change the required native session flow. Its trust
+acceptance is project state in ~/.claude.json, not a --settings property. kah does
+not edit that file. Codex 0.159.0 also asks for consent when an embedded project
+is explicitly untrusted. Setting it trusted in kah's overlay skips the dialog but
+enables repo-local configuration; kah retains untrusted project settings instead.
+This is an explicit startup limitation, not a claim of zero-touch launch.
 
 The subscription login stays on the host. Commands execute in gVisor even for
 Mine-source runs. Codex file tools use its executor; Claude's native project file
