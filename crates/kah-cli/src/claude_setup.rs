@@ -59,7 +59,7 @@ pub fn prepare(home: &Path, project: &Project, args: &Arguments) -> Result<Setup
         ),
     )?;
     fs::set_permissions(&prefix, fs::Permissions::from_mode(0o700))?;
-    let mut settings = json!({"hooks":{},"permissions":crate::claude_policy::permissions(home,&project.root,&private,args.options.online)?});
+    let mut settings = json!({"hooks":{},"permissions":crate::claude_policy::permissions(home,&project.root,&private,args.options.online,args.worktree_git.as_deref())?});
     settings["deniedMcpServers"] = json!(
         policy
             .secret_mcp_servers

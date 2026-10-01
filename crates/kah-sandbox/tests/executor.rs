@@ -113,3 +113,32 @@ fn observer_workspace_mount_can_be_read_only() {
     assert_eq!(mounts.len(), 2);
     assert!(mounts.iter().all(|mount| mount.ends_with(",readonly")));
 }
+
+#[test]
+fn readonly_parent_promotes_nested_binds_without_duplicate_targets() {
+    let p = project(Domain::Research);
+    let mut executor = Executor::new(
+        &p,
+        LaunchOptions::default(),
+        Path::new("/fixture/codex"),
+        "image",
+        42420,
+    )
+    .unwrap();
+    let admin = p.root.join(".git");
+    let environment = format!("target={}", p.root.display());
+    executor.insert_options(["--env".into(), environment.clone()]);
+    executor.add_writable_mount(&admin, &admin).unwrap();
+    let executor = executor
+        .with_read_only_mounts(&[(p.root.clone(), p.root.clone())])
+        .unwrap();
+    let mounts = executor
+        .args
+        .windows(2)
+        .filter(|p| p[0] == "--mount")
+        .map(|p| &p[1])
+        .collect::<Vec<_>>();
+    assert_eq!(mounts.len(), 3);
+    assert!(mounts.iter().all(|m| m.ends_with(",readonly")));
+    assert!(executor.args.contains(&environment));
+}

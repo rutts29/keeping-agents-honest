@@ -15,8 +15,19 @@ fn native_permissions_keep_global_skills_readable_and_private_files_denied() {
     fs::write(home.join(".claude/.credentials.json"), "private").unwrap();
     fs::write(home.join(".codex/auth.json"), "private").unwrap();
     let project = home.join("repos/research/current");
-    let policy = permissions(&home, &project, &home.join("private-runtime"), false).unwrap();
+    let private_git = home.join("run/repo.git");
+    let policy = permissions(
+        &home,
+        &project,
+        &home.join("private-runtime"),
+        false,
+        Some(&private_git),
+    )
+    .unwrap();
     let deny = policy["deny"].as_array().unwrap();
+    assert!(deny.contains(&format!("Edit(/{}/**)", private_git.display()).into()));
+    assert!(deny.contains(&format!("Edit(/{}/**)", project.join(".git").display()).into()));
+    assert!(deny.contains(&format!("Edit(/{})", home.join(".gitconfig").display()).into()));
     for path in [
         home.join(".claude/.credentials.json"),
         home.join(".codex/auth.json"),
@@ -35,7 +46,7 @@ fn native_permissions_keep_global_skills_readable_and_private_files_denied() {
             .contains(&format!("Read(/{}/**)", home.join(".claude/skills").display()).into())
     );
     assert!(
-        !permissions(&home, &project, &home.join("private-runtime"), true).unwrap()["deny"]
+        !permissions(&home, &project, &home.join("private-runtime"), true, None).unwrap()["deny"]
             .as_array()
             .unwrap()
             .contains(&"WebFetch".into())

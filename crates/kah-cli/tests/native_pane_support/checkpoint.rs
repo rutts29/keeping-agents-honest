@@ -75,14 +75,18 @@ fn verify(home: &Path, candidate: &Worktree, commit: &str, root: &Path) -> verif
         relative_cwd: Default::default(),
         needs_creation: false,
     };
-    let mut executor =
-        kah_cli::native_setup::executor(home, &project, LaunchOptions::default(), None)
-            .unwrap()
-            .with_read_only_mounts(&[
-                (tree.git_dir.clone(), tree.git_dir.clone()),
-                (tree.path.join(".git"), tree.path.join(".git")),
-            ])
-            .unwrap();
+    let mut executor = kah_cli::native_setup::executor(
+        home,
+        &project,
+        LaunchOptions::default(),
+        Some(&tree.git_dir),
+    )
+    .unwrap()
+    .with_read_only_mounts(&[
+        (tree.git_dir.clone(), tree.git_dir.clone()),
+        (tree.path.join(".git"), tree.path.join(".git")),
+    ])
+    .unwrap();
     executor.use_nobody();
     let receipt = verification::execute(
         &executor,

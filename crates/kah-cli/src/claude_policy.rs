@@ -6,7 +6,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub fn permissions(home: &Path, project: &Path, private: &Path, online: bool) -> Result<Value> {
+pub fn permissions(
+    home: &Path,
+    project: &Path,
+    private: &Path,
+    online: bool,
+    git: Option<&Path>,
+) -> Result<Value> {
     let setup = kah_sandbox::global_setup_mounts(home)?;
     let mut allow = vec![
         "Bash".into(),
@@ -44,6 +50,13 @@ pub fn permissions(home: &Path, project: &Path, private: &Path, online: bool) ->
         }
     }
     let mut deny = vec![];
+    // Git remains native in Bash, but host file tools must not bypass the
+    // sandbox's read-only Git control mounts (including linked worktree pointers).
+    rules(&mut deny, "Edit", &project.join(".git"));
+    rules(&mut deny, "Edit", &home.join(".gitconfig"));
+    if let Some(git) = git {
+        rules(&mut deny, "Edit", git);
+    }
     for path in protected {
         for tool in ["Read", "Edit"] {
             rules(&mut deny, tool, &path);

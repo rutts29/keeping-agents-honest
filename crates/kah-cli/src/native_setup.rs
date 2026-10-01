@@ -36,7 +36,11 @@ pub fn executor(
         kah_run::access::share_tree(git, uid, true)?;
         executor.add_writable_mount(git, git)?;
     }
-    Ok(executor)
+    Ok(kah_sandbox::git_guard::protect(
+        executor,
+        &project.root,
+        worktree_git,
+    )?)
 }
 
 pub fn codex(

@@ -93,7 +93,9 @@ impl Executor {
             mount_path(source)?,
             mount_path(target)?
         );
-        self.insert_options(["--mount".into(), mount]);
+        if !self.args[..self.image_index].contains(&mount) {
+            self.insert_options(["--mount".into(), mount]);
+        }
         Ok(())
     }
     pub fn with_read_only_mounts(
@@ -101,12 +103,28 @@ impl Executor {
         mounts: &[(std::path::PathBuf, std::path::PathBuf)],
     ) -> Result<Self, Error> {
         for (source, target) in mounts {
+            // A read-only parent must not retain a writable nested bind, and
+            // promoting an existing bind must not create duplicate targets.
+            for index in 0..self.image_index.saturating_sub(1) {
+                if self.args[index] != "--mount" {
+                    continue;
+                }
+                let arg = &mut self.args[index + 1];
+                if let Some(path) = arg.split(',').find_map(|part| part.strip_prefix("target="))
+                    && Path::new(path).starts_with(target)
+                    && !arg.ends_with(",readonly")
+                {
+                    arg.push_str(",readonly");
+                }
+            }
             let mount = format!(
                 "type=bind,source={},target={},readonly",
                 mount_path(source)?,
                 mount_path(target)?
             );
-            self.insert_options(["--mount".into(), mount]);
+            if !self.args[..self.image_index].contains(&mount) {
+                self.insert_options(["--mount".into(), mount]);
+            }
         }
         Ok(self)
     }
