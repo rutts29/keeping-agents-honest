@@ -20,13 +20,17 @@ pub struct Fixture {
 }
 impl Fixture {
     pub fn new() -> Self {
+        Self::new_domain("mine")
+    }
+    pub fn new_domain(domain: &str) -> Self {
+        assert!(["mine", "research", "untrusted"].contains(&domain));
         let home = PathBuf::from(std::env::var_os("HOME").unwrap());
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis();
         let id = format!("00000000-0000-4000-8000-{:012x}", nonce & 0xffffffffffff);
-        let root = home.join(format!("repos/mine/kah-claude-live-{nonce}"));
+        let root = home.join(format!("repos/{domain}/kah-claude-live-{nonce}"));
         fs::create_dir(&root).unwrap();
         let root = root.canonicalize().unwrap();
         assert!(
