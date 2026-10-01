@@ -5,6 +5,8 @@ mod fixture;
 #[allow(dead_code)]
 #[path = "terminal_support/history.rs"]
 mod history;
+#[path = "terminal_support/hook_latency.rs"]
+mod hook_latency;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
 mod processes;
@@ -55,6 +57,17 @@ fn claude_checks_inside_a_long_turn() {
         "BLUE"
     );
     drop(terminal);
+    if std::env::var_os("KAH_GATE_HOOK_LATENCY").is_some() {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        let transcript = home
+            .join(".claude/projects")
+            .join(f.project().to_string_lossy().replace('/', "-"))
+            .join(format!("{}.jsonl", f.id));
+        save(
+            "claude-latency",
+            hook_latency::measure(&f.base, &f.id, true, &transcript),
+        );
+    }
     let installed = installed("claude");
     version.verify(&json!(installed));
     save(
@@ -108,6 +121,17 @@ fn codex_checks_inside_a_long_turn() {
         "BLUE"
     );
     drop(terminal);
+    if std::env::var_os("KAH_GATE_HOOK_LATENCY").is_some() {
+        save(
+            "codex-latency",
+            hook_latency::measure(
+                &base,
+                &id,
+                false,
+                Path::new(read["thread"]["path"].as_str().unwrap()),
+            ),
+        );
+    }
     let installed = installed("codex");
     version.verify(&json!(installed));
     save(

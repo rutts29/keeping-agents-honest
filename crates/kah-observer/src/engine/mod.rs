@@ -139,6 +139,9 @@ fn update(
     }
     if state.action_digest.as_deref() == Some(&snapshot.action_digest)
         || snapshot.actions.is_empty()
+        || projection.preserve.is_empty()
+            && projection.frontier.is_empty()
+            && projection.validation.is_empty()
     {
         return Ok(Outcome {
             projection: Some(projection),

@@ -222,6 +222,9 @@ fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
     input["tool_use_id"] = "four".into();
     input["tool_name"] = "Bash".into();
     input["tool_response"] = json!({"exit_code":0});
+    assert_eq!(f.run(input.clone()), json!({}));
+    wait_worker(&f);
+    input["tool_use_id"] = "five".into();
     let output = f.run(input);
     assert!(
         output["systemMessage"]
@@ -233,4 +236,106 @@ fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
         .unwrap()
         .unwrap();
     assert!(state.gap.is_some());
+}
+
+fn wait_worker(f: &Fixture) {
+    let directory = Store::directory(&f.home.join("state/kah"), "session");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let lock = fs::File::open(directory.join("tool-worker.lock")).unwrap();
+        if lock.try_lock().is_ok() && !directory.join("tool-job.json").exists() {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "worker did not finish"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn empty_native_history_never_judges_drift() {
+    let f = Fixture::new();
+    fs::write(&f.transcript, "").unwrap();
+    for n in 0..4 {
+        let mut input = f.input();
+        input["hook_event_name"] = "PostToolUse".into();
+        input["tool_use_id"] = n.to_string().into();
+        assert_eq!(f.run(input), json!({}));
+    }
+    wait_worker(&f);
+    let state = Store::read(&f.home.join("state/kah"), "session")
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.usage.calls, 0);
+    assert!(state.gap.is_none());
+    assert!(state.run_id.is_none());
+}
+
+#[test]
+fn busy_worker_does_not_block_hooks_or_start_another_worker() {
+    let f = Fixture::new();
+    f.run(f.input());
+    let directory = Store::directory(&f.home.join("state/kah"), "session");
+    let lock = fs::File::create(directory.join("tool-worker.lock")).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    lock.set_permissions(fs::Permissions::from_mode(0o600))
+        .unwrap();
+    lock.lock().unwrap();
+    for event in ["PreToolUse", "PostToolUse", "Stop"] {
+        let mut input = f.input();
+        input["hook_event_name"] = event.into();
+        let started = std::time::Instant::now();
+        assert_eq!(f.run(input), json!({}));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    }
+    assert!(!directory.join("tool-job.json").exists());
+}
+
+#[test]
+fn queued_reminder_is_delivered_once_and_new_user_input_discards_it() {
+    let f = Fixture::new();
+    f.run(f.input());
+    let directory = Store::directory(&f.home.join("state/kah"), "session");
+    let queued = json!({"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"fixture reminder"}});
+    kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
+    let mut input = f.input();
+    input["hook_event_name"] = "PreToolUse".into();
+    let output = f.run(input.clone());
+    assert_eq!(
+        output["hookSpecificOutput"]["additionalContext"],
+        "fixture reminder"
+    );
+    assert_eq!(output["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+    assert_ne!(
+        f.run(input)["hookSpecificOutput"]["additionalContext"],
+        "fixture reminder"
+    );
+    kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
+    assert_ne!(
+        f.run(f.input())["hookSpecificOutput"]["additionalContext"],
+        "fixture reminder"
+    );
+    assert!(!directory.join("tool-result.json").exists());
+}
+
+#[test]
+fn user_input_while_worker_is_busy_invalidates_its_future_reminder() {
+    let f = Fixture::new();
+    f.run(f.input());
+    let directory = Store::directory(&f.home.join("state/kah"), "session");
+    let lock = fs::File::open(directory.join("tool-worker.lock")).unwrap();
+    lock.lock().unwrap();
+    assert_eq!(f.run(f.input()), json!({}));
+    let queued = json!({"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"stale reminder"}});
+    kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
+    drop(lock);
+    let mut input = f.input();
+    input["hook_event_name"] = "PreToolUse".into();
+    assert_ne!(
+        f.run(input)["hookSpecificOutput"]["additionalContext"],
+        "stale reminder"
+    );
+    assert!(!directory.join("tool-result.json").exists());
 }

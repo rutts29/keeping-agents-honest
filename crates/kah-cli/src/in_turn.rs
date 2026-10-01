@@ -1,5 +1,4 @@
 //! Native post-tool events wake the observer only after a bounded tool batch.
-use kah_core::run_store::RunStore;
 use kah_observer::{
     engine,
     session::{Binding, Store},
@@ -7,7 +6,7 @@ use kah_observer::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{fs, io::Read, os::unix::fs::PermissionsExt, path::Path, time::Duration};
+use std::{fs, io::Read, os::unix::fs::PermissionsExt, path::Path};
 
 pub fn event(input: &Value) -> bool {
     matches!(
@@ -16,23 +15,21 @@ pub fn event(input: &Value) -> bool {
     )
 }
 pub fn codex(binding: &Binding, input: &Value) -> Result<Value, String> {
-    let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
-    crate::observer_hook::initialize(&base, binding)?;
-    let Some(actions) = batch(&base, binding, input)? else {
-        return Ok(json!({}));
-    };
-    let outcome = engine::observe_tools(binding, &observation_id(input), actions)?;
-    Ok(output(input, outcome))
+    crate::in_turn_worker::schedule(binding, input, false)
 }
-pub fn claude(base: &Path, binding: &Binding, input: &Value) -> Result<engine::Outcome, String> {
+pub fn claude(binding: &Binding, input: &Value) -> Result<Value, String> {
     crate::claude_hook::validate_cwd(input, binding)?;
-    let Some(actions) = batch(base, binding, input)? else {
-        return Ok(engine::Outcome {
-            projection: None,
-            reminder: None,
-            gap: None,
-        });
-    };
+    crate::in_turn_worker::schedule(binding, input, true)
+}
+pub(crate) fn judge(
+    binding: &Binding,
+    input: &Value,
+    actions: Vec<Value>,
+    claude: bool,
+) -> Result<engine::Outcome, String> {
+    if !claude {
+        return engine::observe_tools(binding, &observation_id(input), actions);
+    }
     let mut snapshot = crate::claude_hook::snapshot(input, binding)?;
     snapshot.actions = actions;
     snapshot.action_digest = format!(
@@ -58,8 +55,11 @@ fn observation_id(input: &Value) -> String {
         input["tool_use_id"].as_str().unwrap_or("missing")
     )
 }
-fn batch(base: &Path, binding: &Binding, input: &Value) -> Result<Option<Vec<Value>>, String> {
-    let _lock = Store::open(base, &binding.session, Duration::from_secs(2))?;
+pub(crate) fn batch(
+    base: &Path,
+    binding: &Binding,
+    input: &Value,
+) -> Result<Option<Vec<Value>>, String> {
     let directory = Store::directory(base, &binding.session);
     let path = directory.join("tool-progress.json");
     let mut progress = read(&path)?;

@@ -35,6 +35,9 @@ fn handle(input: &Value) -> Result<Value, String> {
     if crate::in_turn::event(input) {
         return crate::in_turn::codex(&binding, input);
     }
+    if let Some(output) = crate::in_turn_worker::pending(&binding, input)? {
+        return Ok(output);
+    }
     let name = input["hook_event_name"].as_str().unwrap_or("");
     let kind = event_kind(name, input["source"].as_str())?;
     let turn = input["turn_id"].as_str();

@@ -42,16 +42,13 @@ pub fn handle(input: &Value) -> Result<Value, String> {
     crate::native_binding::claude(input, &binding.project)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     crate::observer_hook::initialize(&base, &binding)?;
-    let outcome = if crate::in_turn::event(input) {
-        crate::in_turn::claude(&base, &binding, input)
-    } else {
-        observe(input, &binding)
+    let outcome = match early(input, &binding) {
+        Ok(Some(output)) => return Ok(output),
+        Ok(None) => observe(input, &binding),
+        Err(error) => Err(error),
     };
     match outcome {
         Ok(outcome) => {
-            if crate::in_turn::event(input) {
-                return Ok(crate::in_turn::output(input, outcome));
-            }
             if let Some(reminder) = outcome.reminder {
                 return Ok(json!({"decision":"block","reason":reminder.text}));
             }
@@ -101,6 +98,14 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
         input["hook_event_name"] == "Stop" && input["stop_hook_active"] != true,
         snapshot,
     )
+}
+
+fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
+    validate_cwd(input, binding)?;
+    if crate::in_turn::event(input) {
+        return crate::in_turn::claude(binding, input).map(Some);
+    }
+    crate::in_turn_worker::pending(binding, input)
 }
 
 pub(crate) fn validate_cwd(input: &Value, binding: &Binding) -> Result<(), String> {

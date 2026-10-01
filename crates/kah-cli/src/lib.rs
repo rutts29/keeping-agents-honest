@@ -9,6 +9,7 @@ pub mod completion_inputs;
 pub mod completion_replay;
 pub mod herdr;
 pub mod in_turn;
+pub mod in_turn_worker;
 pub mod inspection_cli;
 pub mod interactive_name;
 mod launch;

@@ -3,6 +3,9 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = kah_cli::shell_routing::route(env::args().skip(1).collect())?;
+    if arguments.first().map(String::as_str) == Some("__in-turn-worker") {
+        return kah_cli::in_turn_worker::run(&arguments);
+    }
     if arguments.first().map(String::as_str) == Some("__native-run") {
         return kah_cli::native_controller::run_cli(&arguments);
     }
