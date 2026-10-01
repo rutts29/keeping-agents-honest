@@ -70,6 +70,8 @@ fn cumulative_usage_does_not_charge_twice_and_survives_resume() {
     let mut native = Native::new("codex").unwrap();
     native.account(&mut control, 30, 10, 50);
     native.account(&mut control, 30, 10, 50);
+    native.account(&mut control, 0, 0, 0);
+    native.account(&mut control, 30, 10, 0);
     assert_eq!(control.tokens_used(), 40);
     control.stop();
     control.resume().unwrap();

@@ -34,4 +34,7 @@ pub mod smoke;
 
 pub mod native_run;
 
+pub mod native_child;
+pub mod native_controller;
+pub mod native_history;
 pub mod run_pane;

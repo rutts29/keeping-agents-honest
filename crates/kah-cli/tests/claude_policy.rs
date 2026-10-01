@@ -26,6 +26,8 @@ fn native_permissions_keep_global_skills_readable_and_private_files_denied() {
     .unwrap();
     let deny = policy["deny"].as_array().unwrap();
     assert!(deny.contains(&format!("Edit(/{}/**)", private_git.display()).into()));
+    assert!(deny.contains(&format!("Read(/{}/**)", home.join("run/candidate").display()).into()));
+    assert!(deny.contains(&format!("Edit(/{}/**)", home.join("run/candidate").display()).into()));
     assert!(deny.contains(&format!("Edit(/{}/**)", project.join(".git").display()).into()));
     assert!(deny.contains(&format!("Edit(/{})", home.join(".gitconfig").display()).into()));
     for path in [

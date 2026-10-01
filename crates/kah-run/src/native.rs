@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Native {
+    #[serde(default)]
+    pub online: bool,
     pub provider: String,
     pub session: Option<String>,
     pub pane: Option<String>,
@@ -24,6 +26,7 @@ impl Native {
             return Err("RUN_AGENT stage=run_create: choose codex or claude".into());
         }
         Ok(Self {
+            online: false,
             provider: provider.into(),
             session: None,
             pane: None,
@@ -101,7 +104,7 @@ impl Native {
             observer.saturating_sub(self.observer_tokens),
             elapsed_ms,
         );
-        self.native_tokens = native;
-        self.observer_tokens = observer;
+        self.native_tokens = self.native_tokens.max(native);
+        self.observer_tokens = self.observer_tokens.max(observer);
     }
 }

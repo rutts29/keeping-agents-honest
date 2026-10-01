@@ -26,7 +26,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
             println!("Steering {sequence} queued for {id}.");
         }
         "stop" if args.len()==2=>{commands::stop(&base,id)?;println!("Stop requested for {id}.");}
-        "logs" if args.len()==2=>print!("{}",commands::logs(&base,id)?),
+        "logs" if args.len()==2=>print!("{}",logs(&base,id)?),
         "status" if args.len()==2 || args.len()==3 && args[2]=="--json"=>{
             let record=commands::view(&base,id)?;
             if args.len()==3 {println!("{}",serde_json::to_string_pretty(&record)?);}
@@ -39,6 +39,14 @@ pub fn run(args: Vec<String>) -> Result<()> {
 pub fn print_status(id: &str, record: &Record) {
     println!("{id} — {:?}", record.control.status());
     println!("Task: {}", record.control.task());
+    if let Some(native) = &record.native {
+        println!(
+            "Native {} session: {}; pane: {}",
+            native.provider,
+            native.session.as_deref().unwrap_or("starting"),
+            native.pane.as_deref().unwrap_or("starting")
+        );
+    }
     println!("Branch: kah/{id}; project: {}", record.project.display());
     println!(
         "Usage: {} tokens; {} ms",
@@ -51,4 +59,14 @@ pub fn print_status(id: &str, record: &Record) {
     if let Some(question) = record.control.external_question() {
         println!("Needs user action: {question}");
     }
+}
+fn logs(base: &std::path::Path, id: &str) -> Result<String> {
+    let record = commands::view(base, id)?;
+    if let Some(native) = record.native {
+        let pane = crate::run_pane::Pane {
+            id: native.pane.ok_or("RUN_PANE_PENDING stage=run_logs")?,
+        };
+        return pane.logs(native.session.as_deref());
+    }
+    Ok(commands::logs(base, id)?)
 }

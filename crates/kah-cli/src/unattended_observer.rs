@@ -134,14 +134,25 @@ pub fn complete_candidate(
     tests: &Receipt,
     online: bool,
 ) -> Result<Completion, String> {
-    let evidence = json!({
+    let evidence = candidate_evidence(actions, candidate, tests, online)?;
+    judge_completion(home, settings, projection, &evidence, tests)
+}
+
+/// The same bounded evidence can be inspected/replayed by fixture diagnostics
+/// without another native session or an extra judge call.
+pub fn candidate_evidence(
+    actions: &[Value],
+    candidate: &kah_run::worktree::Worktree,
+    tests: &Receipt,
+    online: bool,
+) -> Result<Value, String> {
+    Ok(json!({
         "evaluation_scope":"Only the imported candidate commit is delivered. Native agent text and tool outputs are observations, not proof of completion.",
-        "observed_activity":actions.iter().filter(|a| a["kind"] != "agentMessage").collect::<Vec<_>>(),
+        "observed_activity":actions,
         "git_diff":candidate.diff_evidence(24 * 1024)?,"committed_files":candidate.file_evidence()?,"tests":tests,
         "controller_facts":{"changed_paths":candidate.changed_paths()?,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true,"candidate_imported_into_trusted_git_with_fsck":true},
         "enforced_policy":{"command_execution":"gVisor","workspace_online":online,"model_login":"host only","native_capabilities":"full","source_repository_writable_mount":false}
-    });
-    judge_completion(home, settings, projection, &evidence, tests)
+    }))
 }
 
 fn judge_completion(

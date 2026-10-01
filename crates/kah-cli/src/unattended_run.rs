@@ -362,11 +362,11 @@ pub fn run_cli(args: Vec<String>) -> Result<()> {
         if args.len() != 2 {
             return Err("RUN_RESUME_ARGUMENTS stage=arguments: kah resume RUN".into());
         }
-        return execute(&home, &args[1], true);
+        return crate::native_controller::launch(&home, &args[1], true);
     }
     let options = crate::unattended_args::RunArguments::parse(args.into_iter().skip(1).collect())?;
     let cwd = std::env::current_dir().map_err(|e| format!("RUN_CWD stage=run_arguments: {e}"))?;
     let id = crate::unattended_setup::create(&home, &cwd, options)?;
     println!("Created {id}");
-    execute(&home, &id, false)
+    crate::native_controller::launch(&home, &id, false)
 }

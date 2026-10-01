@@ -3,6 +3,9 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = kah_cli::shell_routing::route(env::args().skip(1).collect())?;
+    if arguments.first().map(String::as_str) == Some("__native-run") {
+        return kah_cli::native_controller::run_cli(&arguments);
+    }
     if arguments
         .first()
         .is_some_and(|arg| matches!(arg.as_str(), "--sandbox-shell" | "--sandbox-exec"))
@@ -53,10 +56,12 @@ fn run() -> Result<()> {
         kah_cli::herdr::report();
         return Ok(());
     }
-    let args = Arguments::parse(arguments)?;
+    launch_or_help(Arguments::parse(arguments)?)
+}
+fn launch_or_help(args: Arguments) -> Result<()> {
     if args.help {
         println!(
-            "kah [--agent codex|claude] [mine|research|untrusted PROJECT] [--online] [--yolo] [--model MODEL] [--effort EFFORT] [-- NATIVE_ARGS]\n\nStart native Codex or Claude Code in the current project.\nClaude resume: kah --agent claude -- --resume SESSION (from its project).\nRestricted Claude loads user settings plus invocation-local kah policy.\nResearch and Untrusted commands use gVisor, offline unless --online; hosted search stays on.\nMine uses native workspace permissions; --yolo is Mine-only.\nNative resume: kah -- resume [SESSION] --all\nObserver: automatic, Jev in every domain; --no-observer opts out.\nUnattended: kah run --test COMMAND [--model MODEL --effort EFFORT] [--budget-tokens N --time-limit SECONDS] TASK\nControls: kah steer RUN TEXT; kah status RUN; kah logs RUN; kah stop RUN; kah resume RUN."
+            "kah [--agent codex|claude] [mine|research|untrusted PROJECT] [--online] [--yolo] [--model MODEL] [--effort EFFORT] [-- NATIVE_ARGS]\n\nStart native Codex or Claude Code in the current project.\nClaude resume: kah --agent claude -- --resume SESSION (from its project).\nRestricted Claude loads user settings plus invocation-local kah policy.\nResearch and Untrusted commands use gVisor, offline unless --online; hosted search stays on.\nMine uses native workspace permissions; --yolo is Mine-only.\nNative resume: kah -- resume [SESSION] --all\nObserver: automatic, Jev in every domain; --no-observer opts out.\nUnattended (inside Herdr): kah run [--agent codex|claude] [--online] --test COMMAND [--model MODEL --effort EFFORT] [--budget-tokens N --time-limit SECONDS] TASK\nControls: kah steer RUN TEXT; kah status RUN; kah logs RUN; kah stop RUN; kah resume RUN."
         );
         return Ok(());
     }

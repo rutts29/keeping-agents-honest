@@ -28,8 +28,16 @@ fn run_options_preserve_native_model_choices_and_require_verification() {
     for args in [
         vec!["task"],
         vec!["--test", "true", "--budget-tokens", "-1", "task"],
-        vec!["--online", "--test", "true", "task"],
+        vec!["--agent", "unknown", "--test", "true", "task"],
     ] {
         assert!(RunArguments::parse(args.into_iter().map(str::to_owned).collect()).is_err());
     }
+    let native = RunArguments::parse(
+        ["--agent", "claude", "--online", "--test", "true", "task"]
+            .map(str::to_owned)
+            .to_vec(),
+    )
+    .unwrap();
+    assert_eq!(native.agent.as_deref(), Some("claude"));
+    assert!(native.online);
 }

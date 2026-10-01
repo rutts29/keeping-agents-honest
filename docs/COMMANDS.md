@@ -23,7 +23,7 @@ update and features. Existing shells can refresh the function with
 `command codex` bypasses the convenience function. In-TUI `/resume` must match
 the current project/policy; use `kah -- resume SESSION_ID` across projects.
 
-Claude Code is currently available in Mine only:
+Claude Code is available in all three domains:
 
 ```sh
 kah --agent claude
@@ -31,12 +31,12 @@ kah --agent claude --model MODEL --effort EFFORT
 kah --agent claude -- --resume SESSION_ID
 ```
 
-Start in the saved Mine project when resuming. Omitted model and effort use native
+Start in the saved project when resuming. Omitted model and effort use native
 choices. kah adds invocation-local hooks; global settings/hooks stay intact.
-Safe/bare mode and settings overrides that disable kah hooks are refused unless
-you explicitly use `--no-observer`. Research/Untrusted and unattended Claude are
-unavailable pending the [boundary decision](claude-adapter.md). Native Claude
-send/steer transport is not implemented; type overrides in chat or use Herdr.
+Restricted launches use user settings plus invocation-local policy; repository
+executable settings are excluded. Native Claude send/steer transport is not
+implemented; type overrides in chat or use Herdr. Unattended run controls use
+their own Herdr pane.
 
 Type ordinary chat messages beginning `steer: Keep the API unchanged` or
 `aside: This is only a note`. Case and leading whitespace do not matter. `steer:`
@@ -61,7 +61,7 @@ delegate provenance and cannot create user intent. Review commands require user
 authority and call no judge. Add `--json` to status/ledger for structured output.
 
 ```sh
-kah run --test 'make check' --time-limit 600 --budget-tokens 100000 'Implement the change'
+kah run --agent claude --test 'make check' --time-limit 600 --budget-tokens 100000 'Implement the change'
 kah steer run-ID 'Use the revised behavior'
 kah status run-ID
 kah logs run-ID
@@ -69,10 +69,11 @@ kah stop run-ID
 kah resume run-ID
 ```
 
-Unattended work starts at committed HEAD and runs in gVisor in every domain.
-Choose `--model`/`--effort` if desired. No push, deploy or credentials; review the
-returned `kah/run-ID` branch and merge it yourself. Research may add
-`--domain research --allow-host example.com` for bounded read-only HTTPS fetching.
+Start unattended work inside Herdr. It opens a full native session on a private
+worktree from committed HEAD, with gVisor commands in every domain and model
+logins on the host. Choose `--model`/`--effort` if desired; `--online` opens
+workspace egress. kah returns a local `kah/run-ID` branch for user review/merge.
+Native launch/completion pass; remaining control journeys are tracked in STATUS.
 
 `kah smoke` runs one ephemeral native Codex command in a disposable offline
 Research executor, checks host isolation and cleans up. It uses your configured

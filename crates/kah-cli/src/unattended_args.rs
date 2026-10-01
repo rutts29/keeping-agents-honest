@@ -3,6 +3,8 @@ use kah_sandbox::Domain;
 
 #[derive(Default)]
 pub struct RunArguments {
+    pub online: bool,
+    pub agent: Option<String>,
     pub task: String,
     pub test: String,
     pub model: Option<String>,
@@ -19,12 +21,19 @@ impl RunArguments {
         let mut result = Self::default();
         let mut args = input.into_iter();
         while let Some(arg) = args.next() {
+            if arg == "--online" {
+                result.online = true;
+                continue;
+            }
             if arg.starts_with("--") {
                 let value = args
                     .next()
                     .filter(|s| !s.trim().is_empty())
                     .ok_or("RUN_OPTION_VALUE stage=arguments")?;
                 match arg.as_str() {
+                    "--agent" if matches!(value.as_str(), "codex" | "claude") => {
+                        result.agent = Some(value)
+                    }
                     "--model" => result.model = Some(value),
                     "--effort" => result.effort = Some(value),
                     "--observer-model" => result.observer_model = Some(value),

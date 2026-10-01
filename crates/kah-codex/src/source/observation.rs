@@ -105,6 +105,47 @@ fn action_evidence(entries: &[Value]) -> Vec<Value> {
     actions
 }
 
+/// Completion needs earlier tool activity after an automatic follow-up turn.
+/// Count every native item kind; bounded tool details are a tail, not a claim
+/// that omitted kinds never occurred. Source/user authority is handled separately.
+pub fn completion_activity(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError> {
+    completion_actions(&read_items(client, &validate_explicit_session_id(id)?)?)
+}
+fn completion_actions(entries: &[Value]) -> Result<Vec<Value>, SourceError> {
+    let mut counts = std::collections::BTreeMap::<String, u64>::new();
+    for entry in entries {
+        let kind = required_string(&entry["item"], "type", "completion_activity")?;
+        *counts.entry(kind).or_default() += 1;
+    }
+    let mut actions = entries
+        .iter()
+        .rev()
+        .filter(|e| e["item"]["type"] != "agentMessage")
+        .filter_map(|e| {
+            bounded_action(&e["item"]).map(|mut action| {
+                action["turn_id"] = e["turnId"].clone();
+                action
+            })
+        })
+        .take(12)
+        .collect::<Vec<_>>();
+    actions.reverse();
+    actions.insert(0, json!({"kind":"nativeItemCounts","evidence":{"scope":"entire primary session","complete":true,"byKind":counts}}));
+    if let Some(report) = entries
+        .iter()
+        .rev()
+        .find(|e| e["item"]["type"] == "agentMessage")
+        .and_then(|e| bounded_action(&e["item"]))
+    {
+        actions.push(report);
+    }
+    Ok(actions)
+}
+
+#[cfg(test)]
+#[path = "tests/completion.rs"]
+mod completion_tests;
+
 fn bounded_action(item: &Value) -> Option<Value> {
     let content = match item["type"].as_str()? {
         "agentMessage" => json!({"text": item["text"]}),

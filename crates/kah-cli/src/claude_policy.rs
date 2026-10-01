@@ -56,6 +56,15 @@ pub fn permissions(
     rules(&mut deny, "Edit", &home.join(".gitconfig"));
     if let Some(git) = git {
         rules(&mut deny, "Edit", git);
+        for tool in ["Read", "Edit"] {
+            rules(
+                &mut deny,
+                tool,
+                &git.parent()
+                    .ok_or("CLAUDE_GIT_PATH stage=permissions")?
+                    .join("candidate"),
+            );
+        }
     }
     for path in protected {
         for tool in ["Read", "Edit"] {

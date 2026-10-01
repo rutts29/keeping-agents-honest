@@ -17,6 +17,9 @@ use std::{
 };
 
 pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
+    if !args.allow_hosts.is_empty() {
+        return Err("RUN_NETWORK_POLICY stage=run_create: native sessions use --online instead of the retired --allow-host broker".into());
+    }
     let mut control = RunControl::new(&args.task, args.limits)?;
     let observer = kah_observer::compaction::CompactorConfig::new(
         args.observer_model.as_deref().unwrap_or("gpt-6-luna"),
@@ -40,8 +43,10 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     access::share_tree(&tree.path, service_uid()?, true)?;
     access::share_tree(&tree.git_dir, service_uid()?, false)?;
     control.checkpoint(tree.base_commit.clone())?;
+    let mut native = kah_run::native::Native::new(args.agent.as_deref().unwrap_or("codex"))?;
+    native.online = args.online;
     let record = Record {
-        native: None,
+        native: Some(native),
         project: project.root,
         domain: domain.as_str().into(),
         worktree: tree.path.clone(),
@@ -70,10 +75,6 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
         },
     };
     save(&store.directory().join("settings.json"), &settings)?;
-    save(
-        &store.directory().join("worker-schema.json"),
-        &crate::unattended_observer::WorkerReply::schema(),
-    )?;
     Ok(id)
 }
 

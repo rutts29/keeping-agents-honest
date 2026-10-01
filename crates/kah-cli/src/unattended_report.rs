@@ -19,7 +19,12 @@ pub fn write(
     tests: Option<&Receipt>,
     problem: Option<&str>,
 ) -> Result<()> {
-    let observer = Store::read(&RunStore::default_state_root()?, id)?;
+    let session = record
+        .native
+        .as_ref()
+        .and_then(|n| n.session.as_deref())
+        .unwrap_or(id);
+    let observer = Store::read(&RunStore::default_state_root()?, session)?;
     let projection = observer
         .as_ref()
         .map(engine::projection)

@@ -76,6 +76,20 @@ impl Pane {
         invoke(&["agent", "prompt", &self.id, text])?;
         Ok(())
     }
+    pub fn logs(&self, session: Option<&str>) -> Result<String> {
+        let pane = self.inspect()?;
+        if session.is_some_and(|id| {
+            pane["agent_session"]["value"]
+                .as_str()
+                .is_some_and(|actual| actual != id)
+        }) {
+            return Err("RUN_PANE_REPLACED stage=run_logs".into());
+        }
+        let output = invoke(&[
+            "pane", "read", &self.id, "--source", "recent", "--format", "text",
+        ])?;
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
     pub fn close(&self) -> Result<()> {
         invoke(&["pane", "close", &self.id])?;
         Ok(())

@@ -9,3 +9,4 @@ pub mod exec_events;
 pub mod hooks;
 pub mod observer;
 pub mod overlay;
+pub mod usage;

@@ -1,73 +1,69 @@
 # Unattended work
 
-From an existing project under `~/repos/{mine,research,untrusted}`:
+Start inside Herdr, from a project under `~/repos/{mine,research,untrusted}`:
 
 ```sh
-kah run --model gpt-6-sol --effort low --time-limit 600 --test 'make check' 'Implement the requested change'
-kah steer run-ID 'Use the revised behavior instead'
+kah run --agent claude --test 'make check' 'Implement the requested change'
+kah run --model MODEL --effort EFFORT --time-limit 600 --test 'make check' 'Implement the change'
+kah steer run-ID 'steer: Use the revised behavior instead'
 kah status run-ID
 kah logs run-ID
 kah stop run-ID
 kah resume run-ID
 ```
 
-Model and effort are optional; omitted settings follow native Codex configuration.
-The observer's text model/effort and Jev alias are separately configurable with
-`--observer-model`, `--observer-effort`, and `--jev-model`.
+Gate 5r-i proves full native launch and verified completion for both providers.
+Control, resume and limit journeys are still being completed; see [status](STATUS.md).
+The default agent is Codex. Model and effort are optional native choices. The
+observer's compactor and Jev alias use the separate `--observer-model`,
+`--observer-effort`, and `--jev-model` options.
 
-A run starts from committed HEAD in a private Git-backed worktree. Uncommitted
-source edits are not imported. Native commands and edits run in gVisor for every
-domain, including Mine. Git metadata is read-only to the worker. The controller
-makes local milestone commits and exports only `kah/run-ID` into the source
-repository. It never checks out, merges, pushes or deploys that branch.
+A run starts at committed HEAD in a private worktree and its own Herdr pane.
+Uncommitted source edits are not imported. The task is the first native prompt;
+there is no exec/print worker or required JSON reply. Native consent and prompts
+remain native. Attach through Herdr; status shows the native session and pane IDs.
+Logs show that pane's recent output.
 
-Each verification starts in a fresh detached checkout of the candidate commit;
-ignored worker files cannot satisfy it. Tests run in gVisor. The test command
-should be the project's normal verification entrypoint, so steering can update
-the project tests without changing the host command. Temporary binaries must
-run in the verification checkout, since `/tmp` is non-executable.
+The subscription login stays on the host. Commands execute in gVisor even for
+Mine-source runs. Codex file tools use its executor; Claude's native project file
+tools use invocation-local permission rules, including protection of the trusted
+candidate and private Git metadata. Global setup and native subagents remain
+available. Workspace egress is offline by default; `--online` enables it. Hosted
+search and configured online MCP executors retain the interactive policy. The old
+`--allow-host` fetch broker is superseded.
 
-Completion requires passing verification without candidate changes, fresh user
-sequence/checkpoint matching, and two independent Jev judgments satisfying every
-recorded outcome. Per-outcome Choices distinguish satisfied, violated and unclear.
-The required probability is 0.90 and confidence is 0.85. Worker assertions are not completion. Failed or uncertain
-runs stop with a report; a steer and `kah resume` can continue them.
+Git configuration, hooks and directory pointers are read-only in the worker;
+normal indexes, commits and branches remain native. The controller checkpoints
+inside gVisor and imports a checked bundle into a separate trusted candidate.
+It exports only the local `kah/run-ID` branch into the source repository. kah does
+not check out, merge, push or deploy that branch; the user reviews and merges it.
 
-The observer records the task and explicit `kah steer` messages as user authority.
-Native output and judgment text remain evidence. Jev is the judge in all domains;
-verbatim intake uses typed Jev answers. Only size-triggered prompt compaction uses the separately configured native text model.
-Unattended native subagent and goal tools are disabled: one worker's lifecycle
-and allowance are controlled by kah. Interactive native behavior is unchanged.
+Each verification uses a fresh checkout of that candidate, outside the worker's
+mount, with Git metadata read-only. Ignored worker files cannot satisfy it. Use
+the project's normal verification entrypoint so steering can update its tests
+without changing the host command. Completion requires unchanged candidate
+verification, current user sequence/checkpoint matching, and two independent Jev
+judgments satisfying the recorded outcomes. The existing 0.90 probability and
+0.85 confidence thresholds remain. Agent claims alone are not completion.
 
-`--budget-tokens N` counts reported worker and observer tokens, including cached
-input tokens. Usage arrives at native turn completion, so the allowance can
-overshoot by one bounded call. Interrupted calls may have unavailable usage;
-reported counts must not be mistaken for a billing total. `--time-limit SECONDS`
-is cumulative across resume; bounded in-flight observation/verification can delay
-wind-down. Resume preserves counters and refuses an exhausted allowance. kah
-never resets provider usage or requests a reset.
+The completion questions remain focused on delivered project code. An early
+infrastructure-only fixture conservatively stopped despite passing file checks;
+that rejected evidence is retained, not converted into a passing gate or used
+to tune thresholds. Native code-change journeys pass. Reports preserve separate
+assessment receipts, verification and the resulting state.
 
-A killed coordinator's native worker receives a parent-death signal. Resume
-acquires the run lease, removes remaining labeled containers, and restores the
-last checkpoint before continuing with the saved ledger. Uncommitted private
-worktree edits are discarded by this explicit resume operation.
+`--budget-tokens N` counts reported native and observer tokens, including cached
+input. Native usage can arrive only after work has consumed it, and interrupted
+calls may lack a final report; these counters are not billing totals. Time and
+token counters survive resume. Exhausted allowances are not reset. kah never
+resets provider usage or requests a reset.
 
-Research can opt into read-only HTTPS fetching:
+A killed controller's native child receives a parent-death signal. Resume uses
+the saved native session and preserves private worktree edits; it does not reset
+the worktree to an older checkpoint. The separate run lease prevents concurrent
+controllers. Old ephemeral-worker runs are inspectable but cannot be resumed as
+a native session; start a new run from their reviewed branch.
 
-```sh
-kah run --domain research --allow-host example.com --test 'make check' 'Use the approved reference'
-```
-
-The worker receives `/opt/kah __fetch https://example.com/path`. Raw network access
-stays disabled. The helper permits GET only, exact hosts on port 443, public
-resolved addresses, no redirects/proxies/credentials, and bounded replies.
-A per-run file exchange avoids changing gVisor's disabled host-socket policy.
-This is a deliberate read-only fetch capability, not general online networking.
-Mine and Untrusted reject allowlists. No host credentials or Docker socket enter
-the sandbox; installed user skills are available as read-only snapshots.
-
-On stop, block or completion, kah emits a local terminal notification and a JSON
-report under `~/.local/state/kah/runs/run-ID/report.json`: goal, result, branch,
-diff statistics, commit-bound tests, open question, ledger summary and usage.
-Review the local branch diff, then merge it yourself. Native workers use the
-supported `codex exec --ephemeral` flag and do not enter everyday resume history.
+Reports live at `~/.local/state/kah/runs/run-ID/report.json`. Review the local branch
+diff and verification before merging. Live stop/resume, cancellation and descendant
+usage coverage remain required work before Phase 5R is complete.
