@@ -34,6 +34,24 @@ pub fn observe(binding: &Binding, turn: &str, allow_reminder: bool) -> Result<Ou
     observe_with(binding, turn, allow_reminder, || read_source(binding))
 }
 
+/// Hooks supply completed tool results; user authority still comes from native history.
+pub fn observe_tools(
+    binding: &Binding,
+    observation: &str,
+    actions: Vec<serde_json::Value>,
+) -> Result<Outcome, String> {
+    use sha2::{Digest, Sha256};
+    observe_with(binding, observation, true, || {
+        let mut snapshot = read_source(binding)?;
+        snapshot.actions = actions;
+        snapshot.action_digest = format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&snapshot.actions).unwrap())
+        );
+        Ok(snapshot)
+    })
+}
+
 /// Ephemeral workers provide their operator-owned bundle and native event
 /// evidence directly; they have no persistent native rollout to read.
 pub fn observe_snapshot(

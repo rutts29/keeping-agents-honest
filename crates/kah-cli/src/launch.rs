@@ -194,6 +194,7 @@ fn configure_observation(
         ("SessionStart", "sessionStart", 120),
         ("UserPromptSubmit", "userPromptSubmit", 2),
         ("Stop", "stop", 120),
+        ("PostToolUse", "postToolUse", 120),
     ]
     .into_iter()
     .map(|(event, api_event, timeout)| overlay::OwnedHook {
@@ -205,7 +206,7 @@ fn configure_observation(
     .collect::<Vec<_>>();
     let hooks = hooks
         .into_iter()
-        .filter(|h| !args.no_observer || h.event != "Stop")
+        .filter(|h| !args.no_observer || matches!(h.event, "SessionStart" | "UserPromptSubmit"))
         .collect::<Vec<_>>();
     overlay::install_owned_hooks(native, directory, &project.root, &hooks)?;
     if args.no_observer {

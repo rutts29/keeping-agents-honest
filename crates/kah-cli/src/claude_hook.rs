@@ -42,9 +42,16 @@ pub fn handle(input: &Value) -> Result<Value, String> {
     crate::native_binding::claude(input, &binding.project)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     crate::observer_hook::initialize(&base, &binding)?;
-    let outcome = observe(input, &binding);
+    let outcome = if crate::in_turn::event(input) {
+        crate::in_turn::claude(&base, &binding, input)
+    } else {
+        observe(input, &binding)
+    };
     match outcome {
         Ok(outcome) => {
+            if crate::in_turn::event(input) {
+                return Ok(crate::in_turn::output(input, outcome));
+            }
             if let Some(reminder) = outcome.reminder {
                 return Ok(json!({"decision":"block","reason":reminder.text}));
             }
@@ -79,16 +86,7 @@ pub fn handle(input: &Value) -> Result<Value, String> {
 }
 
 fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> {
-    let cwd = Path::new(
-        input["cwd"]
-            .as_str()
-            .ok_or("CLAUDE_CWD stage=hook: cwd absent")?,
-    )
-    .canonicalize()
-    .map_err(|e| format!("CLAUDE_CWD stage=hook: {e}"))?;
-    if !cwd.starts_with(&binding.project) {
-        return Err("CLAUDE_SCOPE stage=hook: cwd outside bound project".into());
-    }
+    validate_cwd(input, binding)?;
     let mut snapshot = snapshot(input, binding)?;
     // Non-Stop hooks synchronize intent, not proposed or historical actions.
     // Judging before execution can suppress the eventual turn-end reminder.
@@ -105,7 +103,21 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
     )
 }
 
-fn snapshot(
+pub(crate) fn validate_cwd(input: &Value, binding: &Binding) -> Result<(), String> {
+    let cwd = Path::new(
+        input["cwd"]
+            .as_str()
+            .ok_or("CLAUDE_CWD stage=hook: cwd absent")?,
+    )
+    .canonicalize()
+    .map_err(|e| format!("CLAUDE_CWD stage=hook: {e}"))?;
+    if !cwd.starts_with(&binding.project) {
+        return Err("CLAUDE_SCOPE stage=hook: cwd outside bound project".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn snapshot(
     input: &Value,
     binding: &Binding,
 ) -> Result<kah_core::observation::ObservationSnapshot, String> {

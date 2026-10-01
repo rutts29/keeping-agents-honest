@@ -14,7 +14,14 @@ fn mine_preserves_choices_and_installs_only_invocation_hooks() {
     assert_eq!(args[0], "--settings");
     assert_eq!(args.len(), 2);
     let settings: serde_json::Value = serde_json::from_str(args[1]).unwrap();
-    for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"] {
+    for event in [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "Stop",
+    ] {
         assert_eq!(settings["hooks"][event][0]["hooks"][0]["type"], "command");
     }
     assert!(!home.join(".claude/settings.json").exists());

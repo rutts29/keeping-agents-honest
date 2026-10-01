@@ -61,7 +61,14 @@ fn configure(
         let binding = binding(home, &project.root, args)?;
         let handler = home.join(".local/bin/kah");
         settings["disableAllHooks"] = false.into();
-        for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"] {
+        for event in [
+            "SessionStart",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "Stop",
+        ] {
             let groups = settings["hooks"]
                 .as_object_mut()
                 .unwrap()

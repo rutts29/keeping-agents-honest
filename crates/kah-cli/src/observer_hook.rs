@@ -27,22 +27,14 @@ pub fn run() {
 }
 
 fn handle(input: &Value) -> Result<Value, String> {
-    let Ok(config) = env::var("KAH_OBSERVER_BINDING") else {
+    let Some(binding) = binding(input)? else {
         return Ok(json!({}));
     };
-    let mut binding: Binding = serde_json::from_str(&config)
-        .map_err(|e| format!("OBSERVER_BINDING_JSON stage=hook: {e}"))?;
-    let session = input["session_id"]
-        .as_str()
-        .ok_or("OBSERVER_SESSION stage=hook: native session ID absent")?;
-    if env::var("CODEX_THREAD_ID")
-        .ok()
-        .is_some_and(|id| id != session)
-    {
-        return Ok(json!({}));
-    }
-    binding.session = session.into();
+    let session = binding.session.as_str();
     validate_cwd(input, &binding)?;
+    if crate::in_turn::event(input) {
+        return crate::in_turn::codex(&binding, input);
+    }
     let name = input["hook_event_name"].as_str().unwrap_or("");
     let kind = event_kind(name, input["source"].as_str())?;
     let turn = input["turn_id"].as_str();
@@ -85,6 +77,28 @@ fn handle(input: &Value) -> Result<Value, String> {
         .unwrap_or_default();
     let gap = state.gap.as_ref().map(|g| g.detail.as_str());
     Ok(output(name, &text, gap))
+}
+
+fn binding(input: &Value) -> Result<Option<Binding>, String> {
+    if input["agent_id"].as_str().is_some() {
+        return Ok(None);
+    }
+    let Ok(config) = env::var("KAH_OBSERVER_BINDING") else {
+        return Ok(None);
+    };
+    let mut binding: Binding = serde_json::from_str(&config)
+        .map_err(|e| format!("OBSERVER_BINDING_JSON stage=hook: {e}"))?;
+    let session = input["session_id"]
+        .as_str()
+        .ok_or("OBSERVER_SESSION stage=hook: native session ID absent")?;
+    if env::var("CODEX_THREAD_ID")
+        .ok()
+        .is_some_and(|id| id != session)
+    {
+        return Ok(None);
+    }
+    binding.session = session.into();
+    Ok(Some(binding))
 }
 
 pub(crate) fn initialize(base: &Path, binding: &Binding) -> Result<(), String> {

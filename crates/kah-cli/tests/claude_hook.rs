@@ -204,3 +204,33 @@ fn pre_tool_hooks_sync_intent_without_judging_unexecuted_actions() {
     assert!(output.get("systemMessage").is_none(), "{output}");
     assert!(output["hookSpecificOutput"]["additionalContext"].is_string());
 }
+
+#[test]
+fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
+    let f = Fixture::new();
+    for id in ["one", "two", "three", "one"] {
+        let mut input = f.input();
+        input["hook_event_name"] = "PostToolUse".into();
+        input["tool_use_id"] = id.into();
+        input["tool_name"] = "Bash".into();
+        input["tool_input"] = json!({"command":"true"});
+        input["tool_response"] = json!({"stdout":"","exit_code":0});
+        assert_eq!(f.run(input), json!({}));
+    }
+    let mut input = f.input();
+    input["hook_event_name"] = "PostToolUse".into();
+    input["tool_use_id"] = "four".into();
+    input["tool_name"] = "Bash".into();
+    input["tool_response"] = json!({"exit_code":0});
+    let output = f.run(input);
+    assert!(
+        output["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("JEV_KEY_UNAVAILABLE")
+    );
+    let state = Store::read(&f.home.join("state/kah"), "session")
+        .unwrap()
+        .unwrap();
+    assert!(state.gap.is_some());
+}

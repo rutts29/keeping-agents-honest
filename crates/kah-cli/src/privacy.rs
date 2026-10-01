@@ -13,7 +13,7 @@ const FIELDS: &[&str] = &[
     "secret_access_key",
 ];
 
-pub(super) fn scrub(value: &mut Value) -> usize {
+pub(crate) fn scrub(value: &mut Value) -> usize {
     match value {
         Value::Object(map) => map
             .iter_mut()

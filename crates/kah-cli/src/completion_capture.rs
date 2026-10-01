@@ -1,4 +1,5 @@
 //! The private archive stores exactly the scrubbed body supplied to Jev.
+use crate::privacy;
 use kah_observer::judge::{Error, Judgment, Questions};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -6,7 +7,6 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
-mod privacy;
 
 pub struct Request {
     model: String,
