@@ -57,6 +57,7 @@ pub fn prepare(explicit: Option<&str>, task: &str) -> Result<Option<Dispatch>> {
     };
     let sources = Store::open(&base, &parent, Duration::from_secs(2))?.sources()?;
     let mut quotes = vec![];
+    let mut relevance_sources = vec![];
     for item in projection
         .preserve
         .iter()
@@ -67,6 +68,9 @@ pub fn prepare(explicit: Option<&str>, task: &str) -> Result<Option<Dispatch>> {
             .iter()
             .find(|i| i.id() == item.id.as_str())
             .ok_or("DISPATCH_SOURCE_MISSING stage=dispatch")?;
+        if filterable(item, input) {
+            relevance_sources.push(input.source.clone());
+        }
         quotes.push(Quote {
             receipt: relay_store::nonce(),
             source: input.source.clone(),
@@ -77,30 +81,60 @@ pub fn prepare(explicit: Option<&str>, task: &str) -> Result<Option<Dispatch>> {
     if quotes.len() > 24 {
         return Err("DISPATCH_SOURCE_BOUND stage=dispatch".into());
     }
-    let relevance_sources = quotes.iter().map(|q| q.source.clone()).collect();
-    let relevance = relevant(&state.binding, task, &quotes)?;
+    let candidates = quotes
+        .iter()
+        .filter(|q| relevance_sources.contains(&q.source))
+        .cloned()
+        .collect::<Vec<_>>();
+    let relevance = relevant(&state.binding, task, &candidates)?;
     if let Some(judgment) = &relevance {
-        quotes = quotes.into_iter().enumerate().filter(|(n, _)| !matches!(judgment.answers.get(&format!("applies.{n}")), Some(Answer::Noul {noul}) if *noul <= 0.2)).map(|(_, q)| q).collect();
+        quotes.retain(|q| relevance_sources.iter().position(|source| *source == q.source).is_none_or(|n| !matches!(judgment.answers.get(&format!("applies.{n}")), Some(Answer::Noul {noul}) if *noul <= 0.2)));
     }
-    for quote in &quotes {
-        quote.validate()?;
-    }
-    // Completion already permits 24 outcomes: reserve the worker goal and task item.
-    if quotes.len() > 22 {
-        return Err("DISPATCH_OUTCOME_BOUND stage=dispatch".into());
-    }
-    let dispatch = Dispatch {
+    finish(Dispatch {
         parent,
         task: task.into(),
         quotes,
         relevance,
         relevance_sources,
-    };
+    })
+}
+fn finish(dispatch: Dispatch) -> Result<Option<Dispatch>> {
+    for quote in &dispatch.quotes {
+        quote.validate()?;
+    }
+    // Completion already permits 24 outcomes: reserve the worker goal and task item.
+    if dispatch.quotes.len() > 22 {
+        return Err("DISPATCH_OUTCOME_BOUND stage=dispatch".into());
+    }
     dispatch.context()?;
     if serde_json::to_vec(&dispatch)?.len() > 256 * 1024 {
         return Err("DISPATCH_RECORD_BOUND stage=dispatch".into());
     }
     Ok(Some(dispatch))
+}
+/// Relevance may omit only clear goal/scope-expansion items. Constraints,
+/// prohibitions, corrections, reductions and uncertain categories are mandatory.
+pub fn filterable(
+    item: &kah_core::intent_history::IntentItem,
+    input: &kah_observer::intake::Input,
+) -> bool {
+    use kah_core::intent_history::IntentKind;
+    use kah_observer::intake::Decision;
+    if item.review_required || item.kind_uncertain || !item.uncertain_supersedes.is_empty() {
+        return false;
+    }
+    let category = match &input.decision {
+        Some(Decision::Jev { judgment }) => match judgment.answers.get("steer_kind") {
+            Some(Answer::Choice { choice, .. }) => Some(choice.as_str()),
+            _ => None,
+        },
+        _ => None,
+    };
+    if matches!(category, Some("correction" | "scope_reduction")) {
+        return false;
+    }
+    item.kind == IntentKind::Outcome
+        || item.kind == IntentKind::Scope && category == Some("scope_expansion")
 }
 fn relevant(binding: &Binding, task: &str, quotes: &[Quote]) -> Result<Option<judge::Judgment>> {
     if quotes.is_empty() {

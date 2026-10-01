@@ -38,9 +38,12 @@ The original receipt and delivery diagnostic remain private for inspection.
 
 For dispatch, `--parent` selects the parent explicitly. Inside Codex, kah uses the
 native thread environment; inside a Herdr agent pane it uses kah's native host-hook
-binding. An ordinary shell without a parent starts an independent run. kah selects
-relevant active parent ledger items with Jev, retaining uncertain relevance and
-omitting only clearly irrelevant items. Selection examines at most 24 active items
+binding. An ordinary shell without a parent starts an independent run. Constraints,
+invariants, prohibitions, validation rules, stop conditions, corrections and scope
+reductions are always inherited. Uncertain categories and inherited scope whose
+original expansion/reduction category is unavailable are retained conservatively.
+Only clear goal/outcome or scope-expansion items are relevance-filtered by Jev;
+uncertain relevance is retained. Selection examines at most 24 active items
 and imports at most 22, reserving the worker's own goal/task outcomes;
 an overfull or unreadable source fails before starting a worker, never silently
 drops requirements. Items stay whole, so split unrelated requirements in the

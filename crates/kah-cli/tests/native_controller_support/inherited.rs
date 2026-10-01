@@ -29,9 +29,18 @@ pub fn run_dispatch(root: &Path, agent: &str, parent: &str) -> Value {
     zoom(&base, id);
     let record = wait(&base, id, agent);
     let report = diagnostics(&Store::path(&base, id).unwrap(), &record.worktree);
+    let dispatch: Value = serde_json::from_slice(
+        &fs::read(Store::path(&base, id).unwrap().join("dispatch.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        dispatch["relevance"].is_null(),
+        "the fixture's constraints must not be relevance-scored"
+    );
+    assert_eq!(dispatch["relevance_sources"], json!([]));
     assert_eq!(record.published_status(), RunStatus::Completed, "{report}");
     let count = prove(&record, task, parent);
-    let result = json!({"agent":agent,"version":version(&home, agent),"status":"completed","inheritedItems":count,"originalParentSource":true,"importedBeforeFirstWrite":true,"taskGoalPreserved":true,"testsPassed":report["tests"]["success"],"passed":true});
+    let result = json!({"agent":agent,"version":version(&home, agent),"status":"completed","inheritedItems":count,"constraintsBypassedRelevance":true,"originalParentSource":true,"importedBeforeFirstWrite":true,"taskGoalPreserved":true,"testsPassed":report["tests"]["success"],"passed":true});
     assert_eq!(
         record.native.as_ref().unwrap().herdr_socket,
         std::env::var_os("HERDR_SOCKET_PATH").map(PathBuf::from)
