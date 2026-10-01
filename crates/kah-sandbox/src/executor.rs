@@ -1,6 +1,10 @@
 use crate::{Error, LaunchOptions, Project};
 use std::path::Path;
 
+// Keep the operator's default ACL writable when gVisor creates files as a
+// different host uid. This changes creation permissions, never ownership.
+const ENTRYPOINT: &[&str] = &["/bin/sh", "-c", "umask 0002; exec \"$@\"", "kah-executor"];
+
 const BASE_ARGS: &[&str] = &[
     "run",
     "--rm",
@@ -134,8 +138,10 @@ impl Executor {
         ] {
             args.extend([key.into(), value]);
         }
+        let image_index = args.len() + 2; // The daemon selector is prepended below.
+        args.push(image.into());
+        args.extend(ENTRYPOINT.iter().map(|arg| (*arg).into()));
         args.extend([
-            image.into(),
             "/opt/codex".into(),
             "exec-server".into(),
             "--listen".into(),
@@ -148,7 +154,6 @@ impl Executor {
                 format!("unix:///run/user/{uid}/docker.sock"),
             ],
         );
-        let image_index = args.len() - 5;
         Ok(Self { args, image_index })
     }
 }
