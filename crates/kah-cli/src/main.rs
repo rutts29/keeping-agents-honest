@@ -30,9 +30,6 @@ fn run() -> Result<()> {
     if arguments.first().is_some_and(|s| s == "eval") {
         return kah_cli::evaluation_cli::run(&arguments);
     }
-    if arguments.first().is_some_and(|s| s == "__fetch") {
-        return kah_cli::fetch_cli::run(&arguments);
-    }
     if kah_cli::unattended_run::handles(&arguments) {
         return kah_cli::unattended_run::run_cli(arguments);
     }

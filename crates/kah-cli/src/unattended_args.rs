@@ -12,7 +12,6 @@ pub struct RunArguments {
     pub observer_model: Option<String>,
     pub observer_effort: Option<String>,
     pub jev_model: Option<String>,
-    pub allow_hosts: Vec<String>,
     pub domain: Option<Domain>,
     pub limits: Limits,
 }
@@ -39,7 +38,7 @@ impl RunArguments {
                     "--observer-model" => result.observer_model = Some(value),
                     "--observer-effort" => result.observer_effort = Some(value),
                     "--jev-model" => result.jev_model = Some(value),
-                    "--allow-host" => result.allow_hosts.push(value),
+                    "--allow-host" => return Err("RUN_NETWORK_POLICY stage=arguments: use --online; the fetch broker was retired".into()),
                     "--test" => result.test = value,
                     "--domain" => {
                         result.domain = Some(

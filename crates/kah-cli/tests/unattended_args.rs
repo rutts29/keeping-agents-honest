@@ -41,3 +41,15 @@ fn run_options_preserve_native_model_choices_and_require_verification() {
     assert_eq!(native.agent.as_deref(), Some("claude"));
     assert!(native.online);
 }
+
+#[test]
+fn the_retired_fetch_broker_is_rejected_before_creating_a_run() {
+    let error = RunArguments::parse(
+        ["--allow-host", "example.com", "--test", "true", "task"]
+            .map(str::to_owned)
+            .to_vec(),
+    )
+    .err()
+    .expect("retired broker accepted");
+    assert!(error.starts_with("RUN_NETWORK_POLICY stage=arguments:"));
+}

@@ -8,6 +8,8 @@ mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[path = "terminal_support/version.rs"]
+mod version;
 use serde_json::json;
 use std::{
     fs,
@@ -33,6 +35,7 @@ fn native_run_journeys() {
     }
 }
 fn journey(agent: &str) {
+    let version = version::Version::capture(agent);
     let probe = herdr_probe::setup();
     enable_toasts(&probe.root);
     let command = format!(
@@ -73,6 +76,7 @@ fn journey(agent: &str) {
             "Herdr must render the consent notification"
         );
     }
+    version.verify(&evidence["version"]);
     fs::write(
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(evidence_name(agent)),
         serde_json::to_vec_pretty(&evidence).unwrap(),

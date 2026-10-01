@@ -66,7 +66,7 @@ fn verify(home: &Path, candidate: &Worktree, commit: &str, root: &Path) -> verif
     let tree = candidate
         .verification_snapshot(&root.join("candidate/verify"), commit)
         .unwrap();
-    let uid = kah_run::runtime::service_uid().unwrap();
+    let uid = kah_run::access::service_uid().unwrap();
     access::share_tree(&tree.path, uid, true).unwrap();
     access::share_tree(&tree.git_dir, uid, false).unwrap();
     let project = Project {

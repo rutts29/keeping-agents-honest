@@ -1,6 +1,6 @@
 # Global setup in restricted domains
 
-Phase 5R integration is in progress; see STATUS for live coverage.
+Phase 5R integration passes live; see STATUS and phase-5r-audit.md for coverage.
 
 Own MCP servers use an online gVisor executor by default; ordinary sandbox
 commands still follow --online. URL MCP connections remain native host

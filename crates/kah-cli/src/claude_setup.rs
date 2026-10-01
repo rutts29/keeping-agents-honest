@@ -26,7 +26,7 @@ pub fn prepare(home: &Path, project: &Project, args: &Arguments) -> Result<Setup
     ensure_private_directory(&private)?;
     let temporary = private.join("tmp");
     ensure_private_directory(&temporary)?;
-    let uid = kah_run::runtime::service_uid()?;
+    let uid = kah_run::access::service_uid()?;
     let shared_root = base.parent().unwrap().parent().unwrap();
     for path in private
         .ancestors()
@@ -150,7 +150,7 @@ fn write_specs(
     environment: &[String],
     worktree_git: Option<&Path>,
 ) -> Result<()> {
-    let uid = kah_run::runtime::service_uid()?;
+    let uid = kah_run::access::service_uid()?;
     let base =
         crate::native_setup::executor(home, project, LaunchOptions::default(), worktree_git)?;
     for (name, online) in [

@@ -172,7 +172,7 @@ impl Run<'_> {
                 .join(format!("verify-{}", session::now_ms())),
             commit,
         )?;
-        let uid = kah_run::runtime::service_uid()?;
+        let uid = kah_run::access::service_uid()?;
         access::traverse(candidate.path.parent().unwrap(), uid)?;
         access::share_tree(&tree.path, uid, true)?;
         let project = Project {

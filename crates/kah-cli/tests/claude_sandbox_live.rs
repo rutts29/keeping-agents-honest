@@ -95,7 +95,7 @@ fn run(executor: &Executor, command: &[&str]) -> Output {
 }
 
 fn setup() -> (Fixture, Executor, PathBuf) {
-    let uid = kah_run::runtime::service_uid().unwrap();
+    let uid = kah_run::access::service_uid().unwrap();
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

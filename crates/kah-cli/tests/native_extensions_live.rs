@@ -126,7 +126,7 @@ fn configure(home: &std::path::Path, launch: &kah_cli::Launch, f: &fixture::Fixt
         LaunchOptions::default(),
         &binary,
         image.trim(),
-        kah_run::runtime::service_uid().unwrap(),
+        kah_run::access::service_uid().unwrap(),
     )
     .unwrap();
     executor.args.truncate(executor.args.len() - 4);

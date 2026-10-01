@@ -79,3 +79,14 @@ fn acl(path: &Path, entries: &str) -> Result<(), String> {
 fn io_error(error: std::io::Error) -> String {
     format!("RUN_SHARE_IO stage=worker_prepare: {error}")
 }
+
+pub fn service_uid() -> Result<u32, String> {
+    let output = Command::new("/usr/bin/id")
+        .args(["-u", "sbxrun"])
+        .output()
+        .map_err(io_error)?;
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .map_err(|_| "RUN_SERVICE_ACCOUNT stage=worker_prepare".into())
+}

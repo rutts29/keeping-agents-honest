@@ -95,7 +95,7 @@ pub fn leftovers() -> Vec<Process> {
 }
 
 pub fn fixture_containers() -> Result<Vec<String>, String> {
-    let uid = kah_run::runtime::service_uid()?;
+    let uid = kah_run::access::service_uid()?;
     let output = Command::new("/usr/bin/docker")
         .args([
             "--host",

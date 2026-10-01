@@ -14,7 +14,7 @@ pub fn executor(
     options: LaunchOptions,
     worktree_git: Option<&Path>,
 ) -> Result<Executor> {
-    let uid = kah_run::runtime::service_uid()?;
+    let uid = kah_run::access::service_uid()?;
     let binary = publish_binary(
         &home.join(".local/bin/codex"),
         &PathBuf::from(format!("/var/tmp/kah-runtime-{}", current_uid()?)),
@@ -79,7 +79,7 @@ pub fn codex(
     Spec {
         executor: offline,
         temporary: None,
-        service_uid: kah_run::runtime::service_uid()?,
+        service_uid: kah_run::access::service_uid()?,
         environment: vec![],
     }
     .save(&spec)?;

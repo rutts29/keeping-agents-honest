@@ -43,7 +43,7 @@ pub fn verification_uses_imported_commit() {
             &commit,
         )
         .unwrap();
-    let uid = kah_run::runtime::service_uid().unwrap();
+    let uid = kah_run::access::service_uid().unwrap();
     access::traverse(candidate.path.parent().unwrap(), uid).unwrap();
     access::share_tree(&tree.path, uid, true).unwrap();
     let verify = executor(&home, &tree)

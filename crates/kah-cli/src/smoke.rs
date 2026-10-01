@@ -107,7 +107,7 @@ struct Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         let socket =
-            kah_run::runtime::service_uid().map(|id| format!("unix:///run/user/{id}/docker.sock"));
+            kah_run::access::service_uid().map(|id| format!("unix:///run/user/{id}/docker.sock"));
         if let Ok(socket) = socket {
             let ids = Command::new("/usr/bin/docker")
                 .args([

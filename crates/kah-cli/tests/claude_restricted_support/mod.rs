@@ -46,7 +46,7 @@ impl Restricted {
         result
     }
     fn prepare_prefix(&self) {
-        let uid = kah_run::runtime::service_uid().unwrap();
+        let uid = kah_run::access::service_uid().unwrap();
         kah_run::access::traverse(&self.private, uid).unwrap();
         kah_run::access::share_tree(&self.temporary, uid, true).unwrap();
         kah_run::access::share_tree(self.fixture.project(), uid, true).unwrap();
@@ -167,7 +167,7 @@ impl Restricted {
 }
 impl Drop for Restricted {
     fn drop(&mut self) {
-        let uid = kah_run::runtime::service_uid().unwrap();
+        let uid = kah_run::access::service_uid().unwrap();
         let socket = format!("unix:///run/user/{uid}/docker.sock");
         let label = format!("label=dev.kah.project={}", self.fixture.project().display());
         if let Ok(output) = Command::new("docker")

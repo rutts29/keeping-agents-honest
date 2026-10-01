@@ -73,7 +73,7 @@ pub fn run(root: &Path) -> Value {
     };
     save_cleanup(root, None);
     let tree = Worktree::create(&project.root, &directory, "run-native-pane").unwrap();
-    let uid = kah_run::runtime::service_uid().unwrap();
+    let uid = kah_run::access::service_uid().unwrap();
     for path in [&directory, root] {
         kah_run::access::traverse(path, uid).unwrap();
     }

@@ -1,18 +1,22 @@
-use kah_run::{launch::sandbox, verification};
-use kah_sandbox::Domain;
+use kah_run::verification;
+use kah_sandbox::{Domain, Executor, LaunchOptions, Project};
 use std::{path::Path, time::Duration};
 #[test]
 fn verification_runs_in_the_same_confined_worktree_and_has_a_deadline() {
-    let executor = sandbox(
-        Domain::Mine,
-        Path::new("/run/worktree"),
-        Path::new("/run/repo.git"),
+    let mut executor = Executor::new(
+        &Project {
+            domain: Domain::Research,
+            root: "/run/worktree".into(),
+            relative_cwd: Default::default(),
+            needs_creation: false,
+        },
+        LaunchOptions::default(),
         Path::new("/public/codex"),
         "fixture-image",
         42420,
-        "run-test",
     )
     .unwrap();
+    executor.use_nobody();
     let command = verification::command(&executor, "node --test", Duration::from_secs(30)).unwrap();
     let args = command
         .get_args()

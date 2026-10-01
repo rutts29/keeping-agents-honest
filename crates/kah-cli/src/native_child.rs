@@ -64,7 +64,7 @@ impl Drop for NativeChild {
 pub fn stop_executors(project: &Path) -> Result<()> {
     let socket = format!(
         "unix:///run/user/{}/docker.sock",
-        kah_run::runtime::service_uid()?
+        kah_run::access::service_uid()?
     );
     let output = Command::new("/usr/bin/docker")
         .args(["--host", &socket, "ps", "-aq", "--filter"])

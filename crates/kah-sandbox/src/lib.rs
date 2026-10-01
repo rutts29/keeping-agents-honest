@@ -11,8 +11,6 @@ pub use project::Project;
 pub use runtime::{current_uid, prepare_public_workspace, publish_binary};
 
 mod setup;
-mod skills;
 pub use setup::global_setup_mounts;
-pub use skills::publish_skills;
 
 pub mod git_guard;

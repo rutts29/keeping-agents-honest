@@ -124,7 +124,7 @@ fn online_mcp(home: &Path, launch: &Launch, f: &fixture::Fixture) {
     )
     .unwrap();
     let image = fs::read_to_string("/usr/local/share/sbx/image-ref").unwrap();
-    let uid = kah_run::runtime::service_uid().unwrap();
+    let uid = kah_run::access::service_uid().unwrap();
     let offline = Executor::new(
         &launch.project,
         LaunchOptions::default(),
