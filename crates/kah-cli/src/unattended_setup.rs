@@ -45,6 +45,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     control.checkpoint(tree.base_commit.clone())?;
     let mut native = kah_run::native::Native::new(args.agent.as_deref().unwrap_or("codex"))?;
     native.online = args.online;
+    native.name = Some(kah_run::native::session_name(&id, control.task()));
     let record = Record {
         native: Some(native),
         project: project.root,

@@ -39,6 +39,7 @@ pub fn handle(input: &Value) -> Result<Value, String> {
         .as_str()
         .ok_or("CLAUDE_SESSION stage=hook: session absent")?
         .into();
+    crate::native_binding::claude(input, &binding.project)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     crate::observer_hook::initialize(&base, &binding)?;
     let outcome = observe(input, &binding);

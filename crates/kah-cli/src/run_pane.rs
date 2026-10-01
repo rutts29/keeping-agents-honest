@@ -88,18 +88,31 @@ impl Pane {
         ])?;
         Ok(())
     }
-    pub fn logs(&self, session: Option<&str>) -> Result<String> {
-        let pane = self.inspect()?;
-        if session.is_some_and(|id| {
-            pane["agent_session"]["value"]
-                .as_str()
-                .is_some_and(|actual| actual != id)
-        }) {
+    pub fn logs(
+        &self,
+        provider: &str,
+        session: Option<&str>,
+        socket: Option<&Path>,
+    ) -> Result<String> {
+        let pane = call_at(&["pane", "get", &self.id], socket)?["result"]["pane"].clone();
+        if pane["agent"]
+            .as_str()
+            .is_some_and(|agent| agent != provider)
+            || provider != "claude"
+                && session.is_some_and(|id| {
+                    pane["agent_session"]["value"]
+                        .as_str()
+                        .is_some_and(|actual| actual != id)
+                })
+        {
             return Err("RUN_PANE_REPLACED stage=run_logs".into());
         }
-        let output = invoke(&[
-            "pane", "read", &self.id, "--source", "recent", "--format", "text",
-        ])?;
+        let output = invoke_at(
+            &[
+                "pane", "read", &self.id, "--source", "recent", "--format", "text",
+            ],
+            socket,
+        )?;
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
     pub fn close(&self) -> Result<()> {
@@ -109,17 +122,45 @@ impl Pane {
 }
 /// Herdr owns dialog detection. Unknown startup is reported without guessing
 /// at terminal text or submitting keys to native consent/permission dialogs.
-pub fn waiting_reason(pane: &Value, submitted: bool, seconds: u64) -> Option<&'static str> {
+pub fn waiting_reason(pane: &Value, ready: bool, seconds: u64) -> Option<&'static str> {
     if pane["agent_status"] == "blocked" {
         Some("native agent is waiting for consent, permission or input")
-    } else if !submitted && seconds >= 15 {
-        Some("startup has not submitted the task; inspect native consent or startup")
+    } else if !ready && seconds >= 15 {
+        Some("native startup is not ready; inspect consent or startup")
     } else {
         None
     }
 }
+pub fn accepts_input(pane: &Value, provider: &str, session: Option<&str>) -> bool {
+    session.is_some()
+        && pane["agent"] == provider
+        && pane["agent_session"]["value"].as_str() == session
+        && matches!(
+            pane["agent_status"].as_str(),
+            Some("working" | "idle" | "done")
+        )
+}
+pub fn accepts_confirmed_input(
+    pane: &Value,
+    native: &kah_run::native::Native,
+    confirmed: bool,
+) -> bool {
+    if native.provider != "claude" {
+        return accepts_input(pane, &native.provider, native.session.as_deref());
+    }
+    confirmed
+        && native.session.is_some()
+        && pane["agent"] == "claude"
+        && matches!(
+            pane["agent_status"].as_str(),
+            Some("working" | "idle" | "done")
+        )
+}
 fn call(arguments: &[&str]) -> Result<Value> {
-    let output = invoke(arguments)?;
+    call_at(arguments, None)
+}
+fn call_at(arguments: &[&str], socket: Option<&Path>) -> Result<Value> {
+    let output = invoke_at(arguments, socket)?;
     serde_json::from_slice(&output.stdout).map_err(|_| {
         format!(
             "RUN_HERDR_JSON stage=pane: {} {} returned non-JSON output",
@@ -129,8 +170,15 @@ fn call(arguments: &[&str]) -> Result<Value> {
     })
 }
 fn invoke(arguments: &[&str]) -> Result<std::process::Output> {
-    let output = Command::new("herdr")
-        .args(arguments)
+    invoke_at(arguments, None)
+}
+fn invoke_at(arguments: &[&str], socket: Option<&Path>) -> Result<std::process::Output> {
+    let mut command = Command::new("herdr");
+    command.args(arguments);
+    if let Some(socket) = socket {
+        command.env("HERDR_SOCKET_PATH", socket);
+    }
+    let output = command
         .output()
         .map_err(|e| format!("RUN_HERDR_IO stage=pane: {e}"))?;
     if !output.status.success() {

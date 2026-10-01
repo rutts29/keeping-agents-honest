@@ -22,7 +22,19 @@ pub fn cleanup(root: &Path) {
     );
     assert_eq!(record.worktree.parent().unwrap().file_name().unwrap(), id);
     kah_cli::native_child::stop_executors(&record.worktree).unwrap();
+    if let Some(children) = saved["children"].as_array() {
+        assert_eq!(record.native.as_ref().unwrap().provider, "codex");
+        for child in children {
+            let id = child.as_str().unwrap();
+            assert_ne!(Some(id), record.native.as_ref().unwrap().session.as_deref());
+            cleanup_session(&base, &record, id);
+        }
+    }
     cleanup_native(&base, &record);
+    if saved["extraClaudeProject"] == true {
+        assert_eq!(record.native.as_ref().unwrap().provider, "claude");
+        purge(&record.project, false);
+    }
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let hash = format!(
         "{:x}",
@@ -45,40 +57,55 @@ pub fn cleanup(root: &Path) {
 }
 fn cleanup_native(base: &Path, record: &Record) {
     let native = record.native.as_ref().unwrap();
-    if let Some(pane) = &native.pane {
-        let _ = kah_cli::run_pane::Pane { id: pane.clone() }.close();
-    }
+    // The harness already stopped its exact named server. Pane IDs are scoped
+    // to that server and must never be closed through the caller's connection.
     if let Some(id) = &native.session {
-        if let Some(state) = session::Store::read(base, id).unwrap() {
-            assert_eq!(state.binding.project, record.worktree);
-            if let Some(run) = state.run_id {
-                fs::remove_dir_all(RunStore::path_for(base, &record.worktree, run).unwrap())
-                    .unwrap();
-            }
-        }
-        let _ = fs::remove_dir_all(session::Store::directory(base, id));
-        let _ = fs::remove_file(
-            base.join("session-policies")
-                .join(format!("{:x}.json", Sha256::digest(id.as_bytes()))),
-        );
-        if native.provider == "codex" {
-            assert!(
-                Command::new("codex")
-                    .args(["delete", "--force", id])
-                    .env_remove("CODEX_THREAD_ID")
-                    .output()
-                    .unwrap()
-                    .status
-                    .success()
-            );
-        }
+        cleanup_session(base, record, id);
     }
     if native.provider == "claude" {
         // Only the exact fixture worktree just verified against its source/run.
+        purge(&record.worktree, native.session.is_none());
+    }
+}
+fn purge(project: &Path, allow_absent: bool) {
+    let output = Command::new("claude")
+        .args(["project", "purge", "--yes"])
+        .arg(project)
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let absent = format!(
+        "No Claude Code project state found for {} under {}.",
+        project.display(),
+        std::env::var("HOME").unwrap() + "/.claude"
+    );
+    assert!(
+        output.status.success() || allow_absent && text.trim() == absent,
+        "fixture purge failed: {text}"
+    );
+}
+
+fn cleanup_session(base: &Path, record: &Record, id: &str) {
+    if let Some(state) = session::Store::read(base, id).unwrap() {
+        assert_eq!(state.binding.project, record.worktree);
+        if let Some(run) = state.run_id {
+            fs::remove_dir_all(RunStore::path_for(base, &record.worktree, run).unwrap()).unwrap();
+        }
+    }
+    let _ = fs::remove_dir_all(session::Store::directory(base, id));
+    let _ = fs::remove_file(
+        base.join("session-policies")
+            .join(format!("{:x}.json", Sha256::digest(id.as_bytes()))),
+    );
+    if record.native.as_ref().unwrap().provider == "codex" {
         assert!(
-            Command::new("claude")
-                .args(["project", "purge", "--yes"])
-                .arg(&record.worktree)
+            Command::new("codex")
+                .args(["delete", "--force", id])
+                .env_remove("CODEX_THREAD_ID")
                 .output()
                 .unwrap()
                 .status

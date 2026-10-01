@@ -47,7 +47,7 @@ impl Run<'_> {
         let sequence = record.control.inputs().last().unwrap().sequence;
         let candidate = self.checkpoint()?;
         let commit = self.record()?.control.last_checkpoint().unwrap().to_owned();
-        let (tests, changed) = self.verify(&candidate, &commit)?;
+        let (tests, changed) = self.verify(&candidate, &commit, sequence)?;
         let completion = if tests.success && !changed {
             let activity = self.history.as_mut().unwrap().completion_activity()?;
             Some(self.judge_candidate(state, &projection, &activity, &candidate, &tests)?)
@@ -84,7 +84,7 @@ impl Run<'_> {
             )?
         );
         self.tests = Some(tests);
-        self.continue_work(&current, unchanged, &feedback)
+        self.continue_work(&current, sequence, unchanged, &feedback)
     }
     fn refresh(
         &self,
@@ -134,10 +134,20 @@ impl Run<'_> {
             self.online,
         )?)
     }
-    fn continue_work(&mut self, record: &Record, unchanged: bool, feedback: &str) -> Result<()> {
+    fn continue_work(
+        &mut self,
+        record: &Record,
+        sequence: u64,
+        unchanged: bool,
+        feedback: &str,
+    ) -> Result<()> {
         if record.control.status() != RunStatus::Running
             || !unchanged
-            || !record.native.as_ref().unwrap().synchronized()
+            || !record
+                .native
+                .as_ref()
+                .unwrap()
+                .current(&record.control, sequence)
         {
             return Ok(());
         }
@@ -148,7 +158,12 @@ impl Run<'_> {
         self.pane.prompt(feedback)?;
         Ok(())
     }
-    fn verify(&self, candidate: &Worktree, commit: &str) -> Result<(verification::Receipt, bool)> {
+    fn verify(
+        &mut self,
+        candidate: &Worktree,
+        commit: &str,
+        sequence: u64,
+    ) -> Result<(verification::Receipt, bool)> {
         let tree = candidate.verification_snapshot(
             &candidate
                 .path
@@ -179,18 +194,39 @@ impl Run<'_> {
             (tree.git_dir.clone(), tree.git_dir.clone()),
             (tree.path.join(".git"), tree.path.join(".git")),
         ])?;
-        let result = verification::execute(
+        let script = self.settings.test.clone();
+        let log = self
+            .directory
+            .join(format!("verification-{}.log", session::now_ms()));
+        let result = verification::execute_checked(
             &executor,
-            &self.settings.test,
+            &script,
             commit,
             Duration::from_secs(120),
-            &self
-                .directory
-                .join(format!("verification-{}.log", session::now_ms())),
+            &log,
+            || {
+                self.verification_interrupted(sequence)
+                    .map_err(|e| e.to_string())
+            },
         );
         stop_executors(&tree.path)?;
         let changed = tree.checkpoint("chore: inspect verification side effects")? != commit;
         tree.remove_verification()?;
         Ok((result?, changed))
+    }
+    fn verification_interrupted(&mut self, sequence: u64) -> Result<bool> {
+        let elapsed = self.clock.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        self.clock = Instant::now();
+        let record = self.update(|r| {
+            r.control.account(0, 0, elapsed);
+            Ok(())
+        })?;
+        Ok(record.control.status() != RunStatus::Running
+            || !record
+                .native
+                .as_ref()
+                .unwrap()
+                .current(&record.control, sequence)
+            || self.pane.inspect()?["agent_status"] == "working")
     }
 }

@@ -6,7 +6,10 @@ use crate::{
     run_pane::Pane,
     unattended_observer::Settings,
 };
-use kah_core::{run_store::RunStore, unattended::RunStatus};
+use kah_core::{
+    run_store::RunStore,
+    unattended::{RunControl, RunStatus},
+};
 use kah_observer::session;
 use kah_run::{
     lease::Lease,
@@ -35,6 +38,8 @@ pub fn launch(home: &Path, id: &str, resume: bool) -> Result<()> {
     if record.native.is_none() {
         return Err("RUN_LEGACY_WORKER stage=resume: this run predates native sessions".into());
     }
+    activate(&mut record.control.clone(), resume)?;
+    drop(Lease::acquire(&base, id)?);
     let mut command = std::process::Command::new(home.join(".local/bin/kah"));
     command
         .args(["__native-run", id, if resume { "resume" } else { "start" }])
@@ -50,44 +55,80 @@ pub fn launch(home: &Path, id: &str, resume: bool) -> Result<()> {
 pub fn execute(home: &Path, id: &str, resume: bool) -> Result<()> {
     let base = RunStore::default_state_root()?.join("runs");
     let _lease = Lease::acquire(&base, id)?;
+    {
+        let mut store = Store::open_wait(&base, id)?;
+        let mut record = store.load()?;
+        record
+            .native
+            .as_mut()
+            .ok_or("RUN_LEGACY_WORKER stage=run_launch")?
+            .report_ready = Some(false);
+        store.save(&record)?;
+    }
     let result = execute_owned(home, base.clone(), id, resume);
     if let Err(error) = &result {
-        let mut store = Store::open(&base, id)?;
+        let mut store = Store::open_wait(&base, id)?;
         let mut record = store.load()?;
         record.control.stop();
-        store.save(&record)?;
-        if !store.directory().join("report.json").exists() {
+        if record
+            .native
+            .as_ref()
+            .is_some_and(|n| n.report_ready != Some(true))
+        {
             crate::unattended_report::save(
                 store.directory(),
                 "report.json",
                 &serde_json::json!({"run":id,"result":record.control.status(),"worktree":record.worktree,"error":format!("RUN_NATIVE_SESSION stage=run_controller: {error}")}),
             )?;
         }
+        if let Some(native) = record.native.as_mut() {
+            native.report_ready = Some(true);
+        }
+        store.save(&record)?;
     }
     result
 }
 fn execute_owned(home: &Path, base: PathBuf, id: &str, resume: bool) -> Result<()> {
+    if resume {
+        crate::native_resume::prepare(home, &base, id)?;
+    }
     let mut run = Run::open(home, base, id)?;
     let record = run.update(|r| {
-        if resume && matches!(r.control.status(), RunStatus::Running | RunStatus::Stopping) {
-            r.control.stop();
-        }
-        if r.control.status() == RunStatus::Created {
-            r.control.start()?;
-        } else if resume {
-            r.control.resume()?;
-        } else {
-            return Err("RUN_ALREADY_STARTED stage=run_launch".into());
-        }
+        activate(&mut r.control, resume)?;
         r.native.as_mut().unwrap().pane = Some(run.pane.id.clone());
+        r.native.as_mut().unwrap().herdr_socket =
+            std::env::var_os("HERDR_SOCKET_PATH").map(PathBuf::from);
         r.native.as_mut().unwrap().waiting = None;
+        r.native.as_mut().unwrap().instance =
+            Some(format!("{}-{}", session::now_ms(), std::process::id()));
+        r.native.as_mut().unwrap().confirmation = None;
+        r.native.as_mut().unwrap().report_ready = Some(false);
+        if resume && r.native.as_ref().unwrap().session.is_some() {
+            r.native.as_mut().unwrap().begin_delivery(&r.control)?;
+        }
         Ok(())
     })?;
     stop_executors(&run.tree.path)?;
     let command = run.command(&record)?;
     let mut child = NativeChild::spawn(&command)?;
+    if record.native.as_ref().unwrap().sending.is_some() {
+        run.update(|r| r.native.as_mut().unwrap().delivered())?;
+    }
+    run.started = Instant::now();
     let result = run.work(&mut child);
     finish(&mut run, &mut child, result)
+}
+fn activate(control: &mut RunControl, resume: bool) -> std::result::Result<(), String> {
+    if resume && matches!(control.status(), RunStatus::Running | RunStatus::Stopping) {
+        control.stop();
+    }
+    if control.status() == RunStatus::Created {
+        control.start()
+    } else if resume {
+        control.resume()
+    } else {
+        Err("RUN_ALREADY_STARTED stage=run_launch".into())
+    }
 }
 fn finish(run: &mut Run<'_>, child: &mut NativeChild, result: Result<()>) -> Result<()> {
     let stopped = child.stop();
@@ -120,9 +161,11 @@ fn finish(run: &mut Run<'_>, child: &mut NativeChild, result: Result<()>) -> Res
                 "report.json",
                 &serde_json::json!({"run":run.id,"error":problem,"result":run.record()?.control.status(),"worktree":run.tree.path}),
             )?;
+            run.publish_report()?;
             return Err(error);
         }
     }
+    run.publish_report()?;
     result
 }
 
@@ -138,6 +181,8 @@ struct Run<'a> {
     history: Option<History>,
     clock: Instant,
     started: Instant,
+    ready: bool,
+    identity_note: Option<String>,
     sampled: Instant,
     tests: Option<kah_run::verification::Receipt>,
     unsuccessful: u8,
@@ -182,6 +227,8 @@ impl<'a> Run<'a> {
             history: None,
             clock: Instant::now(),
             started: Instant::now(),
+            ready: false,
+            identity_note: None,
             sampled: Instant::now() - Duration::from_secs(2),
             tests: None,
             unsuccessful: 0,
@@ -195,12 +242,19 @@ impl<'a> Run<'a> {
         &self,
         action: impl FnOnce(&mut Record) -> std::result::Result<(), String>,
     ) -> Result<Record> {
-        let mut store = Store::open(&self.base, self.id)?;
+        let mut store = Store::open_wait(&self.base, self.id)?;
         let mut record = store.load()?;
         let result = action(&mut record);
         store.save(&record)?;
         result?;
         Ok(record)
+    }
+    fn publish_report(&self) -> Result<()> {
+        self.update(|r| {
+            r.native.as_mut().unwrap().report_ready = Some(true);
+            Ok(())
+        })?;
+        Ok(())
     }
     fn command(&self, record: &Record) -> Result<std::process::Command> {
         let native = record
@@ -225,17 +279,38 @@ impl<'a> Run<'a> {
             args.effort = record.effort.clone();
         }
         if native.provider == "claude" {
+            if native.session.is_none()
+                && let Some(name) = &native.name
+            {
+                args.native.extend(["--name".into(), name.clone()]);
+            }
             args.native
                 .extend(["--permission-mode".into(), "acceptEdits".into()]);
         }
         let mut command = crate::native_run::command(
             self.home,
             &self.tree,
+            Domain::ALL
+                .into_iter()
+                .find(|d| d.as_str() == record.domain)
+                .ok_or("RUN_DOMAIN stage=run_launch")?,
             args,
-            record.control.task(),
+            if native.session.is_some() {
+                native
+                    .sending
+                    .and_then(|i| record.control.inputs().get(i as usize))
+                    .map(|i| i.text.as_str())
+                    .or_else(|| native.continuation())
+                    .unwrap_or("")
+            } else {
+                record.control.task()
+            },
             native.session.as_deref(),
         )?;
         command.env_remove("CODEX_THREAD_ID");
+        command
+            .env("KAH_RUN_ID", self.id)
+            .env("KAH_RUN_INSTANCE", native.instance.as_deref().unwrap());
         Ok(command)
     }
     fn work(&mut self, child: &mut NativeChild) -> Result<()> {
@@ -253,13 +328,12 @@ impl<'a> Run<'a> {
                 return Ok(());
             }
             self.attention(&pane)?;
-            if let Some(state) = state {
-                self.deliver(&pane)?;
-                if matches!(pane["agent_status"].as_str(), Some("idle" | "done"))
-                    && state.inflight.is_none()
-                {
-                    self.assess(&state)?;
-                }
+            self.deliver(&pane)?;
+            if let Some(state) = state
+                && matches!(pane["agent_status"].as_str(), Some("idle" | "done"))
+                && state.inflight.is_none()
+            {
+                self.assess(&state)?;
             }
             if self.record()?.control.status() != RunStatus::Running {
                 return Ok(());

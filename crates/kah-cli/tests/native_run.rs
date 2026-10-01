@@ -26,7 +26,7 @@ fn herdr_mutations_accept_native_non_json_success() {
     let root = std::env::temp_dir().join(format!("kah-herdr-protocol-{}", std::process::id()));
     fs::create_dir(&root).unwrap();
     let shim = root.join("herdr");
-    fs::write(&shim, "#!/bin/sh\ncase \"$1 $2\" in\n'pane split') echo '{\"result\":{\"pane\":{\"pane_id\":\"fixture-pane\"}}}';;\n'pane get') echo '{\"result\":{\"pane\":{\"agent\":null,\"foreground_cwd\":\"/tmp\"}}}';;\n*) echo submitted;;\nesac\n").unwrap();
+    fs::write(&shim, "#!/bin/sh\ncase \"$1 $2\" in\n'pane split') echo '{\"result\":{\"pane\":{\"pane_id\":\"fixture-pane\"}}}';;\n'pane get') echo '{\"result\":{\"pane\":{\"agent\":null,\"foreground_cwd\":\"/tmp\"}}}';;\n'pane read') printf '%s' \"$HERDR_SOCKET_PATH\" > \"$KAH_HERDR_PROTOCOL_FIXTURE/socket\"; echo submitted;;\n*) echo submitted;;\nesac\n").unwrap();
     fs::set_permissions(&shim, fs::Permissions::from_mode(0o700)).unwrap();
     let result = Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "herdr_protocol_child"])
@@ -49,9 +49,22 @@ fn herdr_protocol_child() {
         return;
     };
     let mut command = Command::new("/bin/true");
-    command.current_dir(root);
+    command.current_dir(&root);
     let pane = kah_cli::run_pane::Pane::start(&command).unwrap();
     assert_eq!(pane.id, "fixture-pane");
     pane.prompt("fixture text").unwrap();
+    assert_eq!(
+        pane.logs(
+            "codex",
+            None,
+            Some(std::path::Path::new("/fixture/private.sock"))
+        )
+        .unwrap(),
+        "submitted\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(std::path::PathBuf::from(root).join("socket")).unwrap(),
+        "/fixture/private.sock"
+    );
     pane.close().unwrap();
 }

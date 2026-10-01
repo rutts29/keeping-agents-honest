@@ -33,8 +33,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
         if !ledger && id.is_none() {
             let runs = runs
                 .into_iter()
-                .map(|(id, record)| json!({"id":id,"record":record}))
-                .collect::<Vec<_>>();
+                .map(|(id, record)| Ok(json!({"id":id,"record":record.public_value()?})))
+                .collect::<Result<Vec<_>>>()?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({"sessions":data,"runs":runs}))?

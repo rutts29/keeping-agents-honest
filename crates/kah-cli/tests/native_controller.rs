@@ -9,6 +9,7 @@ fn startup_failure_stops_the_run_and_leaves_a_report() {
         .env("KAH_STARTUP_FAILURE_FIXTURE", &root)
         .env("HOME", &root)
         .env_remove("XDG_STATE_HOME")
+        .env_remove("HERDR_ENV")
         .output()
         .unwrap();
     fs::remove_dir_all(root).unwrap();
@@ -52,5 +53,47 @@ fn startup_failure_child() {
             .as_str()
             .unwrap()
             .contains("RUN_SETTINGS_IO")
+    );
+    launch_preflight(&base, &home);
+}
+
+fn launch_preflight(base: &std::path::Path, home: &std::path::Path) {
+    use kah_core::unattended::{Limits, RunControl};
+    use kah_run::store::Store;
+    let id = "run-startup-failure";
+    let mut record = Store::read(base, id).unwrap();
+    record.control = RunControl::new(
+        "fixture",
+        Limits {
+            tokens: Some(1),
+            seconds: None,
+        },
+    )
+    .unwrap();
+    record.control.start().unwrap();
+    record.control.account(2, 0, 1);
+    Store::open(base, id).unwrap().save(&record).unwrap();
+    assert!(
+        kah_cli::native_controller::launch(home, id, true)
+            .unwrap_err()
+            .to_string()
+            .contains("RUN_ALLOWANCE_EXHAUSTED")
+    );
+    assert_eq!(Store::read(base, id).unwrap().control.tokens_used(), 2);
+    let _lease = kah_run::lease::Lease::acquire(base, id).unwrap();
+    assert!(
+        kah_cli::native_controller::launch(home, id, true)
+            .unwrap_err()
+            .to_string()
+            .contains("RUN_ALLOWANCE_EXHAUSTED")
+    );
+    record.control = RunControl::new("fixture", Limits::default()).unwrap();
+    record.control.start().unwrap();
+    Store::open(base, id).unwrap().save(&record).unwrap();
+    assert!(
+        kah_cli::native_controller::launch(home, id, true)
+            .unwrap_err()
+            .to_string()
+            .contains("RUN_WORKER_ACTIVE")
     );
 }

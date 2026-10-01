@@ -39,7 +39,7 @@ pub fn parse_turn(
             prompt_seen = true;
         }
         match row["type"].as_str() {
-            Some("user") => {
+            Some("user" | "attachment") => {
                 let additions = user_records(&row, session, project)?;
                 if additions.iter().any(BundleRecord::is_authoritative) {
                     actions.clear();
@@ -97,6 +97,9 @@ fn snapshot(
 }
 
 fn user_records(row: &Value, session: &str, project: &Path) -> Result<Vec<BundleRecord>, String> {
+    if row["type"] == "attachment" {
+        return queued_records(row, session, project);
+    }
     if row["isMeta"] == true
         || row["isVirtual"] == true
         || row["isVisibleInTranscriptOnly"] == true
@@ -144,6 +147,31 @@ fn user_records(row: &Value, session: &str, project: &Path) -> Result<Vec<Bundle
                 .map_err(|e| format!("CLAUDE_SOURCE_RECORD stage=transcript: {e}"))
         })
         .collect()
+}
+
+fn queued_records(row: &Value, session: &str, project: &Path) -> Result<Vec<BundleRecord>, String> {
+    let queued = &row["attachment"];
+    if queued["type"] != "queued_command"
+        || queued["commandMode"] != "prompt"
+        || queued["origin"]["kind"] != "human"
+        || queued["humanTurn"] != true
+        || queued["isMeta"] == true
+        || !queued["delivery_id"].is_string()
+        || row
+            .get("origin")
+            .is_some_and(|origin| origin["kind"] != "human")
+    {
+        return Ok(vec![]);
+    }
+    // Claude 2.1.286 absorbs human input during a running turn as this native
+    // attachment. Its rendered system reminder and queue-operation rows are
+    // not authority. Use the original command UUID for cross-form deduplication.
+    let mut user = row.clone();
+    user["type"] = "user".into();
+    user["uuid"] = queued["source_uuid"].clone();
+    user["origin"] = queued["origin"].clone();
+    user["message"] = json!({"role":"user","content":queued["prompt"]});
+    user_records(&user, session, project)
 }
 
 fn role(row: &Value, text: &str) -> SourceRole {

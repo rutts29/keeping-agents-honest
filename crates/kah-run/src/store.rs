@@ -21,6 +21,28 @@ pub struct Record {
     pub native: Option<crate::native::Native>,
 }
 impl Record {
+    pub fn published_status(&self) -> kah_core::unattended::RunStatus {
+        use kah_core::unattended::RunStatus;
+        let status = self.control.status();
+        if self
+            .native
+            .as_ref()
+            .is_some_and(|n| n.report_ready == Some(false))
+            && !matches!(
+                status,
+                RunStatus::Created | RunStatus::Running | RunStatus::Stopping
+            )
+        {
+            RunStatus::Stopping
+        } else {
+            status
+        }
+    }
+    pub fn public_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+        let mut value = serde_json::to_value(self)?;
+        value["control"]["status"] = serde_json::to_value(self.published_status())?;
+        Ok(value)
+    }
     fn validate(&self) -> Result<(), String> {
         if !self.project.is_absolute() || !self.worktree.is_absolute() {
             return Err("RUN_PATH stage=run_store: project and worktree must be absolute".into());
@@ -37,6 +59,17 @@ pub struct Store {
     _lock: File,
 }
 impl Store {
+    pub fn open_wait(base: &Path, id: &str) -> Result<Self, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            match Self::open(base, id) {
+                Err(e) if e.starts_with("RUN_BUSY") && std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(10))
+                }
+                result => return result,
+            }
+        }
+    }
     pub fn create(base: &Path, id: &str, record: Record) -> Result<Self, String> {
         validate_id(id)?;
         record.validate()?;

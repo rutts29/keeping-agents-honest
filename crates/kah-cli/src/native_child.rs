@@ -20,29 +20,7 @@ impl NativeChild {
             return Err("RUN_TTY_REQUIRED stage=run_launch".into());
         }
         let terminal = String::from_utf8(saved.stdout)?.trim().to_owned();
-        let mut command = Command::new("/usr/bin/setpriv");
-        command
-            .args([
-                "--pdeathsig",
-                "KILL",
-                "/bin/sh",
-                "-c",
-                "test \"$PPID\" -eq \"$1\" || exit 125; shift; exec \"$@\"",
-                "kah-native-session",
-            ])
-            .arg(std::process::id().to_string())
-            .arg(native.get_program())
-            .args(native.get_args());
-        if let Some(cwd) = native.get_current_dir() {
-            command.current_dir(cwd);
-        }
-        for (name, value) in native.get_envs() {
-            if let Some(value) = value {
-                command.env(name, value);
-            } else {
-                command.env_remove(name);
-            }
-        }
+        let mut command = kah_run::child::parent_bound(native, "KILL");
         let child = command
             .spawn()
             .map_err(|e| format!("RUN_NATIVE_SPAWN stage=run_launch: {e}"))?;

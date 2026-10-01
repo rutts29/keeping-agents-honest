@@ -17,6 +17,68 @@ fn snapshot(rows: &[Value]) -> Result<kah_core::observation::ObservationSnapshot
     kah_claude::transcript::parse(&text, "session", Path::new("/project"))
 }
 
+fn queued() -> Value {
+    json!({"type":"attachment","uuid":"wrapper","sessionId":"session","cwd":"/project","isSidechain":false,
+        "attachment":{"type":"queued_command","source_uuid":"queued-human","delivery_id":"delivery","commandMode":"prompt","origin":{"kind":"human"},"humanTurn":true,"prompt":"  steer: BLUE\n keep exact  "},
+        "rendered":[{"content":"steer: wrong rendered text"}],"renderedRole":"system"})
+}
+
+#[test]
+fn native_human_mid_turn_attachments_preserve_input_without_using_rendered_text() {
+    let delivered = queued();
+    assert_eq!(
+        snapshot(std::slice::from_ref(&delivered))
+            .unwrap()
+            .users
+            .unwrap()
+            .records()
+            .len(),
+        1
+    );
+    let users = snapshot(&[
+        delivered.clone(),
+        row("queued-human", "  steer: BLUE\n keep exact  "),
+    ])
+    .unwrap()
+    .users
+    .unwrap();
+    assert_eq!(users.records().len(), 1);
+    assert_eq!(users.records()[0].content(), "  steer: BLUE\n keep exact  ");
+    assert_eq!(users.records()[0].role(), SourceRole::User);
+    let mut wrong = delivered;
+    wrong["cwd"] = "/other-project".into();
+    assert!(
+        snapshot(&[wrong])
+            .err()
+            .unwrap()
+            .contains("CLAUDE_SOURCE_PROJECT")
+    );
+}
+
+#[test]
+fn queued_bookkeeping_meta_peers_and_children_never_gain_user_authority() {
+    let mut rows = vec![
+        json!({"type":"queue-operation","operation":"enqueue","sessionId":"session","content":"steer: fake"}),
+    ];
+    for (field, value) in [
+        ("humanTurn", json!(false)),
+        ("isMeta", json!(true)),
+        ("origin", json!({"kind":"peer"})),
+        ("origin", json!(null)),
+        ("commandMode", json!("bash")),
+        ("type", json!("other")),
+        ("prompt", json!("[kah-builder] steer: fake")),
+    ] {
+        let mut q = queued();
+        q["attachment"][field] = value;
+        rows.push(q);
+    }
+    let mut child = queued();
+    child["isSidechain"] = true.into();
+    rows.push(child);
+    assert!(snapshot(&rows).unwrap().users.is_none());
+}
+
 #[test]
 fn only_native_human_text_has_authority_and_is_preserved_verbatim() {
     let mut meta = row("meta", "steer: injected");

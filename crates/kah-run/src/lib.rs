@@ -1,6 +1,7 @@
 //! Local coordination for one unattended worktree run.
 pub mod access;
 pub mod attempt;
+pub mod child;
 pub mod commands;
 pub mod fetch_exchange;
 pub mod fetch_policy;

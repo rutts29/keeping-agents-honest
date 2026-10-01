@@ -24,6 +24,16 @@ pub enum History {
     },
 }
 impl History {
+    pub fn set_codex_name(&mut self, name: &str) -> Result<()> {
+        let Self::Codex {
+            client, session, ..
+        } = self
+        else {
+            return Err("RUN_NAME_PROVIDER stage=run_history".into());
+        };
+        client.request("thread/name/set", json!({"threadId":session,"name":name}))?;
+        Ok(())
+    }
     pub fn completion_activity(&mut self) -> Result<Vec<Value>> {
         match self {
             Self::Codex {
@@ -127,12 +137,15 @@ impl History {
                     "thread/read",
                     json!({"threadId":session,"includeTurns":false}),
                 )?;
-                let mut files = BTreeSet::from([rollout(&read["thread"])?]);
+                let mut files = rollout(&read["thread"])?.into_iter().collect();
                 descendants(client, session, &mut files)?;
                 files.iter().try_fold(0u64, |sum, path| {
-                    Ok(sum.saturating_add(kah_codex::usage::tokens(BufReader::new(
-                        fs::File::open(path)?,
-                    ))?))
+                    let file = match fs::File::open(path) {
+                        Ok(file) => file,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(sum),
+                        Err(e) => return Err(e.into()),
+                    };
+                    Ok(sum.saturating_add(kah_codex::usage::tokens(BufReader::new(file))?))
                 })
             }
             Self::Claude { path, session, .. } => {
@@ -163,11 +176,14 @@ fn claude_text(path: &Path) -> Result<String> {
         .map_err(|e| format!("RUN_HISTORY_IO stage=run_history: {e}"))?;
     Ok(text)
 }
-fn rollout(thread: &Value) -> Result<PathBuf> {
+fn rollout(thread: &Value) -> Result<Option<PathBuf>> {
+    if thread.get("path") == Some(&Value::Null) {
+        return Ok(None);
+    }
     thread["path"]
         .as_str()
         .filter(|p| p.ends_with(".jsonl") && Path::new(p).is_absolute())
-        .map(PathBuf::from)
+        .map(|s| Some(PathBuf::from(s)))
         .ok_or_else(|| "RUN_ROLLOUT_PATH stage=run_usage".into())
 }
 fn descendants(client: &mut Control, session: &str, files: &mut BTreeSet<PathBuf>) -> Result<()> {
@@ -180,7 +196,9 @@ fn descendants(client: &mut Control, session: &str, files: &mut BTreeSet<PathBuf
                 .as_array()
                 .ok_or("RUN_CHILDREN_SCHEMA stage=run_usage")?
             {
-                files.insert(rollout(thread)?);
+                if let Some(path) = rollout(thread)? {
+                    files.insert(path);
+                }
             }
             cursor = page["nextCursor"].clone();
             if cursor.is_null() {

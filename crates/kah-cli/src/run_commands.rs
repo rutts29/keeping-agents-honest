@@ -29,7 +29,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         "logs" if args.len()==2=>print!("{}",logs(&base,id)?),
         "status" if args.len()==2 || args.len()==3 && args[2]=="--json"=>{
             let record=commands::view(&base,id)?;
-            if args.len()==3 {println!("{}",serde_json::to_string_pretty(&record)?);}
+            if args.len()==3 {println!("{}",serde_json::to_string_pretty(&record.public_value()?)?);}
             else {print_status(id,&record);}
         }
         _=>return Err("RUN_ARGUMENTS stage=arguments: use kah steer RUN TEXT, kah stop RUN, kah logs RUN, or kah status RUN [--json]".into()),
@@ -37,9 +37,12 @@ pub fn run(args: Vec<String>) -> Result<()> {
     Ok(())
 }
 pub fn print_status(id: &str, record: &Record) {
-    println!("{id} — {:?}", record.control.status());
+    println!("{id} — {:?}", record.published_status());
     println!("Task: {}", record.control.task());
     if let Some(native) = &record.native {
+        if let Some(name) = &native.name {
+            println!("Name: {name}");
+        }
         println!(
             "Native {} session: {}; pane: {}",
             native.provider,
@@ -71,7 +74,10 @@ fn logs(base: &std::path::Path, id: &str) -> Result<String> {
         let pane = crate::run_pane::Pane {
             id: native.pane.ok_or("RUN_PANE_PENDING stage=run_logs")?,
         };
-        return pane.logs(native.session.as_deref());
+        let socket = native.herdr_socket.ok_or(
+            "RUN_PANE_SERVER_UNKNOWN stage=run_logs: read the saved report or native transcript",
+        )?;
+        return pane.logs(&native.provider, native.session.as_deref(), Some(&socket));
     }
     Ok(commands::logs(base, id)?)
 }

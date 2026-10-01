@@ -12,20 +12,43 @@ mod capture;
 mod cleanup;
 mod proof;
 pub use cleanup::cleanup;
+mod empty;
+mod history_survival;
+mod limits;
+mod recovery;
+mod steering;
+mod usage;
 mod verification;
 pub use verification::verification_uses_imported_commit;
 
 pub fn run(root: &Path, agent: &str) -> Value {
+    if std::env::var_os("KAH_GATE_USAGE").is_some() {
+        return usage::run(root, agent);
+    }
+    if std::env::var_os("KAH_GATE_EMPTY").is_some() {
+        return empty::run(root, agent);
+    }
+    if let Ok(mode) = std::env::var("KAH_GATE_LIMIT") {
+        return limits::run(root, agent, &mode);
+    }
+    if std::env::var_os("KAH_GATE_RECOVERY").is_some() {
+        return recovery::run(root, agent);
+    }
+    if std::env::var_os("KAH_GATE_STEERING").is_some() {
+        return steering::run(root, agent);
+    }
+    completion(root, agent)
+}
+fn completion(root: &Path, agent: &str) -> Value {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let before = [
-        home.join(".claude/settings.json"),
-        home.join(".codex/config.toml"),
-    ]
-    .map(|p| (p.clone(), fs::read(p).unwrap()));
+    let before = global_settings(&home);
     let name = format!("kah-native-run-{agent}-{}", std::process::id());
-    let project = Project::select(&home.join("repos"), &home, Some((Domain::Mine, &name))).unwrap();
-    assert!(project.needs_creation);
-    project.initialize().unwrap();
+    let domain = if std::env::var_os("KAH_GATE_CONSENT_ONLY").is_some() {
+        Domain::Research
+    } else {
+        Domain::Mine
+    };
+    let project = fixture_project(&home, &name, domain);
     let model = fixture_model(agent);
     let (file_tool, shell_tool) = if agent == "claude" {
         ("Write", "Bash")
@@ -35,7 +58,15 @@ pub fn run(root: &Path, agent: &str) -> Value {
     let task = format!(
         "In this disposable worktree, use {file_tool} to implement double.js: define double(n) returning n * 2 and export that function directly with module.exports = double. Use {shell_tool} to check it with Node, then report the result. The kah controller may create checkpoints and run independent verification. Do not push or deploy."
     );
-    let output = launch(&home, &project.root, agent, model, &task);
+    let output = launch(
+        &home,
+        &project.root,
+        agent,
+        model,
+        &task,
+        proof::VERIFY,
+        &[],
+    );
     let id = output
         .lines()
         .find_map(|line| line.strip_prefix("Created "))
@@ -52,28 +83,15 @@ pub fn run(root: &Path, agent: &str) -> Value {
         return consent_result(&home, agent, &record, &before);
     }
     capture::capture(&home, &Store::path(&base, id).unwrap(), &record, &report);
-    assert_eq!(
-        record.control.status(),
-        RunStatus::Completed,
-        "{}",
-        serde_json::to_string(&record).unwrap()
-    );
-    assert_eq!(record.control.task(), task);
-    assert!(record.control.tokens_used() > 0);
+    proof::completed(&record, &task);
     let native = record.native.as_ref().unwrap();
-    assert!(
-        native.waiting.is_none(),
-        "consent wait must clear after submission"
-    );
-    assert!(native.native_tokens > 0 && native.observer_tokens > 0);
-    assert!(native.synchronized());
     assert!(!project.root.join("double.js").exists());
     proof::native_tools(&home, &Store::path(&base, id).unwrap(), &record);
     assert_eq!(report["tests"]["success"], true);
     for (path, bytes) in before {
         assert_eq!(bytes, fs::read(path).unwrap());
     }
-    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":"mine","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":true,"consentWaitCleared":true,"passed":true})
+    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
 }
 fn consent_result(
     home: &Path,
@@ -81,7 +99,7 @@ fn consent_result(
     record: &Record,
     before: &[(PathBuf, Vec<u8>)],
 ) -> Value {
-    assert_eq!(record.control.status(), RunStatus::Stopped);
+    assert_eq!(record.published_status(), RunStatus::Stopped);
     let native = record.native.as_ref().unwrap();
     assert!(native.waiting.is_none());
     assert!(native.source_cursor > 0 && native.synchronized());
@@ -104,20 +122,38 @@ fn fixture_model(agent: &str) -> &'static str {
         _ => "gpt-6-sol",
     }
 }
-fn launch(home: &Path, project: &Path, agent: &str, model: &str, task: &str) -> String {
+fn fixture_project(home: &Path, name: &str, domain: Domain) -> Project {
+    let project = Project::select(&home.join("repos"), home, Some((domain, name))).unwrap();
+    assert!(project.needs_creation);
+    project.initialize().unwrap();
+    project
+}
+fn global_settings(home: &Path) -> [(PathBuf, Vec<u8>); 2] {
+    [
+        home.join(".claude/settings.json"),
+        home.join(".codex/config.toml"),
+    ]
+    .map(|p| (p.clone(), fs::read(p).unwrap()))
+}
+fn pane_screen(pane: &str, session: Option<&str>, agent: &str) -> String {
+    kah_cli::run_pane::Pane { id: pane.into() }
+        .logs(agent, session, None)
+        .unwrap()
+}
+fn launch(
+    home: &Path,
+    project: &Path,
+    agent: &str,
+    model: &str,
+    task: &str,
+    verify: &str,
+    options: &[&str],
+) -> String {
     let result = Command::new(home.join(".local/bin/kah"))
         .args([
-            "run",
-            "--agent",
-            agent,
-            "--model",
-            model,
-            "--effort",
-            "low",
-            "--test",
-            proof::VERIFY,
-            task,
+            "run", "--agent", agent, "--model", model, "--effort", "low", "--test", verify, task,
         ])
+        .args(options)
         .current_dir(project)
         .output()
         .unwrap();
@@ -167,7 +203,7 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
                 accepted = true;
             }
             if !matches!(
-                record.control.status(),
+                record.published_status(),
                 RunStatus::Created | RunStatus::Running | RunStatus::Stopping
             ) && Store::path(base, id).unwrap().join("report.json").exists()
             {
@@ -189,6 +225,9 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
 fn accept_consent(id: &str, pane: &str, agent: &str) {
     let status = Command::new("kah").args(["status", id]).output().unwrap();
     assert!(String::from_utf8_lossy(&status.stdout).contains("Needs attention:"));
+    native_consent(pane, agent);
+}
+fn native_consent(pane: &str, agent: &str) {
     std::thread::sleep(Duration::from_millis(400));
     let keys: &[&str] = if agent == "claude" {
         &["Down", "Enter"]

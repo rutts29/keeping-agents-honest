@@ -24,7 +24,7 @@ fn verification_uses_imported_commit() {
 
 #[test]
 #[ignore = "public kah run: full Codex and Claude sessions, verified completion in Herdr"]
-fn native_runs_complete_in_their_own_panes() {
+fn native_run_journeys() {
     for agent in ["claude", "codex"] {
         if std::env::var("KAH_GATE_AGENT").is_ok_and(|selected| selected != agent) {
             continue;
@@ -34,15 +34,7 @@ fn native_runs_complete_in_their_own_panes() {
 }
 fn journey(agent: &str) {
     let probe = herdr_probe::setup();
-    let config = probe.root.join("config.toml");
-    fs::write(
-        &config,
-        format!(
-            "{}\n[ui.toast]\ndelivery='herdr'\n",
-            fs::read_to_string(&config).unwrap()
-        ),
-    )
-    .unwrap();
+    enable_toasts(&probe.root);
     let command = format!(
         "HERDR_CONFIG_PATH={} herdr --session {}",
         pty::quote(probe.root.join("config.toml").to_str().unwrap()),
@@ -63,31 +55,69 @@ fn journey(agent: &str) {
         std::thread::sleep(Duration::from_millis(200));
     };
     let notification_rendered = terminal.output().contains("kah run needs attention");
+    let diagnostic = preserve_failure(&probe, agent, &evidence);
     let _ = Command::new("herdr")
         .args(["session", "stop", &probe.name, "--json"])
         .output();
     drop(terminal);
     native_controller_support::cleanup(&probe.root);
     if evidence["passed"] != true {
-        let diagnostic = std::env::temp_dir().join(format!(
-            "kah-native-run-failure-{agent}-{}.log",
-            std::process::id()
-        ));
-        fs::copy(probe.root.join("helper.log"), &diagnostic).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&diagnostic, fs::Permissions::from_mode(0o600)).unwrap();
-        panic!("native run journey failed: {}", diagnostic.display());
+        panic!(
+            "native run journey failed: {}",
+            diagnostic.unwrap().display()
+        );
     }
-    assert!(
-        notification_rendered,
-        "Herdr must render the consent notification"
-    );
+    if evidence["consentRequired"] != false {
+        assert!(
+            notification_rendered,
+            "Herdr must render the consent notification"
+        );
+    }
     fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
-            .join(format!("native-run-{agent}.json")),
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(evidence_name(agent)),
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
+}
+fn preserve_failure(
+    probe: &herdr_probe::Probe,
+    agent: &str,
+    evidence: &serde_json::Value,
+) -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    if evidence["passed"] == true {
+        return None;
+    }
+    let helper = std::env::temp_dir().join(format!(
+        "kah-native-run-failure-{agent}-{}.log",
+        std::process::id()
+    ));
+    for (source, target) in [
+        ("helper.log", helper.clone()),
+        ("terminal.log", helper.with_extension("terminal.log")),
+    ] {
+        fs::copy(probe.root.join(source), &target).unwrap();
+        fs::set_permissions(target, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    Some(helper)
+}
+fn evidence_name(agent: &str) -> String {
+    let kind = if let Ok(mode) = std::env::var("KAH_GATE_LIMIT") {
+        format!("limit-{mode}")
+    } else if std::env::var_os("KAH_GATE_EMPTY").is_some() {
+        "empty".into()
+    } else if std::env::var_os("KAH_GATE_USAGE").is_some() {
+        "usage".into()
+    } else if std::env::var_os("KAH_GATE_RECOVERY").is_some() {
+        if std::env::var_os("KAH_GATE_RECOVERY_STEER").is_some() {
+            "recovery-steered".into()
+        } else {
+            "recovery".into()
+        }
+    } else {
+        "run".into()
+    };
+    format!("native-{kind}-{agent}.json")
 }
 
 #[test]
@@ -103,6 +133,24 @@ fn native_run_probe_entrypoint() {
         result
             .unwrap_or_else(|_| json!({"passed":false}))
             .to_string(),
+    )
+    .unwrap();
+}
+#[test]
+fn owned_fixture_cleanup_entrypoint() {
+    if let Some(root) = std::env::var_os("KAH_NATIVE_CLEANUP_PROBE") {
+        native_controller_support::cleanup(&PathBuf::from(root));
+    }
+}
+
+fn enable_toasts(root: &std::path::Path) {
+    let config = root.join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "{}\n[ui.toast]\ndelivery='herdr'\n",
+            fs::read_to_string(&config).unwrap()
+        ),
     )
     .unwrap();
 }

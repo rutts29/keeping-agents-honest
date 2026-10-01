@@ -88,7 +88,7 @@ pub fn run(root: &Path) -> Value {
         ..Default::default()
     };
     let task = "Please use native exec_command once to run: test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?; git status --short && echo GIT_OK; printf BASH_OK > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Work only on this disposable worktree. The external fixture controller will commit a checkpoint and verify the result afterward; that is authorized. You should use no other tools or subagents, and make no commits or installs yourself. Report and stop.";
-    let command = native_run::command(&home, &tree, args, task, None).unwrap();
+    let command = native_run::command(&home, &tree, Domain::Mine, args, task, None).unwrap();
     fixture.overlay = command
         .get_envs()
         .find(|(key, _)| *key == "CODEX_HOME")

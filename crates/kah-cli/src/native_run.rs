@@ -7,6 +7,7 @@ use std::{path::Path, process::Command};
 pub fn command(
     home: &Path,
     tree: &Worktree,
+    source: Domain,
     mut args: Arguments,
     task: &str,
     resume: Option<&str>,
@@ -30,12 +31,24 @@ pub fn command(
             .into(),
             session.into(),
         ]);
-    } else {
+    }
+    if !task.is_empty() {
         args.native.extend(["--".into(), task.into()]);
     }
     match args.agent.as_deref() {
         Some("claude") => crate::claude_launch::prepare_project(home, project, args),
-        None | Some("codex") => Ok(Launch::prepare_project(home, project, args)?.command(false)),
+        None | Some("codex") => {
+            let launch = Launch::prepare_project(home, project, args)?;
+            if source == Domain::Mine {
+                kah_codex::overlay::write_settings(
+                    &launch.overlay,
+                    serde_json::json!({
+                        "projects":{tree.path.to_string_lossy().as_ref():{"trust_level":"trusted"}}
+                    }),
+                )?;
+            }
+            Ok(launch.command(false))
+        }
         _ => Err("RUN_AGENT stage=launch: choose codex or claude".into()),
     }
 }

@@ -36,6 +36,7 @@ pub fn write(
         .unwrap_or(record.control.task());
     let report = json!({
         "run":id,"goal":goal,"result":record.control.status(),"branch":format!("kah/{id}"),
+        "native":record.native.as_ref().map(|n|json!({"provider":n.provider,"session":n.session,"name":n.name})),
         "sourceProject":record.project,"worktree":record.worktree,
         "checkpoint":record.control.last_checkpoint(),"diffStats":tree.diff_stat()?,
         "tests":tests,"openQuestion":record.control.external_question(),"error":problem,
@@ -75,6 +76,9 @@ pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
     .map_err(io_error)?;
     file.sync_all().map_err(io_error)?;
     fs::rename(temporary, directory.join(name)).map_err(io_error)?;
+    fs::File::open(directory)
+        .and_then(|file| file.sync_all())
+        .map_err(io_error)?;
     Ok(())
 }
 fn io_error(error: std::io::Error) -> String {

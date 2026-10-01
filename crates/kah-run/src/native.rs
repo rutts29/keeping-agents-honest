@@ -6,7 +6,28 @@ use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct Confirmation {
+    pub instance: String,
+    pub session: String,
+    pub source: String,
+    pub transcript: std::path::PathBuf,
+    pub transcript_bytes: u64,
+    pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Native {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub herdr_socket: Option<std::path::PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation: Option<Confirmation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_ready: Option<bool>,
     #[serde(default)]
     pub online: bool,
     pub provider: String,
@@ -28,6 +49,11 @@ impl Native {
             return Err("RUN_AGENT stage=run_create: choose codex or claude".into());
         }
         Ok(Self {
+            name: None,
+            herdr_socket: None,
+            instance: None,
+            confirmation: None,
+            report_ready: Some(false),
             online: false,
             provider: provider.into(),
             session: None,
@@ -44,6 +70,24 @@ impl Native {
     }
     pub fn synchronized(&self) -> bool {
         self.pending.is_empty() && self.sending.is_none() && self.submitted.is_empty()
+    }
+    pub fn continuation(&self) -> Option<&'static str> {
+        (self.session.is_some() && self.pending.is_empty() && self.sending.is_none()
+            && (self.submitted.is_empty() || self.submitted.iter().copied().eq([0]))).then_some(
+            "[kah-builder] The controller resumed this native session. Continue the user's active task from the preserved worktree and conversation. Preserve completed work and all user constraints. If already finished, report that. This is automation, not new user intent.",
+        )
+    }
+    pub fn can_deliver(&self, initial_turn_running: bool) -> bool {
+        !self.pending.is_empty()
+            && (self.submitted.is_empty()
+                || initial_turn_running && self.submitted.iter().copied().eq([0]))
+    }
+    pub fn current(&self, control: &RunControl, sequence: u64) -> bool {
+        self.synchronized()
+            && control
+                .inputs()
+                .last()
+                .is_some_and(|input| input.sequence == sequence)
     }
     pub fn sources(&mut self, control: &mut RunControl, texts: &[String]) -> Result<(), String> {
         if self.source_cursor > texts.len() {
@@ -110,4 +154,16 @@ impl Native {
         self.native_tokens = self.native_tokens.max(native);
         self.observer_tokens = self.observer_tokens.max(observer);
     }
+}
+
+pub fn session_name(id: &str, task: &str) -> String {
+    let slug = task
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .take(4)
+        .collect::<Vec<_>>()
+        .join("-")
+        .to_ascii_lowercase();
+    let slug = slug.chars().take(32).collect::<String>();
+    format!("kah-{id}-{}", if slug.is_empty() { "task" } else { &slug })
 }

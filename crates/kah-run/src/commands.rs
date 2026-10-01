@@ -3,7 +3,7 @@ use crate::store::{Record, Store};
 use std::{fs, io::Read, path::Path};
 
 pub fn steer(base: &Path, id: &str, text: &str) -> Result<u64, String> {
-    let mut store = Store::open(base, id)?;
+    let mut store = Store::open_wait(base, id)?;
     let mut record = store.load()?;
     let sequence = record.control.steer(text)?;
     if let Some(native) = &mut record.native {
@@ -13,7 +13,7 @@ pub fn steer(base: &Path, id: &str, text: &str) -> Result<u64, String> {
     Ok(sequence)
 }
 pub fn stop(base: &Path, id: &str) -> Result<(), String> {
-    let mut store = Store::open(base, id)?;
+    let mut store = Store::open_wait(base, id)?;
     let mut record = store.load()?;
     record.control.request_stop();
     store.save(&record)
