@@ -45,6 +45,7 @@ pub fn prepare(home: &Path, project: &Project, args: &Arguments) -> Result<Setup
         &temporary,
         args.options.online,
         &environment,
+        args.worktree_git.as_deref(),
     )?;
     let mcp = save_mcp(&private.join("control"), mcp)?;
     let prefix = private.join("prefix");
@@ -147,9 +148,11 @@ fn write_specs(
     temporary: &Path,
     online: bool,
     environment: &[String],
+    worktree_git: Option<&Path>,
 ) -> Result<()> {
     let uid = kah_run::runtime::service_uid()?;
-    let base = crate::native_setup::executor(home, project, LaunchOptions::default())?;
+    let base =
+        crate::native_setup::executor(home, project, LaunchOptions::default(), worktree_git)?;
     for (name, online) in [
         ("executor", online),
         ("mcp-online", true),
@@ -157,13 +160,7 @@ fn write_specs(
     ] {
         let mut executor = base.clone();
         executor.set_network(online)?;
-        for arg in &mut executor.args {
-            if arg == "0:0" {
-                *arg = "65534:65534".into();
-            } else if arg == "/home/sandbox:rw,nosuid,nodev,size=512m,mode=700" {
-                arg.push_str(",uid=65534,gid=65534");
-            }
-        }
+        executor.use_nobody();
         executor.add_writable_mount(temporary, temporary)?;
         Spec {
             executor,

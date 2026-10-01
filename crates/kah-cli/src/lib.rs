@@ -31,3 +31,7 @@ pub mod sandbox_command;
 pub mod setup_policy;
 pub mod shell_routing;
 pub mod smoke;
+
+pub mod native_run;
+
+pub mod run_pane;

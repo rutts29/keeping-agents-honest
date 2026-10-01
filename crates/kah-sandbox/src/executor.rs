@@ -47,6 +47,17 @@ pub struct Executor {
 }
 
 impl Executor {
+    /// Operator-owned host files appear as nobody inside the rootless sandbox.
+    /// Private worktrees lack the domain directories' inherited service group.
+    pub fn use_nobody(&mut self) {
+        for arg in &mut self.args {
+            if arg == "0:0" {
+                *arg = "65534:65534".into();
+            } else if arg == "/home/sandbox:rw,nosuid,nodev,size=512m,mode=700" {
+                arg.push_str(",uid=65534,gid=65534");
+            }
+        }
+    }
     pub fn set_network(&mut self, online: bool) -> Result<(), Error> {
         let at = self.args[..self.image_index]
             .iter()

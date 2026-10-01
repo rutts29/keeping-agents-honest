@@ -59,6 +59,7 @@ impl Launch {
                 &overlay,
                 &policy_name,
                 args.options,
+                args.worktree_git.as_deref(),
             )?)
         } else {
             None

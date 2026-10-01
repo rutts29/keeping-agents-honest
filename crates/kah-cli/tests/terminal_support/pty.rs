@@ -1,5 +1,5 @@
 #[path = "input.rs"]
-mod input;
+pub mod input;
 use std::{
     fs,
     os::unix::{

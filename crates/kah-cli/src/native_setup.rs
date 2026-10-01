@@ -8,7 +8,12 @@ use std::{
     process::Command,
 };
 
-pub fn executor(home: &Path, project: &Project, options: LaunchOptions) -> Result<Executor> {
+pub fn executor(
+    home: &Path,
+    project: &Project,
+    options: LaunchOptions,
+    worktree_git: Option<&Path>,
+) -> Result<Executor> {
     let uid = kah_run::runtime::service_uid()?;
     let binary = publish_binary(
         &home.join(".local/bin/codex"),
@@ -24,8 +29,14 @@ pub fn executor(home: &Path, project: &Project, options: LaunchOptions) -> Resul
         }
     }
     mounts.retain(|(_, target)| !target.starts_with(&project.root));
-    Ok(Executor::new(project, options, &binary, image.trim(), uid)?
-        .with_read_only_mounts(&mounts)?)
+    let mut executor = Executor::new(project, options, &binary, image.trim(), uid)?
+        .with_read_only_mounts(&mounts)?;
+    if let Some(git) = worktree_git {
+        executor.use_nobody();
+        kah_run::access::share_tree(git, uid, true)?;
+        executor.add_writable_mount(git, git)?;
+    }
+    Ok(executor)
 }
 
 pub fn codex(
@@ -34,8 +45,9 @@ pub fn codex(
     directory: &Path,
     policy_name: &str,
     options: LaunchOptions,
+    worktree_git: Option<&Path>,
 ) -> Result<String> {
-    let offline = executor(home, project, options)?;
+    let offline = executor(home, project, options, worktree_git)?;
     let mut online = offline.clone();
     online.set_network(true)?;
     let mut mcp_offline = offline.clone();

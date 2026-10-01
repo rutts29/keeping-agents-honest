@@ -4,6 +4,8 @@ use kah_sandbox::{Domain, LaunchOptions};
 #[derive(Debug, Default)]
 pub struct Arguments {
     pub agent: Option<String>,
+    /// Supplied only by the trusted unattended worktree controller, never a CLI flag.
+    pub worktree_git: Option<std::path::PathBuf>,
     pub project: Option<(Domain, String)>,
     pub options: LaunchOptions,
     pub native: Vec<String>,
