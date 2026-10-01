@@ -67,7 +67,14 @@ fn online_is_explicit_and_invalid_mount_syntax_is_refused() {
         online: true,
         yolo: false,
     };
-    assert!(Executor::new(&project(Domain::Untrusted), options, binary, "image", 42420).is_err());
+    let untrusted =
+        Executor::new(&project(Domain::Untrusted), options, binary, "image", 42420).unwrap();
+    assert!(
+        untrusted
+            .args
+            .windows(2)
+            .any(|args| args == ["--network", "bridge"])
+    );
     let executor =
         Executor::new(&project(Domain::Research), options, binary, "image", 42420).unwrap();
     assert!(

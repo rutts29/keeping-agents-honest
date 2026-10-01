@@ -26,7 +26,7 @@ pub fn research() {
         "config/read",
         json!({"cwd":f.project,"includeLayers":false}),
     );
-    assert_eq!(config["config"]["web_search"], "disabled");
+    assert_eq!(config["config"]["web_search"], "live");
     let turn = client.turn(start["thread"]["id"].as_str().unwrap(), &format!("Run this disposable acceptance test using native tools only, no MCP or subagents. Use exec_command once to run: pwd; test ! -e '{}' && echo HOST_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create journey.txt with exactly 'native edit works'. Report and stop.",f.canary.display()));
     assert_eq!(turn["status"], "completed");
     let operations = operations(&client.events);

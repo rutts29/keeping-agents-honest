@@ -3,8 +3,8 @@
 | Domain | Interactive execution | Network | Extra option |
 |---|---|---|---|
 | Mine (`~/repos/mine`) | Host workspace permissions | Enabled | `--yolo` for native full host access |
-| Research (`~/repos/research`) | gVisor, project only | Offline by default | `--online` explicitly enables egress and hosted search |
-| Untrusted (`~/repos/untrusted`) | gVisor, project only | Always offline | No online or yolo option |
+| Research (`~/repos/research`) | gVisor, project only | Sandbox offline by default; hosted search on | `--online` enables sandbox egress |
+| Untrusted (`~/repos/untrusted`) | gVisor, project only | Sandbox offline by default; hosted search on | `--online` enables sandbox egress; no yolo |
 
 ```sh
 kah                                      # current project

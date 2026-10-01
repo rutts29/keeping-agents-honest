@@ -52,11 +52,11 @@ fn restricted_native_arguments_allow_resume_and_models_but_reject_policy_bypasse
         vec!["--", "resume", "--all"],
         vec!["--", "-m", "chosen"],
         vec!["--", "-c", "model_reasoning_effort=high"],
+        vec!["--", "--search"],
     ] {
         assert!(parse(&args).validate_native(Domain::Research).is_ok());
     }
     for args in [
-        vec!["--", "--search"],
         vec!["--", "-c", "features.apps=true"],
         vec!["--", "--remote", "unix:///socket"],
         vec!["--", "exec", "task"],

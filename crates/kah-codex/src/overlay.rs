@@ -75,10 +75,7 @@ fn restrict(config: &mut Table, policy: &Policy<'_>) {
         "notice",
     ];
     config.retain(|key, _| PREFERENCES.contains(&key));
-    config.insert(
-        "web_search".into(),
-        Value::String(if policy.online { "live" } else { "disabled" }.into()),
-    );
+    config.insert("web_search".into(), Value::String("live".into()));
     let mut features = Table::new();
     for name in ["apps", "plugins", "remote_plugin", "hooks"] {
         features.insert(name.into(), Value::Boolean(false));

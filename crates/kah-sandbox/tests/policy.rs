@@ -81,7 +81,7 @@ fn a_domain_root_alias_cannot_change_the_trust_label() {
 }
 
 #[test]
-fn network_and_yolo_require_their_declared_domain() {
+fn both_restricted_domains_allow_explicit_egress_and_yolo_remains_mine_only() {
     let online = LaunchOptions {
         online: true,
         yolo: false,
@@ -92,7 +92,7 @@ fn network_and_yolo_require_their_declared_domain() {
     };
     assert!(online.validate(Domain::Research).is_ok());
     assert!(online.validate(Domain::Mine).is_err());
-    assert!(online.validate(Domain::Untrusted).is_err());
+    assert!(online.validate(Domain::Untrusted).is_ok());
     assert!(yolo.validate(Domain::Mine).is_ok());
     assert!(yolo.validate(Domain::Research).is_err());
     assert!(yolo.validate(Domain::Untrusted).is_err());

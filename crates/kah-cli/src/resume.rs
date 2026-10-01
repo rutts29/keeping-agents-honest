@@ -64,7 +64,10 @@ fn restore_policy(
 ) -> Result<PathBuf> {
     let base = kah_core::run_store::RunStore::default_state_root()?;
     if let Some(policy) = crate::session_policy::saved(&base, id)? {
-        args.options.online = policy.policy == "research-online";
+        args.options.online = matches!(
+            policy.policy.as_str(),
+            "research-online" | "untrusted-online"
+        );
         args.options.yolo = policy.policy == "mine-yolo";
         // Native resume can persist its new cwd even when our hook rejects the
         // turn. The immutable kah binding remains the routing authority.
@@ -89,7 +92,7 @@ pub fn apply_location(home: &Path, rollout: &Path, args: &mut Arguments) {
         .next()
         .and_then(|c| c.as_os_str().to_str())
     {
-        Some("research-online") => args.options.online = true,
+        Some("research-online" | "untrusted-online") => args.options.online = true,
         Some("mine-yolo") => args.options.yolo = true,
         _ => (),
     }

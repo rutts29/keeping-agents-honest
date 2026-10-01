@@ -42,7 +42,7 @@ trust_level = "trusted"
     for key in ["apps", "plugins", "remote_plugin", "hooks"] {
         assert_eq!(value["features"][key].as_bool(), Some(false));
     }
-    assert_eq!(value["web_search"].as_str(), Some("disabled"));
+    assert_eq!(value["web_search"].as_str(), Some("live"));
     for path in ["/repos/research/demo", "/repos/research/demo/subdir"] {
         assert_eq!(
             value["projects"][path]["trust_level"].as_str(),
@@ -52,12 +52,14 @@ trust_level = "trusted"
 }
 
 #[test]
-fn search_requires_explicit_online_and_no_model_is_invented() {
-    let config = render_config("", &policy(true)).unwrap();
-    let value: toml::Value = toml::from_str(&config).unwrap();
-    assert_eq!(value["web_search"].as_str(), Some("live"));
-    assert!(value.get("model").is_none());
-    assert!(value.get("model_reasoning_effort").is_none());
+fn hosted_search_is_live_even_when_sandbox_egress_is_offline() {
+    for online in [false, true] {
+        let config = render_config("", &policy(online)).unwrap();
+        let value: toml::Value = toml::from_str(&config).unwrap();
+        assert_eq!(value["web_search"].as_str(), Some("live"));
+        assert!(value.get("model").is_none());
+        assert!(value.get("model_reasoning_effort").is_none());
+    }
 }
 
 #[test]

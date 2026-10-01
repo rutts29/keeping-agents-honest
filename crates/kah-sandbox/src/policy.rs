@@ -50,11 +50,11 @@ pub struct LaunchOptions {
 
 impl LaunchOptions {
     pub fn validate(self, domain: Domain) -> Result<(), Error> {
-        if self.online && domain != Domain::Research {
+        if self.online && domain == Domain::Mine {
             return Err(Error::new(
                 "ONLINE_DOMAIN",
                 "policy",
-                "--online requires research",
+                "--online requires research or untrusted; Mine already has network access",
             ));
         }
         if self.yolo && domain != Domain::Mine {

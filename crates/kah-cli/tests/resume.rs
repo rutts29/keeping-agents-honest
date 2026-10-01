@@ -24,3 +24,15 @@ fn unrelated_profile_paths_cannot_supply_an_kah_policy() {
     assert!(!args.options.online);
     assert!(!args.options.yolo);
 }
+
+#[test]
+fn untrusted_resume_restores_the_explicit_online_policy() {
+    let mut args = Arguments::default();
+    apply_location(
+        Path::new("/home/operator"),
+        Path::new("/home/operator/.local/state/kah/codex/untrusted-online/hash/sessions/file"),
+        &mut args,
+    );
+    assert!(args.options.online);
+    assert!(!args.options.yolo);
+}

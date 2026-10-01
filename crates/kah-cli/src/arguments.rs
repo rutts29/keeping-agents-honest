@@ -73,7 +73,7 @@ impl Arguments {
                     }
                 }
                 "resume" | "fork" | "--all" | "--last" | "--no-alt-screen" | "--no-daemon"
-                | "--help" => (),
+                | "--help" | "--search" => (),
                 "agents" | "exec" | "e" | "review" | "app-server" | "exec-server" | "sandbox"
                 | "mcp" | "plugin" | "remote-control" | "apply" | "a" | "cloud" => {
                     return Err("NATIVE_COMMAND_POLICY stage=arguments: kah interactive launch accepts prompts, resume and fork; use kah run for unattended work".into());
