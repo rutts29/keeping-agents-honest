@@ -161,3 +161,27 @@ impl Drop for Terminal {
         let _ = self.child.wait();
     }
 }
+
+#[allow(dead_code)] // Shared module; only command-based provider fixtures use this.
+pub fn command_line(command: &Command) -> String {
+    let mut parts = vec!["env".to_owned()];
+    for (key, _) in command.get_envs().filter(|(_, v)| v.is_none()) {
+        parts.extend(["-u".into(), quote(key.to_str().unwrap())]);
+    }
+    for (key, value) in command.get_envs() {
+        if let Some(value) = value {
+            parts.push(quote(&format!(
+                "{}={}",
+                key.to_str().unwrap(),
+                value.to_str().unwrap()
+            )));
+        }
+    }
+    parts.push(quote(command.get_program().to_str().unwrap()));
+    parts.extend(command.get_args().map(|a| quote(a.to_str().unwrap())));
+    format!(
+        "cd {} && {}",
+        quote(command.get_current_dir().unwrap().to_str().unwrap()),
+        parts.join(" ")
+    )
+}

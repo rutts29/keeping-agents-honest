@@ -29,6 +29,29 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn mcp_can_select_an_online_executor_without_changing_the_offline_default() {
+    let f = Fixture::new("multiple-executors");
+    fs::create_dir(f.0.join("overlay")).unwrap();
+    let offline = vec!["--network".into(), "none".into()];
+    let online = vec!["--network".into(), "bridge".into()];
+    kah_codex::overlay::set_executors(
+        &f.0.join("overlay"),
+        "tools-offline",
+        &[("tools-offline", &offline), ("mcp-online", &online)],
+    )
+    .unwrap();
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(f.0.join("overlay/environments.toml")).unwrap())
+            .unwrap();
+    assert_eq!(config["default"].as_str(), Some("tools-offline"));
+    assert_eq!(config["include_local"].as_bool(), Some(false));
+    let envs = config["environments"].as_array().unwrap();
+    assert_eq!(envs.len(), 2);
+    assert_eq!(envs[1]["id"].as_str(), Some("mcp-online"));
+    assert_eq!(envs[1]["args"][1].as_str(), Some("bridge"));
+}
+
+#[test]
 fn native_config_writes_do_not_reach_original_but_login_and_history_are_shared() {
     let f = Fixture::new("independent");
     f.prepare().unwrap();

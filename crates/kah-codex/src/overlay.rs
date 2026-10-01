@@ -9,9 +9,34 @@ pub use owned_hooks::{OwnedHook, install_owned_hooks, install_session_hook};
 pub use storage::prepare;
 
 pub fn set_executor(directory: &Path, id: &str, args: &[String]) -> Result<(), OverlayError> {
-    let settings = serde_json::json!({"default":id,"include_local":false,"environments":[{
-        "id":id,"program":"/usr/bin/docker","args":args,"initialize_timeout_sec":30
-    }]});
+    set_executors(directory, id, &[(id, args)])
+}
+
+pub fn set_executors(
+    directory: &Path,
+    default: &str,
+    environments: &[(&str, &[String])],
+) -> Result<(), OverlayError> {
+    let ids = environments
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<std::collections::BTreeSet<_>>();
+    if !ids.contains(default) || ids.len() != environments.len() {
+        return Err(OverlayError {
+            code: "ENVIRONMENT_SELECTION",
+            detail: "default must name one of the distinct executors".into(),
+        });
+    }
+    let entries = environments
+        .iter()
+        .map(|(id, args)| {
+            serde_json::json!({
+                "id":id,"program":"/usr/bin/docker","args":args,"initialize_timeout_sec":30
+            })
+        })
+        .collect::<Vec<_>>();
+    let settings =
+        serde_json::json!({"default":default,"include_local":false,"environments":entries});
     let text = toml::to_string(&settings).map_err(|e| OverlayError {
         code: "ENVIRONMENT_ENCODE",
         detail: e.to_string(),

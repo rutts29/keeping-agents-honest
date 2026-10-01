@@ -31,7 +31,7 @@ fn native_remote_mcp_and_hook_in_gvisor() {
     let prompt = "steer: Invoke the fixture MCP probe tool once, using native tool discovery if needed. Then use native apply_patch to create native-proof.txt containing NATIVE_WORKS. No other tools, subagents, commits or installs. Report the MCP result and stop.";
     let mut command = launch.command(false);
     command.args(["--no-alt-screen", prompt]);
-    let mut terminal = Terminal::start(&shell(&command), &f.stderr);
+    let mut terminal = Terminal::start(&pty::command_line(&command), &f.stderr);
     terminal.wait_for("Open restricted");
     terminal.send("\r");
     let mut reader = history::connect(&home, &f.project);
@@ -152,27 +152,4 @@ fn configure(home: &std::path::Path, launch: &kah_cli::Launch, f: &fixture::Fixt
         }],
     )
     .unwrap();
-}
-
-fn shell(command: &Command) -> String {
-    let mut parts = vec!["env".to_owned()];
-    for (key, _) in command.get_envs().filter(|(_, v)| v.is_none()) {
-        parts.extend(["-u".into(), quote(key.to_str().unwrap())]);
-    }
-    for (key, value) in command.get_envs() {
-        if let Some(value) = value {
-            parts.push(quote(&format!(
-                "{}={}",
-                key.to_str().unwrap(),
-                value.to_str().unwrap()
-            )));
-        }
-    }
-    parts.push(quote(command.get_program().to_str().unwrap()));
-    parts.extend(command.get_args().map(|a| quote(a.to_str().unwrap())));
-    format!(
-        "cd {} && {}",
-        quote(command.get_current_dir().unwrap().to_str().unwrap()),
-        parts.join(" ")
-    )
 }
