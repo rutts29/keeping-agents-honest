@@ -106,7 +106,9 @@ fn preserve_failure(
     Some(helper)
 }
 fn evidence_name(agent: &str) -> String {
-    let kind = if let Ok(mode) = std::env::var("KAH_GATE_LIMIT") {
+    let kind = if let Ok(trial) = std::env::var("KAH_GATE_COMPLETION_TRIAL") {
+        format!("completion-{trial}")
+    } else if let Ok(mode) = std::env::var("KAH_GATE_LIMIT") {
         format!("limit-{mode}")
     } else if std::env::var_os("KAH_GATE_EMPTY").is_some() {
         "empty".into()

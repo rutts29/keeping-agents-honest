@@ -81,18 +81,18 @@ fn judge_completion(
         );
     }
     let questions = judge::questions::completion(&outcomes);
-    let input = json!({"intent":{"goal":projection.goal.text,"outcomes":outcomes,"user_confirmed_ids":projection.frontier.iter().filter(|i|i.user_confirmed).map(|i|i.id.to_string()).collect::<Vec<_>>()},"event":{"actions":evidence}});
+    let intent = json!({"goal":projection.goal.text,"outcomes":outcomes,"user_confirmed_ids":projection.frontier.iter().filter(|i|i.user_confirmed).map(|i|i.id.to_string()).collect::<Vec<_>>()});
+    let inputs = crate::completion_inputs::states(&intent, evidence)?;
     let mut judgments = vec![];
-    for _ in 0..2 {
-        let result = judge::routing::evaluate(
+    for (channel, input) in ["activity", "artifact"].into_iter().zip(inputs) {
+        judgments.push(evaluate_completion(
             home,
-            settings.observer.judge,
-            &settings.observer.jev_model,
+            &settings.observer,
             &input,
             &questions,
-        );
-        record_completion(&settings.observer, &input, &tests.commit, &result)?;
-        judgments.push(result.map_err(|e| e.to_string())?);
+            &tests.commit,
+            channel,
+        )?);
     }
     let complete = tests.success
         && judgments
@@ -104,10 +104,40 @@ fn judge_completion(
     })
 }
 
+fn evaluate_completion(
+    home: &Path,
+    binding: &Binding,
+    input: &Value,
+    questions: &judge::Questions,
+    commit: &str,
+    channel: &str,
+) -> Result<Judgment, String> {
+    let request = crate::completion_capture::Request::new(&binding.jev_model, input, questions)?;
+    let result = judge::routing::evaluate(
+        home,
+        binding.judge,
+        request.model(),
+        request.state(),
+        request.questions(),
+    );
+    let replay = crate::completion_capture::save(
+        home,
+        &binding.session,
+        commit,
+        channel,
+        &request,
+        &result,
+    )?;
+    record_completion(binding, request.state(), commit, channel, &replay, &result)?;
+    result.map_err(|e| e.to_string())
+}
+
 fn record_completion(
     binding: &Binding,
     input: &Value,
     commit: &str,
+    channel: &str,
+    replay: &Path,
     result: &Result<Judgment, judge::Error>,
 ) -> Result<(), String> {
     use kah_core::run_store::RunStore;
@@ -127,12 +157,12 @@ fn record_completion(
                 state.judgments.remove(0);
             }
             let digest = format!("sha256:{:x}", Sha256::digest(input.to_string().as_bytes()));
-            store.append(&json!({"kind":"judgment","source":"completion","question_set":judge::questions::VERSION,"state_digest":digest,"commit":commit,"judgment":judgment,"assessment":{"state":"completion"}}))?;
+            store.append(&json!({"kind":"judgment","source":"completion","channel":channel,"replay":replay,"question_set":judge::questions::VERSION,"state_digest":digest,"commit":commit,"judgment":judgment,"assessment":{"state":"completion"}}))?;
         }
         Err(error) => {
             state.usage.incomplete_calls += 1;
             state.fail(&error.code, error.to_string());
-            store.append(&json!({"kind":"gap","source":"completion","gap":state.gap}))?;
+            store.append(&json!({"kind":"gap","source":"completion","channel":channel,"replay":replay,"gap":state.gap}))?;
         }
     }
     store.save(&state)

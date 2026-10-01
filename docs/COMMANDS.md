@@ -79,3 +79,7 @@ Native launch, completion, steering, kill/resume and limits pass live; see STATU
 Research executor, checks host isolation and cleans up. It uses your configured
 model/login and incurs one short model turn. Automation may use this smoke;
 ordinary development must not invoke the updater or sudo.
+
+Completion diagnostics: `kah eval completion ~/.local/share/kah-eval/completion/FILE.json`
+replays the saved scrubbed Jev request without changing an active run or its
+policy. Captures are private; copying them elsewhere is a separate user choice.

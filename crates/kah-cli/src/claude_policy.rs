@@ -33,6 +33,7 @@ pub fn permissions(
         home.join(".netrc"),
         home.join(".npmrc"),
         home.join(".local/state/kah"),
+        home.join(".local/share/kah-eval"),
         private.into(),
     ];
     for root in [home.join(".codex"), home.join(".claude")] {

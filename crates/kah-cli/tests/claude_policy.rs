@@ -34,6 +34,7 @@ fn native_permissions_keep_global_skills_readable_and_private_files_denied() {
         home.join(".claude/.credentials.json"),
         home.join(".codex/auth.json"),
         home.join("repos/research/other"),
+        home.join(".local/share/kah-eval"),
     ] {
         assert!(deny.contains(&format!("Read(/{})", path.display()).into()));
     }

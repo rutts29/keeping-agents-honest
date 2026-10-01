@@ -10,6 +10,7 @@ use std::{
 };
 mod capture;
 mod cleanup;
+mod comparison;
 mod proof;
 pub use cleanup::cleanup;
 mod empty;
@@ -50,14 +51,7 @@ fn completion(root: &Path, agent: &str) -> Value {
     };
     let project = fixture_project(&home, &name, domain);
     let model = fixture_model(agent);
-    let (file_tool, shell_tool) = if agent == "claude" {
-        ("Write", "Bash")
-    } else {
-        ("apply_patch", "exec_command")
-    };
-    let task = format!(
-        "In this disposable worktree, use {file_tool} to implement double.js: define double(n) returning n * 2 and export that function directly with module.exports = double. Use {shell_tool} to check it with Node, then report the result. The kah controller may create checkpoints and run independent verification. Do not push or deploy."
-    );
+    let task = completion_task(agent);
     let output = launch(
         &home,
         &project.root,
@@ -81,6 +75,9 @@ fn completion(root: &Path, agent: &str) -> Value {
     let report = diagnostics(&Store::path(&base, id).unwrap(), &record.worktree);
     if std::env::var_os("KAH_GATE_CONSENT_ONLY").is_some() {
         return consent_result(&home, agent, &record, &before);
+    }
+    if std::env::var_os("KAH_GATE_COMPLETION_TRIAL").is_some() {
+        return comparison::finish(&home, &record, &report, &before);
     }
     capture::capture(&home, &Store::path(&base, id).unwrap(), &record, &report);
     proof::completed(&record, &task);
@@ -119,6 +116,7 @@ fn version(home: &Path, agent: &str) -> String {
 fn fixture_model(agent: &str) -> &'static str {
     match agent {
         "claude" => "haiku",
+        _ if std::env::var_os("KAH_GATE_COMPLETION_TRIAL").is_some() => "gpt-6-luna",
         _ => "gpt-6-sol",
     }
 }
@@ -288,4 +286,15 @@ fn diagnostics(directory: &Path, worktree: &Path) -> Value {
         }
     }
     report
+}
+
+fn completion_task(agent: &str) -> String {
+    let (file_tool, shell_tool) = if agent == "claude" {
+        ("Write", "Bash")
+    } else {
+        ("apply_patch", "exec_command")
+    };
+    format!(
+        "In this disposable worktree, use {file_tool} to implement double.js: define double(n) returning n * 2 and export that function directly with module.exports = double. Use {shell_tool} to check it with Node, then report the result. The kah controller may create checkpoints and run independent verification. Do not push or deploy."
+    )
 }
