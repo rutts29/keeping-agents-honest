@@ -22,13 +22,18 @@ fn mine_preserves_choices_and_installs_only_invocation_hooks() {
 }
 
 #[test]
-fn restricted_claude_is_explicitly_unavailable_until_boundary_decision() {
+fn restricted_claude_refuses_native_permission_bypass_before_startup() {
     let home = fixture();
     for domain in ["research", "untrusted"] {
         let cwd = home.join(format!("repos/{domain}/project"));
         fs::create_dir_all(&cwd).unwrap();
-        let error = claude_launch::prepare(&home, &cwd, Arguments::default()).unwrap_err();
-        assert!(error.to_string().contains("CLAUDE_BOUNDARY_UNAVAILABLE"));
+        let args = Arguments {
+            no_observer: true,
+            native: vec!["--dangerously-skip-permissions".into()],
+            ..Arguments::default()
+        };
+        let error = claude_launch::prepare(&home, &cwd, args).unwrap_err();
+        assert!(error.to_string().contains("CLAUDE_PERMISSION_POLICY"));
     }
     fs::remove_dir_all(home).unwrap();
 }

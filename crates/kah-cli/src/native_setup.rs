@@ -1,0 +1,103 @@
+//! Share installed setup directly and use native configuration for execution.
+use crate::{Result, sandbox_command::Spec, setup_policy::SetupPolicy};
+use kah_codex::overlay;
+use kah_sandbox::{Executor, LaunchOptions, Project, current_uid, publish_binary};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+pub fn executor(home: &Path, project: &Project, options: LaunchOptions) -> Result<Executor> {
+    let uid = kah_run::runtime::service_uid()?;
+    let binary = publish_binary(
+        &home.join(".local/bin/codex"),
+        &PathBuf::from(format!("/var/tmp/kah-runtime-{}", current_uid()?)),
+    )?;
+    let image = fs::read_to_string("/usr/local/share/sbx/image-ref")
+        .map_err(|e| format!("SANDBOX_IMAGE_READ stage=setup: {e}"))?;
+    let mut mounts = kah_sandbox::global_setup_mounts(home)?;
+    for (source, target) in mounts.clone() {
+        share(home, &source, uid)?;
+        if let Ok(relative) = target.strip_prefix(home) {
+            mounts.push((source, Path::new("/home/sandbox").join(relative)));
+        }
+    }
+    mounts.retain(|(_, target)| !target.starts_with(&project.root));
+    Ok(Executor::new(project, options, &binary, image.trim(), uid)?
+        .with_read_only_mounts(&mounts)?)
+}
+
+pub fn codex(
+    home: &Path,
+    project: &Project,
+    directory: &Path,
+    policy_name: &str,
+    options: LaunchOptions,
+) -> Result<String> {
+    let offline = executor(home, project, options)?;
+    let mut online = offline.clone();
+    online.set_network(true)?;
+    let mut mcp_offline = offline.clone();
+    mcp_offline.set_network(false)?;
+    let id = format!("kah-{policy_name}");
+    overlay::set_executors(
+        directory,
+        &id,
+        &[
+            (&id, &offline.args),
+            ("kah-mcp-online", &online.args),
+            ("kah-mcp-offline", &mcp_offline.args),
+        ],
+    )?;
+    let policy = SetupPolicy::load(home)?;
+    overlay::route_mcp(
+        directory,
+        &project.root,
+        "kah-mcp-offline",
+        "kah-mcp-online",
+        &policy.offline_mcp_servers,
+        &policy.secret_mcp_servers,
+    )?;
+    let spec = directory.join("control/hooks.json");
+    Spec {
+        executor: offline,
+        temporary: None,
+        service_uid: kah_run::runtime::service_uid()?,
+        environment: vec![],
+    }
+    .save(&spec)?;
+    overlay::write_settings(
+        directory,
+        serde_json::json!({"features":{"hooks":true},"web_search":"live"}),
+    )?;
+    overlay::sandbox_hooks(
+        &home.join(".local/bin/codex"),
+        directory,
+        &project.root,
+        &[
+            home.join(".local/bin/kah").to_string_lossy().into_owned(),
+            "--sandbox-shell".into(),
+            spec.to_string_lossy().into_owned(),
+        ],
+    )?;
+    Ok(id)
+}
+
+fn share(home: &Path, path: &Path, uid: u32) -> Result<()> {
+    for parent in path.ancestors().skip(1).take_while(|p| p.starts_with(home)) {
+        kah_run::access::traverse(parent, uid)?;
+    }
+    if path.is_dir() {
+        kah_run::access::share_tree(path, uid, false)?;
+    } else {
+        let output = Command::new("/usr/bin/setfacl")
+            .args(["-P", "-m", &format!("u:{uid}:r"), "--"])
+            .arg(path)
+            .output()?;
+        if !output.status.success() {
+            return Err("SETUP_FILE_ACCESS stage=setup: cannot share installed setup file".into());
+        }
+    }
+    Ok(())
+}

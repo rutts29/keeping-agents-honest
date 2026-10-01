@@ -85,6 +85,7 @@ impl Restricted {
             executor,
             temporary: Some(self.temporary.clone()),
             service_uid: uid,
+            environment: vec![],
         }
         .save(&spec)
         .unwrap();

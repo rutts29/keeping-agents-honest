@@ -32,6 +32,7 @@ impl Fixture {
             .unwrap(),
             temporary: Some(self.0.join("temp")),
             service_uid: 42420,
+            environment: vec![],
         }
     }
 }

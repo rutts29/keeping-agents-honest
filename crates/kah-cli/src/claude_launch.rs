@@ -1,4 +1,4 @@
-//! Mine's native Claude launcher. Restricted domains fail before native startup.
+//! Native Claude launch; directory policy is invocation-local.
 use crate::{Arguments, Result};
 use kah_observer::{compaction::CompactorConfig, judge::routing::Backend, session::Binding};
 use kah_sandbox::{Domain, Project};
@@ -8,11 +8,12 @@ use std::{path::Path, process::Command};
 pub fn prepare(home: &Path, cwd: &Path, args: Arguments) -> Result<Command> {
     let explicit = args.project.as_ref().map(|(d, n)| (*d, n.as_str()));
     let project = Project::select(&home.join("repos"), cwd, explicit)?;
-    if project.domain != Domain::Mine {
-        return Err("CLAUDE_BOUNDARY_UNAVAILABLE stage=launch: native file tools have no proven gVisor adapter; see docs/claude-adapter.md".into());
-    }
+    prepare_project(home, project, args)
+}
+
+pub fn prepare_project(home: &Path, project: Project, args: Arguments) -> Result<Command> {
     args.options.validate(project.domain)?;
-    validate(&args)?;
+    validate(&args, project.domain != Domain::Mine)?;
     if project.needs_creation {
         project.initialize()?;
     }
@@ -28,24 +29,7 @@ pub fn prepare(home: &Path, cwd: &Path, args: Arguments) -> Result<Command> {
         .env_remove("CODEX_THREAD_ID")
         .env_remove("KAH_OBSERVER_BINDING")
         .env_remove("KAH_SESSION_POLICY");
-    if !args.no_observer {
-        let binding = binding(home, &project.root, &args)?;
-        let handler = home.join(".local/bin/kah");
-        let hook = format!(
-            "'{}' __claude-hook",
-            handler.to_string_lossy().replace('\'', "'\\''")
-        );
-        let mut settings = json!({"disableAllHooks":false,"hooks":{}});
-        for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"] {
-            settings["hooks"][event] =
-                json!([{"hooks":[{"type":"command","command":hook,"timeout":120}]}]);
-        }
-        command
-            .args(["--settings", &settings.to_string()])
-            .env("KAH_CLAUDE_BINDING", serde_json::to_string(&binding)?);
-    } else {
-        command.env_remove("KAH_CLAUDE_BINDING");
-    }
+    configure(home, &project, &args, &mut command)?;
     if let Some(effort) = args.effort {
         command.args(["--effort", &effort]);
     }
@@ -54,6 +38,49 @@ pub fn prepare(home: &Path, cwd: &Path, args: Arguments) -> Result<Command> {
     }
     command.args(args.native);
     Ok(command)
+}
+
+fn configure(
+    home: &Path,
+    project: &Project,
+    args: &Arguments,
+    command: &mut Command,
+) -> Result<()> {
+    if args.no_observer && project.domain == Domain::Mine {
+        command.env_remove("KAH_CLAUDE_BINDING");
+        return Ok(());
+    }
+    let mut settings = if project.domain != Domain::Mine {
+        let setup = crate::claude_setup::prepare(home, project, args)?;
+        setup.apply(command);
+        setup.settings
+    } else {
+        json!({"hooks":{}})
+    };
+    if !args.no_observer {
+        let binding = binding(home, &project.root, args)?;
+        let handler = home.join(".local/bin/kah");
+        settings["disableAllHooks"] = false.into();
+        for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"] {
+            let groups = settings["hooks"]
+                .as_object_mut()
+                .unwrap()
+                .entry(event)
+                .or_insert_with(|| json!([]));
+            groups.as_array_mut().ok_or("CLAUDE_HOOKS_TYPE stage=launch")?.push(json!({"hooks":[{"type":"command","command":handler,"args":["__claude-hook"],"timeout":120}]}));
+        }
+        command.env("KAH_CLAUDE_BINDING", serde_json::to_string(&binding)?);
+    } else {
+        command.env_remove("KAH_CLAUDE_BINDING");
+        let groups = settings["hooks"]
+            .as_object_mut()
+            .unwrap()
+            .entry("SessionStart")
+            .or_insert_with(|| json!([]));
+        groups.as_array_mut().ok_or("CLAUDE_HOOKS_TYPE stage=launch")?.push(json!({"hooks":[{"type":"command","command":home.join(".local/bin/kah"),"args":["__claude-session"],"timeout":2}]}));
+    }
+    command.args(["--settings", &settings.to_string()]);
+    Ok(())
 }
 
 fn binding(home: &Path, project: &Path, args: &Arguments) -> Result<Binding> {
@@ -77,8 +104,8 @@ fn binding(home: &Path, project: &Path, args: &Arguments) -> Result<Binding> {
     })
 }
 
-fn validate(args: &Arguments) -> Result<()> {
-    if !args.no_observer
+fn validate(args: &Arguments, restricted: bool) -> Result<()> {
+    if (!args.no_observer || restricted)
         && ["CLAUDE_CODE_SAFE_MODE", "CLAUDE_CODE_SIMPLE"]
             .iter()
             .any(|name| {
@@ -93,7 +120,7 @@ fn validate(args: &Arguments) -> Result<()> {
         if matches!(flag, "-p" | "--print" | "--bg" | "--background") {
             return Err("CLAUDE_UNATTENDED_BOUNDARY stage=arguments: unattended Claude requires a proven gVisor inference boundary".into());
         }
-        if !args.no_observer
+        if (!args.no_observer || restricted)
             && matches!(
                 flag,
                 "--bare" | "--safe-mode" | "--settings" | "--setting-sources"
@@ -101,6 +128,21 @@ fn validate(args: &Arguments) -> Result<()> {
         {
             return Err("CLAUDE_OBSERVER_POLICY stage=arguments: this option can disable or replace kah hooks".into());
         }
+        if restricted
+            && (flag == "--dangerously-skip-permissions"
+                || flag == "--allow-dangerously-skip-permissions"
+                || arg == "--permission-mode=bypassPermissions")
+        {
+            return Err("CLAUDE_PERMISSION_POLICY stage=arguments: restricted native file permissions must remain active".into());
+        }
+    }
+    if restricted
+        && args
+            .native
+            .windows(2)
+            .any(|p| p[0] == "--permission-mode" && p[1] == "bypassPermissions")
+    {
+        return Err("CLAUDE_PERMISSION_POLICY stage=arguments: restricted native file permissions must remain active".into());
     }
     Ok(())
 }

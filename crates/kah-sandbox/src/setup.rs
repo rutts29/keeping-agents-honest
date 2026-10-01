@@ -23,6 +23,7 @@ pub fn global_setup_mounts(home: &Path) -> Result<Vec<(PathBuf, PathBuf)>, Error
         ".claude/agents",
         ".claude/rules",
         ".claude/hooks",
+        ".claude/statusline.py",
         ".local/share/agent-skills",
         ".codex/AGENTS.md",
         ".codex/AGENTS.override.md",

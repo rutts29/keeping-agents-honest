@@ -1,9 +1,8 @@
 use crate::{Arguments, Result};
 use kah_codex::overlay::{self, Policy};
-use kah_sandbox::{Domain, Executor, Project, current_uid, publish_binary};
+use kah_sandbox::{Domain, Project};
 use sha2::{Digest, Sha256};
 use std::{
-    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -26,6 +25,11 @@ impl Launch {
             .as_ref()
             .map(|(domain, name)| (*domain, name.as_str()));
         let project = Project::select(&home.join("repos"), &target, explicit)?;
+        Self::prepare_project(home, project, args)
+    }
+
+    /// Worktree runs supply their host-owned project binding directly.
+    pub fn prepare_project(home: &Path, project: Project, args: Arguments) -> Result<Self> {
         args.options.validate(project.domain)?;
         args.validate_native(project.domain)?;
         if project.needs_creation {
@@ -34,7 +38,7 @@ impl Launch {
         let cwd = project.root.join(&project.relative_cwd);
         let restricted = project.domain != Domain::Mine;
         let (policy_name, overlay) = overlay_directory(home, &project, &args);
-        overlay::prepare(
+        overlay::prepare_native(
             &home.join(".codex"),
             &overlay,
             &Policy {
@@ -49,13 +53,12 @@ impl Launch {
             .canonicalize()
             .map_err(|e| format!("CODEX_BINARY stage=launch: {e}"))?;
         let environment_id = if restricted {
-            Some(prepare_executor(
+            Some(crate::native_setup::codex(
                 home,
                 &project,
-                &args,
-                &binary,
                 &overlay,
                 &policy_name,
+                args.options,
             )?)
         } else {
             None
@@ -132,42 +135,6 @@ fn policy_settings(project: &Project, args: &Arguments) -> serde_json::Value {
         }
     }
     settings
-}
-
-fn service_uid() -> Result<u32> {
-    let output = Command::new("/usr/bin/id")
-        .args(["-u", "sbxrun"])
-        .output()
-        .map_err(|e| format!("SANDBOX_ACCOUNT stage=launch: {e}"))?;
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .map_err(|e| format!("SANDBOX_ACCOUNT stage=launch: {e}"))?)
-}
-
-fn prepare_executor(
-    home: &Path,
-    project: &Project,
-    args: &Arguments,
-    binary: &Path,
-    overlay: &Path,
-    policy_name: &str,
-) -> Result<String> {
-    let public = publish_binary(
-        binary,
-        &PathBuf::from(format!("/var/tmp/kah-runtime-{}", current_uid()?)),
-    )?;
-    let image = fs::read_to_string("/usr/local/share/sbx/image-ref")
-        .map_err(|e| format!("SANDBOX_IMAGE_READ stage=launch: {e}"))?;
-    let mounts = kah_sandbox::publish_skills(
-        home,
-        &PathBuf::from(format!("/var/tmp/kah-skills-{}", current_uid()?)),
-    )?;
-    let executor = Executor::new(project, args.options, &public, image.trim(), service_uid()?)?
-        .with_read_only_mounts(&mounts)?;
-    let id = format!("kah-{policy_name}");
-    overlay::set_executor(overlay, &id, &executor.args)?;
-    Ok(id)
 }
 
 fn overlay_directory(home: &Path, project: &Project, args: &Arguments) -> (String, PathBuf) {

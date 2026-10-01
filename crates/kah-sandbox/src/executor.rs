@@ -47,6 +47,14 @@ pub struct Executor {
 }
 
 impl Executor {
+    pub fn set_network(&mut self, online: bool) -> Result<(), Error> {
+        let at = self.args[..self.image_index]
+            .iter()
+            .position(|arg| arg == "--network")
+            .ok_or_else(|| Error::new("EXECUTOR_NETWORK", "executor", "network option absent"))?;
+        self.args[at + 1] = if online { "bridge" } else { "none" }.into();
+        Ok(())
+    }
     /// Reuse containment and mount policy for a native command hook or shell
     /// prefix. The native command stays argv, never part of the entrypoint text.
     pub fn command(&self, cwd: &Path, command: &[String]) -> Result<std::process::Command, Error> {

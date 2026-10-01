@@ -63,6 +63,11 @@ pub fn report_claude_input(input: &Value) {
         report_native(input, true);
     }
 }
+pub fn report_claude() {
+    if let Ok(input) = serde_json::from_reader(std::io::stdin().take(1024 * 1024)) {
+        report_claude_input(&input);
+    }
+}
 
 fn report_native(input: &Value, claude: bool) {
     if env::var("HERDR_ENV").as_deref() != Ok("1") {

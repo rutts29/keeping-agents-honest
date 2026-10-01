@@ -13,6 +13,10 @@ fn run() -> Result<()> {
         kah_cli::claude_hook::run();
         return Ok(());
     }
+    if arguments.first().map(String::as_str) == Some("__claude-session") {
+        kah_cli::herdr::report_claude();
+        return Ok(());
+    }
     if arguments == ["smoke"] {
         let home = PathBuf::from(env::var_os("HOME").ok_or("HOME_MISSING stage=smoke")?);
         return kah_cli::smoke::run(&home);

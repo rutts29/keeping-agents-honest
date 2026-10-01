@@ -1,0 +1,78 @@
+//! Native file permissions protect private host state without hiding installed code.
+use crate::Result;
+use serde_json::{Value, json};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+pub fn permissions(home: &Path, project: &Path, private: &Path, online: bool) -> Result<Value> {
+    let setup = kah_sandbox::global_setup_mounts(home)?;
+    let mut allow = vec![
+        "Bash".into(),
+        "WebSearch".into(),
+        format!("Edit(/{}/**)", project.display()),
+    ];
+    for (source, target) in &setup {
+        rules(&mut allow, "Read", source);
+        if source != target {
+            rules(&mut allow, "Read", target);
+        }
+    }
+    let mut protected = vec![
+        home.join(".ssh"),
+        home.join(".config"),
+        home.join(".claude.json"),
+        home.join(".git-credentials"),
+        home.join(".netrc"),
+        home.join(".npmrc"),
+        home.join(".local/state/kah"),
+        private.into(),
+    ];
+    for root in [home.join(".codex"), home.join(".claude")] {
+        for path in children(&root)? {
+            if !setup.iter().any(|(_, target)| target == &path) {
+                protected.push(path);
+            }
+        }
+    }
+    for domain in ["mine", "research", "untrusted"] {
+        for path in children(&home.join("repos").join(domain))? {
+            if path.canonicalize().ok().as_deref() != Some(project) {
+                protected.push(path);
+            }
+        }
+    }
+    let mut deny = vec![];
+    for path in protected {
+        for tool in ["Read", "Edit"] {
+            rules(&mut deny, tool, &path);
+        }
+    }
+    for (_, path) in setup {
+        if !path.starts_with(project) {
+            rules(&mut deny, "Edit", &path);
+        }
+    }
+    if !online {
+        deny.push("WebFetch".into());
+    }
+    Ok(json!({"allow":allow,"deny":deny}))
+}
+fn children(path: &Path) -> Result<Vec<PathBuf>> {
+    match fs::read_dir(path) {
+        Ok(entries) => entries
+            .map(|entry| {
+                entry
+                    .map(|e| e.path())
+                    .map_err(|e| format!("CLAUDE_POLICY_READ stage=permissions: {e}").into())
+            })
+            .collect(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+        Err(e) => Err(format!("CLAUDE_POLICY_READ stage=permissions: {e}").into()),
+    }
+}
+fn rules(output: &mut Vec<String>, tool: &str, path: &Path) {
+    output.push(format!("{tool}(/{})", path.display()));
+    output.push(format!("{tool}(/{}/**)", path.display()));
+}

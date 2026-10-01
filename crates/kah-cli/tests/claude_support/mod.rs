@@ -198,6 +198,16 @@ impl Drop for Fixture {
             eprintln!("Claude fixture cleanup refused: created project identity changed");
             return;
         };
+        {
+            if let Ok(project) = kah_sandbox::Project::select(
+                &PathBuf::from(std::env::var_os("HOME").unwrap()).join("repos"),
+                &self.root,
+                None,
+            ) && let Ok(runtime) = kah_cli::claude_setup::runtime_directory(&project)
+            {
+                let _ = fs::remove_dir_all(runtime);
+            }
+        }
         if let Ok(Some(state)) = Store::read(&self.base, &self.id)
             && let Some(run) = state.run_id
             && let Ok(path) = RunStore::path_for(&self.base, &self.root, run)

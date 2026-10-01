@@ -20,6 +20,8 @@ pub struct Spec {
     pub executor: Executor,
     pub temporary: Option<PathBuf>,
     pub service_uid: u32,
+    #[serde(default)]
+    pub environment: Vec<String>,
 }
 impl Spec {
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -66,7 +68,14 @@ impl Spec {
     }
     pub fn command(&self, cwd: &Path, command: &[String]) -> Result<Command> {
         self.prepare_temporary()?;
-        Ok(self.executor.command(cwd, command)?)
+        let mut executor = self.executor.clone();
+        for name in &self.environment {
+            if name.is_empty() || name.contains(['=', '\0']) {
+                return Err("SANDBOX_ENV_NAME stage=command".into());
+            }
+            executor.insert_options(["--env".into(), name.clone()]);
+        }
+        Ok(executor.command(cwd, command)?)
     }
     fn prepare_temporary(&self) -> Result<()> {
         let Some(path) = &self.temporary else {
@@ -116,7 +125,13 @@ pub fn run(args: &[String]) -> Result<()> {
         _ => return Err("SANDBOX_COMMAND_ARGUMENTS stage=command".into()),
     };
     let path = args.get(1).ok_or("SANDBOX_SPEC_REQUIRED stage=command")?;
-    let spec = Spec::load(Path::new(path))?;
+    let path = Path::new(path);
+    let selected = match std::env::var("KAH_SANDBOX_PROFILE").as_deref() {
+        Ok("mcp-online") => path.with_file_name("mcp-online.json"),
+        Ok("mcp-offline") => path.with_file_name("mcp-offline.json"),
+        _ => path.into(),
+    };
+    let spec = Spec::load(&selected)?;
     let cwd = std::env::current_dir().map_err(|e| format!("SANDBOX_CWD stage=command: {e}"))?;
     Err(format!(
         "SANDBOX_COMMAND_EXEC stage=command: {}",

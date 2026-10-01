@@ -2,6 +2,8 @@
 mod arguments;
 pub mod claude_hook;
 pub mod claude_launch;
+pub mod claude_policy;
+pub mod claude_setup;
 pub mod herdr;
 pub mod inspection_cli;
 mod launch;
@@ -24,6 +26,8 @@ pub mod unattended_report;
 pub mod unattended_run;
 pub mod unattended_setup;
 
+pub mod native_setup;
 pub mod sandbox_command;
+pub mod setup_policy;
 pub mod shell_routing;
 pub mod smoke;

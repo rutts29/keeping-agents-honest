@@ -25,3 +25,4 @@ kah-run = { path = "../kah-run" }
 
 [dev-dependencies]
 vt100 = "=0.16.2"
+toml = "=1.1.6"
