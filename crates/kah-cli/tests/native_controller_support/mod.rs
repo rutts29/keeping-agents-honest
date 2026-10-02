@@ -13,6 +13,7 @@ mod cleanup;
 mod comparison;
 #[allow(dead_code)]
 pub mod inherited;
+mod private_notes;
 mod proof;
 pub use cleanup::cleanup;
 mod empty;
@@ -25,6 +26,9 @@ mod verification;
 pub use verification::verification_uses_imported_commit;
 
 pub fn run(root: &Path, agent: &str) -> Value {
+    if std::env::var_os("KAH_GATE_PRIVATE_NOTES").is_some() {
+        return private_notes::run(root, agent);
+    }
     if std::env::var_os("KAH_GATE_USAGE").is_some() {
         return usage::run(root, agent);
     }
@@ -118,7 +122,11 @@ fn version(home: &Path, agent: &str) -> String {
 fn fixture_model(agent: &str) -> &'static str {
     match agent {
         "claude" => "haiku",
-        _ if std::env::var_os("KAH_GATE_COMPLETION_TRIAL").is_some() => "gpt-6-luna",
+        _ if std::env::var_os("KAH_GATE_COMPLETION_TRIAL").is_some()
+            || std::env::var_os("KAH_GATE_PRIVATE_NOTES").is_some() =>
+        {
+            "gpt-6-luna"
+        }
         _ => "gpt-6-sol",
     }
 }
@@ -126,7 +134,35 @@ fn fixture_project(home: &Path, name: &str, domain: Domain) -> Project {
     let project = Project::select(&home.join("repos"), home, Some((domain, name))).unwrap();
     assert!(project.needs_creation);
     project.initialize().unwrap();
+    seed(&project.root);
     project
+}
+fn seed(project: &Path) {
+    for args in [
+        vec!["config", "user.name", "Native Fixture Agent"],
+        vec!["config", "user.email", "fixture@example.invalid"],
+        vec!["add", "--all"],
+        vec![
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "fixture source baseline",
+        ],
+    ] {
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(project)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
 }
 fn global_settings(home: &Path) -> [(PathBuf, Vec<u8>); 2] {
     [
@@ -297,6 +333,6 @@ fn completion_task(agent: &str) -> String {
         ("apply_patch", "exec_command")
     };
     format!(
-        "In this disposable worktree, use {file_tool} to implement double.js: define double(n) returning n * 2 and export that function directly with module.exports = double. Use {shell_tool} to check it with Node, then report the result. The kah controller may create checkpoints and run independent verification. Do not push or deploy."
+        "In this disposable worktree, use {file_tool} to implement double.js: define double(n) returning n * 2 and export that function directly with module.exports = double. Use {shell_tool} to check it with Node. Commit the intended deliverable changes on the run branch, then report. kah copies your HEAD SHA and verifies exactly that commit; kah never authors commits. Do not push or deploy."
     )
 }

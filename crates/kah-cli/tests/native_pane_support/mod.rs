@@ -1,4 +1,4 @@
-mod checkpoint;
+mod delivery;
 use kah_cli::{Arguments, native_run, run_pane::Pane};
 use kah_run::worktree::Worktree;
 use kah_sandbox::{Domain, Project};
@@ -63,6 +63,7 @@ pub fn run(root: &Path) -> Value {
     let project = Project::select(&home.join("repos"), &home, Some((Domain::Mine, &name))).unwrap();
     assert!(project.needs_creation);
     project.initialize().unwrap();
+    seed(&project.root);
     let directory = PathBuf::from(format!("/var/tmp/kah-native-pane-{}", std::process::id()));
     let mut fixture = Fixture {
         source: project.root.clone(),
@@ -87,7 +88,7 @@ pub fn run(root: &Path) -> Value {
         effort: Some("low".into()),
         ..Default::default()
     };
-    let task = "Please use native exec_command once to run: test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?; git status --short && echo GIT_OK; printf BASH_OK > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Work only on this disposable worktree. The external fixture controller will commit a checkpoint and verify the result afterward; that is authorized. You should use no other tools or subagents, and make no commits or installs yourself. Report and stop.";
+    let task = "Please use native exec_command to run: test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?; git status --short && echo GIT_OK; printf BASH_OK > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Commit those two files on this disposable run branch using native Git. The external fixture controller will copy your HEAD and verify that SHA, without committing. No subagents or installs. Report and stop.";
     let command = native_run::command(&home, &tree, Domain::Mine, args, task, None).unwrap();
     fixture.overlay = command
         .get_envs()
@@ -115,8 +116,8 @@ pub fn run(root: &Path) -> Value {
     assert!(state.gap.is_none() && state.inflight.is_none());
     assert!(kah_observer::engine::projection(&state).unwrap().is_some());
     save_cleanup(root, fixture.session.as_deref());
-    let checkpoint = checkpoint::prove(&home, &project.root, &tree, root, &state);
-    json!({"checkpoint":checkpoint,"passed":true,"fullNativeSession":true,"paneIdentity":native["agent"],"sessionIdentity":true,"worktreeOnlyWrite":true,"observerAttached":true,"nativeSubprocessGitWorks":true})
+    let delivery = delivery::prove(&home, &project.root, &tree, root, &state);
+    json!({"delivery":delivery,"passed":true,"fullNativeSession":true,"paneIdentity":native["agent"],"sessionIdentity":true,"worktreeOnlyWrite":true,"observerAttached":true,"nativeSubprocessGitWorks":true})
 }
 
 fn wait(pane: &Pane, worktree: &Path, session: &mut Option<String>) -> Value {
@@ -194,4 +195,34 @@ pub fn cleanup_saved(root: &Path) {
         ),
     };
     drop(fixture);
+}
+
+fn seed(project: &Path) {
+    for args in [
+        vec!["add", "--all"],
+        vec![
+            "-c",
+            "user.name=Native Fixture Agent",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "fixture source baseline",
+        ],
+    ] {
+        assert!(
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(project)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
 }

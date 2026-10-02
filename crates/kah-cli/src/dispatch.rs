@@ -233,14 +233,15 @@ pub fn startup_context(binding: &Binding, input: &Value, provider: &str) -> Resu
     ) else {
         return Ok(None);
     };
-    let Some(dispatch) = load(binding, &run, &instance, provider)? else {
-        return Ok(None);
-    };
-    if dispatch.quotes.is_empty() {
-        return Ok(None);
+    let dispatch = load(binding, &run, &instance, provider)?;
+    let mut context = include_str!("../../../assets/run-guidance.md").to_owned();
+    if let Some(dispatch) = dispatch
+        && !dispatch.quotes.is_empty()
+    {
+        context.push_str(&dispatch.context()?);
     }
     Ok(Some(
-        json!({"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":dispatch.context()?}}),
+        json!({"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":context}}),
     ))
 }
 fn load(binding: &Binding, run: &str, instance: &str, provider: &str) -> Result<Option<Dispatch>> {

@@ -64,23 +64,36 @@ pub(super) fn native_tools(home: &Path, directory: &Path, record: &Record) {
                 .any(|a| a["kind"] == "commandExecution" && a["exit_code"] == 0)
         );
     } else {
-        let messages = actions
-            .iter()
-            .filter_map(|a| a["evidence"].as_str())
-            .filter_map(|text| serde_json::from_str::<Value>(text).ok())
-            .collect::<Vec<_>>();
-        let tools = messages
-            .iter()
-            .flat_map(|m| m["content"].as_array().into_iter().flatten())
-            .filter(|p| p["type"] == "tool_use")
-            .filter_map(|p| p["name"].as_str())
-            .collect::<Vec<_>>();
-        assert!(tools.contains(&"Write") || tools.contains(&"Edit"));
-        assert!(tools.contains(&"Bash"));
+        claude_tools(&history);
     }
     // The absence checks have real host files as their positive counterpart.
     assert!(home.join(".codex/auth.json").is_file());
     assert!(home.join(".claude/.credentials.json").is_file());
+}
+
+fn claude_tools(history: &kah_cli::native_history::History) {
+    let kah_cli::native_history::History::Claude { path, session, .. } = history else {
+        unreachable!()
+    };
+    // Completion intentionally sees only recent actions. Tool-parity proof must
+    // inspect the whole primary transcript: later commits can evict the first Write.
+    let text = fs::read_to_string(path).unwrap();
+    assert!(text.len() <= kah_claude::transcript::MAX_BYTES);
+    let rows = text
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|row| {
+            row["type"] == "assistant" && row["sessionId"] == *session && row["isSidechain"] != true
+        })
+        .collect::<Vec<_>>();
+    let tools = rows
+        .iter()
+        .flat_map(|row| row["message"]["content"].as_array().into_iter().flatten())
+        .filter(|part| part["type"] == "tool_use")
+        .filter_map(|part| part["name"].as_str())
+        .collect::<Vec<_>>();
+    assert!(tools.contains(&"Write") || tools.contains(&"Edit"));
+    assert!(tools.contains(&"Bash"));
 }
 
 pub(super) fn completed(record: &Record, task: &str) {

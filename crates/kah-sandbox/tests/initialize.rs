@@ -9,7 +9,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn initialize_commits_guidance_and_never_reinitializes_an_existing_project() {
+fn initialize_leaves_guidance_uncommitted_and_never_reinitializes_an_existing_project() {
     let f = Fixture(std::env::temp_dir().join(format!("kah-init-test-{}", std::process::id())));
     fs::create_dir_all(f.0.join("mine")).unwrap();
     let project = Project::select(&f.0, &f.0, Some((Domain::Mine, "demo"))).unwrap();
@@ -26,10 +26,10 @@ fn initialize_commits_guidance_and_never_reinitializes_an_existing_project() {
         .output()
         .unwrap();
     assert!(output.status.success());
-    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("AGENTS.md"));
     assert_eq!(project.initialize().unwrap_err().code, "PROJECT_EXISTS");
     assert!(
-        Command::new("git")
+        !Command::new("git")
             .arg("-C")
             .arg(&project.root)
             .args(["rev-parse", "--verify", "HEAD"])

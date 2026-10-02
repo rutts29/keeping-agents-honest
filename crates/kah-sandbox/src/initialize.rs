@@ -36,26 +36,19 @@ impl Project {
         if self.domain != Domain::Mine {
             self.git(&["config", "core.sharedRepository", "group"])?;
         }
-        for (key, fallback) in [("user.name", "kah"), ("user.email", "kah@localhost")] {
+        for key in ["user.name", "user.email"] {
             let output = Command::new("git")
                 .args(["config", "--global", "--get", key])
                 .output()
                 .map_err(init_error)?;
-            let value = if output.status.success() {
-                String::from_utf8_lossy(&output.stdout).trim().to_owned()
-            } else {
-                fallback.into()
-            };
-            self.git(&["config", key, &value])?;
+            if output.status.success() {
+                self.git(&[
+                    "config",
+                    key,
+                    String::from_utf8_lossy(&output.stdout).trim(),
+                ])?;
+            }
         }
-        self.git(&["add", "--", "AGENTS.md", "CLAUDE.md"])?;
-        self.git(&[
-            "commit",
-            "--quiet",
-            "--no-gpg-sign",
-            "-m",
-            "chore: initialize project guidance",
-        ])?;
         Ok(())
     }
 

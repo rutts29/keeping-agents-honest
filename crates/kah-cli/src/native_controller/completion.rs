@@ -4,14 +4,14 @@ use kah_run::{access, verification};
 use serde_json::json;
 
 impl Run<'_> {
-    pub(super) fn checkpoint(&self) -> Result<Worktree> {
+    pub(super) fn capture_candidate(&self) -> Result<Worktree> {
         let saved = self.directory.join("candidate.json");
         if self.record()?.control.status() == RunStatus::Completed {
             return Ok(Worktree::load(&saved)?);
         }
         let nonce = session::now_ms();
-        let bundle = self.directory.join(format!("checkpoint-{nonce}.bundle"));
-        let commit = self.tree.checkpoint_bundle(&self.executor, &bundle)?;
+        let bundle = self.directory.join(format!("delivery-{nonce}.bundle"));
+        let commit = self.tree.bundle_head(&self.executor, &bundle)?;
         let candidate = if saved.exists() {
             Worktree::load(&saved)?
         } else {
@@ -45,7 +45,7 @@ impl Run<'_> {
         }
         let projection = self.refresh(state, &snapshot)?;
         let sequence = record.control.inputs().last().unwrap().sequence;
-        let candidate = self.checkpoint()?;
+        let candidate = self.capture_candidate()?;
         let commit = self.record()?.control.last_checkpoint().unwrap().to_owned();
         let (tests, changed) = self.verify(&candidate, &commit, sequence)?;
         let completion = if tests.success && !changed {
@@ -56,9 +56,11 @@ impl Run<'_> {
         };
         let pane = self.pane.inspect()?;
         let current = self.synchronize(&pane)?;
-        let unchanged = current.is_some_and(|s| {
-            s.action_digest.as_ref() == Some(&snapshot.action_digest) && s.inflight.is_none()
-        }) && matches!(pane["agent_status"].as_str(), Some("idle" | "done"));
+        let unchanged = self.tree.sandbox_state(&self.executor)?.0 == commit
+            && current.is_some_and(|s| {
+                s.action_digest.as_ref() == Some(&snapshot.action_digest) && s.inflight.is_none()
+            })
+            && matches!(pane["agent_status"].as_str(), Some("idle" | "done"));
         let proof = CompletionEvidence {
             ledger_user_sequence: sequence,
             commit: commit.clone(),
@@ -77,10 +79,11 @@ impl Run<'_> {
             &format!("completion-{commit}-{sequence}-{}.json", session::now_ms()),
             &json!({"proof":{"commit":commit,"userSequence":sequence,"tests":tests,"unchanged":unchanged},"judgments":completion.map(|c|c.judgments),"completed":current.control.status() == RunStatus::Completed}),
         )?;
+        let uncommitted = self.tree.sandbox_state(&self.executor)?.1;
         let feedback = format!(
-            "[kah-builder] Controller verification for commit {commit}: {}. This is automated evidence, not new user intent. Continue the user's active task if it is incomplete; preserve all user constraints.",
+            "[kah-builder] Verification of your HEAD commit {commit}: {}. Only this SHA is delivered; uncommitted changes are NOT delivered. Commit only intended deliverable work, keeping confidential/personal/internal files out of commits. If the user's instructions prohibit committing necessary code, explain the conflict and ask. This is automated evidence, not new user intent.",
             serde_json::to_string(
-                &json!({"testSuccess":tests.success,"candidateChanged":changed,"output":tests.output})
+                &json!({"testSuccess":tests.success,"candidateChanged":changed,"uncommittedChangesPresent":uncommitted,"output":tests.output})
             )?
         );
         self.tests = Some(tests);
@@ -224,7 +227,7 @@ impl Run<'_> {
             },
         );
         stop_executors(&tree.path)?;
-        let changed = tree.checkpoint("chore: inspect verification side effects")? != commit;
+        let changed = tree.head()? != commit || tree.dirty()?;
         tree.remove_verification()?;
         Ok((result?, changed))
     }

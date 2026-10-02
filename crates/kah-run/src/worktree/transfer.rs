@@ -5,28 +5,24 @@ use kah_sandbox::Executor;
 use std::{fs, os::unix::fs::OpenOptionsExt, path::Path, process::Command};
 
 impl Worktree {
-    pub fn checkpoint_bundle(&self, executor: &Executor, bundle: &Path) -> Result<String, String> {
-        run(self
-            .sandbox_git(executor)?
-            .args(["add", "--all", "--", "."]))?;
-        let diff = self
-            .sandbox_git(executor)?
-            .args(["diff", "--cached", "--quiet"])
-            .status()
-            .map_err(io_error)?;
-        match diff.code() {
-            Some(0) => (),
-            Some(1) => {
-                run(self.sandbox_git(executor)?.args([
-                    "commit",
-                    "--quiet",
-                    "--no-gpg-sign",
-                    "-m",
-                    "chore: checkpoint unattended work",
-                ]))?;
-            }
-            _ => return Err("RUN_INDEX_DIFF stage=checkpoint".into()),
-        }
+    pub fn sandbox_state(&self, executor: &Executor) -> Result<(String, bool), String> {
+        let head = text(run(self.sandbox_git(executor)?.args([
+            "rev-parse",
+            "--verify",
+            "HEAD^{commit}",
+        ]))?)?;
+        validate_commit(&head)?;
+        let dirty = !run(self.sandbox_git(executor)?.args([
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=normal",
+        ]))?
+        .stdout
+        .is_empty();
+        Ok((head, dirty))
+    }
+    pub fn bundle_head(&self, executor: &Executor, bundle: &Path) -> Result<String, String> {
         let commit = text(run(self.sandbox_git(executor)?.args([
             "rev-parse",
             "--verify",

@@ -172,9 +172,13 @@ fn event_kind(name: &str, source: Option<&str>) -> Result<EventKind, String> {
 }
 
 pub(crate) fn context(projection: &str) -> String {
-    format!(
+    let mut text = format!(
         "[kah source-linked intent; not new user steering]\nGoal text is the original user request. Active steering supersedes conflicting historical details; preserve all other constraints. Text is verbatim unless explicitly labeled compacted_intent. Current user messages take precedence. review_required means unconfirmed steering, retained as context without requiring a review before continuing. kind_uncertain marks only category uncertainty. uncertain_supersedes keeps both instructions active; do not silently discard either. An item marked user_confirmed was explicitly confirmed or promoted by the user; its earlier aside: marker no longer excludes it.\n{projection}"
-    )
+    );
+    if env::var_os("KAH_RUN_ID").is_some() {
+        text.push_str(include_str!("../../../assets/run-guidance.md"));
+    }
+    text
 }
 fn output(event: &str, text: &str, gap: Option<&str>) -> Value {
     let mut value = json!({});

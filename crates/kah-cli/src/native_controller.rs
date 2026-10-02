@@ -140,7 +140,7 @@ fn finish(run: &mut Run<'_>, child: &mut NativeChild, result: Result<()>) -> Res
             Ok(())
         })?;
     }
-    let checkpoint = run.checkpoint();
+    let checkpoint = run.capture_candidate();
     let problem = result
         .as_ref()
         .err()

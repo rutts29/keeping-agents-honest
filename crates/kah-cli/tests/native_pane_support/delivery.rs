@@ -24,10 +24,10 @@ pub(super) fn prove(
     )
     .unwrap();
     let bundle = root.join("candidate.bundle");
-    let commit = worker.checkpoint_bundle(&executor, &bundle).unwrap();
+    let commit = worker.bundle_head(&executor, &bundle).unwrap();
     let candidate = Worktree::create(source, &root.join("candidate"), "run-native-pane").unwrap();
     candidate.import_bundle(&bundle, &commit).unwrap();
-    assert_eq!(candidate.checkpoint("unchanged").unwrap(), commit);
+    assert_eq!(candidate.head().unwrap(), commit);
     candidate.export_branch().unwrap();
     let receipt = verify(home, &candidate, &commit, root);
     assert!(receipt.success);
@@ -41,7 +41,7 @@ pub(super) fn prove(
     let pointer = admin.join("commondir");
     let original = fs::read(&pointer).unwrap();
     fs::write(&pointer, source.join(".git").to_string_lossy().as_bytes()).unwrap();
-    let rejected = worker.checkpoint_bundle(&executor, &root.join("host-escape.bundle"));
+    let rejected = worker.bundle_head(&executor, &root.join("host-escape.bundle"));
     fs::write(pointer, original).unwrap();
     assert!(
         rejected.is_err(),
@@ -58,7 +58,7 @@ pub(super) fn prove(
         String::from_utf8(head.stdout).unwrap().trim(),
         worker.base_commit
     );
-    assert_eq!(candidate.checkpoint("still unchanged").unwrap(), commit);
+    assert_eq!(candidate.head().unwrap(), commit);
     json!({"jevCompletion":judgment,"sandboxCheckpoint":true,"trustedBundleImport":true,"verification":receipt,"hostMetadataRedirectRefused":true,"sourceHeadUnchanged":true,"candidateCommitUnchanged":true})
 }
 
@@ -96,7 +96,8 @@ fn verify(home: &Path, candidate: &Worktree, commit: &str, root: &Path) -> verif
         &root.join("verification.log"),
     )
     .unwrap();
-    assert_eq!(tree.checkpoint("verification unchanged").unwrap(), commit);
+    assert!(!tree.dirty().unwrap());
+    assert_eq!(tree.head().unwrap(), commit);
     tree.remove_verification().unwrap();
     receipt
 }

@@ -18,6 +18,7 @@ pub fn run(root: &Path, agent: &str) -> Value {
     let project = Project::select(&home.join("repos"), &home, Some((domain, &name))).unwrap();
     assert!(project.needs_creation);
     project.initialize().unwrap();
+    seed(&project.root);
     let (file, shell) = if agent == "claude" {
         ("Write", "Bash")
     } else {

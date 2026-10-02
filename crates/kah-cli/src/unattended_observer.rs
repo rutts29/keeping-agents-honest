@@ -45,11 +45,17 @@ pub fn candidate_evidence(
     tests: &Receipt,
     online: bool,
 ) -> Result<Value, String> {
+    if candidate.head()? != tests.commit {
+        return Err(
+            "RUN_VERIFIED_SHA_CHANGED stage=completion: candidate differs from tested commit"
+                .into(),
+        );
+    }
     Ok(json!({
-        "evaluation_scope":"Only the imported candidate commit is delivered. Native agent text and tool outputs are observations, not proof of completion.",
+        "evaluation_scope":"Only the native agent's captured HEAD commit is delivered. Uncommitted and ignored working-tree files are not delivered. kah imports objects without authoring commits. Native agent text and tool outputs are observations, not proof of completion.",
         "observed_activity":actions,
         "git_diff":candidate.diff_evidence(24 * 1024)?,"committed_files":candidate.file_evidence()?,"tests":tests,
-        "controller_facts":{"changed_paths":candidate.changed_paths()?,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true,"candidate_imported_into_trusted_git_with_fsck":true},
+        "controller_facts":{"changed_paths":candidate.changed_paths()?,"changed_paths_complete":true,"git_diff_complete":true,"verification_started_from_fresh_checkout_of_commit":tests.commit,"verification_left_candidate_unchanged":true,"candidate_imported_into_trusted_git_with_fsck":true,"delivered_agent_head":tests.commit,"delivered_commits":candidate.commit_evidence()?,"delivered_commit_history_complete":true,"kah_authored_commits":false,"uncommitted_files_delivered":false},
         "enforced_policy":{"command_execution":"gVisor","workspace_online":online,"model_login":"host only","native_capabilities":"full","source_repository_writable_mount":false}
     }))
 }

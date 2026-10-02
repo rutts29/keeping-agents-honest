@@ -12,13 +12,14 @@ kah stop run-ID
 kah resume run-ID
 ```
 
-Gate 5r-i proves full native launch and verified completion for both providers.
-The combined controls gate is still in progress; see [status](STATUS.md).
+The native launch, controls and resume gates pass for both providers; see [status](STATUS.md).
 The default agent is Codex. Model and effort are optional native choices. The
 observer's compactor and Jev alias use the separate `--observer-model`,
 `--observer-effort`, and `--jev-model` options.
 
 A run starts at committed HEAD in a private worktree and its own Herdr pane.
+New-project initialization leaves its guidance files uncommitted. The user or
+native agent makes the source repository's first commit before starting a run.
 Uncommitted source edits are not imported. The task is the first native prompt;
 there is no exec/print worker or required JSON reply. Native consent and prompts
 remain native. Codex Mine-source runs mark their private path trusted in kah's
@@ -58,16 +59,28 @@ selection. Names are labels, not authority. Claude's own host SessionStart hook
 and transcript bind the run; Herdr's PID-file-derived session ID is advisory.
 
 Git configuration, hooks and directory pointers are read-only in the worker;
-normal indexes, commits and branches remain native. The controller checkpoints
-inside gVisor and imports a checked bundle into a separate trusted candidate.
+normal indexes, commits and branches remain native. The agent commits the work
+it intends to deliver. kah never stages files or authors commits, including seed
+commits or verification-side-effect commits. It reads the agent's HEAD in gVisor
+and imports a fsck-checked bundle into a separate trusted candidate.
 It exports only the local `kah/run-ID` branch into the source repository. kah does
 not check out, merge, push or deploy that branch; the user reviews and merges it.
+Agent amendments are reflected only in that run's local delivery branch.
 
-Each verification uses a fresh checkout of that candidate, outside the worker's
+Keep confidential, personal and internal material out of commits. Honor
+`.gitignore` and `.git/info/exclude`; an ignored local-only folder such as `notes/`
+can remain in the worker tree. kah preserves local exclude rules and the configured
+Git identity in the private repository. It does not decide which files to stage.
+Only committed content is delivered; uncommitted leftovers are not copied into
+the candidate. Necessary code left uncommitted fails verification/assessment of
+the delivered SHA, and the run continues or asks for steering. A global prohibition
+on committing required code conflicts with delivery and needs the user's decision.
+
+Each verification uses a fresh checkout of that exact HEAD SHA, outside the worker's
 mount, with Git metadata read-only. Ignored worker files cannot satisfy it. Use
 the project's normal verification entrypoint so steering can update its tests
 without changing the host command. Completion requires unchanged candidate
-verification, current user sequence/checkpoint matching, and two independent Jev
+verification, current user sequence and HEAD matching, and two independent Jev
 judgments satisfying the recorded outcomes. The existing 0.90 probability and
 0.85 confidence thresholds remain. Agent claims alone are not completion.
 
@@ -76,6 +89,9 @@ infrastructure-only fixture conservatively stopped despite passing file checks;
 that rejected evidence is retained, not converted into a passing gate or used
 to tune thresholds. Native code-change journeys pass. Reports preserve separate
 assessment receipts, verification and the resulting state.
+Commit evidence includes reachable changes across the delivered range, so adding
+private notes and deleting them in a later commit does not hide them from the judge.
+Reports name the delivered commit and only attach tests that verified that SHA.
 
 `--budget-tokens N` counts reported native and observer tokens, including cached
 input. Native usage can arrive only after work has consumed it, and interrupted
@@ -110,5 +126,5 @@ Continuing a kah-controlled run still requires its worktree. Native history view
 after cleanup is distinct from restoring the deleted working files.
 
 Reports live at `~/.local/state/kah/runs/run-ID/report.json`. Review the local branch
-diff and verification before merging. Live stop/resume, cancellation and descendant
-usage coverage remain required work before Phase 5R is complete.
+diff and verification before merging. Native stop/resume, cancellation and descendant
+usage journeys are recorded in the accepted Phase 5R gates.

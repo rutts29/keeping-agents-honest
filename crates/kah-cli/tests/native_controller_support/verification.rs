@@ -25,7 +25,13 @@ pub fn verification_uses_imported_commit() {
     fs::write(worker.path.join("marker.txt"), "NATIVE_RUN_OK\n").unwrap();
     let worker_executor = executor(&home, &worker);
     let bundle = directory.join("diagnostic.bundle");
-    let commit = worker.checkpoint_bundle(&worker_executor, &bundle).unwrap();
+    commit_fixture(&worker_executor, &worker);
+    fs::write(
+        worker.path.join("marker.txt"),
+        "UNCOMMITTED_NOT_DELIVERED\n",
+    )
+    .unwrap();
+    let commit = worker.bundle_head(&worker_executor, &bundle).unwrap();
     let candidate = Worktree::create(
         &project.root,
         &worker.path.parent().unwrap().join("candidate"),
@@ -60,21 +66,21 @@ pub fn verification_uses_imported_commit() {
         &directory.join("diagnostic.log"),
     )
     .unwrap();
-    eprintln!(
-        "verification diagnostic: {}",
-        serde_json::to_string(&receipt).unwrap()
-    );
     assert!(receipt.success);
     tree.remove_verification().unwrap();
     let evidence = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
     fs::write(
         evidence.join("verification-path.json"),
         serde_json::to_vec_pretty(
-            &json!({"modelCalls":0,"candidateContainsMarker":true,"receipt":receipt,"passed":true}),
+            &json!({"modelCalls":0,"candidateContainsMarker":true,"uncommittedCodeExcluded":true,"kahAuthoredCommits":false,"receipt":receipt,"passed":true}),
         )
         .unwrap(),
     )
     .unwrap();
+}
+fn commit_fixture(executor: &kah_sandbox::Executor, worker: &Worktree) {
+    let mut commit = executor.command(&worker.path, &["/bin/sh".into(),"-c".into(),"git -c safe.directory=\"$PWD\" add marker.txt && git -c safe.directory=\"$PWD\" -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -m 'fixture agent delivery'".into()]).unwrap();
+    assert!(commit.status().unwrap().success());
 }
 fn setup(home: &Path) -> (Fixture, Project, String, PathBuf) {
     let root = std::env::temp_dir().join(format!("kah-native-checkpoint-{}", std::process::id()));
@@ -83,6 +89,7 @@ fn setup(home: &Path) -> (Fixture, Project, String, PathBuf) {
     let project = Project::select(&home.join("repos"), home, Some((Domain::Mine, &name))).unwrap();
     assert!(project.needs_creation);
     project.initialize().unwrap();
+    seed(&project.root);
     let args = kah_cli::unattended_args::RunArguments::parse(
         ["--test", "true", "checkpoint fixture"]
             .map(str::to_owned)
@@ -99,7 +106,7 @@ fn setup(home: &Path) -> (Fixture, Project, String, PathBuf) {
         Store::path(&RunStore::default_state_root().unwrap().join("runs"), &id).unwrap();
     (Fixture(root), project, id, directory)
 }
-fn executor(home: &Path, tree: &Worktree) -> kah_sandbox::Executor {
+pub(super) fn executor(home: &Path, tree: &Worktree) -> kah_sandbox::Executor {
     let project = Project {
         domain: Domain::Research,
         root: tree.path.clone(),

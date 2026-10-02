@@ -2,6 +2,46 @@ use super::{Worktree, io_error};
 use serde_json::{Value, json};
 use std::{io::Read, process::Stdio};
 impl Worktree {
+    /// Include every delivered commit, not only the final tree diff. A file
+    /// added and later deleted is still present in reachable bundle history.
+    pub fn commit_evidence(&self) -> Result<Vec<Value>, String> {
+        let commits = super::text(super::run(self.git().args([
+            "rev-list",
+            "--reverse",
+            "--max-count=65",
+            &format!("{}..HEAD", self.base_commit),
+        ]))?)?;
+        if commits.lines().count() > 64 {
+            return Err("RUN_COMMITS_BOUND stage=completion".into());
+        }
+        let mut result = vec![];
+        for commit in commits.lines() {
+            let output = super::run(self.git().args([
+                "diff-tree",
+                "--root",
+                "-m",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                "-z",
+                commit,
+            ]))?;
+            if output.stdout.len() > 65536 {
+                return Err("RUN_COMMIT_PATHS_BOUND stage=completion".into());
+            }
+            let paths = output
+                .stdout
+                .split(|b| *b == 0)
+                .filter(|p| !p.is_empty())
+                .map(|p| {
+                    String::from_utf8(p.to_vec())
+                        .map_err(|_| "RUN_COMMIT_PATH_UTF8 stage=completion")
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            result.push(json!({"sha":commit,"changed_paths":paths}));
+        }
+        Ok(result)
+    }
     /// Bounded complete blobs clarify language/library evidence that a diff can
     /// leave implicit. Omitted data is marked explicitly, never called complete.
     pub fn file_evidence(&self) -> Result<Vec<Value>, String> {

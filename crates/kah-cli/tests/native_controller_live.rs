@@ -45,7 +45,7 @@ fn journey(agent: &str) {
     );
     let mut terminal = pty::Terminal::start(&command, &probe.root.join("terminal.log"));
     terminal.wait_for("KAH_HERDR_SHELL_READY");
-    terminal.submit(&format!("KAH_NATIVE_RUN_PROBE={} KAH_NATIVE_RUN_AGENT={} {} --exact native_run_probe_entrypoint --nocapture > {} 2>&1", pty::quote(probe.root.to_str().unwrap()), pty::quote(agent), pty::quote(std::env::current_exe().unwrap().to_str().unwrap()), pty::quote(probe.root.join("helper.log").to_str().unwrap())));
+    terminal.submit(&format!("env -u CODEX_THREAD_ID KAH_NATIVE_RUN_PROBE={} KAH_NATIVE_RUN_AGENT={} {} --exact native_run_probe_entrypoint --nocapture > {} 2>&1", pty::quote(probe.root.to_str().unwrap()), pty::quote(agent), pty::quote(std::env::current_exe().unwrap().to_str().unwrap()), pty::quote(probe.root.join("helper.log").to_str().unwrap())));
     let deadline = Instant::now() + Duration::from_secs(300);
     let evidence = loop {
         terminal.respond_to_cursor_queries();
@@ -108,6 +108,8 @@ fn preserve_failure(
 fn evidence_name(agent: &str) -> String {
     let kind = if let Ok(trial) = std::env::var("KAH_GATE_COMPLETION_TRIAL") {
         format!("completion-{trial}")
+    } else if std::env::var_os("KAH_GATE_PRIVATE_NOTES").is_some() {
+        "private-notes".into()
     } else if let Ok(mode) = std::env::var("KAH_GATE_LIMIT") {
         format!("limit-{mode}")
     } else if std::env::var_os("KAH_GATE_EMPTY").is_some() {

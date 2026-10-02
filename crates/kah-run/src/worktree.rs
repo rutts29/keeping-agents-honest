@@ -2,6 +2,7 @@
 //! metadata stays in gVisor; only verified bundles enter host-side candidates.
 use serde::{Deserialize, Serialize};
 mod evidence;
+mod preferences;
 mod transfer;
 use std::{
     fs,
@@ -114,23 +115,20 @@ impl Worktree {
             branch,
         })
     }
-    pub fn checkpoint(&self, message: &str) -> Result<String, String> {
-        run(self.git().args(["add", "--all", "--", "."]))?;
-        let changed = self
+    /// Read trusted candidate metadata only; live worker metadata uses sandbox_state.
+    pub fn head(&self) -> Result<String, String> {
+        text(run(self.git().args([
+            "rev-parse",
+            "--verify",
+            "HEAD^{commit}",
+        ]))?)
+    }
+    pub fn dirty(&self) -> Result<bool, String> {
+        Ok(!run(self
             .git()
-            .args(["diff", "--cached", "--quiet", "--exit-code"])
-            .status()
-            .map_err(io_error)?;
-        match changed.code() {
-            Some(0) => (),
-            Some(1) => {
-                run(self
-                    .git()
-                    .args(["commit", "--quiet", "--no-gpg-sign", "-m", message]))?;
-            }
-            _ => return Err("RUN_INDEX_DIFF stage=checkpoint".into()),
-        }
-        text(run(self.git().args(["rev-parse", "HEAD"]))?)
+            .args(["status", "--porcelain=v1", "-z", "--untracked-files=normal"]))?
+        .stdout
+        .is_empty())
     }
     /// A fresh detached checkout prevents verification from relying on ignored
     /// files left by the worker. Tests may write here, never in the candidate.
@@ -182,7 +180,7 @@ impl Worktree {
     }
     pub fn export_branch(&self) -> Result<(), String> {
         // Local ref transfer only. No remote, credentials, deploy or push.
-        let reference = format!("refs/heads/{}:refs/heads/{}", self.branch, self.branch);
+        let reference = format!("+refs/heads/{}:refs/heads/{}", self.branch, self.branch);
         run(command()
             .arg("-C")
             .arg(&self.source)
@@ -229,17 +227,6 @@ impl Worktree {
                 String::from_utf8(p.to_vec()).map_err(|_| "RUN_PATHS_UTF8 stage=completion".into())
             })
             .collect()
-    }
-    pub fn restore_checkpoint(&self, commit: &str) -> Result<(), String> {
-        if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|c| c.is_ascii_hexdigit()) {
-            return Err("RUN_COMMIT_ID stage=worktree_restore".into());
-        }
-        run(self.git().args(["reset", "--hard", commit]))?;
-        run(self.git().args(["clean", "-fd", "--", "."]))?;
-        // Reassert the trusted pointer even if an interrupted worker replaced it.
-        let pointer = self.path.join(".git");
-        fs::remove_file(&pointer).map_err(io_error)?;
-        fs::write(pointer, format!("gitdir: {}\n", self.admin.display())).map_err(io_error)
     }
     pub fn diff_evidence(&self, limit: usize) -> Result<String, String> {
         use std::{io::Read, process::Stdio};
@@ -310,11 +297,7 @@ fn command() -> Command {
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_NO_REPLACE_OBJECTS", "1")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_AUTHOR_NAME", "kah")
-        .env("GIT_AUTHOR_EMAIL", "kah@localhost")
-        .env("GIT_COMMITTER_NAME", "kah")
-        .env("GIT_COMMITTER_EMAIL", "kah@localhost");
+        .env("GIT_TERMINAL_PROMPT", "0");
     for setting in [
         "core.hooksPath=/dev/null",
         "core.fsmonitor=false",
@@ -372,5 +355,6 @@ fn clone_metadata(source: &Path, git_dir: &Path) -> Result<(), String> {
     if !removed.status.success() && removed.status.code() != Some(128) {
         return Err("RUN_REMOTE_REMOVE stage=worktree".into());
     }
+    preferences::copy(source, git_dir)?;
     Ok(())
 }
