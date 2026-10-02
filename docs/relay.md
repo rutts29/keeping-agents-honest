@@ -1,5 +1,27 @@
 # Dispatch and verified user relays
 
+For an explicit user decision relayed by a host orchestrator, use:
+
+```sh
+kah steer RECEIVER_SESSION 'The user decided to change the output to RED.'
+```
+
+An embedded session without a control socket receives this through its recorded
+Herdr pane. The primary host hook retains the exact body as user intent with
+`origin=relayed` and the caller's Herdr agent name as `relayer` (or `operator` for
+an unnamed host caller). Jev still classifies steering, kind and supersession;
+the command does not force a kind or lower any threshold. `kah ledger` shows the
+relayer, including in JSON source provenance. No sender registration or original
+quote matching is needed. `--receipt ID` makes an explicit retry idempotent.
+
+This trusts host-side submission, not a cryptographic proof of the original user:
+Research/Untrusted tools have no Herdr socket, and kah's state is outside their
+writable boundary. A host orchestrator is authorized to relay the user's decision.
+The relayer is a courier, not a lower authority. Plain `[kah-reviewer]` messages
+remain delegate context and cannot enter the user ledger through this path.
+
+`kah relay` below remains available when original-quote verification is desired.
+
 Run these commands on the host. Both sessions must run under kah with the current native host hooks enabled.
 Use the native session ID, not a Herdr display name. A session started with an
 older hook configuration needs a normal kah resume to pick up new hook events.

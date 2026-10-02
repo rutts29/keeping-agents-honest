@@ -20,7 +20,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     let dispatch = crate::dispatch::prepare(args.parent.as_deref(), &args.task)?;
     let mut control = RunControl::new(&args.task, args.limits)?;
     let observer = kah_observer::compaction::CompactorConfig::new(
-        args.observer_model.as_deref().unwrap_or("gpt-6-luna"),
+        args.observer_model.as_deref().unwrap_or("gpt-6.1-sol"),
         Some(args.observer_effort.as_deref().unwrap_or("low")),
     )?;
     let project = Project::select(&home.join("repos"), cwd, None)?;

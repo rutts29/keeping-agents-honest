@@ -56,7 +56,7 @@ fn journey(domain: &str) {
     );
     let evidence = f.evidence.clone();
     drop(f);
-    fs::write(evidence.join(format!("claude-global-{domain}.json")),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"haiku","fixtureEffort":"low","domain":domain,"nativeLauncher":true,"nativeProjectHistory":true,"singleNativeCredentialStore":true,"nativeGlobalSetup":true,"globalSkillParentAndChild":true,"nativeWrites":true,"childShellLoginsHidden":true,"childShellOffline":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
+    fs::write(evidence.join(format!("claude-global-{domain}.json")),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":domain,"nativeLauncher":true,"nativeProjectHistory":true,"singleNativeCredentialStore":true,"nativeGlobalSetup":true,"globalSkillParentAndChild":true,"nativeWrites":true,"childShellLoginsHidden":true,"childShellOffline":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }
 
 fn child_proof(f: &Fixture, config: &std::path::Path) {

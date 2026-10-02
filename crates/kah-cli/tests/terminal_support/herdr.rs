@@ -122,7 +122,7 @@ fn launch_command(probe: &Probe, project: &Path, domain: &str) -> String {
         "steer: Use native apply_patch to create herdr-proof.txt containing HERDR_WORKS. Disposable Mine startup test; no other tools, subagents or commits. Report and stop."
     };
     format!(
-        "test \"$HERDR_ENV\" = 1 && (KAH_HERDR_CAPTURE={} KAH_HERDR_MARKER={} {} --exact herdr_capture_entrypoint --nocapture > {} 2>&1 &) && {} {domain} {} --model gpt-6-sol --effort low -- --no-alt-screen {}",
+        "test \"$HERDR_ENV\" = 1 && (KAH_HERDR_CAPTURE={} KAH_HERDR_MARKER={} {} --exact herdr_capture_entrypoint --nocapture > {} 2>&1 &) && {} {domain} {} --model gpt-6.1-sol --effort low -- --no-alt-screen {}",
         quote(probe.root.join("capture.json").to_str().unwrap()),
         quote(project.join("herdr-proof.txt").to_str().unwrap()),
         quote(executable.to_str().unwrap()),

@@ -64,7 +64,7 @@ pub fn prove(f: &Fixture, config: &[u8]) {
 pub fn fresh_codex(home: &Path, project: &Path) {
     let args = Arguments::parse(vec![
         "--model".into(),
-        "gpt-6-sol".into(),
+        "gpt-6.1-sol".into(),
         "--effort".into(),
         "low".into(),
     ])
@@ -116,7 +116,7 @@ pub fn fresh_claude(f: &Fixture) {
     use kah_observer::session::Store;
     let id = f.id.replacen("00000000", "00000001", 1);
     let command = format!(
-        "cd {} && {} --agent claude --model haiku --effort low -- --session-id {} --permission-mode acceptEdits",
+        "cd {} && {} --agent claude --model claude-sonnet-5-5 --effort low -- --session-id {} --permission-mode acceptEdits",
         pty::quote(f.project().to_str().unwrap()),
         pty::quote(env!("CARGO_BIN_EXE_kah")),
         pty::quote(&id)

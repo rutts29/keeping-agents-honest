@@ -62,7 +62,7 @@ pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixtu
         domain.into(),
         name.clone(),
         "--model".into(),
-        "gpt-6-sol".into(),
+        "gpt-6.1-sol".into(),
         "--effort".into(),
         "low".into(),
     ];

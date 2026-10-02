@@ -45,10 +45,10 @@ fn original_gate_one_contract() {
         "REMOTE_EDIT"
     );
     assert_eq!(fs::read_to_string(&research.canary).unwrap(), "untouched");
-    let alternate = if start["model"] == "gpt-6-sol" {
+    let alternate = if start["model"] == "gpt-6.1-sol" {
         "gpt-6-astra"
     } else {
-        "gpt-6-sol"
+        "gpt-6.1-sol"
     };
     let effort = if start["reasoningEffort"] == "low" {
         "high"
@@ -103,7 +103,7 @@ fn configure(home: &Path, launch: &kah_cli::Launch, f: &fixture::Fixture, domain
         LaunchOptions::default(),
         &binary,
         image.trim(),
-        std::env::var("KAH_TEST_SERVICE_UID").expect("KAH_TEST_SERVICE_UID").parse::<u32>().unwrap(),
+        kah_run::access::service_uid().unwrap(),
     )
     .unwrap();
     for index in 0..executor.args.len() - 1 {

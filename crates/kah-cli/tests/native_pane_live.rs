@@ -61,7 +61,7 @@ fn native_codex_worktree_pane() {
         fs::set_permissions(&diagnostic, fs::Permissions::from_mode(0o600)).unwrap();
         panic!("native pane journey failed: {}", diagnostic.display());
     }
-    fs::write(std::path::PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join("codex-native-pane.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"gpt-6-sol","fixtureEffort":"low","sourceDomain":"mine","journey":evidence,"passed":true})).unwrap()).unwrap();
+    fs::write(std::path::PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join("codex-native-pane.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","sourceDomain":"mine","journey":evidence,"passed":true})).unwrap()).unwrap();
 }
 
 #[test]

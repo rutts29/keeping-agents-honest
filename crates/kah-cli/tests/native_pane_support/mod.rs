@@ -83,7 +83,7 @@ pub fn run(root: &Path) -> Value {
     let args = Arguments {
         native: vec![
             "--model".into(),
-            "gpt-6-sol".into(),
+            "gpt-6.1-sol".into(),
             "--no-alt-screen".into(),
         ],
         effort: Some("low".into()),

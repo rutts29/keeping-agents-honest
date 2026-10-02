@@ -15,7 +15,9 @@ pub fn handle(binding: &Binding, input: &Value, provider: &str) -> Result<()> {
     let prompt = if provider == "claude" {
         if kah_claude::paste::body(prompt).is_none()
             && kah_claude::paste::content_start(prompt) != prompt
-            && kah_claude::paste::content_start(prompt).starts_with("[kah-relay]")
+            && ["[kah-relay]", "[kah-user]"]
+                .iter()
+                .any(|prefix| kah_claude::paste::content_start(prompt).starts_with(prefix))
         {
             return Err("RELAY_NATIVE_FRAME stage=receive".into());
         }
@@ -23,6 +25,9 @@ pub fn handle(binding: &Binding, input: &Value, provider: &str) -> Result<()> {
     } else {
         prompt
     };
+    if receive_user(binding, prompt)? {
+        return Ok(());
+    }
     let Some(first) = prompt
         .lines()
         .next()
@@ -56,4 +61,17 @@ pub fn handle(binding: &Binding, input: &Value, provider: &str) -> Result<()> {
         &json!({"receipt":receipt.id,"receiver":binding.session,"source":receipt.quote.source,"paraphraseRole":"delegate","paraphraseSupported":receipt.supported}),
     )?;
     Ok(())
+}
+
+fn receive_user(binding: &Binding, prompt: &str) -> Result<bool> {
+    let Some(message) = kah_observer::relayed_user::Message::parse(prompt)? else {
+        return Ok(false);
+    };
+    let endpoint = relay_store::endpoint(&binding.session)?;
+    message.accept(
+        &RunStore::default_state_root()?,
+        &binding.session,
+        endpoint.source_provider()?,
+    )?;
+    Ok(true)
 }

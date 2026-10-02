@@ -65,7 +65,7 @@ fn mine_claude_observer_and_native_edits() {
     terminal.wait_exit(false);
     drop(terminal);
     fs::write(fixture.evidence.join("mine-observer.json"), serde_json::to_vec_pretty(&json!({
-        "version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"haiku","fixtureEffort":"low",
+        "version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low",
         "realTui":true,"nativeWrite":true,"verbatimSteering":true,"asideExcluded":true,
         "judge":"jev","judgeCalls":state.judgments.len(),"observerGap":false,
         "resume":"not yet proven","subagents":"not yet proven"})).unwrap()).unwrap();

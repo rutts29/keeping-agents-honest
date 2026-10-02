@@ -92,7 +92,7 @@ fn configure(
 
 fn binding(home: &Path, project: &Path, args: &Arguments) -> Result<Binding> {
     let config = CompactorConfig::new(
-        args.observer_model.as_deref().unwrap_or("gpt-6-luna"),
+        args.observer_model.as_deref().unwrap_or("gpt-6.1-sol"),
         Some(args.observer_effort.as_deref().unwrap_or("low")),
     )?;
     Ok(Binding {

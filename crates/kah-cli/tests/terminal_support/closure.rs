@@ -26,7 +26,7 @@ fn journey(home: &Path, entry: &str) -> Value {
     let command = format!(
         "bash --noprofile -ic {}",
         quote(&format!(
-            "cd {}; {entry} --model gpt-6-sol --no-alt-screen {}",
+            "cd {}; {entry} --model gpt-6.1-sol --no-alt-screen {}",
             quote(fixture.project.to_str().unwrap()),
             quote("aside: Initialize this disposable session; reply READY without tools.")
         ))

@@ -53,9 +53,24 @@ fn deliver(
     let base = RunStore::default_state_root()?;
     let overlay = crate::session_policy::saved(&base, session)?
         .map(|p| p.overlay.join("app-server-control/app-server-control.sock"));
+    let endpoint = crate::relay_store::endpoint(session).ok();
+    let embedded = endpoint
+        .as_ref()
+        .is_some_and(|e| e.provider == "claude" || overlay.is_none());
     let socket =
         overlay.unwrap_or_else(|| home.join(".codex/app-server-control/app-server-control.sock"));
-    let mut client = Control::connect_daemon(&socket, Duration::from_secs(20))?;
+    if user && (!socket.exists() || embedded) {
+        println!("{}", crate::user_steer::deliver(session, text, receipt)?);
+        return Ok(());
+    }
+    let mut client = match Control::connect_daemon(&socket, Duration::from_secs(20)) {
+        Ok(client) => client,
+        Err(_) if user => {
+            println!("{}", crate::user_steer::deliver(session, text, receipt)?);
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
     let result = delivery::send(&RunStore::default_state_root()?, &message, &mut client)?;
     println!("{result}");
     Ok(())

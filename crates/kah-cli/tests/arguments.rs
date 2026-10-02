@@ -34,13 +34,13 @@ fn observer_choices_are_separate_from_the_main_model_and_default_on() {
     assert!(!parse(&[]).no_observer);
     let args = parse(&[
         "--observer-model",
-        "gpt-6-luna",
+        "gpt-6.1-sol",
         "--observer-effort",
         "low",
         "--model",
         "chosen",
     ]);
-    assert_eq!(args.observer_model.as_deref(), Some("gpt-6-luna"));
+    assert_eq!(args.observer_model.as_deref(), Some("gpt-6.1-sol"));
     assert_eq!(args.observer_effort.as_deref(), Some("low"));
     assert_eq!(args.native, vec!["--model", "chosen"]);
     assert!(parse(&["--no-observer"]).no_observer);

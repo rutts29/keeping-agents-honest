@@ -45,7 +45,7 @@ impl Fixture {
             project: self.project.clone(),
             codex_home: self.home.join(".codex"),
             native: self.home.join("codex"),
-            model: "gpt-6-luna".into(),
+            model: "gpt-6.1-sol".into(),
             effort: "low".into(),
             timeout_secs: 1,
             judge: Backend::Jev,

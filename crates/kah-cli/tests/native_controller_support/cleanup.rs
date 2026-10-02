@@ -1,6 +1,8 @@
 use super::*;
 use kah_observer::session;
 use sha2::{Digest, Sha256};
+#[path = "cleanup_tests.rs"]
+mod tests;
 
 pub fn cleanup(root: &Path) {
     let Ok(bytes) = fs::read(root.join("cleanup.json")) else {
@@ -33,7 +35,7 @@ pub fn cleanup(root: &Path) {
     cleanup_native(&base, &record);
     if saved["extraClaudeProject"] == true {
         assert_eq!(record.native.as_ref().unwrap().provider, "claude");
-        purge(&record.project, false);
+        purge(&record.project);
     }
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let hash = format!(
@@ -51,9 +53,9 @@ pub fn cleanup(root: &Path) {
         needs_creation: false,
     };
     let _ = fs::remove_dir_all(kah_cli::claude_setup::runtime_directory(&project).unwrap());
-    fs::remove_dir_all(record.worktree.parent().unwrap()).unwrap();
-    fs::remove_dir_all(Store::path(&base.join("runs"), id).unwrap()).unwrap();
-    fs::remove_dir_all(source).unwrap();
+    remove_owned(&source);
+    remove_owned(record.worktree.parent().unwrap());
+    remove_owned(&Store::path(&base.join("runs"), id).unwrap());
 }
 fn cleanup_native(base: &Path, record: &Record) {
     let native = record.native.as_ref().unwrap();
@@ -68,10 +70,10 @@ fn cleanup_native(base: &Path, record: &Record) {
     }
     if native.provider == "claude" {
         // Only the exact fixture worktree just verified against its source/run.
-        purge(&record.worktree, native.session.is_none());
+        purge(&record.worktree);
     }
 }
-fn purge(project: &Path, allow_absent: bool) {
+fn purge(project: &Path) {
     let output = Command::new("claude")
         .args(["project", "purge", "--yes"])
         .arg(project)
@@ -82,15 +84,27 @@ fn purge(project: &Path, allow_absent: bool) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let absent = format!(
-        "No Claude Code project state found for {} under {}.",
-        project.display(),
-        std::env::var("HOME").unwrap() + "/.claude"
-    );
     assert!(
-        output.status.success() || allow_absent && text.trim() == absent,
+        output.status.success() || already_purged(project, &text),
         "fixture purge failed: {text}"
     );
+}
+
+fn already_purged(project: &Path, text: &str) -> bool {
+    text.trim()
+        == format!(
+            "No Claude Code project state found for {} under {}.",
+            project.display(),
+            std::env::var("HOME").unwrap() + "/.claude"
+        )
+}
+
+fn remove_owned(path: &Path) {
+    match fs::remove_dir_all(path) {
+        Ok(()) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => panic!("owned fixture cleanup failed for {path:?}: {error}"),
+    }
 }
 
 fn cleanup_session(base: &Path, record: &Record, id: &str) {

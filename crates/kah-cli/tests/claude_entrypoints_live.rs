@@ -78,14 +78,14 @@ fn claude_herdr_and_new_project() {
         "global Claude settings changed"
     );
     fs::write(f.evidence.join("herdr-new-project.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
-        "passed":true,"fixtureModel":"haiku","agent":capture["pane"]["agent"],"sessionIdentityMatched":true,"states":capture["states"],
+        "passed":true,"fixtureModel":"claude-sonnet-5-5","agent":capture["pane"]["agent"],"sessionIdentityMatched":true,"states":capture["states"],
         "newProjectFirstCommit":String::from_utf8(commit.stdout).unwrap().trim(),"guidanceFilesPresent":true,"nativeWrite":true,"observerGap":false,
         "globalSettingsUnchanged":true})).unwrap()).unwrap();
 }
 
 fn launch(f: &Fixture, probe: &herdr_probe::Probe) -> String {
     format!(
-        "test \"$HERDR_ENV\" = 1 && (KAH_HERDR_CAPTURE={} KAH_HERDR_MARKER={} {} --exact herdr_capture_entrypoint --nocapture > {} 2>&1 &) && {} --agent claude mine {} --model haiku --effort low -- --session-id {} --permission-mode acceptEdits",
+        "test \"$HERDR_ENV\" = 1 && (KAH_HERDR_CAPTURE={} KAH_HERDR_MARKER={} {} --exact herdr_capture_entrypoint --nocapture > {} 2>&1 &) && {} --agent claude mine {} --model claude-sonnet-5-5 --effort low -- --session-id {} --permission-mode acceptEdits",
         quote(probe.root.join("capture.json").to_str().unwrap()),
         quote(f.project().join("herdr-proof.txt").to_str().unwrap()),
         quote(std::env::current_exe().unwrap().to_str().unwrap()),

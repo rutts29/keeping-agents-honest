@@ -46,7 +46,7 @@ pub fn deliver(receipt: &Receipt) -> Result<Value> {
     herdr(socket, &["agent", "prompt", pane, &receipt.message()])?;
     Ok(json!({"status":"submitted","transport":"herdr","receiverAcknowledgmentRequired":true}))
 }
-fn herdr(socket: &Path, arguments: &[&str]) -> Result<Value> {
+pub(crate) fn herdr(socket: &Path, arguments: &[&str]) -> Result<Value> {
     let output = Command::new("herdr")
         .env("HERDR_SOCKET_PATH", socket)
         .args(arguments)

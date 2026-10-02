@@ -87,5 +87,5 @@ fn private_completion_archive_stays_outside_native_tools() {
         .trim()
         .to_owned();
     version.verify(&json!(installed));
-    fs::write(f.evidence.join("archive-privacy.json"),serde_json::to_vec_pretty(&json!({"version":installed,"fixtureModel":"haiku","fixtureEffort":"low","nativeReadDeniedThroughSymlink":true,"bashArchiveHidden":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
+    fs::write(f.evidence.join("archive-privacy.json"),serde_json::to_vec_pretty(&json!({"version":installed,"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","nativeReadDeniedThroughSymlink":true,"bashArchiveHidden":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }

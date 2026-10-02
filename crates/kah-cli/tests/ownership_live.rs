@@ -44,7 +44,7 @@ fn ownership_claude_native_and_gvisor() {
     );
     save(
         "claude-ownership.json",
-        json!({"version":version("claude"),"domain":"research-offline","fixtureModel":"haiku","fixtureEffort":"low","proof":proof,"globalConfigUnchanged":true,"passed":true}),
+        json!({"version":version("claude"),"domain":"research-offline","fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","proof":proof,"globalConfigUnchanged":true,"passed":true}),
     );
 }
 
@@ -81,7 +81,7 @@ fn ownership_codex_native_and_gvisor() {
     assert_eq!(before, fs::read(home.join(".codex/config.toml")).unwrap());
     save(
         "codex-ownership.json",
-        json!({"version":version("codex"),"domain":"research-offline","fixtureModel":"gpt-6-sol","fixtureEffort":"low","proof":proof,"globalConfigUnchanged":true,"passed":true}),
+        json!({"version":version("codex"),"domain":"research-offline","fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","proof":proof,"globalConfigUnchanged":true,"passed":true}),
     );
 }
 

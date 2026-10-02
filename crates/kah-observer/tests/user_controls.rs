@@ -37,7 +37,7 @@ impl Fixture {
             project: root.clone(),
             codex_home: "/unused".into(),
             native: "/unused".into(),
-            model: "gpt-6-luna".into(),
+            model: "gpt-6.1-sol".into(),
             effort: "low".into(),
             timeout_secs: 45,
             judge: Backend::Jev,

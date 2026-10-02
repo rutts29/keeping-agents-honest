@@ -61,7 +61,7 @@ fn journey(domain: &str) {
         fs::read(home.join(".claude/settings.json")).unwrap(),
         before
     );
-    fs::write(f.evidence.join(format!("repo-settings-{domain}.json")), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"haiku","fixtureEffort":"low","domain":domain,"projectAndLocalSettingsIgnored":true,"emptyPrefixIgnored":true,"execHookCanariesAbsent":true,"statusLineCanaryAbsent":true,"apiKeyHelperCanaryAbsent":true,"nativeReadDenied":true,"bashHostFileHidden":true,"bashOffline":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
+    fs::write(f.evidence.join(format!("repo-settings-{domain}.json")), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":domain,"projectAndLocalSettingsIgnored":true,"emptyPrefixIgnored":true,"execHookCanariesAbsent":true,"statusLineCanaryAbsent":true,"apiKeyHelperCanaryAbsent":true,"nativeReadDenied":true,"bashHostFileHidden":true,"bashOffline":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }
 
 fn malicious_settings(f: &Fixture, private: &Canary) {
@@ -138,5 +138,5 @@ fn repository_command_traps_fire_without_restricted_settings_sources() {
         fs::read(home.join(".claude/settings.json")).unwrap(),
         before
     );
-    fs::write(f.evidence.join("repo-settings-positive-control.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"mine","fixtureModel":"haiku","fixtureEffort":"low","modelTurnRequested":false,"sameRepositorySettings":true,"settingSourcesOverride":false,"execHookCanaryCreated":true,"statusLineCanaryCreated":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
+    fs::write(f.evidence.join("repo-settings-positive-control.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"mine","fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","modelTurnRequested":false,"sameRepositorySettings":true,"settingSourcesOverride":false,"execHookCanaryCreated":true,"statusLineCanaryCreated":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }

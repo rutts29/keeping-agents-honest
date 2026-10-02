@@ -169,7 +169,7 @@ fn configure_observation(
     args: &Arguments,
 ) -> Result<Option<String>> {
     let handler = home.join(".local/bin/kah");
-    let model = args.observer_model.as_deref().unwrap_or("gpt-6-luna");
+    let model = args.observer_model.as_deref().unwrap_or("gpt-6.1-sol");
     let effort = args.observer_effort.as_deref().unwrap_or("low");
     let config = kah_observer::compaction::CompactorConfig::new(model, Some(effort))?;
     let binding = kah_observer::session::Binding {

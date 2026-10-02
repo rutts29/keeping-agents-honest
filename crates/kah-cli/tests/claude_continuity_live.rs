@@ -115,7 +115,7 @@ fn mine_claude_native_subagent() {
     write(
         &f,
         "subagents.json",
-        json!({"version":version,"passed":true,"fixtureModel":"haiku",
+        json!({"version":version,"passed":true,"fixtureModel":"claude-sonnet-5-5",
         "nativeAgentTool":true,"childTranscriptCount":f.child_transcripts(),"childFileCreated":true,
         "authoritativeUserInputs":inputs.len(),"parentBindingPreserved":true,"observerGap":false}),
     );

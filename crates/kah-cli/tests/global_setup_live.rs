@@ -84,7 +84,7 @@ fn journey(domain: &str) {
         "global hooks changed"
     );
     let evidence = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
-    fs::write(evidence.join(format!("codex-global-{domain}.json")),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"gpt-6-sol","fixtureEffort":"low","domain":domain,"inventory":inventory,"mcp":proof,"child":child,"nativeEdits":true,"globalConfigUnchanged":true,"passed":true})).unwrap()).unwrap();
+    fs::write(evidence.join(format!("codex-global-{domain}.json")),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","domain":domain,"inventory":inventory,"mcp":proof,"child":child,"nativeEdits":true,"globalConfigUnchanged":true,"passed":true})).unwrap()).unwrap();
 }
 
 fn child_proof(reader: &mut Control, turn: &Value, f: &mut fixture::Fixture) -> Value {

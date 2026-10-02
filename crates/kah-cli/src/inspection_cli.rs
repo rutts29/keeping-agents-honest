@@ -65,6 +65,11 @@ fn print_ledger(state: &State) -> Result<()> {
     println!("Goal: {}", recovered.history.goal().text);
     for item in recovered.history.intents().values() {
         println!("- {} ({}, {:?})", item.text, item.id, item.lifecycle);
+        for source in &item.introduced_by {
+            if let Some(relayer) = &source.relayer {
+                println!("  origin: relayed; relayer: {relayer}");
+            }
+        }
         if item.review_required || !item.uncertain_supersedes.is_empty() {
             println!(
                 "  Uncertain replacement; retained with: {:?}",

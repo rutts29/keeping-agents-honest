@@ -27,7 +27,7 @@ fn record() -> Record {
         project: PathBuf::from("/fixture/project"),
         domain: "mine".into(),
         worktree: PathBuf::from("/fixture/run"),
-        model: Some("gpt-6-sol".into()),
+        model: Some("gpt-6.1-sol".into()),
         effort: Some("high".into()),
         control: RunControl::new("Implement sum", Limits::default()).unwrap(),
     }
@@ -43,7 +43,7 @@ fn steering_survives_reopen_and_two_writers_cannot_overwrite_each_other() {
     drop(store);
     let restored = Store::open(&f.0, "run-one").unwrap().load().unwrap();
     assert_eq!(restored.control.inputs()[1].text, "Keep the API");
-    assert_eq!(restored.model.as_deref(), Some("gpt-6-sol"));
+    assert_eq!(restored.model.as_deref(), Some("gpt-6.1-sol"));
     assert_eq!(restored.effort.as_deref(), Some("high"));
 }
 #[test]

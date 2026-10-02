@@ -5,7 +5,7 @@ use std::{
     os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::PathBuf,
 };
-pub(super) struct Receipt {
+pub struct Receipt {
     directory: PathBuf,
     digest: String,
     pub state: String,

@@ -14,7 +14,7 @@ fn supplied_worker_evidence_cannot_be_attached_to_another_session() {
         project: project.clone(),
         codex_home: PathBuf::from("/unused"),
         native: PathBuf::from("/unused"),
-        model: "gpt-6-luna".into(),
+        model: "gpt-6.1-sol".into(),
         effort: "low".into(),
         timeout_secs: 1,
         judge: Backend::Jev,

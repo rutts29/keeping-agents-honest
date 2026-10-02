@@ -31,7 +31,7 @@ fn claude_interactive_names() {
         } else {
             vec![]
         };
-        let mut terminal = f.start_with(false, "haiku", "low", &extra);
+        let mut terminal = f.start_with(false, "claude-sonnet-5-5", "low", &extra);
         f.ready(&mut terminal);
         let task = "steer: Reply NAMING_OK. No tools, edits or subagents.";
         f.prompt(&mut terminal, task);
@@ -73,7 +73,7 @@ fn claude_interactive_names() {
                 if explicit { "explicit" } else { "automatic" }
             ),
             "claude",
-            json!({"nativeTitle":expected,"firstPromptNaming":!explicit,"explicitNamePreserved":explicit,"resumePreservesTitle":true,"fixtureModel":"haiku","fixtureEffort":"low"}),
+            json!({"nativeTitle":expected,"firstPromptNaming":!explicit,"explicitNamePreserved":explicit,"resumePreservesTitle":true,"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low"}),
         );
     }
 }
@@ -135,7 +135,7 @@ fn codex_interactive_names() {
     save(
         "codex.json",
         "codex",
-        json!({"nativeTitle":expected,"firstTurnNaming":true,"userRenamePreserved":true,"overlayReplacementRepaired":true,"relaunchPreservesNewestGlobalName":true,"fixtureModel":"gpt-6-sol","fixtureEffort":"low","globalConfigUnchanged":true}),
+        json!({"nativeTitle":expected,"firstTurnNaming":true,"userRenamePreserved":true,"overlayReplacementRepaired":true,"relaunchPreservesNewestGlobalName":true,"fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","globalConfigUnchanged":true}),
     );
 }
 fn save(file: &str, agent: &str, mut value: Value) {

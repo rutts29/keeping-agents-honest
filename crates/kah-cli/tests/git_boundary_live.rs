@@ -43,8 +43,8 @@ fn git_controls_stay_host_owned() {
             &format!("git-controls-{domain}.json"),
             json!({
                 "claudeVersion":version("claude"),"codexVersion":version("codex"),
-                "fixtureModel":"haiku","fixtureEffort":"low","domain":domain,
-                "codexFixtureModel":"gpt-6-sol","codexFixtureEffort":"low",
+                "fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":domain,
+                "codexFixtureModel":"gpt-6.1-sol","codexFixtureEffort":"low",
                 "fsmonitorAndPagerChangesDenied":true,"hookWriteDenied":true,
                 "configWorktreeAndCommondirWritesDenied":true,"gitDirectoryReplacementDenied":true,
                 "nativeClaudeWriteDenied":true,"sandboxCommitSucceeded":true,

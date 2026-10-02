@@ -41,7 +41,7 @@ impl Fixture {
             name,
             "--no-observer".into(),
             "--model".into(),
-            "gpt-6-luna".into(),
+            "gpt-6.1-sol".into(),
             "--effort".into(),
             "low".into(),
         ])

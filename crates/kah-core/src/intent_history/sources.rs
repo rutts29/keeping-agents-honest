@@ -82,6 +82,12 @@ pub enum SourceRole {
     SystemObservation,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceOrigin {
+    Relayed,
+}
+
 /// A private, source-linked reference to an imported provider record.
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SourceRef {
@@ -92,6 +98,10 @@ pub struct SourceRef {
     pub record: String,
     pub role: SourceRole,
     pub content_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<SourceOrigin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relayer: Option<String>,
 }
 
 impl fmt::Debug for SourceRef {
@@ -121,6 +131,8 @@ impl SourceRef {
             record: record.into(),
             role,
             content_digest: content_digest.into(),
+            origin: None,
+            relayer: None,
         }
     }
 
@@ -132,6 +144,15 @@ impl SourceRef {
     }
 
     pub fn validate(&self) -> Result<(), HistoryError> {
+        if self.origin.is_some() != self.relayer.is_some()
+            || self.origin.is_some()
+                && (self.role != SourceRole::User
+                    || self.relayer.as_ref().is_none_or(|s| s.is_empty()))
+        {
+            return Err(HistoryError::InvalidSourceRef {
+                field: "relayed user provenance",
+            });
+        }
         non_empty(&self.session, "source session")?;
         non_empty(&self.record, "source record")?;
         non_empty(&self.content_digest, "source content digest")

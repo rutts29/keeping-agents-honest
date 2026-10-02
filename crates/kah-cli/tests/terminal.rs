@@ -37,7 +37,10 @@ fn terminal_entrypoints_preserve_project_policy() {
     let prompt = "Use native exec_command once to run: pwd; test ! -e /home/example/.codex/auth.json && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create terminal-proof.txt containing TERMINAL_WORKS. Disposable launcher test: no other tools, subagents, installs or commits. Report and stop.";
     let command = shell(
         &fixture.project,
-        &format!("codex --model gpt-6-sol --no-alt-screen {}", quote(prompt)),
+        &format!(
+            "codex --model gpt-6.1-sol --no-alt-screen {}",
+            quote(prompt)
+        ),
     );
     let mut first = Terminal::start(&command, &fixture.stderr);
     first.wait_for("Open restricted");
@@ -129,7 +132,7 @@ fn in_process_resume_rejects_cross_domain_history() {
         Arguments::parse(vec![
             "--no-observer".into(),
             "--model".into(),
-            "gpt-6-luna".into(),
+            "gpt-6.1-sol".into(),
             "--effort".into(),
             "low".into(),
         ])
@@ -147,7 +150,7 @@ fn in_process_resume_rejects_cross_domain_history() {
     drop(client);
     let (_, mut mine) = fixture::prepare(&home, "mine", false);
     let command = format!(
-        "cd {} && {} --no-observer --yolo --model gpt-6-luna --effort low --no-alt-screen 'Reply MINE_READY. No tools.'",
+        "cd {} && {} --no-observer --yolo --model gpt-6.1-sol --effort low --no-alt-screen 'Reply MINE_READY. No tools.'",
         quote(mine.project.to_str().unwrap()),
         quote(env!("CARGO_BIN_EXE_kah"))
     );

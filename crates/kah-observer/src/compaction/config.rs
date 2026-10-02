@@ -9,7 +9,7 @@ pub struct CompactorConfig<'a> {
 impl Default for CompactorConfig<'_> {
     fn default() -> Self {
         Self {
-            model: "gpt-6-luna",
+            model: "gpt-6.1-sol",
             reasoning: "low",
             timeout: std::time::Duration::from_secs(45),
         }
@@ -19,9 +19,10 @@ impl Default for CompactorConfig<'_> {
 impl<'a> CompactorConfig<'a> {
     pub fn new(model: &'a str, reasoning: Option<&'a str>) -> Result<Self, String> {
         let model = match model {
-            "luna" => "gpt-6-luna",
-            "sol" => "gpt-6-sol",
-            "terra" => "gpt-5.6-terra",
+            // Existing native sessions can retain an older observer binding in
+            // their environment. Honor the new floor without launching it.
+            "luna" | "sol" | "terra" | "gpt-6-luna" | "gpt-6-sol" | "gpt-reserve"
+            | "gpt-5.6-terra" => "gpt-6.1-sol",
             other => other,
         };
         let reasoning = reasoning.unwrap_or("low");

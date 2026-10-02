@@ -121,7 +121,7 @@ impl Restricted {
             project: self.fixture.project().into(),
             codex_home: self.home.join(".codex"),
             native: self.home.join(".local/bin/codex"),
-            model: "gpt-6-luna".into(),
+            model: "gpt-6.1-sol".into(),
             effort: "low".into(),
             timeout_secs: 45,
             judge: Backend::Jev,
@@ -141,7 +141,7 @@ impl Restricted {
             .push(json!({"hooks":[{"type":"command","command":hook}]}));
         let mcp = json!({"mcpServers":{"fixture":{"command":"/usr/bin/node","args":[self.fixture.project().join("fixture-server.js"),self.canary]}}});
         let command = format!(
-            "cd {} && env -u CODEX_THREAD_ID KAH_CLAUDE_BINDING={} CLAUDE_CODE_SHELL_PREFIX={} CLAUDE_CODE_TMPDIR={} {} --model haiku --effort low --session-id {} --setting-sources '' --settings {} --strict-mcp-config --mcp-config {}",
+            "cd {} && env -u CODEX_THREAD_ID KAH_CLAUDE_BINDING={} CLAUDE_CODE_SHELL_PREFIX={} CLAUDE_CODE_TMPDIR={} {} --model claude-sonnet-5-5 --effort low --session-id {} --setting-sources '' --settings {} --strict-mcp-config --mcp-config {}",
             quote(self.fixture.project().to_str().unwrap()),
             quote(&serde_json::to_string(&binding).unwrap()),
             quote(self.prefix.to_str().unwrap()),

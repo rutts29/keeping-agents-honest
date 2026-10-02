@@ -72,7 +72,7 @@ fn claude_checks_inside_a_long_turn() {
     version.verify(&json!(installed));
     save(
         "claude",
-        json!({"version":installed,"fixtureModel":"haiku","fixtureEffort":"low","inTurnChecks":measured,"beforeEndTurn":true,"markerPreserved":true,"passed":true}),
+        json!({"version":installed,"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","inTurnChecks":measured,"beforeEndTurn":true,"markerPreserved":true,"passed":true}),
     );
 }
 #[test]
@@ -136,7 +136,7 @@ fn codex_checks_inside_a_long_turn() {
     version.verify(&json!(installed));
     save(
         "codex",
-        json!({"version":installed,"fixtureModel":"gpt-6-sol","fixtureEffort":"low","inTurnChecks":measured,"beforeTurnCompleted":true,"sidecarTurnStatus":turns["data"][0]["status"],"nativeRolloutStillOpen":true,"markerPreserved":true,"passed":true}),
+        json!({"version":installed,"fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","inTurnChecks":measured,"beforeTurnCompleted":true,"sidecarTurnStatus":turns["data"][0]["status"],"nativeRolloutStillOpen":true,"markerPreserved":true,"passed":true}),
     );
 }
 fn assert_open_rollout(path: &Path, turn: &str) {

@@ -36,7 +36,7 @@ fn journey(home: &Path, domain: &str, online: bool) -> Value {
     }
     let mut client = Client::start_command(launch.command(true), &f.stderr);
     let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":!online}));
-    assert_eq!(start["model"], "gpt-6-sol");
+    assert_eq!(start["model"], "gpt-6.1-sol");
     assert_eq!(start["reasoningEffort"], "low");
     let id = start["thread"]["id"].as_str().unwrap();
     if online {

@@ -20,7 +20,7 @@ pub fn research() {
     let initial_commit = baseline(&home, &f);
     let mut client = Client::start_command(launch.command(true), &f.stderr);
     let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":true}));
-    assert_eq!(start["model"], "gpt-6-sol");
+    assert_eq!(start["model"], "gpt-6.1-sol");
     assert_eq!(start["reasoningEffort"], "low");
     let config = client.request(
         "config/read",

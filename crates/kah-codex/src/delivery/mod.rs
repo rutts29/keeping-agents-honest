@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 mod receipt;
-use receipt::Receipt;
+pub use receipt::Receipt;
 
 pub struct Message {
     pub session: String,

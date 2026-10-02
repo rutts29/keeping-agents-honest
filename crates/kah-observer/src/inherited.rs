@@ -1,5 +1,6 @@
-//! Host-verified user quotes, interleaved with native intake without losing origin.
-//! Callers must verify the native source and delivery receipt before accepting one.
+//! Host-authorized user input, interleaved with native intake without losing origin.
+//! Verified quotes retain their native source; explicit host user relays carry
+//! origin=relayed instead of claiming an independently verified original quote.
 use crate::{
     intake::Input,
     session::{Binding, Store},
@@ -22,6 +23,7 @@ pub struct Quote {
 }
 impl Quote {
     pub fn validate(&self) -> Result<(), String> {
+        self.source.validate().map_err(|e| e.to_string())?;
         let record = BundleRecord::new(&self.source.record, SourceRole::User, &self.text)
             .map_err(|e| e.to_string())?;
         if self.source.role != SourceRole::User

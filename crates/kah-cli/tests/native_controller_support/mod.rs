@@ -121,13 +121,8 @@ fn version(home: &Path, agent: &str) -> String {
 }
 fn fixture_model(agent: &str) -> &'static str {
     match agent {
-        "claude" => "haiku",
-        _ if std::env::var_os("KAH_GATE_COMPLETION_TRIAL").is_some()
-            || std::env::var_os("KAH_GATE_PRIVATE_NOTES").is_some() =>
-        {
-            "gpt-6-luna"
-        }
-        _ => "gpt-6-sol",
+        "claude" => "claude-sonnet-5-5",
+        _ => "gpt-6.1-sol",
     }
 }
 fn fixture_project(home: &Path, name: &str, domain: Domain) -> Project {

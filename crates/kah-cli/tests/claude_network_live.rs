@@ -25,7 +25,7 @@ fn claude_search_and_mcp_with_offline_bash() {
     let mcp = fixture_mcp(&f, &home);
     let mut terminal = f.start_with(
         false,
-        "haiku",
+        "claude-sonnet-5-5",
         "low",
         &[
             "--mcp-config",
@@ -70,7 +70,7 @@ fn claude_search_and_mcp_with_offline_bash() {
     );
     let evidence = f.evidence.clone();
     drop(f);
-    fs::write(evidence.join("claude-network.json"),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"haiku","fixtureEffort":"low","domain":"untrusted-offline","hostedSearch":true,"bashOffline":true,"onlineMcp":proof,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
+    fs::write(evidence.join("claude-network.json"),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":"untrusted-offline","hostedSearch":true,"bashOffline":true,"onlineMcp":proof,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }
 
 fn fixture_mcp(f: &Fixture, home: &std::path::Path) -> String {

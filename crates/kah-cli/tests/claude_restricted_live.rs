@@ -56,7 +56,7 @@ fn claude_restricted_native_flow() {
     drop(terminal);
     assert_eq!(fs::read(settings).unwrap(), before);
     fs::write(f.fixture.evidence.join("claude-prefix-flow.json"),serde_json::to_vec_pretty(&json!({
-        "version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"research-offline","fixtureModel":"haiku","fixtureEffort":"low",
+        "version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"research-offline","fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low",
         "nativeReadEditWrite":true,"bashInGvisor":true,"mcp":proof,"shellHookInGvisor":true,"deniedSymlinkContentAbsent":true,
         "extraPermissionReplies":0,"globalSettingsUnchanged":true,"passed":true
     })).unwrap()).unwrap();

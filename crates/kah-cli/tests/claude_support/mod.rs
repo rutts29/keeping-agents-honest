@@ -52,7 +52,7 @@ impl Fixture {
         }
     }
     pub fn start(&self, resume: bool) -> Terminal {
-        self.start_with(resume, "haiku", "low", &[])
+        self.start_with(resume, "claude-sonnet-5-5", "low", &[])
     }
     pub fn start_with(&self, resume: bool, model: &str, effort: &str, extra: &[&str]) -> Terminal {
         let native = if resume {

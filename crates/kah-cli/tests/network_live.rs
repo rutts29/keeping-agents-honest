@@ -57,7 +57,7 @@ fn network_search_and_mcp_do_not_require_project_egress() {
     assert_eq!(before, globals(&home));
     save(
         "split-egress.json",
-        json!({"version":version(),"fixtureModel":"gpt-6-sol","fixtureEffort":"low","domain":"research-offline","nativeHostedSearch":true,"shellNetworkBlocked":true,"onlineMcp":proof,"globalConfigUnchanged":true,"passed":true}),
+        json!({"version":version(),"fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","domain":"research-offline","nativeHostedSearch":true,"shellNetworkBlocked":true,"onlineMcp":proof,"globalConfigUnchanged":true,"passed":true}),
     );
 }
 
@@ -108,7 +108,7 @@ fn network_untrusted_online_survives_resume() {
     assert_eq!(before, globals(&home));
     save(
         "untrusted-online.json",
-        json!({"version":version(),"fixtureInitialModel":"gpt-6-sol","fixtureInitialEffort":"low","domain":"untrusted-online","egressPassed":true,"resumeEgressPassed":true,"resumeWithoutChoiceOverrides":true,"globalConfigUnchanged":true,"passed":true}),
+        json!({"version":version(),"fixtureInitialModel":"gpt-6.1-sol","fixtureInitialEffort":"low","domain":"untrusted-online","egressPassed":true,"resumeEgressPassed":true,"resumeWithoutChoiceOverrides":true,"globalConfigUnchanged":true,"passed":true}),
     );
 }
 

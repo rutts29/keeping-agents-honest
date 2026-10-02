@@ -47,7 +47,11 @@ impl Store {
         if inbox.provider != provider {
             return Err("INHERITED_PROVIDER stage=intake".into());
         }
-        if let Some(old) = inbox.find(&quote.key()) {
+        if let Some(old) = inbox.quotes.iter().find(|old| {
+            old.source.provider == quote.source.provider
+                && old.source.session == quote.source.session
+                && old.source.record == quote.source.record
+        }) {
             if old.source == quote.source && old.text == quote.text {
                 return Ok(());
             }

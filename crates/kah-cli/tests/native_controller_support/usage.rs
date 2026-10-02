@@ -10,7 +10,7 @@ pub fn run(root: &Path, agent: &str) -> Value {
         &format!("kah-native-run-usage-{agent}-{}", std::process::id()),
         Domain::Research,
     );
-    let task = "This is an authorized native subagent fixture. Start exactly one native subagent and ask it to reply CHILD_OK without using tools. Use haiku for a Claude child, or gpt-6-luna if the Codex native tool exposes that choice. Wait for its reply. Then use your native file tool to create child-complete.txt containing DONE, and report. Do not push or deploy.";
+    let task = "This is an authorized native subagent fixture. Start exactly one native subagent and ask it to reply CHILD_OK without using tools. Use claude-sonnet-5-5 for a Claude child, or gpt-6.1-sol if the Codex native tool exposes that choice. Wait for its reply. Then use your native file tool to create child-complete.txt containing DONE, and report. Do not push or deploy.";
     let output = launch(
         &home,
         &project.root,

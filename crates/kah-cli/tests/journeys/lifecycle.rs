@@ -15,7 +15,7 @@ pub fn resume_and_loss() {
     let start = first.request("thread/start", json!({"cwd":f.project}));
     let id = start["thread"]["id"].as_str().unwrap();
     f.sessions.push(id.into());
-    assert_eq!(start["model"], "gpt-6-sol");
+    assert_eq!(start["model"], "gpt-6.1-sol");
     let turn = first.turn_with(id,"Native acceptance check: use exec_command once to print MODEL_SWITCH_WORKS, then native apply_patch to create resume-proof.txt containing PRESERVED. No other tools, no subagents, no commits. Report and stop.",Some("gpt-6-astra"),Some("low"));
     assert_eq!(turn["status"], "completed");
     assert_eq!(

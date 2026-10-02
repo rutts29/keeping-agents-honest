@@ -20,7 +20,7 @@ fn binding(id: &str, root: &std::path::Path) -> Binding {
         project: root.into(),
         codex_home: root.into(),
         native: root.join("codex"),
-        model: "gpt-6-luna".into(),
+        model: "gpt-6.1-sol".into(),
         effort: "low".into(),
         timeout_secs: 45,
     }

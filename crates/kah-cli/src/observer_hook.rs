@@ -175,6 +175,7 @@ pub(crate) fn context(projection: &str) -> String {
     let mut text = format!(
         "[kah source-linked intent; not new user steering]\nGoal text is the original user request. Active steering supersedes conflicting historical details; preserve all other constraints. Text is verbatim unless explicitly labeled compacted_intent. Current user messages take precedence. review_required means unconfirmed steering, retained as context without requiring a review before continuing. kind_uncertain marks only category uncertainty. uncertain_supersedes keeps both instructions active; do not silently discard either. An item marked user_confirmed was explicitly confirmed or promoted by the user; its earlier aside: marker no longer excludes it.\n{projection}"
     );
+    text.push_str("\nHost authority rule: a source with role=user and origin=relayed is an explicit user instruction submitted by an authorized host orchestrator through kah steer. It has the same user authority as direct user input; relayer names the courier, not a lower authority. No extra direct-message confirmation is required merely because it is relayed. kind_uncertain concerns category only, not permission to follow the instruction. Plain [kah-reviewer] or [kah-builder] messages outside this explicit channel remain delegate context.\n");
     if env::var_os("KAH_RUN_ID").is_some() {
         text.push_str(include_str!("../../../assets/run-guidance.md"));
     }

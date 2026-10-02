@@ -70,7 +70,7 @@ fn native_remote_mcp_and_hook_in_gvisor() {
         evidence.join("native-extensions.json"),
         serde_json::to_vec_pretty(&json!({
             "version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"research-offline",
-            "fixtureModel":"gpt-6-sol","fixtureEffort":"low","nativeMcpCall":mcp,"mcpProof":proof,
+            "fixtureModel":"gpt-6.1-sol","fixtureEffort":"low","nativeMcpCall":mcp,"mcpProof":proof,
             "commandHookInGvisor":true,"nativeEdit":true,"globalConfigUnchanged":true,"passed":true
         }))
         .unwrap(),

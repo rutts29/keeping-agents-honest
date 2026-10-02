@@ -18,7 +18,7 @@ fn claude_native_effort_choice() {
     let settings =
         std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".claude/settings.json");
     let before = fs::read(&settings).unwrap();
-    let mut terminal = f.start_with(false, "sonnet", "low", &[]);
+    let mut terminal = f.start_with(false, "claude-sonnet-5-5", "low", &[]);
     f.ready(&mut terminal);
     let offset = terminal.log_size();
     terminal.submit("/effort");
@@ -61,7 +61,7 @@ fn claude_native_effort_choice() {
         "global settings changed"
     );
     fs::write(f.evidence.join("effort.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
-        "passed":true,"fixtureInitialModel":"sonnet","fixtureInitialEffort":"low","nativeEffortControl":"/effort slider, Right then s (session only)",
+        "passed":true,"fixtureInitialModel":"claude-sonnet-5-5","fixtureInitialEffort":"low","nativeEffortControl":"/effort slider, Right then s (session only)",
         "observedModel":row["message"]["model"],"observedEffort":row["effort"],"observedPerTurnEffort":row["perTurnEffort"],"globalSettingsUnchanged":true})).unwrap()).unwrap();
 }
 

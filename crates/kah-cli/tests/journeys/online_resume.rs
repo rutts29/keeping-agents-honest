@@ -10,7 +10,7 @@ pub(super) fn verify(home: &Path, f: &Fixture, id: &str) -> Value {
     assert_eq!(launch.overlay, f.overlay);
     let mut client = Client::start_command(launch.command(true), &f.stderr);
     let resume=client.request("thread/resume",json!({"threadId":id,"cwd":f.project,"permissions":":danger-full-access","approvalPolicy":"never"}));
-    assert_eq!(resume["model"], "gpt-6-sol");
+    assert_eq!(resume["model"], "gpt-6.1-sol");
     let config = client.request(
         "config/read",
         json!({"cwd":f.project,"includeLayers":false}),

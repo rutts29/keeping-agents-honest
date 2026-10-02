@@ -1,5 +1,6 @@
 use kah_cli::{Arguments, run_pane::Pane};
 mod trace;
+mod user_steer;
 use kah_core::run_store::RunStore;
 use kah_observer::session::Store;
 use serde_json::{Value, json};
@@ -25,6 +26,9 @@ impl Drop for Panes {
     }
 }
 pub fn run(root: &Path) -> Value {
+    if std::env::var_os("KAH_GATE_USER_STEER").is_some() {
+        return user_steer::run(root);
+    }
     let socket = std::env::var("HERDR_SOCKET_PATH").unwrap();
     assert!(
         socket.contains("kah-gate-"),
@@ -74,7 +78,7 @@ pub fn run(root: &Path) -> Value {
     for (path, bytes) in before {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }
-    json!({"versions":versions(&home),"fixtureModels":{"codex":"gpt-6-sol/low","claude":"haiku/low"},"forward":forward,"reverse":reverse,"dispatch":dispatched,"privateHerdr":true,"globalConfigUnchanged":true,"passed":true})
+    json!({"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"forward":forward,"reverse":reverse,"dispatch":dispatched,"privateHerdr":true,"globalConfigUnchanged":true,"passed":true})
 }
 fn versions(home: &Path) -> Value {
     let versions = ["codex", "claude"].map(|agent| {
@@ -103,7 +107,7 @@ fn start_claude(home: &Path, fixture: &crate::claude_support::Fixture, root: &Pa
         "--agent".into(),
         "claude".into(),
         "--model".into(),
-        "haiku".into(),
+        "claude-sonnet-5-5".into(),
         "--effort".into(),
         "low".into(),
         "--".into(),

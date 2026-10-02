@@ -46,17 +46,7 @@ fn relay_and_dispatch() {
         pty::quote(std::env::current_exe().unwrap().to_str().unwrap()),
         pty::quote(probe.root.join("helper.log").to_str().unwrap())
     ));
-    let deadline = Instant::now() + Duration::from_secs(900);
-    let evidence = loop {
-        terminal.respond_to_cursor_queries();
-        if let Ok(bytes) = fs::read(probe.root.join("result.json")) {
-            break serde_json::from_slice::<Value>(&bytes).unwrap();
-        }
-        if Instant::now() >= deadline {
-            break json!({"passed":false,"failure":"relay helper timed out"});
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    };
+    let (evidence, reviewer_notified) = wait_evidence(&probe.root, &mut terminal);
     if evidence["passed"] != true {
         let path = PathBuf::from(format!("/tmp/kah-relay-failure-{}.log", std::process::id()));
         fs::copy(probe.root.join("helper.log"), &path).unwrap();
@@ -80,10 +70,60 @@ fn relay_and_dispatch() {
         versions[n].verify(&evidence["versions"][agent]);
     }
     fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join("relay-dispatch.json"),
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(if reviewer_notified {
+            "user-steer.json"
+        } else {
+            "relay-dispatch.json"
+        }),
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
+}
+
+fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> (Value, bool) {
+    let deadline = Instant::now() + Duration::from_secs(900);
+    let mut notified = false;
+    loop {
+        terminal.respond_to_cursor_queries();
+        if !notified && root.join("steer-ready.json").exists() {
+            notify_reviewer(root);
+            notified = true;
+        }
+        if let Ok(bytes) = fs::read(root.join("result.json")) {
+            return (serde_json::from_slice(&bytes).unwrap(), notified);
+        }
+        if Instant::now() >= deadline {
+            return (
+                json!({"passed":false,"failure":"relay helper timed out"}),
+                notified,
+            );
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+fn notify_reviewer(root: &std::path::Path) {
+    let data: Value =
+        serde_json::from_slice(&fs::read(root.join("steer-ready.json")).unwrap()).unwrap();
+    let commands = ["codex", "claude"]
+        .map(|agent| {
+            format!(
+                "kah steer {} {}",
+                data[agent].as_str().unwrap(),
+                pty::quote(data["text"].as_str().unwrap())
+            )
+        })
+        .join("\n");
+    let message = format!(
+        "[kah-builder] 5O-0 live fixture ready on a PRIVATE Herdr server. Please run these two host commands from your named kah-reviewer pane (new kah installed). This tests your relayer attribution; no --sender or registration needed.\n{commands}\nBoth are disposable embedded kah workers. I will verify their ledgers/tripwire and clean them up. Please send now; fixture waits 10 minutes."
+    );
+    assert!(
+        Command::new("herdr")
+            .args(["agent", "prompt", "kah-reviewer", &message])
+            .status()
+            .unwrap()
+            .success()
+    );
 }
 
 #[test]

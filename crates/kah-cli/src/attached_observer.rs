@@ -40,7 +40,7 @@ pub fn watch(home: &Path, project: &Path, session: &str, timeout_secs: u64) -> R
         project: project.clone(),
         codex_home: home.join(".codex"),
         native: native.clone(),
-        model: "gpt-6-luna".into(),
+        model: "gpt-6.1-sol".into(),
         effort: "low".into(),
         timeout_secs,
         judge: Backend::Jev,

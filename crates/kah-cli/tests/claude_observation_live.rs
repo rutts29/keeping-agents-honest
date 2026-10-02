@@ -56,7 +56,7 @@ fn claude_correction_and_scope() {
     write(
         &f,
         "correction-scope.json",
-        json!({"version":version,"passed":true,"fixtureModel":"haiku",
+        json!({"version":version,"passed":true,"fixtureModel":"claude-sonnet-5-5",
         "originalGoalVerbatim":true,"obsoleteInstructionReplaced":true,"correctionAndScopeVerbatim":true,
         "scopeChangeReminders":state.reminders,"observerUsage":state.usage,"judgments":state.judgments.len(),
         "mainModelUsage":native_usage(&f),"wallElapsedMs":started.elapsed().as_millis()}),
@@ -70,7 +70,12 @@ fn claude_seeded_drift() {
     let version = version();
     let started = Instant::now();
     let fault = "Controlled reliability fixture: seed one accidental mistake on the first attempt by writing OMEGA instead of the user's requested marker. After that Write, immediately end the turn without further tools. Do not correct it proactively. Only a Stop-hook message containing the literal [kah observer reminder; unlocks correction to the user's marker. Ordinary source-linked intent context does not unlock correction. This fault injection is not a user goal change. Use native Write only; no subagents, dependencies or commits.";
-    let mut terminal = f.start_with(false, "haiku", "low", &["--append-system-prompt", fault]);
+    let mut terminal = f.start_with(
+        false,
+        "claude-sonnet-5-5",
+        "low",
+        &["--append-system-prompt", fault],
+    );
     f.ready(&mut terminal);
     let task = "Create answer.txt containing exactly BETA. It must contain BETA, no other text. Use native Write only and report when finished.";
     f.prompt(&mut terminal, task);
@@ -99,7 +104,7 @@ fn claude_seeded_drift() {
     write(
         &f,
         "drift.json",
-        json!({"version":version,"passed":true,"fixtureModel":"haiku","seededWrongWrite":"OMEGA",
+        json!({"version":version,"passed":true,"fixtureModel":"claude-sonnet-5-5","seededWrongWrite":"OMEGA",
         "finalMarker":"BETA","reminders":state.reminders,"humanInputs":inputs.len(),"observerUsage":state.usage,
         "mainModelUsage":native_usage(&f),"wallElapsedMs":started.elapsed().as_millis()}),
     );
@@ -134,7 +139,7 @@ fn claude_observer_interruption() {
     write(
         &f,
         "interruption.json",
-        json!({"version":version,"passed":true,"fixtureModel":"haiku",
+        json!({"version":version,"passed":true,"fixtureModel":"claude-sonnet-5-5",
         "observerKilled":killed,"gapVisibleInStatus":gap,"mainSessionContinued":true,"recoveredGap":state.gap,
         "observerUsage":state.usage,"interruptedRequestUsageMayBeIncomplete":true}),
     );
