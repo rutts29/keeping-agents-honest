@@ -11,6 +11,8 @@ mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[path = "interactive_name_support/relaunch.rs"]
+mod relaunch;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -127,12 +129,13 @@ fn codex_interactive_names() {
         .unwrap();
     assert_eq!(read["thread"]["name"], "My own session");
     drop(reader);
+    relaunch::prove(&home, &f, &id);
     drop(f);
     assert_eq!(before, fs::read(home.join(".codex/config.toml")).unwrap());
     save(
         "codex.json",
         "codex",
-        json!({"nativeTitle":expected,"firstTurnNaming":true,"userRenamePreserved":true,"fixtureModel":"gpt-6-sol","fixtureEffort":"low","globalConfigUnchanged":true}),
+        json!({"nativeTitle":expected,"firstTurnNaming":true,"userRenamePreserved":true,"overlayReplacementRepaired":true,"relaunchPreservesNewestGlobalName":true,"fixtureModel":"gpt-6-sol","fixtureEffort":"low","globalConfigUnchanged":true}),
     );
 }
 fn save(file: &str, agent: &str, mut value: Value) {

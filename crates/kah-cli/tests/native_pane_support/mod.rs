@@ -30,6 +30,7 @@ impl Drop for Fixture {
             {
                 let _ = Command::new("codex")
                     .args(["delete", "--force", session])
+                    .env_remove("CODEX_HOME")
                     .env_remove("CODEX_THREAD_ID")
                     .output();
                 if let Some(run) = state.run_id

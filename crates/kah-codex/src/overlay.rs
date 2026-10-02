@@ -7,6 +7,7 @@ mod sandbox_hooks;
 pub use sandbox_hooks::sandbox_hooks;
 mod hook_file;
 mod owned_hooks;
+mod recovery;
 mod storage;
 pub use extensions::{route_mcp, wrap_hook_commands};
 pub use owned_hooks::{OwnedHook, install_owned_hooks, install_session_hook};

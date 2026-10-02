@@ -18,6 +18,7 @@ impl Drop for Fixture {
             cleanup_observer(&self.project, id);
             let _ = Command::new("/home/example/.local/bin/codex")
                 .args(["delete", "--force", id])
+                .env_remove("CODEX_HOME")
                 .env_remove("HERDR_ENV")
                 .env_remove("CODEX_THREAD_ID")
                 .output();

@@ -57,6 +57,7 @@ impl Drop for Fixture {
         for id in &self.ids {
             let _ = Command::new(self.home.join(".local/bin/codex"))
                 .args(["delete", "--force", id])
+                .env_remove("CODEX_HOME")
                 .env_remove("HERDR_ENV")
                 .env_remove("CODEX_THREAD_ID")
                 .output();

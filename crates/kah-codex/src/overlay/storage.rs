@@ -78,7 +78,17 @@ pub fn prepare(original: &Path, directory: &Path, policy: &Policy<'_>) -> Result
 
 fn share(source: &Path, target: &Path) -> Result<(), OverlayError> {
     match fs::symlink_metadata(target) {
-        Ok(_) if fs::read_link(target).map_err(io_error)? == source => Ok(()),
+        Ok(meta) if meta.file_type().is_symlink() => match fs::read_link(target) {
+            Ok(link) if link == source => Ok(()),
+            Err(error) if error.raw_os_error() == Some(libc::EINVAL) => {
+                super::recovery::repair(source, target)
+            }
+            _ => Err(OverlayError {
+                code: "OVERLAY_SHARED_PATH",
+                detail: format!("{target:?}: unexpected or unreadable link target"),
+            }),
+        },
+        Ok(meta) if meta.is_file() => super::recovery::repair(source, target),
         Ok(_) => Err(OverlayError {
             code: "OVERLAY_SHARED_PATH",
             detail: target.display().to_string(),

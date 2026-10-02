@@ -109,6 +109,7 @@ fn cleanup_session(base: &Path, record: &Record, id: &str) {
         assert!(
             Command::new("codex")
                 .args(["delete", "--force", id])
+                .env_remove("CODEX_HOME")
                 .env_remove("CODEX_THREAD_ID")
                 .output()
                 .unwrap()

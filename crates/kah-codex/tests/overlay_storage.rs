@@ -29,6 +29,31 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn replaced_session_index_is_merged_and_relinked_on_launch() {
+    let f = Fixture::new("replaced-index");
+    let original = f.0.join("original/session_index.jsonl");
+    let overlay = f.0.join("overlay/session_index.jsonl");
+    let old = r#"{"id":"a","thread_name":"old","updated_at":"2026-10-01T00:00:00Z"}"#;
+    let new = r#"{"id":"a","thread_name":"new","updated_at":"2026-10-02T00:00:00Z"}"#;
+    fs::write(&original, format!("{old}\n")).unwrap();
+    f.prepare().unwrap();
+    fs::remove_file(&overlay).unwrap();
+    fs::write(&overlay, format!("{new}\n")).unwrap();
+    f.prepare().unwrap();
+    assert_eq!(fs::read_link(&overlay).unwrap(), original);
+    let last: serde_json::Value = serde_json::from_str(
+        fs::read_to_string(&original)
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(last["thread_name"], "new");
+    f.prepare().unwrap();
+}
+
+#[test]
 fn native_restricted_launch_preserves_the_users_full_setup() {
     let f = Fixture::new("native-setup");
     let original = f.0.join("original");
