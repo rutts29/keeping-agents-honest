@@ -70,6 +70,7 @@ pub fn run(worker: &str) -> Result<()> {
         )?;
     }
     state.latest = Some(result);
+    super::redelivery::completed(&store, &request.id)?;
     state.pending = None;
     state.last_verified_turn = Some(request.turn.clone());
     if let Ok(tokens) = tokens {
@@ -192,6 +193,9 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
         return Ok(None);
     }
     let store = Store::open(worker)?;
+    if let Some(notice) = super::redelivery::take(&store)? {
+        return Ok(Some(notice));
+    }
     let path = store.directory.join("reminder.json");
     let Some(mut reminder) = super::state::read::<Value>(&path)? else {
         if let Some(notice) = super::preparation::notice(worker)? {

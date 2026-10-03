@@ -276,17 +276,26 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         &state.observer.workspace.join("inputs").join(&pending.id),
     )?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);
+    let number = super::redelivery::begin(
+        &store,
+        &request.id,
+        gap.as_ref().unwrap()["error"]
+            .as_str()
+            .unwrap_or("missing evidence report"),
+    )?;
     drop(store);
-    deliver(&home, &state, &prompt, true)?;
+    let delivery = deliver(&home, &state, &prompt, true);
     let store = Store::open(worker)?;
+    super::redelivery::outcome(
+        &store,
+        &request.id,
+        number,
+        delivery.as_ref().err().map(ToString::to_string),
+    )?;
+    delivery?;
     if super::state::read::<Value>(&gap_path)? == gap {
         std::fs::remove_file(gap_path)?;
     }
-    crate::unattended_report::save(
-        &store.directory,
-        "redelivery.json",
-        &json!({"request":request.id,"status":"submitted","at_ms":kah_observer::session::now_ms()}),
-    )?;
     Ok(())
 }
 

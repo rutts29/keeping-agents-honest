@@ -90,3 +90,47 @@ fn setup(worker: &str, home: &Path) -> State {
     )
     .unwrap()
 }
+
+#[test]
+fn repeated_failures_are_visible_without_limiting_or_dropping_attempts() {
+    use kah_cli::observer_review::redelivery;
+    let worker = format!("redelivery-notices-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    let error = "REVIEW_REPORT_MISSING stage=observer";
+    let first = redelivery::begin(&store, "review-repeat", error).unwrap();
+    redelivery::outcome(&store, "review-repeat", first, None).unwrap();
+    assert!(redelivery::take(&store).unwrap().is_none());
+    for number in 2..=5 {
+        assert_eq!(
+            redelivery::begin(&store, "review-repeat", error).unwrap(),
+            number
+        );
+        let notice = redelivery::take(&store).unwrap().unwrap();
+        let text = notice["systemMessage"].as_str().unwrap();
+        assert!(text.contains("review-repeat") && text.contains(error));
+        redelivery::outcome(&store, "review-repeat", number, Some(error.into())).unwrap();
+    }
+    redelivery::completed(&store, "review-repeat").unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_slice(&fs::read(store.directory.join("redelivery.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        saved["requests"]["review-repeat"]["attempts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+    assert_eq!(
+        saved["requests"]["review-repeat"]["consecutive_failures"],
+        0
+    );
+    assert_eq!(
+        redelivery::begin(&store, "review-repeat", error).unwrap(),
+        6
+    );
+    assert!(redelivery::take(&store).unwrap().is_none());
+    let directory = store.directory.clone();
+    drop(store);
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
