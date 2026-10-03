@@ -3,11 +3,8 @@ use std::{env, os::unix::process::CommandExt, path::PathBuf};
 
 fn run() -> Result<()> {
     let arguments = kah_cli::shell_routing::route(env::args().skip(1).collect())?;
-    if arguments.first().map(String::as_str) == Some("__in-turn-worker") {
-        return kah_cli::in_turn_worker::run(&arguments);
-    }
-    if arguments.first().map(String::as_str) == Some("__native-run") {
-        return kah_cli::native_controller::run_cli(&arguments);
+    if let Some(result) = internal(&arguments) {
+        return result;
     }
     if arguments
         .first()
@@ -45,10 +42,10 @@ fn run() -> Result<()> {
     if kah_cli::run_commands::handles(&arguments) {
         return kah_cli::run_commands::run(arguments);
     }
-    if matches!(
-        arguments.first().map(String::as_str),
-        Some("status" | "ledger")
-    ) {
+    if arguments
+        .first()
+        .is_some_and(|s| s == "status" || s == "ledger")
+    {
         return kah_cli::inspection_cli::run(arguments);
     }
     if arguments.first().map(String::as_str) == Some("__hook") {
@@ -60,6 +57,13 @@ fn run() -> Result<()> {
         return Ok(());
     }
     launch_or_help(Arguments::parse(arguments)?)
+}
+fn internal(args: &[String]) -> Option<Result<()>> {
+    match args.first().map(String::as_str) {
+        Some("__in-turn-worker") => Some(kah_cli::in_turn_worker::run(args)),
+        Some("__native-run") => Some(kah_cli::native_controller::run_cli(args)),
+        _ => kah_cli::observer_review::command(args),
+    }
 }
 fn launch_or_help(args: Arguments) -> Result<()> {
     if args.help {

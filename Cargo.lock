@@ -421,6 +421,7 @@ dependencies = [
  "kah-observer",
  "kah-run",
  "kah-sandbox",
+ "libc",
  "serde",
  "serde_json",
  "sha2",

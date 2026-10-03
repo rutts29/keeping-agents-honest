@@ -89,7 +89,7 @@ fn print_ledger(state: &State) -> Result<()> {
             "Judgment: {} / {} — {} (question set {})",
             entry["judgment"]["backend"].as_str().unwrap_or("unknown"),
             entry["judgment"]["model"].as_str().unwrap_or("unknown"),
-            entry["assessment"]["state"].as_str().unwrap_or("unknown"),
+            entry["purpose"].as_str().unwrap_or("legacy observation"),
             entry["question_set"]
         );
     }
@@ -112,12 +112,17 @@ fn print_session(state: &State, ledger: bool) -> Result<()> {
     };
     println!(
         "Observer: {status}; {} / {}; {} calls, {} input + {} output tokens",
-        state.binding.model,
+        kah_observer::compaction::CompactorConfig::new(
+            &state.binding.model,
+            Some(&state.binding.effort)
+        )?
+        .model(),
         state.binding.effort,
         state.usage.calls,
         state.usage.input_tokens,
         state.usage.output_tokens
     );
+    print_review(&state.binding.session)?;
     if let Some(judgment) = state.judgments.last() {
         println!("Judge: {} / {}", judgment.backend, judgment.model);
         if let Some(reason) = &judgment.fallback_reason {
@@ -138,10 +143,32 @@ fn print_session(state: &State, ledger: bool) -> Result<()> {
     }
     Ok(())
 }
+fn print_review(session: &str) -> Result<()> {
+    let review = crate::observer_review::control::status(session)?;
+    if review.is_null() {
+        return Ok(());
+    }
+    println!(
+        "Full-context observer: {} / {}; session {}; pane {}; {} wakes; pending {}",
+        review["model"].as_str().unwrap_or("not started"),
+        review["effort"].as_str().unwrap_or("low"),
+        review["session"].as_str().unwrap_or("none"),
+        review["pane"].as_str().unwrap_or("stopped"),
+        review["wakes"].as_u64().unwrap_or(0),
+        review["pending"]["purpose"].as_str().unwrap_or("none")
+    );
+    if let Some(error) = review["gap"]["error"].as_str() {
+        println!("Full-context gap: {error}");
+    }
+    Ok(())
+}
 
 fn json_session(state: &State, ledger: bool) -> Result<serde_json::Value> {
     if !ledger {
-        return Ok(serde_json::to_value(state)?);
+        let mut value = serde_json::to_value(state)?;
+        value["full_context_observer"] =
+            crate::observer_review::control::status(&state.binding.session)?;
+        return Ok(value);
     }
     let Some(id) = &state.run_id else {
         return Ok(json!({"session":state,"ledger":null}));

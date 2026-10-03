@@ -1,5 +1,5 @@
 use kah_core::{intent_history::*, projection::*};
-use kah_observer::compaction::{self, CompactorConfig};
+use kah_observer::compaction;
 fn projection() -> ActiveProjection {
     let source = SourceRef::new(
         SourceProvider::Codex,
@@ -28,17 +28,6 @@ fn projection() -> ActiveProjection {
     ActiveProjection::from_history(&history, ProjectionConfig::default()).unwrap()
 }
 #[test]
-fn no_model_call_under_size_budget_and_goal_stays_raw() {
-    let p = projection();
-    let error = compaction::compact(
-        std::path::Path::new("/does/not/exist"),
-        &p,
-        CompactorConfig::default(),
-    )
-    .unwrap_err();
-    assert!(error.starts_with("OBSERVER_COMPACTION_UNNEEDED"));
-}
-#[test]
 fn compaction_links_originals_and_cannot_change_ledger_or_survive_new_input() {
     let mut p = projection();
     let original = p.frontier.clone();
@@ -57,31 +46,6 @@ fn compaction_links_originals_and_cannot_change_ledger_or_survive_new_input() {
     p.frontier[0].text.push('!');
     compaction::attach(&mut p, Some(&c));
     assert!(p.compaction.is_none());
-}
-
-#[test]
-#[ignore = "real size-triggered Luna synthesis, separate from Jev journey baseline"]
-fn live_size_triggered_compaction_retains_verbatim_originals() {
-    let mut p = projection();
-    p.frontier[0].text = "Preserve marker BETA and do not add dependencies. ".repeat(900);
-    let original = p.frontier.clone();
-    let (summary, metadata) = compaction::compact(
-        &std::env::current_dir().unwrap(),
-        &p,
-        CompactorConfig::default(),
-    )
-    .unwrap();
-    compaction::attach(&mut p, Some(&summary));
-    assert!(p.rendered_bytes() <= p.overflow.budget);
-    assert_eq!(p.frontier, original);
-    assert_eq!(p.goal.text, "Exact original goal");
-    assert_eq!(summary.originals, vec!["a"]);
-    assert!(summary.summary.contains("BETA"));
-    assert_eq!(metadata.calls, 1);
-    let path = std::path::PathBuf::from(
-        std::env::var_os("KAH_GATE_EVIDENCE").expect("gate evidence directory"),
-    );
-    std::fs::write(path.join("compaction.json"), serde_json::to_string_pretty(&serde_json::json!({"passed":true,"rawBytes":original[0].text.len(),"renderedBytes":p.rendered_bytes(),"originalsUnchanged":true,"summary":summary,"metadata":metadata})).unwrap()).unwrap();
 }
 
 #[test]

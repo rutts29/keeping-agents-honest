@@ -20,7 +20,7 @@ use std::{
 };
 
 #[test]
-#[ignore = "native agent receives seeded unconfirmed text through production hook after compaction"]
+#[ignore = "native agent receives exact unconfirmed text despite a legacy summary cache"]
 fn unconfirmed_context_is_visible_without_user_review() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();
@@ -56,7 +56,8 @@ fn unconfirmed_context_is_visible_without_user_review() {
     let context = output["hookSpecificOutput"]["additionalContext"]
         .as_str()
         .unwrap();
-    assert!(context.contains("unconfirmed_items") && context.contains("UNCONFIRMED_BETA"));
+    assert!(context.contains("seeded-unconfirmed") && context.contains("UNCONFIRMED_BETA"));
+    assert!(!context.contains("Fixture context; retrieve originals"));
     assert!(context.contains("\"review_required\":true"));
     client.request("thread/inject_items",json!({"threadId":session,"items":[{"type":"message","role":"developer","content":[{"type":"input_text","text":context}]}]}));
     assert_eq!(client.turn(session,"aside: Inspect the kah unconfirmed context. Use native apply_patch to write context.json with keys marker (the retained marker), review_required (the item's flag), and user_confirmed (false if absent). Do not ask for review or change the ledger. Report and stop.")["status"],"completed");
@@ -110,7 +111,7 @@ fn seed_unconfirmed(session: &str) -> kah_observer::session::State {
             .unwrap()
             .unwrap()
             .rendered_prompt()
-            .contains("unconfirmed_items")
+            .contains("seeded-unconfirmed")
     );
     state
 }

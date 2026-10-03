@@ -28,6 +28,7 @@ pub enum Decision {
     Aside,
     Inherited { item: Box<IntentItem> },
     Jev { judgment: Box<Judgment> },
+    Verification { judgment: Box<Judgment> },
     Gap { reason: String },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -72,6 +73,7 @@ impl Input {
         }
         match &self.decision {
             Some(Decision::Aside) => "aside",
+            Some(Decision::Verification { .. }) => "verification_pending",
             Some(Decision::Gap { .. }) | None => "gap",
             _ => "ignored",
         }
@@ -138,7 +140,7 @@ impl Decision {
                 Ok(())
             }
             Self::Jev { judgment } => verbatim::apply(history, text, source, judgment),
-            Self::Aside | Self::Gap { .. } => Ok(()),
+            Self::Aside | Self::Gap { .. } | Self::Verification { .. } => Ok(()),
         }
     }
 }

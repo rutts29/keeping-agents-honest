@@ -84,17 +84,24 @@ pub fn validate_response(
                     .iter()
                     .map(|(level, p)| level.parse::<f64>().unwrap() * p)
                     .sum::<f64>();
-                validate_score(*score, mean)?;
+                validate_score(*score, mean, criteria.len())?;
             }
             _ => return Err(Error::new("JUDGE_ANSWER_TYPE")),
         }
     }
     Ok(())
 }
-fn validate_score(score: f64, mean: f64) -> Result<(), Error> {
-    if !score.is_finite() || (score - mean).abs() > 0.02 + 1e-9 {
+fn validate_score(score: f64, mean: f64, levels: usize) -> Result<(), Error> {
+    // Jev's score uses the underlying distribution; returned probabilities are
+    // rounded to two decimals. Each level contributes at most index * 0.005
+    // to the recomputed mean's rounding error. This is a wire-format bound,
+    // not a change to any judgment threshold.
+    let tolerance = 0.005 * (0..levels).map(|index| index as f64).sum::<f64>() + 1e-9;
+    if !score.is_finite() || (score - mean).abs() > tolerance {
         let mut error = Error::new("JUDGE_SCORE");
-        error.numeric_detail = Some(format!("reported_score={score} distribution_mean={mean}"));
+        error.numeric_detail = Some(format!(
+            "reported_score={score} distribution_mean={mean} rounding_tolerance={tolerance}"
+        ));
         return Err(error);
     }
     Ok(())

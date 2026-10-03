@@ -172,7 +172,7 @@ fn call_at(arguments: &[&str], socket: Option<&Path>) -> Result<Value> {
 fn invoke(arguments: &[&str]) -> Result<std::process::Output> {
     invoke_at(arguments, None)
 }
-fn invoke_at(arguments: &[&str], socket: Option<&Path>) -> Result<std::process::Output> {
+pub(crate) fn invoke_at(arguments: &[&str], socket: Option<&Path>) -> Result<std::process::Output> {
     let mut command = Command::new("herdr");
     command.args(arguments);
     if let Some(socket) = socket {

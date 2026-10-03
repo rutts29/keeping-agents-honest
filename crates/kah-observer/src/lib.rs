@@ -7,10 +7,14 @@ pub mod tool_watch;
 
 pub mod judge;
 
+pub mod checkpoint;
 pub mod compaction;
 pub mod evaluation;
 pub mod inherited;
 pub mod intake;
 pub mod relayed_user;
 pub mod review;
+pub mod review_evidence;
 pub mod verbatim;
+pub mod verification;
+pub mod verified_judgment;

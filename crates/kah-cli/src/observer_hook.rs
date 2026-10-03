@@ -11,13 +11,15 @@ use serde_json::{Value, json};
 use std::{env, io::Read, path::Path, time::Duration};
 
 pub fn run() {
-    let result = (|| {
+    let result: crate::Result<Value> = (|| {
         let input: Value = serde_json::from_reader(std::io::stdin().take(1024 * 1024))?;
         if let Err(reason) = crate::session_policy::enforce(&input) {
             return Ok(crate::session_policy::rejection(&reason));
         }
         crate::herdr::report_input(&input);
-        handle(&input).map_err(|e| -> Box<dyn std::error::Error> { e.into() })
+        let mut output = handle(&input).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        crate::observer_review::pause::annotate(&input, &mut output)?;
+        Ok(output)
     })();
     let output = match result {
         Ok(value) => value,
@@ -51,6 +53,11 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     initialize(&base, binding)?;
     crate::relay_hook::handle(binding, input, "codex").map_err(|e| e.to_string())?;
+    if let Some(output) = crate::observer_review::dispatch::register(binding, input, "codex")
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(Some(output));
+    }
     if let Some(context) =
         crate::dispatch::startup_context(binding, input, "codex").map_err(|e| e.to_string())?
     {
@@ -92,11 +99,13 @@ fn observe_event(
         event.kind,
         EventKind::TurnEnded | EventKind::Compacted | EventKind::Resumed
     ) {
-        let outcome = engine::observe(
+        let mut outcome = engine::observe(
             binding,
             turn.unwrap_or("continuity"),
             event.kind == EventKind::TurnEnded && input["stop_hook_active"] != true,
         )?;
+        crate::observer_review::dispatch::outcome(binding, &mut outcome)
+            .map_err(|e| e.to_string())?;
         if matches!(event.kind, EventKind::TurnEnded | EventKind::Resumed)
             && let Err(error) =
                 crate::interactive_name::codex(&base, binding, event.kind == EventKind::Resumed)

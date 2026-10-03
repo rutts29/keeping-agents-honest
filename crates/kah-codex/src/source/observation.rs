@@ -92,6 +92,12 @@ fn read_items(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError>
     ))
 }
 
+/// Full native item history for the evidence observer. A bound/cursor failure is
+/// an explicit gap, never a truncated successful context.
+pub fn full_history(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError> {
+    read_items(client, &validate_explicit_session_id(id)?)
+}
+
 fn action_evidence(entries: &[Value]) -> Vec<Value> {
     let last_turn = entries.last().map(|e| &e["turnId"]);
     let mut actions = entries

@@ -18,7 +18,10 @@ pub fn run() {
         .map_err(|_| "CLAUDE_HOOK_JSON stage=hook: invalid hook input".into())
         .and_then(|input| {
             crate::herdr::report_claude_input(&input);
-            handle(&input)
+            let mut output = handle(&input)?;
+            crate::observer_review::pause::annotate(&input, &mut output)
+                .map_err(|e| e.to_string())?;
+            Ok(output)
         });
     println!(
         "{}",
@@ -48,7 +51,9 @@ pub fn handle(input: &Value) -> Result<Value, String> {
         Err(error) => Err(error),
     };
     match outcome {
-        Ok(outcome) => {
+        Ok(mut outcome) => {
+            crate::observer_review::dispatch::outcome(&binding, &mut outcome)
+                .map_err(|e| e.to_string())?;
             if let Some(reminder) = outcome.reminder {
                 return Ok(json!({"decision":"block","reason":reminder.text}));
             }
@@ -103,6 +108,11 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
 fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
     crate::relay_hook::handle(binding, input, "claude").map_err(|e| e.to_string())?;
+    if let Some(output) = crate::observer_review::dispatch::register(binding, input, "claude")
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(Some(output));
+    }
     if let Some(context) =
         crate::dispatch::startup_context(binding, input, "claude").map_err(|e| e.to_string())?
     {

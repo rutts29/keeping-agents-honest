@@ -70,11 +70,17 @@ fn relay_and_dispatch() {
         versions[n].verify(&evidence["versions"][agent]);
     }
     fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(if reviewer_notified {
-            "user-steer.json"
-        } else {
-            "relay-dispatch.json"
-        }),
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(
+            if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
+                "verified-drift.json"
+            } else if std::env::var_os("KAH_GATE_REVIEW").is_some() {
+                "persistent-handoff.json"
+            } else if reviewer_notified {
+                "user-steer.json"
+            } else {
+                "relay-dispatch.json"
+            },
+        ),
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();

@@ -5,6 +5,7 @@ pub mod source;
 pub mod authorship;
 pub mod control;
 pub mod delivery;
+pub mod frontend;
 pub mod hooks;
 pub mod observer;
 pub mod overlay;

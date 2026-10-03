@@ -119,7 +119,7 @@ fn score_consistency_tolerance_is_not_defeated_by_float_representation() {
     let answers = BTreeMap::from([(
         "distance".into(),
         Answer::Score {
-            score: 0.07,
+            score: 0.055,
             confidence: 0.9,
             legend: BTreeMap::from([
                 ("0".into(), criteria[0].clone()),
@@ -129,6 +129,53 @@ fn score_consistency_tolerance_is_not_defeated_by_float_representation() {
         },
     )]);
     assert!(judge::validate_response(&questions, &answers).is_ok());
+}
+
+#[test]
+fn score_validation_accounts_for_rounded_probabilities_on_each_scale() {
+    for (probabilities, score, expected) in [
+        (vec![0.91, 0.02, 0.02, 0.05], 0.24, true), // observed 0.24 vs mean 0.21
+        (vec![0.91, 0.02, 0.02, 0.05], 0.241, false),
+        (vec![0.95, 0.05], 0.055, true),
+        (vec![0.95, 0.05], 0.056, false),
+        (vec![1.0, 0.0, 0.0, 0.0, 0.0], 0.05, true),
+        (vec![1.0, 0.0, 0.0, 0.0, 0.0], 0.051, false),
+        (vec![1.0, 0.0], f64::NAN, false),
+        (vec![1.0, 0.0], f64::INFINITY, false),
+    ] {
+        let criteria: Vec<String> = (0..probabilities.len())
+            .map(|i| format!("level {i}"))
+            .collect();
+        let questions = Questions::from([(
+            "score".into(),
+            Question::Score {
+                instructions: "Rate deviation".into(),
+                criteria: criteria.clone(),
+            },
+        )]);
+        let answers = BTreeMap::from([(
+            "score".into(),
+            Answer::Score {
+                score,
+                confidence: 0.9,
+                legend: criteria
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, s)| (i.to_string(), s))
+                    .collect(),
+                probabilities: probabilities
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, p)| (i.to_string(), p))
+                    .collect(),
+            },
+        )]);
+        assert_eq!(
+            judge::validate_response(&questions, &answers).is_ok(),
+            expected,
+            "score {score}"
+        );
+    }
 }
 
 #[test]

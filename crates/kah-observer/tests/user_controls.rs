@@ -113,6 +113,51 @@ fn quote(text: &str) -> kah_observer::inherited::Quote {
 }
 
 #[test]
+fn oversized_intent_stays_verbatim_without_a_headless_model() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "oversized_intent_probe", "--nocapture"])
+        .env("KAH_OVERSIZED_INTENT_PROBE", "1")
+        // The old path must fail before any native model can be launched.
+        .env("KAH_CODEX_BIN", "/nonexistent/kah-forbidden-headless-model")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn oversized_intent_probe() {
+    if std::env::var_os("KAH_OVERSIZED_INTENT_PROBE").is_none() {
+        return;
+    }
+    let f = Fixture::new();
+    let text = format!(
+        "steer: {}",
+        "Preserve the exact requirement and all its source references. ".repeat(700)
+    );
+    let outcome = f.observe(&[&text]);
+    assert!(outcome.gap.is_none(), "{:?}", outcome.gap);
+    let projection = outcome.projection.unwrap();
+    assert!(projection.is_overflowed());
+    assert!(projection.compaction.is_none());
+    assert!(projection.rendered_prompt().contains(&text[7..]));
+    assert_eq!(f.state().usage.calls, 0);
+    let mut legacy = f.state();
+    legacy.compaction = Some(kah_core::projection::CompactedIntent {
+        source_digest: kah_observer::compaction::digest(&projection),
+        summary: "Obsolete shortened intent".into(),
+        originals: vec![],
+        model: "historical".into(),
+    });
+    let reread = engine::projection(&legacy).unwrap().unwrap();
+    assert!(reread.compaction.is_none());
+    assert!(reread.rendered_prompt().contains(&text[7..]));
+}
+
+#[test]
 fn inherited_quotes_keep_origin_and_interleave_with_later_native_users() {
     let f = Fixture::new();
     f.observe(&["steer: Implement a greeting."]);
@@ -368,4 +413,22 @@ fn model_ignored_input_remains_retrievable_and_can_be_promoted_without_inference
     .unwrap();
     assert!(!store.sources().unwrap()[0].recently_ignored());
     assert_eq!(f.state().usage.calls, 0);
+}
+
+#[test]
+fn explicit_session_pause_prevents_source_reads_and_inference() {
+    let f = Fixture::new();
+    let base = RunStore::default_state_root().unwrap();
+    drop(Store::open(&base, &f.binding.session, std::time::Duration::ZERO).unwrap());
+    let marker = Store::directory(&base, &f.binding.session).join("observer-paused");
+    fs::write(&marker, b"usage pause").unwrap();
+    let result = engine::observe(&f.binding, "paused", true).unwrap();
+    assert!(
+        result.gap.is_none(),
+        "paused observer tried its deliberately unavailable source"
+    );
+    assert!(result.verification.is_none() && result.reminder.is_none());
+    assert!(kah_observer::session::paused(&base, &f.binding.session));
+    fs::remove_file(marker).unwrap();
+    assert!(!kah_observer::session::paused(&base, &f.binding.session));
 }

@@ -1,7 +1,6 @@
 //! Event-driven observation. Native hooks schedule work; only native user
 //! records can change intent, and observer failures remain visible but fail open.
 use crate::{
-    compaction::CompactorConfig,
     inspect_state::InspectSource,
     judge::decision::{Assessment, AssessmentState},
     session::{Binding, State, Store},
@@ -25,6 +24,7 @@ pub(crate) mod reconcile;
 use reconcile::*;
 
 pub struct Outcome {
+    pub verification: Option<serde_json::Value>,
     pub projection: Option<ActiveProjection>,
     pub reminder: Option<ContextInjection>,
     pub gap: Option<String>,
@@ -71,6 +71,14 @@ fn observe_with(
     source: impl FnOnce() -> Result<ObservationSnapshot, String>,
 ) -> Result<Outcome, String> {
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
+    if crate::session::paused(&base, &binding.session) {
+        return Ok(Outcome {
+            projection: None,
+            reminder: None,
+            verification: None,
+            gap: None,
+        });
+    }
     let mut store = Store::open(&base, &binding.session, Duration::from_secs(110))?;
     let mut state = store.load()?.unwrap_or_else(|| State::new(binding.clone()));
     if state.binding.project != binding.project {
@@ -100,6 +108,7 @@ fn observe_with(
             store.save(&state)?;
             store.append(&json!({"kind":"gap","source":"observer","detail":error,"at_ms":crate::session::now_ms()}))?;
             Ok(Outcome {
+                verification: None,
                 projection: projection(&state)?,
                 reminder: None,
                 gap: Some(error),
@@ -119,17 +128,17 @@ fn update(
     snapshot.users = crate::inherited::merge(&binding, store, snapshot.users)?;
     let Some(users) = &snapshot.users else {
         return Ok(Outcome {
+            verification: None,
             projection: None,
             reminder: None,
             gap: None,
         });
     };
-    let config = CompactorConfig::new(&binding.model, Some(&binding.effort))?
-        .with_timeout(Duration::from_secs(binding.timeout_secs))?;
     let prior = projection(state)?;
-    let (projection, new_user) = update_intent(state, store, users, config)?;
+    let (projection, new_user) = update_intent(state, store, users)?;
     let Some(projection) = projection else {
         return Ok(Outcome {
+            verification: None,
             projection: None,
             reminder: None,
             gap: None,
@@ -145,6 +154,7 @@ fn update(
             && projection.validation.is_empty()
     {
         return Ok(Outcome {
+            verification: None,
             projection: Some(projection),
             reminder: None,
             gap: None,
@@ -163,8 +173,39 @@ fn update(
         },
     )?;
     state.action_digest = Some(snapshot.action_digest);
-    let reminder = drift_reminder(state, &assessment, &projection, turn, allow_reminder)?;
+    finish(
+        state,
+        assessment,
+        projection,
+        &snapshot.actions,
+        turn,
+        allow_reminder,
+    )
+}
+fn finish(
+    state: &mut State,
+    assessment: Assessment,
+    projection: ActiveProjection,
+    actions: &[serde_json::Value],
+    turn: &str,
+    allow_reminder: bool,
+) -> Result<Outcome, String> {
+    let verified_flow = crate::verification::enabled(&state.binding.session)?;
+    let verification = if verified_flow {
+        state
+            .judgments
+            .last()
+            .and_then(|j| crate::verification::trigger(j, actions))
+    } else {
+        None
+    };
+    let reminder = if verified_flow {
+        None
+    } else {
+        drift_reminder(state, &assessment, &projection, turn, allow_reminder)?
+    };
     Ok(Outcome {
+        verification,
         projection: Some(projection),
         reminder,
         gap: None,
@@ -176,8 +217,7 @@ pub fn projection(state: &State) -> Result<Option<ActiveProjection>, String> {
         return Ok(None);
     };
     let store = RunStore::open_default(&state.binding.project, id).map_err(|e| e.to_string())?;
-    let mut projection = store.recover().map_err(|e| e.to_string())?.projection;
-    crate::compaction::attach(&mut projection, state.compaction.as_ref());
+    let projection = store.recover().map_err(|e| e.to_string())?.projection;
     Ok(Some(projection))
 }
 

@@ -1,4 +1,6 @@
 use kah_cli::{Arguments, run_pane::Pane};
+mod review;
+mod review_drift;
 mod trace;
 mod user_steer;
 use kah_core::run_store::RunStore;
@@ -26,6 +28,12 @@ impl Drop for Panes {
     }
 }
 pub fn run(root: &Path) -> Value {
+    if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
+        return review_drift::run(root);
+    }
+    if std::env::var_os("KAH_GATE_REVIEW").is_some() {
+        return review::run(root);
+    }
     if std::env::var_os("KAH_GATE_USER_STEER").is_some() {
         return user_steer::run(root);
     }

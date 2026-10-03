@@ -52,6 +52,25 @@ pub fn save(
     request: &Request,
     result: &Result<Judgment, Error>,
 ) -> Result<PathBuf, String> {
+    save_versioned(
+        home,
+        session,
+        commit,
+        channel,
+        request,
+        result,
+        kah_observer::judge::questions::VERSION,
+    )
+}
+pub fn save_versioned(
+    home: &Path,
+    session: &str,
+    commit: &str,
+    channel: &str,
+    request: &Request,
+    result: &Result<Judgment, Error>,
+    question_set: u32,
+) -> Result<PathBuf, String> {
     let base = home.join(".local/share/kah-eval");
     kah_core::run_store::ensure_private_directory(&base)
         .map_err(|e| format!("COMPLETION_CAPTURE_DIRECTORY stage=completion_capture: {e}"))?;
@@ -66,7 +85,7 @@ pub fn save(
         .as_nanos();
     let name = format!("{nonce}-{}-{}.json", std::process::id(), &digest[..16]);
     let value = json!({"schema":1,"session":session,"commit":commit,"channel":channel,"request":body,"request_digest":digest,
-        "redactions":request.redactions,"scrubbed_before_evaluation":true,"question_set":kah_observer::judge::questions::VERSION,
+        "redactions":request.redactions,"scrubbed_before_evaluation":true,"question_set":question_set,
         "thresholds":{"probability":kah_observer::judge::questions::COMPLETE_PROBABILITY,"confidence":kah_observer::judge::questions::COMPLETE_CONFIDENCE},
         "judgment":result.as_ref().ok(),"error":result.as_ref().err().map(ToString::to_string)});
     crate::unattended_report::save(&directory, &name, &value)

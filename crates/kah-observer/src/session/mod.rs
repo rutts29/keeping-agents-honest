@@ -1,5 +1,4 @@
 //! Per-session observer state; model inference never supplies user source records.
-use crate::compaction::ResolverMetadata;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -50,26 +49,6 @@ pub struct Usage {
     pub output_tokens: u64,
     pub elapsed_ms: u64,
     pub incomplete_calls: u64,
-}
-impl Usage {
-    pub fn record(&mut self, metadata: &ResolverMetadata) {
-        self.calls += u64::from(metadata.calls);
-        self.input_tokens = self
-            .input_tokens
-            .saturating_add(metadata.usage.input_tokens);
-        self.cached_input_tokens = self
-            .cached_input_tokens
-            .saturating_add(metadata.usage.cached_input_tokens);
-        self.output_tokens = self
-            .output_tokens
-            .saturating_add(metadata.usage.output_tokens);
-        self.elapsed_ms = self
-            .elapsed_ms
-            .saturating_add(metadata.elapsed_ms.min(u64::MAX as u128) as u64);
-        if !metadata.usage_complete {
-            self.incomplete_calls += u64::from(metadata.calls);
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -142,7 +121,7 @@ impl State {
     }
 }
 
-fn process_stamp(pid: u32) -> Option<String> {
+pub fn process_stamp(pid: u32) -> Option<String> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     stat.get(stat.rfind(')')? + 2..)?
         .split_whitespace()
@@ -159,4 +138,11 @@ pub fn now_ms() -> u64 {
 
 fn default_jev_model() -> String {
     "jev-latest".into()
+}
+
+/// Explicit, session-local operator pause; never inferred from elapsed time.
+pub fn paused(base: &std::path::Path, session: &str) -> bool {
+    Store::directory(base, session)
+        .join("observer-paused")
+        .is_file()
 }

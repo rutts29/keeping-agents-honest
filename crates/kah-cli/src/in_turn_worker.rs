@@ -109,7 +109,14 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     let result = crate::in_turn::judge(&job.binding, &job.input, job.actions, job.claude);
     let output = match result {
-        Ok(outcome) => crate::in_turn::output(&job.input, outcome),
+        Ok(mut outcome) => {
+            if let Err(error) =
+                crate::observer_review::dispatch::outcome(&job.binding, &mut outcome)
+            {
+                outcome.gap = Some(error.to_string());
+            }
+            crate::in_turn::output(&job.input, outcome)
+        }
         Err(error) => json!({"systemMessage":format!("kah observer gap: {error}")}),
     };
     crate::unattended_report::save(&directory, "tool-result.json", &output)?;

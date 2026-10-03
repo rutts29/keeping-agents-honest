@@ -1,6 +1,5 @@
 use super::*;
 use crate::{
-    compaction,
     intake::{self, Decision, Input},
     judge,
 };
@@ -10,8 +9,10 @@ pub(super) fn update_intent(
     state: &mut State,
     journal: &mut Store,
     users: &NeutralSessionBundle,
-    config: CompactorConfig<'_>,
 ) -> Result<(Option<ActiveProjection>, bool), String> {
+    // Provider-owned full native sessions compact their conversations. kah
+    // keeps canonical intent verbatim, including in Jev-only Untrusted flows.
+    state.compaction = None;
     let source = InspectSource::from_bundle(users).map_err(|e| e.to_string())?;
     let previous = source
         .open(&state.binding.project)
@@ -56,7 +57,6 @@ pub(super) fn update_intent(
         p.generated_by.component = "kah.user-controlled-verbatim".into();
         persist(&state.binding.project, &source, previous.as_ref(), h, p)?;
         state.run_id = Some(source.run_id().to_string());
-        compact(state, journal, p, config)?;
     }
     if let Some(input) = inputs.iter().find(|i| i.status(history.as_ref()) == "gap") {
         return Err(match &input.decision {
@@ -76,10 +76,18 @@ fn resolve_input(
     input: &mut Input,
 ) -> Result<(), String> {
     if input.decision.is_none() {
-        let decision = intake::decide(&input.text, input.source.role.clone(), || {
+        let mut decision = intake::decide(&input.text, input.source.role.clone(), || {
             type_message(state, journal, history.as_ref(), &input.text)
         })
         .unwrap_or_else(|reason| Decision::Gap { reason });
+        if crate::verification::enabled(&state.binding.session)?
+            && let Decision::Jev { judgment } = &decision
+            && crate::verification::uncertain_impact(judgment)
+        {
+            decision = Decision::Verification {
+                judgment: judgment.clone(),
+            };
+        }
         journal.source_decision(input.key(), &decision)?;
         input.decision = Some(decision);
     }
@@ -143,27 +151,6 @@ fn type_message(
         .map(|i| i.id.as_str());
     let input = judge::questions::steering_state(goal, goal_id, &items, text, "");
     super::judgment::evaluate(state, journal, &input, &questions, "steering")
-}
-fn compact(
-    state: &mut State,
-    journal: &mut Store,
-    projection: &mut ActiveProjection,
-    config: CompactorConfig<'_>,
-) -> Result<(), String> {
-    if projection.is_overflowed()
-        && state
-            .compaction
-            .as_ref()
-            .is_none_or(|c| c.source_digest != compaction::digest(projection))
-    {
-        let (summary, metadata) = compaction::compact(&state.binding.project, projection, config)
-            .inspect_err(|_| state.usage.incomplete_calls += 1)?;
-        state.usage.record(&metadata);
-        journal.append(&json!({"kind":"compaction","summary":summary,"metadata":metadata}))?;
-        state.compaction = Some(summary);
-    }
-    compaction::attach(projection, state.compaction.as_ref());
-    Ok(())
 }
 pub(crate) fn persist(
     project: &std::path::Path,
