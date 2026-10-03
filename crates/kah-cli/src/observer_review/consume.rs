@@ -69,12 +69,11 @@ pub fn run(worker: &str) -> Result<()> {
     if request.purpose == Purpose::Checkpoint {
         super::checkpoint::record(&store, &mut state, &request, &result)?;
     }
-    if assessment["state"] == "material_drift" {
-        crate::unattended_report::save(
-            &store.directory,
-            "reminder.json",
-            &json!({"request":request.id,"turn":request.turn,"purpose":request.purpose,"text":format!("[kah verified observer; context, not user steering] {} Evidence: {}",assessment["reason"].as_str().unwrap_or("Review the verified evidence."),serde_json::to_string(&report)?)}),
-        )?;
+    let confirmed_steering = assessment["state"] == "steering_reviewed"
+        && assessment["application"] == "verified_for_next_native_event"
+        && matches!(judgment.answers.get("is_steering"),Some(judge::Answer::Noul{noul}) if *noul>=kah_observer::judge::questions::STEERING_PROBABILITY);
+    if assessment["state"] == "material_drift" || confirmed_steering {
+        super::reminder::save(&store, &request, &report)?;
     }
     state.latest = Some(result);
     super::redelivery::completed(&store, &request.id)?;
@@ -100,6 +99,9 @@ fn evidence(
         .join("outbox")
         .join(format!("submitted-{}.json", request.id));
     let report: Report = serde_json::from_slice(&read_report(&path)?)?;
+    if report.reminder.is_some() {
+        super::reminder::text(state, request, &report)?;
+    }
     let actions = report
         .verify(&request.id, &request.documents)?
         .into_iter()
@@ -211,10 +213,24 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
         }
         return take_gap(&store);
     };
-    fs::remove_file(path)?;
     if reminder["purpose"] == "drift" && reminder["turn"] != turn {
         reminder["text"] = format!("[kah confirmed finding from previous turn {}; retained context, not new user steering] {}",reminder["turn"],reminder["text"].as_str().unwrap_or("")).into();
     }
+    let provider = store
+        .load()?
+        .ok_or("REVIEW_STATE_MISSING stage=reminder")?
+        .worker
+        .provider;
+    if let Err(error) =
+        super::reminder::validate_native(&provider, reminder["text"].as_str().unwrap_or(""))
+    {
+        drop(store);
+        super::hook::gap(worker, &error)?;
+        return Ok(Some(
+            json!({"systemMessage":format!("kah observer reminder gap: {error}")}),
+        ));
+    }
+    fs::remove_file(path)?;
     Ok(Some(
         json!({"hookSpecificOutput":{"hookEventName":event,"additionalContext":reminder["text"]}}),
     ))

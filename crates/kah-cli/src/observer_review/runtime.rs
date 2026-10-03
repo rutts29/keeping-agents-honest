@@ -281,6 +281,8 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if !gap.as_ref().is_some_and(|g| {
         g["error"].as_str().is_some_and(|s| {
             s.starts_with("REVIEW_REPORT_MISSING")
+                || s.starts_with("REVIEW_REMINDER_MISSING")
+                || s.starts_with("REVIEW_REMINDER_NATIVE_LIMIT")
                 || s.starts_with("REVIEW_NOT_IDLE")
                 || s.starts_with("REVIEW_SUBMISSION_UNCONFIRMED")
         })

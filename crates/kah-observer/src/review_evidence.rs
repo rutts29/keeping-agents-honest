@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+mod reminder;
+pub use reminder::{IntentQuote, Reminder};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,8 +58,16 @@ pub struct Finding {
 pub struct Report {
     pub request_id: String,
     pub findings: Vec<Finding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reminder: Option<Reminder>,
 }
 impl Report {
+    pub fn reminder_text(&self, intent: &Value, record: &str) -> Result<String, String> {
+        self.reminder
+            .as_ref()
+            .ok_or("REVIEW_REMINDER_MISSING stage=reminder")?
+            .render(intent, record)
+    }
     pub fn verify(&self, request: &str, documents: &[Document]) -> Result<Vec<Value>, String> {
         if self.request_id != request {
             return Err("REVIEW_REQUEST_MISMATCH stage=evidence".into());
@@ -74,7 +84,7 @@ impl Report {
         }).collect()
     }
     pub fn schema() -> Value {
-        json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{
+        json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{"reminder":Reminder::schema(),
         "request_id":{"type":"string"},"findings":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["topic","claim","citations"],"properties":{
             "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
         }}}}})

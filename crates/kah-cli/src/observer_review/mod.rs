@@ -9,6 +9,7 @@ pub mod preparation;
 mod prepared_result;
 pub mod queue;
 pub mod redelivery;
+pub mod reminder;
 pub mod runtime;
 pub mod source_store;
 pub mod state;

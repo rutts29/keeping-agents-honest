@@ -50,6 +50,11 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
     )?;
     let input = state.observer.workspace.join("inputs").join(&request.id);
     fs::create_dir(&input)?;
+    super::source_store::text(
+        &store.directory,
+        &input.join("intent.json"),
+        &serde_json::to_string_pretty(&super::reminder::intent(request)?)?,
+    )?;
     for document in &request.documents {
         if !document
             .id
@@ -108,7 +113,7 @@ pub(super) fn prompt(state: &State, request: &Request, input: &Path) -> Result<S
         .arg(&output);
     let submission = crate::native_run::shell_command(&command)?;
     Ok(format!(
-        "kah review request {} ({:?}). Read {} and its delta.txt, then all relevant full source files listed there; nothing was truncated. Continue your existing observer conversation, including earlier findings. Extract evidence only, with exact quotes and document digests per schema.json. Write your JSON report to {} using Write or an explicit here-document, with no bare stdin reads. Run this submission command in the foreground and require its evidence_submitted acknowledgement: {}. Do not report probabilities or a verdict. Do not poll or start other work after submission.",
+        "kah review request {} ({:?}). Read {} and its delta.txt, then all relevant full source files listed there; nothing was truncated. Continue your existing observer conversation, including earlier findings. Extract evidence only, with exact quotes and document digests per schema.json. Write your JSON report to {} using Write or an explicit here-document, with no bare stdin reads. Run this submission command in the foreground and require its evidence_submitted acknowledgement: {}. Always include a proposed reminder object with a concise instruction and decisive exact user quotes (id plus quote) selected from intent.json. Use id goal for the goal, or an exact item id. This proposal is not a decision; it is delivered only after Jev confirms it. Never dump the projection. For Claude the complete delivered string must fit its native 10000 UTF-16 units, including the controller label and full-record pointer; compose accordingly, never truncate. Do not report probabilities or a verdict. Do not poll or start other work after submission.",
         request.id,
         request.purpose,
         input.join("manifest.json").display(),
@@ -166,6 +171,7 @@ pub fn submit(args: &[String]) -> Result<()> {
     let bytes = fs::read(&args[5])?;
     let report:Report=serde_json::from_slice(&bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no decision/probability fields")?;
     report.verify(&request.id, &request.documents)?;
+    super::reminder::validate_report(&report, &request)?;
     let directory = Path::new(&args[3])
         .parent()
         .and_then(Path::parent)

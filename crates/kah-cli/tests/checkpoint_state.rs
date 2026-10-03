@@ -46,6 +46,7 @@ fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_fa
         serde_json::from_slice(&std::fs::read(store.directory.join("reminder.json")).unwrap())
             .unwrap();
     assert_eq!(reminder["purpose"], "checkpoint");
+    store.save(&state).unwrap();
     drop(store);
     previous_finding(&worker);
     let store = Store::open(&worker).unwrap();
