@@ -82,7 +82,7 @@ pub fn stage(request: &Request, input: &Value, questions: &Questions, reason: &s
         items: context_selection::items(input, &ids),
         reason: reason.into(),
     };
-    crate::unattended_report::save(
+    super::source_store::save(
         &Store::directory(&request.worker)?,
         &format!("preparation-{}.json", request.id),
         &serde_json::to_value(job)?,
@@ -99,7 +99,8 @@ pub fn prompt(worker: &str) -> Result<String> {
     let directory = state.observer.workspace.join("inputs").join(&pending.id);
     let name = format!("preparation-{}.json", crate::relay_store::nonce());
     let file = directory.join(&name);
-    crate::unattended_report::save(&directory, &name, &serde_json::to_value(&job)?)?;
+    super::source_store::save(&directory, &name, &serde_json::to_value(&job)?)?;
+    super::source_store::share(&Store::directory(worker)?, &state.observer.workspace)?;
     kah_run::access::share_tree(&directory, kah_run::access::service_uid()?, false)?;
     let output = state
         .observer
@@ -113,7 +114,7 @@ pub fn prompt(worker: &str) -> Result<String> {
         .arg("--json")
         .arg(&output);
     Ok(format!(
-        "kah review request {} (Preparation). Prepare context for ONE unchanged Jev decision. Read {} and all original full context files in this input directory. Preparation reason: {}. Jev's documented token budgets are 32000 for state plus the longest question and 64000 for the whole request; no tokenizer is available, so do not treat bytes as a limit. Select WHOLE relevant items covering every question, keeping the goal and ALL active user/relayed items. No splitting, summaries of user words or text cuts. Write a manifest object with decision, selected, excluded; every item must appear exactly once. Each entry has id, digest, reason, superseded_by (null unless verified). Exclude only irrelevant non-user items; explain why. Never supply scores or a verdict. Submit using {} and become idle.",
+        "kah review request {} (Preparation). Prepare context for ONE unchanged Jev decision. Read {} and all original full context files in this input directory. Objects with $kah_source point to immutable digest-named files in ../../sources; utf8 means full literal text and json means another whole source with these references. Follow the pointers to read the complete original state. Preparation reason: {}. Jev's documented token budgets are 32000 for state plus the longest question and 64000 for the whole request; no tokenizer is available, so do not treat bytes as a limit. Select WHOLE relevant items covering every question, keeping the goal and ALL active user/relayed items. No splitting, summaries of user words or text cuts. Write a manifest object with decision, selected, excluded; every item must appear exactly once. Each entry has id, digest, reason, superseded_by (null unless verified). Exclude only irrelevant non-user items; explain why. Never supply scores or a verdict. Submit using {} and become idle.",
         job.decision,
         file.display(),
         job.reason,
@@ -124,7 +125,7 @@ pub fn submit(args: &[String]) -> Result<()> {
     if args.len() != 6 || args[2] != "--request" || args[4] != "--json" {
         return Err("PREPARATION_ARGUMENTS stage=context_preparation".into());
     }
-    let job: Job = serde_json::from_slice(&fs::read(&args[3])?)?;
+    let job: Job = super::source_store::read(Path::new(&args[3]))?;
     let manifest: Manifest =
         serde_json::from_slice(&super::consume::read_report(Path::new(&args[5]))?)?;
     context_selection::prepare(
@@ -170,7 +171,7 @@ pub fn accept(worker: &str, decision: &str) -> Result<bool> {
         &manifest,
         &BTreeMap::new(),
     )?;
-    crate::unattended_report::save(
+    super::source_store::save(
         &Store::directory(worker)?,
         &format!("selection-{decision}.json"),
         &serde_json::to_value(manifest)?,
@@ -192,7 +193,7 @@ fn calibrate(
     questions: &Questions,
     judgment: &judge::Judgment,
 ) -> Result<()> {
-    crate::unattended_report::save(
+    super::source_store::save(
         &Store::directory(worker)?,
         "token-calibration.json",
         &json!({"model":judgment.model,"input_utf8_bytes":state.to_string().len()+serde_json::to_vec(questions)?.len(),"input_tokens":judgment.metrics.input_tokens,"planning_only":true}),
@@ -205,12 +206,12 @@ fn archive(
     prepared: &Value,
     judgment: &judge::Judgment,
 ) -> Result<()> {
-    crate::unattended_report::save(
+    super::source_store::save(
         &Store::directory(worker)?,
         "preparation-notice.json",
         &json!({"decision":job.decision,"text":"kah decision used observer-prepared whole context; the selection manifest is archived."}),
     )?;
-    crate::unattended_report::save(
+    super::source_store::save(
         &Store::directory(worker)?,
         &format!("prepared-{}.json", job.decision),
         &json!({"decision":job.decision,"original":job.state,"questions":job.questions,"selection":manifest,"prepared_state":prepared,"judgment":judgment,"provider_tokens":judgment.metrics.input_tokens}),
@@ -245,7 +246,7 @@ fn retry(
         }
         return Ok((serde_json::from_value(saved["judgment"].clone())?, prepared));
     }
-    crate::unattended_report::save(
+    super::source_store::save(
         &Store::directory(&request.worker)?,
         &format!("preparation-retry-{}.json", request.id),
         &json!({"decision":request.id,"selection":manifest,"prepared_state":prepared,"questions":job.questions,"at_ms":kah_observer::session::now_ms()}),
@@ -275,7 +276,7 @@ fn revise(request: &Request, job: &Job, reason: &str) -> Result<()> {
         "Previous whole-item selection still exceeds the provider token budget: {reason}. Reconsider irrelevant items; protected authority cannot be omitted."
     );
     let directory = Store::directory(&request.worker)?;
-    crate::unattended_report::save(
+    super::source_store::save(
         &directory,
         &format!("preparation-{}.json", request.id),
         &serde_json::to_value(updated)?,

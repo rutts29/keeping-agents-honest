@@ -12,6 +12,7 @@ use std::{
 
 pub fn prepare(home: &Path, state: &State) -> Result<()> {
     let root = &state.observer.workspace;
+    super::source_store::initialize(&Store::directory(&state.worker.session)?, root)?;
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
@@ -35,13 +36,14 @@ pub fn prepare(home: &Path, state: &State) -> Result<()> {
         kah_run::access::traverse(parent, uid)?;
     }
     kah_run::access::share_tree(root, uid, true)?;
+    super::source_store::share(&Store::directory(&state.worker.session)?, root)?;
     Ok(())
 }
 
 pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String> {
     let archive = store.directory.join("requests");
     ensure_private_directory(&archive)?;
-    crate::unattended_report::save(
+    super::source_store::save(
         &archive,
         &format!("{}.json", request.id),
         &serde_json::to_value(request)?,
@@ -56,7 +58,11 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         {
             return Err("REVIEW_DOCUMENT_ID stage=publish".into());
         }
-        fs::write(input.join(format!("{}.txt", document.id)), &document.text)?;
+        super::source_store::text(
+            &store.directory,
+            &input.join(format!("{}.txt", document.id)),
+            &document.text,
+        )?;
     }
     fs::write(
         input.join("schema.json"),
@@ -68,7 +74,8 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         serde_json::to_vec_pretty(&manifest)?,
     )?;
     write_delta(store, request, &input)?;
-    fs::write(input.join("request.json"), serde_json::to_vec(request)?)?;
+    super::source_store::save(&input, "request.json", &serde_json::to_value(request)?)?;
+    super::source_store::share(&store.directory, &state.observer.workspace)?;
     kah_run::access::share_tree(&input, kah_run::access::service_uid()?, false)?;
     prompt(state, request, &input)
 }
@@ -82,15 +89,8 @@ fn write_delta(store: &Store, request: &Request, input: &Path) -> Result<()> {
         .unwrap_or("");
     let old = fs::read_to_string(&previous).unwrap_or_default();
     let delta = delta(&old, current);
-    fs::write(input.join("delta.txt"), delta)?;
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(previous)?;
-    file.write_all(current.as_bytes())?;
-    file.sync_all()?;
+    super::source_store::text(&store.directory, &input.join("delta.txt"), &delta)?;
+    super::source_store::text(&store.directory, &previous, current)?;
     Ok(())
 }
 pub(super) fn prompt(state: &State, request: &Request, input: &Path) -> Result<String> {
@@ -152,7 +152,7 @@ pub fn submit(args: &[String]) -> Result<()> {
                 .into(),
         );
     }
-    let request: Request = serde_json::from_slice(&fs::read(&args[3])?)
+    let request: Request = super::source_store::read(Path::new(&args[3]))
         .map_err(|_| "REVIEW_REQUEST_JSON stage=report")?;
     if !request.id.starts_with("review-")
         || request.id.len() > 128

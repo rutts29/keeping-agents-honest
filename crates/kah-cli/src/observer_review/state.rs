@@ -133,6 +133,7 @@ impl Store {
     pub fn open(worker: &str) -> Result<Self> {
         let directory = Self::directory(worker)?;
         ensure_private_directory(&directory)?;
+        ensure_private_directory(&directory.join("sources"))?;
         let path = directory.join("lock");
         if fs::symlink_metadata(&path)
             .is_ok_and(|m| !m.is_file() || m.permissions().mode() & 0o077 != 0)
@@ -157,7 +158,7 @@ impl Store {
         read(&self.directory.join("state.json"))
     }
     pub fn save(&self, state: &State) -> Result<()> {
-        crate::unattended_report::save(&self.directory, "state.json", &serde_json::to_value(state)?)
+        super::source_store::save(&self.directory, "state.json", &serde_json::to_value(state)?)
     }
     pub fn read(worker: &str) -> Result<Option<State>> {
         read(&Self::directory(worker)?.join("state.json"))
@@ -175,7 +176,13 @@ pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     }
     let mut bytes = vec![];
     File::open(path)?.read_to_end(&mut bytes)?;
-    serde_json::from_slice(&bytes)
+    let root = path
+        .ancestors()
+        .find(|p| p.join("sources").is_dir())
+        .unwrap_or(path.parent().unwrap())
+        .join("sources");
+    let value = super::source_store::expand(serde_json::from_slice(&bytes)?, &root)?;
+    serde_json::from_value(value)
         .map(Some)
         .map_err(|_| "REVIEW_STATE_JSON stage=review_state".into())
 }

@@ -111,8 +111,9 @@ pub fn archive(directory: &Path, request: &str, result: &Value) -> Result<()> {
         return Err("REVIEW_REQUEST_ID stage=archive".into());
     }
     let results = directory.join("results");
+    kah_core::run_store::ensure_private_directory(&directory.join("sources"))?;
     kah_core::run_store::ensure_private_directory(&results)?;
-    crate::unattended_report::save(&results, &format!("{request}.json"), result)
+    super::source_store::save(&results, &format!("{request}.json"), result)
 }
 fn decide(
     home: &Path,

@@ -10,6 +10,7 @@ mod prepared_result;
 pub mod queue;
 pub mod redelivery;
 pub mod runtime;
+pub mod source_store;
 pub mod state;
 pub mod workspace;
 
@@ -47,6 +48,9 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     }
     if args.get(..2) == Some(&["observe".into(), "select".into()]) {
         return Some(preparation::submit(args));
+    }
+    if args.len() == 3 && args[..2] == ["observe", "migrate-sources"] {
+        return Some(source_store::migrate(&args[2]).map(|v| println!("{v}")));
     }
     if args.len() != 2 {
         return None;

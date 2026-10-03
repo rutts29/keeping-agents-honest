@@ -1,0 +1,247 @@
+//! Lossless content-addressed observer sources; references never choose content.
+use crate::Result;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    io::Write,
+    os::unix::fs::OpenOptionsExt,
+    path::{Path, PathBuf},
+};
+
+fn directory(path: &Path) -> Result<PathBuf> {
+    path.ancestors()
+        .find(|p| p.join("sources").is_dir())
+        .map(|p| p.join("sources"))
+        .ok_or_else(|| "REVIEW_SOURCE_DIRECTORY stage=source_store".into())
+}
+fn reference(root: &Path, bytes: &[u8], encoding: &str) -> Result<Value> {
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    let target = root.join(&digest);
+    if !target.exists() {
+        let temporary = root.join(format!("{}.tmp", crate::relay_store::nonce()));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        match fs::hard_link(&temporary, &target) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
+        }
+        fs::remove_file(temporary)?;
+        fs::File::open(root)?.sync_all()?;
+    }
+    verify(&target, &digest)?;
+    Ok(json!({"$kah_source":digest,"encoding":encoding}))
+}
+fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
+    let bytes = fs::read(path)?;
+    if format!("{:x}", Sha256::digest(&bytes)) != digest {
+        return Err("REVIEW_SOURCE_DIGEST stage=source_store".into());
+    }
+    Ok(bytes)
+}
+fn strings(value: &Value, root: &Path) -> Result<Value> {
+    if value.get("$kah_source").is_some() {
+        return Ok(value.clone());
+    }
+    match value {
+        Value::String(text) => reference(root, text.as_bytes(), "utf8"),
+        Value::Array(items) => Ok(Value::Array(
+            items
+                .iter()
+                .map(|v| strings(v, root))
+                .collect::<Result<_>>()?,
+        )),
+        Value::Object(items) => Ok(Value::Object(
+            items
+                .iter()
+                .map(|(k, v)| Ok((k.clone(), strings(v, root)?)))
+                .collect::<Result<_>>()?,
+        )),
+        _ => Ok(value.clone()),
+    }
+}
+pub fn expand(value: Value, root: &Path) -> Result<Value> {
+    if let Some(digest) = value.get("$kah_source").and_then(Value::as_str) {
+        if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("REVIEW_SOURCE_ID stage=source_store".into());
+        }
+        let bytes = verify(&root.join(digest), digest)?;
+        return match value["encoding"].as_str() {
+            Some("utf8") => Ok(Value::String(String::from_utf8(bytes)?)),
+            Some("json") => expand(serde_json::from_slice(&bytes)?, root),
+            _ => Err("REVIEW_SOURCE_ENCODING stage=source_store".into()),
+        };
+    }
+    match value {
+        Value::Array(items) => Ok(Value::Array(
+            items
+                .into_iter()
+                .map(|v| expand(v, root))
+                .collect::<Result<_>>()?,
+        )),
+        Value::Object(items) => Ok(Value::Object(
+            items
+                .into_iter()
+                .map(|(k, v)| Ok((k, expand(v, root)?)))
+                .collect::<Result<_>>()?,
+        )),
+        _ => Ok(value),
+    }
+}
+fn compact(value: &Value, root: &Path) -> Result<Value> {
+    if value.get("$kah_source").is_some() {
+        return Ok(value.clone());
+    }
+    let mut result = value.clone();
+    if let Some(object) = result.as_object_mut() {
+        for (key, source) in object.iter_mut() {
+            if ["state", "original", "prepared_state", "jev_state"].contains(&key.as_str()) {
+                if source.get("$kah_source").is_some() {
+                    continue;
+                }
+                let encoded = strings(source, root)?;
+                *source = reference(root, &serde_json::to_vec(&encoded)?, "json")?;
+            } else if key != "documents" {
+                *source = compact(source, root)?;
+            }
+        }
+        if let Some(documents) = object.get_mut("documents").and_then(Value::as_array_mut) {
+            for document in documents {
+                if let Some(text) = document
+                    .get_mut("text")
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                {
+                    document["text"] = reference(root, text.as_bytes(), "utf8")?;
+                }
+            }
+        }
+    } else if let Some(array) = result.as_array_mut() {
+        for value in array {
+            *value = compact(value, root)?;
+        }
+    }
+    Ok(result)
+}
+pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
+    let root = if let Some(parent) = directory
+        .ancestors()
+        .find(|p| p.join(".source-root").is_file())
+    {
+        PathBuf::from(fs::read_to_string(parent.join(".source-root"))?)
+    } else {
+        self::directory(directory)?
+    };
+    let stored = compact(value, &root)?;
+    if expand(stored.clone(), &root)? != *value {
+        return Err("REVIEW_SOURCE_ROUNDTRIP stage=source_store".into());
+    }
+    crate::unattended_report::save(directory, name, &stored)
+}
+pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+    let value = serde_json::from_slice(&fs::read(path)?)?;
+    let root = directory(path).unwrap_or_else(|_| path.parent().unwrap().join("sources"));
+    let expanded = expand(value, &root)?;
+    Ok(serde_json::from_value(expanded)?)
+}
+pub fn initialize(private: &Path, workspace: &Path) -> Result<()> {
+    kah_core::run_store::ensure_private_directory(&private.join("sources"))?;
+    fs::create_dir_all(workspace.join("sources"))?;
+    fs::write(
+        workspace.join(".source-root"),
+        private.join("sources").as_os_str().as_encoded_bytes(),
+    )?;
+    Ok(())
+}
+pub fn text(private: &Path, target: &Path, text: &str) -> Result<()> {
+    let root = private.join("sources");
+    let source = reference(&root, text.as_bytes(), "utf8")?;
+    let digest = source["$kah_source"].as_str().unwrap();
+    let temporary = target.with_extension(format!("{}.tmp", crate::relay_store::nonce()));
+    fs::hard_link(root.join(digest), &temporary)?;
+    fs::rename(temporary, target)?;
+    fs::File::open(target.parent().unwrap())?.sync_all()?;
+    Ok(())
+}
+pub fn share(private: &Path, workspace: &Path) -> Result<()> {
+    let public = workspace.join("sources");
+    for entry in fs::read_dir(private.join("sources"))? {
+        let entry = entry?;
+        if entry.file_name().to_string_lossy().ends_with(".tmp") {
+            continue;
+        }
+        let target = public.join(entry.file_name());
+        if !target.exists() {
+            fs::hard_link(entry.path(), target)?;
+        }
+    }
+    kah_run::access::share_tree(&public, kah_run::access::service_uid()?, false)?;
+    Ok(())
+}
+pub fn migrate(worker: &str) -> Result<Value> {
+    let store = super::state::Store::open(worker)?;
+    let state = store
+        .load()?
+        .ok_or("REVIEW_STATE_MISSING stage=source_migration")?;
+    initialize(&store.directory, &state.observer.workspace)?;
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=source_migration")?);
+    super::workspace::prepare(&home, &state)?;
+    let mut paths = Vec::new();
+    collect(&store.directory, &mut paths)?;
+    collect(&state.observer.workspace.join("inputs"), &mut paths)?;
+    let mut migrated = 0;
+    for path in paths {
+        if path.extension().is_some_and(|e| e == "txt") {
+            let full = fs::read_to_string(&path)?;
+            text(&store.directory, &path, &full)?;
+            migrated += 1;
+            continue;
+        }
+        let value: Value = serde_json::from_slice(&fs::read(&path)?)?;
+        let root = store.directory.join("sources");
+        let stored = compact(&value, &root)?;
+        if stored != value {
+            if expand(stored.clone(), &root)? != expand(value, &root)? {
+                return Err("REVIEW_SOURCE_ROUNDTRIP stage=source_migration".into());
+            }
+            if path.starts_with(&state.observer.workspace) {
+                share(&store.directory, &state.observer.workspace)?;
+            }
+            crate::unattended_report::save(
+                path.parent().unwrap(),
+                path.file_name().unwrap().to_str().unwrap(),
+                &stored,
+            )?;
+            migrated += 1;
+        }
+    }
+    share(&store.directory, &state.observer.workspace)?;
+    kah_run::access::share_tree(
+        &state.observer.workspace.join("inputs"),
+        kah_run::access::service_uid()?,
+        false,
+    )?;
+    Ok(
+        json!({"worker":worker,"recordsMigrated":migrated,"digestsVerified":true,"fullSourcesRecoverable":true}),
+    )
+}
+fn collect(root: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() && entry.file_name() != "sources" {
+            collect(&path, paths)?;
+        } else if path.extension().is_some_and(|e| e == "json" || e == "txt") {
+            paths.push(path);
+        }
+    }
+    Ok(())
+}

@@ -15,7 +15,8 @@ pub struct Wake {
 pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Result<()> {
     let directory = Store::directory(worker)?.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
-    crate::unattended_report::save(
+    kah_core::run_store::ensure_private_directory(&Store::directory(worker)?.join("sources"))?;
+    super::source_store::save(
         &directory,
         &format!("{}.json", crate::relay_store::nonce()),
         &serde_json::to_value(Wake {
