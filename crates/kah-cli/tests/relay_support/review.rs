@@ -197,7 +197,11 @@ fn resume_command(home: &Path, project: &Path, provider: &str, id: &str) -> Comm
             .command(false)
     }
 }
-fn wait_review(id: &str, pane: &Pane, provider: &str) -> kah_cli::observer_review::state::State {
+pub(super) fn wait_review(
+    id: &str,
+    pane: &Pane,
+    provider: &str,
+) -> kah_cli::observer_review::state::State {
     let deadline = Instant::now() + Duration::from_secs(240);
     let mut consent = false;
     loop {

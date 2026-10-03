@@ -137,7 +137,7 @@ fn history(home: &Path, state: &State) -> Result<String> {
     crate::privacy::scrub(&mut value);
     Ok(render(&value))
 }
-fn render(value: &Value) -> String {
+pub fn render(value: &Value) -> String {
     // Preserve all native fields, decoding string leaves for exact human quotes.
     fn walk(value: &Value, path: &str, out: &mut String) {
         match value {

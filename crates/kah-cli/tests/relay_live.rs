@@ -8,6 +8,8 @@ mod fixture;
 mod herdr_probe;
 #[allow(dead_code, unused_imports)]
 mod native_controller_support;
+#[path = "../src/privacy.rs"]
+mod privacy;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
 mod processes;
@@ -73,6 +75,8 @@ fn relay_and_dispatch() {
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(
             if std::env::var_os("KAH_GATE_LINKED_STEER").is_some() {
                 "linked-steering.json"
+            } else if std::env::var_os("KAH_GATE_REPLAY").is_some() {
+                "historical-replay.json"
             } else if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
                 "verified-drift.json"
             } else if std::env::var_os("KAH_GATE_REVIEW").is_some() {

@@ -1,5 +1,6 @@
 use kah_cli::{Arguments, run_pane::Pane};
 mod linked_steer;
+mod replay;
 mod review;
 mod review_drift;
 mod trace;
@@ -37,6 +38,9 @@ pub fn run(root: &Path) -> Value {
 fn special_run() -> Option<fn(&Path) -> Value> {
     if std::env::var_os("KAH_GATE_LINKED_STEER").is_some() {
         return Some(linked_steer::run);
+    }
+    if std::env::var_os("KAH_GATE_REPLAY").is_some() {
+        return Some(replay::run);
     }
     if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
         return Some(review_drift::run);

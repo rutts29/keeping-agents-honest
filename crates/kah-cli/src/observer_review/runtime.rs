@@ -22,7 +22,7 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     let started = kah_observer::session::now_ms();
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=wake")?);
     let store = Store::open(worker)?;
-    let mut state = match store.load()? {
+    let state = match store.load()? {
         Some(state) => state,
         None => State::new(crate::relay_store::endpoint(worker)?, &home)?,
     };
@@ -42,16 +42,33 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     workspace::prepare(&home, &state)?;
     let mut request = capture::request(&state, purpose, turn, trigger)?;
     request.created_ms = started;
-    let prompt = workspace::publish(&store, &state, &request)?;
-    let mut pending = Pending::from(&request);
+    submit_snapshot(store, state, &request, &home)
+}
+
+/// Host-owned immutable snapshots use the same native review lifecycle, whether
+/// captured from a live worker or reconstructed for a provenance-linked replay.
+pub fn submit_snapshot(
+    store: Store,
+    mut state: State,
+    request: &super::state::Request,
+    home: &Path,
+) -> Result<Value> {
+    require_active(&state.worker.session)?;
+    if state.pending.is_some() || request.worker != state.worker.session {
+        return Err("REVIEW_SNAPSHOT_BINDING stage=review".into());
+    }
+    workspace::prepare(home, &state)?;
+    let worker = request.worker.as_str();
+    let prompt = workspace::publish(&store, &state, request)?;
+    let mut pending = Pending::from(request);
     pending.native_tokens_before = if state.observer.session.is_none() {
         Some(0)
     } else {
-        super::consume::tokens(&home, &store, &state).ok()
+        super::consume::tokens(home, &store, &state).ok()
     };
     state.pending = Some(pending);
     if request.purpose == Purpose::Preparation {
-        return begin_preparation(store, state, &request);
+        return begin_preparation(store, state, request);
     }
     state.wakes += 1;
     state.stopped = false;
@@ -66,7 +83,7 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     }
     store.save(&state)?;
     drop(store); // SessionStart must be able to bind before pane run returns.
-    deliver(&home, &state, &prompt, existing)?;
+    deliver(home, &state, &prompt, existing)?;
     super::lifecycle::start(worker)?;
     if !existing {
         startup_notice(&state)?;
