@@ -171,7 +171,13 @@ fn configure_observation(
     let handler = home.join(".local/bin/kah");
     let model = args.observer_model.as_deref().unwrap_or("gpt-6.1-sol");
     let effort = args.observer_effort.as_deref().unwrap_or("low");
-    let config = kah_observer::compaction::CompactorConfig::new(model, Some(effort))?;
+    let config = kah_observer::compaction::CompactorConfig::requested(model, Some(effort))?;
+    if !config.model().starts_with("gpt-") {
+        return Err(
+            "OBSERVER_PROVIDER_MODEL stage=observer_config: Codex observer needs a Codex model"
+                .into(),
+        );
+    }
     let binding = kah_observer::session::Binding {
         session: String::new(),
         project: project.root.clone(),
@@ -207,7 +213,10 @@ fn configure_observation(
     .collect::<Vec<_>>();
     let hooks = hooks
         .into_iter()
-        .filter(|h| !args.no_observer || matches!(h.event, "SessionStart" | "UserPromptSubmit"))
+        .filter(|h| {
+            !args.no_observer
+                || matches!(h.event, "SessionStart" | "UserPromptSubmit" | "PreToolUse")
+        })
         .collect::<Vec<_>>();
     overlay::install_owned_hooks(native, directory, &project.root, &hooks)?;
     if args.no_observer {

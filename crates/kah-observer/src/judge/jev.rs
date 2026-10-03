@@ -85,6 +85,7 @@ impl HttpClient {
         authorization.set_sensitive(true);
         let config = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(20)))
+            .http_status_as_error(false)
             .max_redirects(0)
             .build();
         Ok(Self {
@@ -104,10 +105,22 @@ impl Client for HttpClient {
             .send_json(body)
             .map_err(http_error)?;
         if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body = response
+                .body_mut()
+                .with_config()
+                .limit(1024 * 1024)
+                .read_json::<Value>()
+                .ok();
             return Err(Error {
-                code: "JEV_HTTP_STATUS".into(),
+                code: if body.as_ref().is_some_and(context_rejection) {
+                    "JEV_CONTEXT_LIMIT"
+                } else {
+                    "JEV_HTTP_STATUS"
+                }
+                .into(),
                 stage: "judge_http",
-                status: Some(response.status().as_u16()),
+                status: Some(status),
                 numeric_detail: None,
             });
         }
@@ -117,6 +130,29 @@ impl Client for HttpClient {
             .limit(1024 * 1024)
             .read_json()
             .map_err(|_| Error::new("JEV_RESPONSE_READ"))
+    }
+}
+fn context_rejection(body: &Value) -> bool {
+    match body {
+        Value::String(text) => {
+            let text = text.to_ascii_lowercase();
+            text.contains("token")
+                && (text.contains("limit")
+                    || text.contains("exceed")
+                    || text.contains("too long")
+                    || text.contains("maximum"))
+        }
+        Value::Array(values) => values.iter().any(context_rejection),
+        Value::Object(fields) => fields
+            .iter()
+            .filter(|(key, _)| {
+                matches!(
+                    key.as_str(),
+                    "error" | "detail" | "message" | "msg" | "code" | "type"
+                )
+            })
+            .any(|(_, value)| context_rejection(value)),
+        _ => false,
     }
 }
 fn http_error(error: ureq::Error) -> Error {

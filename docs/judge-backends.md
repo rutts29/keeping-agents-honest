@@ -14,11 +14,14 @@ items with explicit `uncertain_supersedes` links. The original goal never change
 A confident withdrawal retains the exact withdrawal message as an active scope
 constraint and the withdrawn text in history.
 
-Luna/low synthesis is now **compaction only**, above the 32 KiB rendered budget.
-Its separate prompt summary links to original item IDs and a content digest;
-canonical items and the goal remain unchanged. `kah ledger SESSION` retrieves
-history, including inactive originals. Jev completion reads canonical text, never
-the summary, and unresolved replacement flags block completion.
+**Current implementation:** context/ledger compaction does not run. The old
+headless synthesizer was retired; canonical user words remain verbatim. The
+approved replacement uses the persistent full native observer to choose whole
+relevant items for one decision, with recorded selections/exclusions, reasons,
+source pointers and digests. Rust must preserve goal text and reject exclusion
+of active user/relayed items unless a verified superseding item is cited. This
+preparation pipeline is not wired yet; removing local bounds alone does not
+satisfy it.
 
 New verbatim runs have a separate stable identity. Existing synthesized ledgers
 remain on disk; source replay rebuilds from native user records rather than
@@ -31,8 +34,12 @@ Local reference: `~/.local/share/typesafe-docs`, pinned 2026-09-30. Checked agai
 instructions/criteria are a supported subset of SDK `EntryType`. Responses match
 Noul (no confidence), Choice (choice/probabilities/confidence), Score
 (score/legend/probabilities/confidence), model and input/output token usage.
-kah's stricter request limits are application bounds. Oversize inputs record a
-gap; candidate IDs are never silently dropped. No mirror auto-update is used.
+kah's invented state/question byte bounds and 32-question bound are removed.
+The provider owns the documented token limits: 32k for state plus the longest
+question, 64k per request. There is no official tokenizer/count endpoint; actual
+usage.input_tokens may calibrate planning, never a hard rejection estimate.
+Genuine context rejection must invoke observer preparation and one recorded
+retry; this path is pending. No mirror auto-update is used.
 
 The HTTP adapter follows the [API reference](https://docs.typesafe.ai/api),
 [Python](https://docs.typesafe.ai/sdk/python) and

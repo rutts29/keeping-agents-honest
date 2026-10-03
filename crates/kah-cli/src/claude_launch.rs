@@ -91,10 +91,18 @@ fn configure(
 }
 
 fn binding(home: &Path, project: &Path, args: &Arguments) -> Result<Binding> {
-    let config = CompactorConfig::new(
-        args.observer_model.as_deref().unwrap_or("gpt-6.1-sol"),
+    let config = CompactorConfig::requested(
+        args.observer_model
+            .as_deref()
+            .unwrap_or("claude-sonnet-5-5"),
         Some(args.observer_effort.as_deref().unwrap_or("low")),
     )?;
+    if !config.model().starts_with("claude-") {
+        return Err(
+            "OBSERVER_PROVIDER_MODEL stage=observer_config: Claude observer needs a Claude model"
+                .into(),
+        );
+    }
     Ok(Binding {
         session: String::new(),
         project: project.into(),

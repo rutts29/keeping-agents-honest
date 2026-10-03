@@ -9,6 +9,7 @@ pub mod judge;
 
 pub mod checkpoint;
 pub mod compaction;
+pub mod context_selection;
 pub mod evaluation;
 pub mod inherited;
 pub mod intake;

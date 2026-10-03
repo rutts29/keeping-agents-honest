@@ -14,11 +14,12 @@ pub fn run() {
     let result: crate::Result<Value> = (|| {
         let input: Value = serde_json::from_reader(std::io::stdin().take(1024 * 1024))?;
         if let Err(reason) = crate::session_policy::enforce(&input) {
-            return Ok(crate::session_policy::rejection(&reason));
+            return Ok(crate::session_policy::rejection(&input, &reason));
         }
         crate::herdr::report_input(&input);
         let mut output = handle(&input).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
         crate::observer_review::pause::annotate(&input, &mut output)?;
+        crate::observer_notice::annotate(&input, &mut output)?;
         Ok(output)
     })();
     let output = match result {

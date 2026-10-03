@@ -21,6 +21,7 @@ pub fn run() {
             let mut output = handle(&input)?;
             crate::observer_review::pause::annotate(&input, &mut output)
                 .map_err(|e| e.to_string())?;
+            crate::observer_notice::annotate(&input, &mut output).map_err(|e| e.to_string())?;
             Ok(output)
         });
     println!(

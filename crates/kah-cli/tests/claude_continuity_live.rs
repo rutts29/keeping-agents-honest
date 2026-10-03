@@ -91,7 +91,7 @@ fn mine_claude_native_subagent() {
     let version = version();
     let mut terminal = f.start(false);
     f.ready(&mut terminal);
-    let task = "Use the native Agent tool to start one Haiku subagent with this task: write child.txt containing CHILD_OK in this project. Wait for it to finish. Do not write the file yourself. Then reply CHILD_DONE.";
+    let task = "Use the native Agent tool to start one Claude Sonnet 5.5 subagent at low effort with this task: write child.txt containing CHILD_OK in this project. Wait for it to finish. Do not write the file yourself. Then reply CHILD_DONE.";
     f.prompt(&mut terminal, task);
     f.wait(&mut terminal, || f.has_file("child.txt", "CHILD_OK"));
     f.settled(&mut terminal, task);

@@ -22,17 +22,53 @@ impl<'a> CompactorConfig<'a> {
             // Existing native sessions can retain an older observer binding in
             // their environment. Honor the new floor without launching it.
             "luna" | "sol" | "terra" | "gpt-6-luna" | "gpt-6-sol" | "gpt-reserve"
-            | "gpt-5.6-terra" => "gpt-6.1-sol",
+            | "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.6-luna" | "gpt-5.5" => "gpt-6.1-sol",
+            "haiku" | "sonnet" | "claude-sonnet-5" | "claude-haiku-4-5-20251001" => {
+                "claude-sonnet-5-5"
+            }
+            "opus" | "claude-opus-5" | "claude-opus-4-8" => "claude-opus-5-5",
             other => other,
         };
+        let reasoning = match reasoning {
+            Some("none" | "minimal") => Some("low"),
+            other => other,
+        };
+        Self::requested(model, reasoning)
+    }
+
+    /// Validate a new user choice without upgrading a below-floor request.
+    pub fn requested(model: &'a str, reasoning: Option<&'a str>) -> Result<Self, String> {
+        let model = match model {
+            "sonnet" => "claude-sonnet-5-5",
+            "opus" => "claude-opus-5-5",
+            "fable" => "claude-fable-5-1",
+            other => other,
+        };
+        if !matches!(
+            model,
+            "gpt-6.1-sol"
+                | "gpt-6-astra"
+                | "claude-sonnet-5-5"
+                | "claude-opus-5-5"
+                | "claude-fable-5-1"
+        ) {
+            return Err("OBSERVER_MODEL stage=observer_config: choose gpt-6.1-sol, gpt-6-astra, claude-sonnet-5-5, claude-opus-5-5 or claude-fable-5-1 (permanent model floor)".into());
+        }
         let reasoning = reasoning.unwrap_or("low");
-        if !valid_choice(model) || model.starts_with('-') {
-            return Err("OBSERVER_MODEL stage=observer_config: model must be a nonempty native model identifier".into());
+        if !matches!(
+            reasoning,
+            "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+        ) {
+            return Err(
+                "OBSERVER_EFFORT stage=observer_config: effort must be low or higher".into(),
+            );
         }
-        if !valid_choice(reasoning) {
-            return Err("OBSERVER_EFFORT stage=observer_config: effort must be a nonempty native reasoning value".into());
+        if model.starts_with("claude-") && reasoning == "ultra" {
+            return Err(
+                "OBSERVER_EFFORT stage=observer_config: Claude effort supports low through max"
+                    .into(),
+            );
         }
-        // Codex 0.159 advertises model-specific effort strings, not a closed enum.
         Ok(Self {
             model,
             reasoning,
@@ -58,10 +94,4 @@ impl<'a> CompactorConfig<'a> {
         self.timeout = timeout;
         Ok(self)
     }
-}
-
-fn valid_choice(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && !value.chars().any(|c| c.is_whitespace() || c.is_control())
 }

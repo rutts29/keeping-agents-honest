@@ -19,10 +19,7 @@ use std::{
 pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     let dispatch = crate::dispatch::prepare(args.parent.as_deref(), &args.task)?;
     let mut control = RunControl::new(&args.task, args.limits)?;
-    let observer = kah_observer::compaction::CompactorConfig::new(
-        args.observer_model.as_deref().unwrap_or("gpt-6.1-sol"),
-        Some(args.observer_effort.as_deref().unwrap_or("low")),
-    )?;
+    let observer = observer_choice(&args)?;
     let project = Project::select(&home.join("repos"), cwd, None)?;
     let domain = args.domain.unwrap_or(project.domain);
     let id = format!(
@@ -66,8 +63,8 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
                 .join(".local/bin/codex")
                 .canonicalize()
                 .map_err(|e| format!("RUN_NATIVE_BINARY stage=run_create: {e}"))?,
-            model: observer.model().into(),
-            effort: observer.reasoning().into(),
+            model: observer.0,
+            effort: observer.1,
             timeout_secs: 45,
             judge: Backend::Jev,
             jev_model: args.jev_model.unwrap_or_else(|| "jev-latest".into()),
@@ -75,6 +72,22 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     };
     save(&store.directory().join("settings.json"), &settings)?;
     Ok(id)
+}
+
+fn observer_choice(args: &RunArguments) -> Result<(String, String)> {
+    let claude = args.agent.as_deref() == Some("claude");
+    let observer = kah_observer::compaction::CompactorConfig::requested(
+        args.observer_model.as_deref().unwrap_or(if claude {
+            "claude-sonnet-5-5"
+        } else {
+            "gpt-6.1-sol"
+        }),
+        Some(args.observer_effort.as_deref().unwrap_or("low")),
+    )?;
+    if observer.model().starts_with("claude-") != claude {
+        return Err("OBSERVER_PROVIDER_MODEL stage=observer_config: observer model must match the native provider".into());
+    }
+    Ok((observer.model().into(), observer.reasoning().into()))
 }
 
 pub fn settings(directory: &Path) -> Result<Settings> {

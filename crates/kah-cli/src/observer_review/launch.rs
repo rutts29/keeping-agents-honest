@@ -6,12 +6,16 @@ use serde_json::{Value, json};
 use std::{path::Path, process::Command};
 
 pub fn command(home: &Path, state: &State, prompt: &str) -> Result<Command> {
+    let choice = kah_observer::compaction::CompactorConfig::new(
+        &state.observer.model,
+        Some(&state.observer.effort),
+    )?;
     let words = vec![
         "--no-observer".into(),
         "--model".into(),
-        state.observer.model.clone(),
+        choice.model().into(),
         "--effort".into(),
-        state.observer.effort.clone(),
+        choice.reasoning().into(),
     ];
     let mut args = Arguments::parse(words)?;
     if state.worker.provider == "claude" {

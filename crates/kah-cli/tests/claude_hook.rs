@@ -209,14 +209,24 @@ fn pre_tool_hooks_sync_intent_without_judging_unexecuted_actions() {
 #[test]
 fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
     let f = Fixture::new();
-    for id in ["one", "two", "three", "one"] {
+    for (n, id) in ["one", "two", "three", "one"].into_iter().enumerate() {
         let mut input = f.input();
         input["hook_event_name"] = "PostToolUse".into();
         input["tool_use_id"] = id.into();
         input["tool_name"] = "Bash".into();
         input["tool_input"] = json!({"command":"true"});
         input["tool_response"] = json!({"stdout":"","exit_code":0});
-        assert_eq!(f.run(input), json!({}));
+        let output = f.run(input);
+        if n == 0 {
+            assert!(
+                output["systemMessage"]
+                    .as_str()
+                    .unwrap()
+                    .contains("observer idle")
+            );
+        } else {
+            assert_eq!(output, json!({}));
+        }
     }
     let mut input = f.input();
     input["hook_event_name"] = "PostToolUse".into();
@@ -263,7 +273,17 @@ fn empty_native_history_never_judges_drift() {
         let mut input = f.input();
         input["hook_event_name"] = "PostToolUse".into();
         input["tool_use_id"] = n.to_string().into();
-        assert_eq!(f.run(input), json!({}));
+        let output = f.run(input);
+        if n == 0 {
+            assert!(
+                output["systemMessage"]
+                    .as_str()
+                    .unwrap()
+                    .contains("observer idle")
+            );
+        } else {
+            assert_eq!(output, json!({}));
+        }
     }
     wait_worker(&f);
     let state = Store::read(&f.home.join("state/kah"), "session")

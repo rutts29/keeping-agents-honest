@@ -17,9 +17,10 @@ pub fn wake(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Resul
     let started = kah_observer::session::now_ms();
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=wake")?);
     let store = Store::open(worker)?;
-    let mut state = store
-        .load()?
-        .unwrap_or(State::new(crate::relay_store::endpoint(worker)?, &home));
+    let mut state = match store.load()? {
+        Some(state) => state,
+        None => State::new(crate::relay_store::endpoint(worker)?, &home)?,
+    };
     if state.stopped && state.pending.is_some() {
         drop(store);
         resume(worker)?;

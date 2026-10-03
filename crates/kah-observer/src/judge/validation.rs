@@ -1,13 +1,13 @@
 use super::*;
 use std::collections::BTreeSet;
 
-pub fn validate_request(state: &Value, questions: &Questions) -> Result<(), Error> {
-    if questions.is_empty()
-        || questions.len() > 32
-        || state.to_string().len() > 64 * 1024
-        || serde_json::to_vec(questions).unwrap().len() > 16 * 1024
-    {
-        return Err(Error::new("JUDGE_REQUEST_BOUND"));
+pub fn validate_request(_state: &Value, questions: &Questions) -> Result<(), Error> {
+    // Jev owns tokenization: 32k state + longest question, 64k total request.
+    // Bytes and question counts are not token budgets. Preserve whole content;
+    // provider rejection still needs the planned native-observer preparation;
+    // it is not implemented by this validator.
+    if questions.is_empty() {
+        return Err(Error::new("JUDGE_QUESTIONS_EMPTY"));
     }
     for question in questions.values() {
         let valid = match question {

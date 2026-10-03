@@ -15,6 +15,7 @@ pub mod inspection_cli;
 pub mod interactive_name;
 mod launch;
 pub mod observer_hook;
+pub mod observer_notice;
 pub mod observer_review;
 mod privacy;
 pub mod relay;

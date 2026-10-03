@@ -59,7 +59,7 @@ fn mismatched_answers_and_invalid_distributions_are_rejected() {
             .code,
         "JUDGE_ANSWER_KEYS"
     );
-    assert!(judge::validate_request(&json!("x".repeat(65537)), &questions).is_err());
+    assert!(judge::validate_request(&json!("x".repeat(65537)), &questions).is_ok());
 }
 
 #[test]

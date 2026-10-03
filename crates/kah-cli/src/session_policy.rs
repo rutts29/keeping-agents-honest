@@ -50,7 +50,11 @@ pub fn enforce(input: &Value) -> Result<(), String> {
     validate(&base, &current, input)
 }
 
-pub fn rejection(reason: &str) -> Value {
+pub fn rejection(input: &Value, reason: &str) -> Value {
+    if input["hook_event_name"] == "PreToolUse" {
+        // 0.160.0 rejects continue:false at PreToolUse; use its native deny.
+        return json!({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":reason},"systemMessage":reason});
+    }
     // Universal fields are accepted by SessionStart and UserPromptSubmit.
     // SessionStart rejects the legacy decision/reason fields as invalid JSON.
     json!({"continue":false,"stopReason":reason,"systemMessage":reason})
@@ -84,6 +88,10 @@ pub fn validate(base: &Path, current: &SessionPolicy, input: &Value) -> Result<(
         Err(e) => return Err(io_error(e)),
     };
     current.check(&saved)?;
+    if current.policy.starts_with("research-") || current.policy.starts_with("untrusted-") {
+        kah_codex::overlay::validate_executor(&current.overlay, &format!("kah-{}", current.policy))
+            .map_err(|e| e.to_string())?;
+    }
     let cwd = input["cwd"]
         .as_str()
         .ok_or("SESSION_POLICY_CWD stage=hook: cwd absent")?;

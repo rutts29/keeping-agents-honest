@@ -84,26 +84,30 @@ pub struct State {
     pub stopped: bool,
 }
 impl State {
-    pub fn new(worker: Endpoint, home: &Path) -> Self {
+    pub fn new(worker: Endpoint, home: &Path) -> Result<Self> {
         use sha2::{Digest, Sha256};
         let hash = format!("{:x}", Sha256::digest(worker.session.as_bytes()));
-        let model = if worker.provider == "claude" {
+        let saved = Sessions::read(&RunStore::default_state_root()?, &worker.session)?
+            .ok_or("REVIEW_BINDING stage=observer_config")?;
+        let model = if worker.provider == "claude" && saved.binding.model.starts_with("gpt-") {
             "claude-sonnet-5-5"
         } else {
-            "gpt-6.1-sol"
+            &saved.binding.model
         };
+        let choice =
+            kah_observer::compaction::CompactorConfig::new(model, Some(&saved.binding.effort))?;
         let observer = Observer {
             session: None,
             pane: None,
             name: format!("kah-observer-{}", &hash[..16]),
             workspace: home.join(".cache/kah-observers").join(&hash[..24]),
-            model: model.into(),
-            effort: "low".into(),
+            model: choice.model().into(),
+            effort: choice.reasoning().into(),
             transcript: None,
             pid: None,
             process_stamp: None,
         };
-        Self {
+        Ok(Self {
             worker,
             observer,
             pending: None,
@@ -114,7 +118,7 @@ impl State {
             wakes: 0,
             native_tokens: 0,
             stopped: false,
-        }
+        })
     }
 }
 pub struct Store {

@@ -10,6 +10,7 @@ use serde_json::json;
 fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_failed_nudges() {
     let worker = format!("checkpoint-unit-{}", std::process::id());
     let home = std::env::temp_dir().join(&worker);
+    saved_binding(&worker, &home);
     let mut state = State::new(
         Endpoint {
             provider: "codex".into(),
@@ -19,7 +20,10 @@ fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_fa
             socket: None,
         },
         &home,
-    );
+    )
+    .unwrap();
+    assert_eq!(state.observer.model, "gpt-6-astra");
+    assert_eq!(state.observer.effort, "high");
     let store = Store::open(&worker).unwrap();
     let request = Request {
         id: "review-unit".into(),
@@ -49,4 +53,26 @@ fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_fa
     let directory = store.directory.clone();
     drop(store);
     std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
+
+fn saved_binding(worker: &str, home: &std::path::Path) {
+    let base = kah_core::run_store::RunStore::default_state_root().unwrap();
+    let mut primary =
+        kah_observer::session::Store::open(&base, worker, std::time::Duration::ZERO).unwrap();
+    primary
+        .save(&kah_observer::session::State::new(
+            kah_observer::session::Binding {
+                session: worker.into(),
+                project: home.into(),
+                codex_home: home.join("codex"),
+                native: home.join("native"),
+                model: "gpt-6-astra".into(),
+                effort: "high".into(),
+                timeout_secs: 45,
+                jev_model: "jev-latest".into(),
+                judge: kah_observer::judge::routing::Backend::Jev,
+            },
+        ))
+        .unwrap();
+    drop(primary);
 }
