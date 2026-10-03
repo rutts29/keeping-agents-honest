@@ -56,20 +56,12 @@ pub fn prepare(rows: Vec<Row>, validation: bool) -> Result<Vec<Case>, String> {
             return Err("EVAL_ROW_ID_OR_SOURCE stage=replay".into());
         }
         let session = sessions.entry(row.session.clone()).or_default();
-        let prior = session
-            .active
-            .iter()
-            .rev()
-            .take(40)
-            .cloned()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
+        let prior = session.active.clone();
         if prior.len() != row.prior_items.len()
-            || !prior.iter().zip(&row.prior_items).all(|(full, view)| {
-                full.id == view.id && full.text.chars().take(600).collect::<String>() == view.text
-            })
+            || !prior
+                .iter()
+                .zip(&row.prior_items)
+                .all(|(full, view)| full.id == view.id && full.text == view.text)
         {
             return Err(format!(
                 "EVAL_GOLD_PRIOR_MISMATCH stage=replay id={}",

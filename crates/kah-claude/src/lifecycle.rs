@@ -2,9 +2,6 @@
 use serde_json::Value;
 
 pub fn completed(text: &str, session: &str) -> Result<bool, String> {
-    if text.len() > crate::transcript::MAX_BYTES {
-        return Err("CLAUDE_SOURCE_BOUND stage=turn_completion".into());
-    }
     if !text.is_empty() && !text.ends_with('\n') {
         return Ok(false);
     }

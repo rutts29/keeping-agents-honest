@@ -42,16 +42,11 @@ pub fn judge(home: &Path, request: &Request, actions: &[Value]) -> Result<(Judgm
     );
     input["full_context_verified_evidence"] = json!(actions);
     crate::privacy::scrub(&mut input);
-    let binding = Store::read(&RunStore::default_state_root()?, &request.worker)?
-        .ok_or("REVIEW_WORKER_STATE stage=steering")?
-        .binding;
-    let judgment = judge::routing::evaluate(
-        home,
-        binding.judge,
-        &binding.jev_model,
-        &input,
-        &judge::questions::steering(&items),
-    )?;
+    if super::preparation::pending(&request.worker, &request.id)? {
+        super::preparation::accept(&request.worker, &request.id)?;
+    }
+    let (judgment, input) =
+        super::preparation::evaluate(home, request, &input, &judge::questions::steering(&items))?;
     Ok((judgment, input))
 }
 fn goal_item(request: &Request) -> Option<String> {

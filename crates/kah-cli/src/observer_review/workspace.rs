@@ -164,9 +164,6 @@ pub fn submit(args: &[String]) -> Result<()> {
         return Err("REVIEW_REQUEST_ID stage=report".into());
     }
     let bytes = fs::read(&args[5])?;
-    if bytes.len() > 64 * 1024 {
-        return Err("REVIEW_REPORT_BOUND stage=report".into());
-    }
     let report:Report=serde_json::from_slice(&bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no decision/probability fields")?;
     report.verify(&request.id, &request.documents)?;
     let directory = Path::new(&args[3])

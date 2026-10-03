@@ -47,7 +47,7 @@ pub fn claude_session_report(input: &Value, pane: &str, seq: u64) -> Option<Valu
 
 /// Best-effort and bounded by both socket timeouts and the native hook timeout.
 pub fn report() {
-    let input: Value = match serde_json::from_reader(std::io::stdin().take(1024 * 1024)) {
+    let input: Value = match serde_json::from_reader(std::io::stdin()) {
         Ok(v) => v,
         Err(_) => return,
     };
@@ -64,7 +64,7 @@ pub fn report_claude_input(input: &Value) {
     }
 }
 pub fn report_claude() {
-    if let Ok(input) = serde_json::from_reader(std::io::stdin().take(1024 * 1024)) {
+    if let Ok(input) = serde_json::from_reader(std::io::stdin()) {
         report_claude_input(&input);
     }
 }

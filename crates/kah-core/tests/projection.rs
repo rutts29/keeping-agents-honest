@@ -5,8 +5,8 @@ use kah_core::intent_history::{
 use kah_core::projection::{ClosureBlockerKind, ProjectionConfig, project};
 
 #[test]
-fn default_projection_budget_has_headroom_for_the_measured_organic_projection() {
-    assert_eq!(ProjectionConfig::default().byte_budget, 32 * 1024);
+fn default_projection_has_no_content_budget() {
+    assert_eq!(ProjectionConfig::default().byte_budget, 0);
 }
 
 fn source(role: SourceRole, record: &str) -> SourceRef {
@@ -290,7 +290,7 @@ fn replaying_the_same_history_produces_identical_projection_and_order() {
 }
 
 #[test]
-fn rendered_budget_accepts_exact_boundary_and_reports_structured_overflow_without_truncation() {
+fn legacy_byte_metadata_never_blocks_or_truncates_user_intent() {
     let history = history_with_items(vec![item(
         "large",
         IntentKind::Outcome,
@@ -304,7 +304,7 @@ fn rendered_budget_accepts_exact_boundary_and_reports_structured_overflow_withou
     assert_eq!(exact.rendered_bytes(), exact_budget);
 
     let overflow = project(&history, ProjectionConfig::new(exact_budget - 1)).expect("overflow");
-    assert!(overflow.overflow.is_overflow());
+    assert!(!overflow.overflow.is_overflow());
     assert_eq!(overflow.overflow.bytes, exact_budget);
     assert_eq!(overflow.overflow.budget, exact_budget - 1);
     assert_eq!(overflow.overflow.item_count, 1);
@@ -314,7 +314,7 @@ fn rendered_budget_accepts_exact_boundary_and_reports_structured_overflow_withou
         history.intent("large").unwrap().text
     );
     assert!(
-        overflow
+        !overflow
             .closure
             .blockers
             .iter()

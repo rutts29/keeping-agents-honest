@@ -27,12 +27,7 @@ pub fn run(worker: &str) {
 }
 fn receive(worker: &str) -> Result<()> {
     let mut bytes = Vec::new();
-    std::io::stdin()
-        .take(1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > 1024 * 1024 {
-        return Err("REVIEW_HOOK_BOUND stage=hook".into());
-    }
+    std::io::stdin().read_to_end(&mut bytes)?;
     let input: Value = serde_json::from_slice(&bytes)?;
     if input["agent_id"].is_string() {
         return Ok(());
@@ -87,6 +82,12 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
     if event == "Stop"
         && let Some(pending) = &state.pending
     {
+        if pending.purpose == super::state::Purpose::Preparation {
+            if super::preparation::accept(worker, &pending.id)? {
+                spawn("__review-consume", worker)?;
+            }
+            return Ok(());
+        }
         if state
             .observer
             .workspace

@@ -27,7 +27,6 @@ impl Message {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
             || text.trim().is_empty()
-            || text.len() > 16 * 1024
         {
             return Err("STEER_RELAY_ARGUMENTS stage=relayed_user".into());
         }

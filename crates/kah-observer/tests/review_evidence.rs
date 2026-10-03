@@ -69,3 +69,21 @@ fn duplicate_quotes_need_an_existing_occurrence_and_empty_reports_fail() {
     let empty: Report = serde_json::from_value(json!({"request_id":"r","findings":[]})).unwrap();
     assert!(empty.verify("r", &[]).is_err());
 }
+
+#[test]
+fn complete_context_and_many_findings_survive_without_quote_windows() {
+    let text = format!(
+        "{}\nRELEVANT whole sentence.\n{}\nLate negation: not integrated.\n",
+        "before 完整\n".repeat(1000),
+        "after\n".repeat(1000)
+    );
+    let document = Document::new("plan", "plan", "docs/PLAN.md", &text);
+    let findings = (0..30).map(|_|json!({"topic":"integration","claim":"Whole finding ".repeat(300),"citations":(0..9).map(|_|json!({"source":"plan","digest":document.digest,"quote":"RELEVANT whole sentence."})).collect::<Vec<_>>()})).collect::<Vec<_>>();
+    let report: Report =
+        serde_json::from_value(json!({"request_id":"large","findings":findings})).unwrap();
+    let verified = report.verify("large", &[document]).unwrap();
+    assert_eq!(verified.len(), 30);
+    assert_eq!(verified[29]["citations"].as_array().unwrap().len(), 9);
+    assert_eq!(verified[29]["citations"][8]["context"], text);
+    assert_eq!(verified[29]["citations"][8]["context_is_excerpt"], false);
+}

@@ -6,7 +6,7 @@ use kah_observer::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{fs, io::Read, os::unix::fs::PermissionsExt, path::Path};
+use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
 pub fn event(input: &Value) -> bool {
     matches!(
@@ -85,23 +85,18 @@ fn read(path: &Path) -> Result<Progress, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Progress::default()),
         Err(e) => return Err(format!("OBSERVER_TOOL_READ stage=in_turn: {e}")),
     };
-    if !meta.is_file() || meta.permissions().mode() & 0o077 != 0 || meta.len() > 128 * 1024 {
+    if !meta.is_file() || meta.permissions().mode() & 0o077 != 0 {
         return Err("OBSERVER_TOOL_PRIVATE stage=in_turn".into());
     }
     let file =
         fs::File::open(path).map_err(|e| format!("OBSERVER_TOOL_READ stage=in_turn: {e}"))?;
-    let progress: Progress = serde_json::from_reader(file.take(128 * 1024 + 1))
-        .map_err(|_| "OBSERVER_TOOL_JSON stage=in_turn")?;
+    let progress: Progress =
+        serde_json::from_reader(file).map_err(|_| "OBSERVER_TOOL_JSON stage=in_turn")?;
     progress.validate()?;
     Ok(progress)
 }
 fn action(input: &Value, id: &str) -> Value {
     let mut facts = json!({"tool":input["tool_name"],"input":input["tool_input"],"response":input["tool_response"],"error":input["error"],"source":input["hook_event_name"],"scope":"A completed native tool call; input is context, not proof that a background command has finished."});
     crate::privacy::scrub(&mut facts);
-    let text = facts.to_string();
-    let mut end = text.len().min(4096);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    json!({"id":id,"kind":"toolResult","status":if input["hook_event_name"]=="PostToolUseFailure" {"failed"} else {"completed"},"evidence":&text[..end],"truncated":end<text.len()})
+    json!({"id":id,"kind":"toolResult","status":if input["hook_event_name"]=="PostToolUseFailure" {"failed"} else {"completed"},"evidence":facts,"truncated":false})
 }

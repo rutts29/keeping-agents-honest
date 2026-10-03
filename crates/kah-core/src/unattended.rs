@@ -250,10 +250,8 @@ impl RunControl {
     }
 }
 fn validate_text(text: &str) -> Result<(), String> {
-    if text.trim().is_empty() || text.len() > 64 * 1024 || text.contains('\0') {
-        return Err(
-            "RUN_USER_TEXT stage=run_control: text must be nonempty, bounded and NUL-free".into(),
-        );
+    if text.trim().is_empty() || text.contains('\0') {
+        return Err("RUN_USER_TEXT stage=run_control: text must be nonempty and NUL-free".into());
     }
     Ok(())
 }

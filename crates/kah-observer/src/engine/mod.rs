@@ -19,6 +19,7 @@ use kah_core::{
 use serde_json::json;
 use std::{env, path::PathBuf, time::Duration};
 
+mod context;
 mod judgment;
 pub(crate) mod reconcile;
 use reconcile::*;
@@ -97,6 +98,18 @@ fn observe_with(
             state.observations += 1;
             store.save(&state)?;
             Ok(outcome)
+        }
+        Err(error) if error.starts_with("JEV_PREPARATION_PENDING") => {
+            let packet = context::pending(&state)?;
+            state.inflight = None;
+            state.gap = None;
+            store.save(&state)?;
+            Ok(Outcome {
+                verification: Some(json!({"preparation":packet})),
+                projection: projection(&state)?,
+                reminder: None,
+                gap: None,
+            })
         }
         Err(error) => {
             let code = error
@@ -317,9 +330,6 @@ fn validate_snapshot(binding: &Binding, snapshot: &ObservationSnapshot) -> Resul
         }
     }
     let bytes = serde_json::to_vec(&snapshot.actions).map_err(|e| e.to_string())?;
-    if bytes.len() > 64 * 1024 || snapshot.actions.len() > 32 {
-        return Err("OBSERVER_ACTION_BOUND stage=worker_intake".into());
-    }
     let digest = format!("sha256:{:x}", Sha256::digest(bytes));
     if snapshot.action_digest != digest {
         return Err("OBSERVER_ACTION_DIGEST stage=worker_intake".into());

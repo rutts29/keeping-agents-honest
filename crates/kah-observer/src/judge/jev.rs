@@ -43,6 +43,12 @@ impl<C: Client> Judge for Jev<C> {
             model,
             answers,
             metrics: Metrics {
+                input_utf8_bytes: Some(
+                    (state.to_string().len()
+                        + serde_json::to_vec(questions)
+                            .expect("question serialization")
+                            .len()) as u64,
+                ),
                 calls: 1,
                 input_tokens: input,
                 output_tokens: output,
@@ -136,7 +142,7 @@ fn context_rejection(body: &Value) -> bool {
     match body {
         Value::String(text) => {
             let text = text.to_ascii_lowercase();
-            text.contains("token")
+            (text.contains("token") || text.contains("context"))
                 && (text.contains("limit")
                     || text.contains("exceed")
                     || text.contains("too long")
@@ -155,6 +161,10 @@ fn context_rejection(body: &Value) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+#[path = "tests/context_rejection.rs"]
+mod context_tests;
 fn http_error(error: ureq::Error) -> Error {
     // Never render library errors or vendor error bodies: either can contain
     // request material. Status and stable reason are enough to route fallback.

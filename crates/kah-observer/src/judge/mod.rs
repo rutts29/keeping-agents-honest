@@ -23,6 +23,8 @@ pub struct Judgment {
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Metrics {
+    #[serde(default)]
+    pub input_utf8_bytes: Option<u64>,
     #[serde(default = "one_call")]
     pub calls: u64,
     #[serde(default)]

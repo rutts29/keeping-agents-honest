@@ -60,7 +60,7 @@ fn read_items(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError>
     let mut result = Vec::new();
     let mut cursor = Value::Null;
     let mut seen = BTreeSet::new();
-    for _ in 0..1000 {
+    loop {
         let page = match client.request(
             "thread/items/list",
             json!({"threadId":id,"cursor":cursor,"limit":25,"sortDirection":"asc"}),
@@ -85,11 +85,6 @@ fn read_items(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError>
             ));
         }
     }
-    Err(SourceError::new(
-        "CODEX_OBSERVER_LIMIT",
-        "source_observation",
-        "native history exceeds the page bound",
-    ))
 }
 
 /// Full native item history for the evidence observer. A bound/cursor failure is
@@ -104,16 +99,15 @@ fn action_evidence(entries: &[Value]) -> Vec<Value> {
         .iter()
         .rev()
         .filter(|e| Some(&e["turnId"]) == last_turn)
-        .filter_map(|entry| bounded_action(&entry["item"]))
-        .take(12)
+        .filter_map(|entry| whole_action(&entry["item"]))
         .collect::<Vec<_>>();
     actions.reverse();
     actions
 }
 
 /// Completion needs earlier tool activity after an automatic follow-up turn.
-/// Count every native item kind; bounded tool details are a tail, not a claim
-/// that omitted kinds never occurred. Source/user authority is handled separately.
+/// Count every native item kind and preserve complete tool activity.
+/// Source/user authority is handled separately.
 pub fn completion_activity(client: &mut Control, id: &str) -> Result<Vec<Value>, SourceError> {
     completion_actions(&read_items(client, &validate_explicit_session_id(id)?)?)
 }
@@ -128,12 +122,11 @@ fn completion_actions(entries: &[Value]) -> Result<Vec<Value>, SourceError> {
         .rev()
         .filter(|e| e["item"]["type"] != "agentMessage")
         .filter_map(|e| {
-            bounded_action(&e["item"]).map(|mut action| {
+            whole_action(&e["item"]).map(|mut action| {
                 action["turn_id"] = e["turnId"].clone();
                 action
             })
         })
-        .take(12)
         .collect::<Vec<_>>();
     actions.reverse();
     actions.insert(0, json!({"kind":"nativeItemCounts","evidence":{"scope":"entire primary session","complete":true,"byKind":counts}}));
@@ -141,7 +134,7 @@ fn completion_actions(entries: &[Value]) -> Result<Vec<Value>, SourceError> {
         .iter()
         .rev()
         .find(|e| e["item"]["type"] == "agentMessage")
-        .and_then(|e| bounded_action(&e["item"]))
+        .and_then(|e| whole_action(&e["item"]))
     {
         actions.push(report);
     }
@@ -152,7 +145,7 @@ fn completion_actions(entries: &[Value]) -> Result<Vec<Value>, SourceError> {
 #[path = "tests/completion.rs"]
 mod completion_tests;
 
-fn bounded_action(item: &Value) -> Option<Value> {
+fn whole_action(item: &Value) -> Option<Value> {
     let content = match item["type"].as_str()? {
         "agentMessage" => json!({"text": item["text"]}),
         "commandExecution" => json!({
@@ -163,14 +156,9 @@ fn bounded_action(item: &Value) -> Option<Value> {
         "fileChange" => json!({"changes": item["changes"], "status": item["status"]}),
         _ => return None,
     };
-    let text = content.to_string();
-    let mut end = text.len().min(4096);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
     Some(json!({"id": item["id"], "kind": item["type"],
         "exit_code":item["exitCode"], "status":item["status"],
-        "evidence": &text[..end], "truncated": end < text.len()}))
+        "evidence": content, "truncated": false}))
 }
 
 fn rpc_error(error: ControlError) -> SourceError {

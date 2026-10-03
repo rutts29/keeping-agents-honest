@@ -14,7 +14,7 @@ use std::{
 };
 
 pub fn run() {
-    let result = serde_json::from_reader::<_, Value>(std::io::stdin().take(1024 * 1024))
+    let result = serde_json::from_reader::<_, Value>(std::io::stdin())
         .map_err(|_| "CLAUDE_HOOK_JSON stage=hook: invalid hook input".into())
         .and_then(|input| {
             crate::herdr::report_claude_input(&input);
@@ -207,7 +207,6 @@ fn transcript(input: &Value, binding: &Binding) -> Result<String, String> {
     let mut text = String::new();
     fs::File::open(canonical)
         .map_err(|e| format!("CLAUDE_TRANSCRIPT_READ stage=hook: {e}"))?
-        .take(kah_claude::transcript::MAX_BYTES as u64 + 1)
         .read_to_string(&mut text)
         .map_err(|e| format!("CLAUDE_TRANSCRIPT_READ stage=hook: {e}"))?;
     Ok(text)

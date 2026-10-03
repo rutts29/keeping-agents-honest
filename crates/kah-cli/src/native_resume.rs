@@ -157,13 +157,13 @@ fn claude_reader(mut reader: impl BufRead, session: &str, project: &Path) -> Res
         let mut line = vec![];
         if reader
             .by_ref()
-            .take(kah_claude::transcript::MAX_BYTES as u64 + 1)
+            .take(32 * 1024 * 1024 + 1)
             .read_until(b'\n', &mut line)?
             == 0
         {
             return Ok(false);
         }
-        if line.len() > kah_claude::transcript::MAX_BYTES {
+        if line.len() > 32 * 1024 * 1024 {
             return Err("RUN_HISTORY_BOUND stage=resume".into());
         }
         let parsed = std::str::from_utf8(&line)

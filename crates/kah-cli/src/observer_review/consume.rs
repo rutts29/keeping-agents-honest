@@ -15,19 +15,16 @@ use std::{
 
 /// Open first, then inspect the descriptor: no symlinks, devices or FIFO waits.
 pub fn read_report(path: &Path) -> Result<Vec<u8>> {
-    let file = OpenOptions::new()
+    let mut file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
     let meta = file.metadata()?;
-    if !meta.is_file() || meta.len() > 65536 {
-        return Err("REVIEW_REPORT_BOUND stage=consume".into());
+    if !meta.is_file() {
+        return Err("REVIEW_REPORT_TYPE stage=consume".into());
     }
     let mut bytes = vec![];
-    file.take(65537).read_to_end(&mut bytes)?;
-    if bytes.len() > 65536 {
-        return Err("REVIEW_REPORT_BOUND stage=consume".into());
-    }
+    file.read_to_end(&mut bytes)?;
     Ok(bytes)
 }
 pub fn run(worker: &str) -> Result<()> {
@@ -37,6 +34,10 @@ pub fn run(worker: &str) -> Result<()> {
     let Some(pending) = state.pending.clone() else {
         return Ok(());
     };
+    if pending.purpose == Purpose::Preparation {
+        drop(store);
+        return super::prepared_result::consume(worker);
+    }
     let path = state
         .observer
         .workspace
@@ -45,16 +46,21 @@ pub fn run(worker: &str) -> Result<()> {
     let request = workspace::request(&store, &pending.id)?;
     let report: Report = serde_json::from_slice(&read_report(&path)?)?;
     let verified = report.verify(&pending.id, &request.documents)?;
-    if serde_json::to_vec(&verified)?.len() > 128 * 1024 {
-        return Err("REVIEW_VERIFIED_BOUND stage=consume: reduce duplicate citations".into());
-    }
     let actions = verified
         .into_iter()
         .enumerate()
         .map(|(i, v)| json!({"id":format!("verified-{i}"),"kind":"verifiedEvidence","evidence":v}))
         .collect::<Vec<_>>();
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
-    let (judgment, input, assessment) = decide(&home, &request, &actions)?;
+    let decision = decide(&home, &request, &actions);
+    if decision
+        .as_ref()
+        .is_err_and(|e| e.to_string().starts_with("JEV_PREPARATION_PENDING"))
+    {
+        drop(store);
+        return super::runtime::prepare_context(worker);
+    }
+    let (judgment, input, assessment) = decision?;
     let tokens = tokens(&home, &store, &state);
     let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":kah_observer::verified_judgment::VERSION,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
     archive(&store.directory, &request.id, &result)?;
@@ -78,17 +84,9 @@ pub fn run(worker: &str) -> Result<()> {
     if request.purpose == Purpose::Checkpoint {
         super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
     }
-    fs::remove_file(path)?;
-    let gap = store.directory.join("gap.json");
-    if gap.exists() {
-        fs::remove_file(gap)?;
-    }
-    drop(store);
-    if super::events::pending(worker)? {
-        super::hook::spawn("__checkpoint-worker", worker)?;
-    }
-    Ok(())
+    finish(store, &path, worker)
 }
+
 pub fn archive(directory: &Path, request: &str, result: &Value) -> Result<()> {
     if !request.starts_with("review-")
         || !request
@@ -123,27 +121,20 @@ fn decide(
     }
     let mut input = json!({"intent":request.intent,"event":{"actions":actions,"agent_text":"","user_text":""},"trigger":request.trigger});
     crate::privacy::scrub(&mut input);
-    let judgment = judge(&request.worker, home, &input)?;
+    if super::preparation::pending(&request.worker, &request.id)? {
+        super::preparation::accept(&request.worker, &request.id)?;
+    }
+    let (judgment, input) = super::preparation::evaluate(
+        home,
+        request,
+        &input,
+        &kah_observer::verified_judgment::questions(),
+    )?;
     let failures = request.intent["failures"].as_array().map_or(0, Vec::len);
     let assessment = serde_json::to_value(kah_observer::verified_judgment::assess(
         &judgment, actions, failures,
     ))?;
     Ok((judgment, input, assessment))
-}
-fn judge(worker: &str, home: &Path, input: &Value) -> Result<judge::Judgment> {
-    let binding = kah_observer::session::Store::read(
-        &kah_core::run_store::RunStore::default_state_root()?,
-        worker,
-    )?
-    .ok_or("REVIEW_WORKER_STATE stage=consume")?
-    .binding;
-    Ok(judge::routing::evaluate(
-        home,
-        binding.judge,
-        &binding.jev_model,
-        input,
-        &kah_observer::verified_judgment::questions(),
-    )?)
 }
 pub(super) fn tokens(home: &Path, store: &Store, state: &State) -> Result<u64> {
     if state.worker.provider == "claude" {
@@ -189,6 +180,9 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
     let store = Store::open(worker)?;
     let path = store.directory.join("reminder.json");
     let Some(reminder) = super::state::read::<Value>(&path)? else {
+        if let Some(notice) = super::preparation::notice(worker)? {
+            return Ok(Some(json!({"systemMessage":notice})));
+        }
         return take_gap(&store);
     };
     fs::remove_file(path)?;
@@ -217,4 +211,17 @@ fn take_gap(store: &Store) -> Result<Option<Value>> {
     Ok(Some(
         json!({"systemMessage":format!("kah full-context observer gap: {}",gap["error"].as_str().unwrap_or("Review incomplete"))}),
     ))
+}
+
+fn finish(store: Store, path: &Path, worker: &str) -> Result<()> {
+    fs::remove_file(path)?;
+    let gap = store.directory.join("gap.json");
+    if gap.exists() {
+        fs::remove_file(gap)?;
+    }
+    drop(store);
+    if super::events::pending(worker)? {
+        super::hook::spawn("__checkpoint-worker", worker)?;
+    }
+    Ok(())
 }

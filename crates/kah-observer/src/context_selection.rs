@@ -36,6 +36,13 @@ pub fn items(input: &Value, active_ids: &BTreeSet<String>) -> Vec<Item> {
     result
 }
 fn collect(value: &Value, pointer: &str, active: &BTreeSet<String>, out: &mut Vec<Item>) {
+    let native_id = value["id"]
+        .as_str()
+        .or_else(|| value.get(0).and_then(Value::as_str));
+    if native_id.is_some_and(|id| active.contains(id)) {
+        push(value, pointer, active, out);
+        return;
+    }
     if let Some(object) = value.as_object() {
         for (key, child) in object {
             let key = key.replace('~', "~0").replace('/', "~1");
@@ -43,7 +50,7 @@ fn collect(value: &Value, pointer: &str, active: &BTreeSet<String>, out: &mut Ve
         }
     } else if let Some(array) = value.as_array() {
         for (n, child) in array.iter().enumerate() {
-            push(child, &format!("{pointer}/{n}"), active, out);
+            collect(child, &format!("{pointer}/{n}"), active, out);
         }
     } else {
         push(value, pointer, active, out);
@@ -125,23 +132,26 @@ fn rebuild(
         return selected.contains(pointer).then(|| value.clone());
     }
     match value {
-        Value::Object(map) => Some(Value::Object(
-            map.iter()
+        Value::Object(map) => {
+            let rebuilt = map
+                .iter()
                 .filter_map(|(key, child)| {
                     let path = format!("{pointer}/{}", key.replace('~', "~0").replace('/', "~1"));
                     rebuild(child, &path, selected, atomic).map(|v| (key.clone(), v))
                 })
-                .collect(),
-        )),
-        Value::Array(array) => Some(Value::Array(
-            array
+                .collect::<serde_json::Map<_, _>>();
+            (!rebuilt.is_empty() || map.is_empty()).then_some(Value::Object(rebuilt))
+        }
+        Value::Array(array) => {
+            let rebuilt = array
                 .iter()
                 .enumerate()
                 .filter_map(|(n, child)| {
                     rebuild(child, &format!("{pointer}/{n}"), selected, atomic)
                 })
-                .collect(),
-        )),
+                .collect::<Vec<_>>();
+            (!rebuilt.is_empty() || array.is_empty()).then_some(Value::Array(rebuilt))
+        }
         _ => None,
     }
 }

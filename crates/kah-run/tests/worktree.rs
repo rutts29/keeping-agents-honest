@@ -213,8 +213,7 @@ fn private_worktree_ignores_source_hooks_filters_and_a_redirected_git_file() {
     assert!(resumed.dirty().unwrap());
     assert_eq!(resumed.head().unwrap(), commit);
     assert!(run.path.join("uncommitted.txt").exists());
-    assert!(resumed.diff_evidence(65536).unwrap().contains("+after"));
-    assert!(resumed.diff_evidence(4).is_err());
+    assert!(resumed.diff_evidence().unwrap().contains("+after"));
     assert_eq!(git(&source, &["rev-parse", "HEAD"]), head);
     resumed.export_branch().unwrap();
     assert_eq!(git(&source, &["rev-parse", "kah/run-case"]), commit);

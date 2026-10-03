@@ -29,14 +29,14 @@ pub fn evaluate(
     )?
     .ok_or("REVIEW_WORKER_STATE stage=checkpoint")?
     .binding;
-    let captured = crate::completion_capture::Request::new(&binding.jev_model, &input, &questions)?;
-    let evaluated = judge::routing::evaluate(
-        home,
-        binding.judge,
-        captured.model(),
-        captured.state(),
-        captured.questions(),
-    );
+    if super::preparation::pending(&request.worker, &request.id)? {
+        super::preparation::accept(&request.worker, &request.id)?;
+    }
+    let (prepared_judgment, prepared_input) =
+        super::preparation::evaluate(home, request, &input, &questions)?;
+    let captured =
+        crate::completion_capture::Request::new(&binding.jev_model, &prepared_input, &questions)?;
+    let evaluated = Ok(prepared_judgment);
     let archive = crate::completion_capture::save_versioned(
         home,
         &request.worker,
@@ -63,7 +63,7 @@ pub fn evaluate(
         }
     }
     let assessment = json!({"state":if outcome.passed {"checkpoint_passed"} else {"checkpoint_failed"},"passed":outcome.passed,"unproven":outcome.unproven,"deferrals":open,"checkpoint_question_set":checkpoint::VERSION,"private_replay":archive});
-    Ok((judgment, input, assessment))
+    Ok((judgment, prepared_input, assessment))
 }
 fn confirmed(judgment: &Judgment, key: &str, expected: &str) -> bool {
     judgment.backend == "jev"
@@ -90,11 +90,6 @@ fn deferrals(request: &Request, actions: &[Value]) -> Result<Vec<Value>> {
         if !items.iter().any(|i| i["id"] == id) {
             items.push(json!({"id":id,"evidence":evidence,"introduced_at":request.id}));
         }
-    }
-    if items.len() > 20 {
-        return Err(
-            "REVIEW_DEFERRAL_BOUND stage=checkpoint: more than 20 deferrals; none discarded".into(),
-        );
     }
     Ok(items)
 }

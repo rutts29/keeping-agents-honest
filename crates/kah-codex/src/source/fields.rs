@@ -103,7 +103,7 @@ pub(super) fn required_text(
     value
         .get(field)
         .and_then(Value::as_str)
-        .filter(|value| !value.is_empty() && value.len() <= 1024 * 1024 && !value.contains('\0'))
+        .filter(|value| !value.is_empty() && !value.contains('\0'))
         .map(ToOwned::to_owned)
         .ok_or_else(|| {
             SourceError::new(
@@ -122,7 +122,7 @@ pub(super) fn required_provider_text(
     value
         .get(field)
         .and_then(Value::as_str)
-        .filter(|value| value.len() <= 1024 * 1024 && !value.contains('\0'))
+        .filter(|value| !value.contains('\0'))
         .map(ToOwned::to_owned)
         .ok_or_else(|| {
             SourceError::new(

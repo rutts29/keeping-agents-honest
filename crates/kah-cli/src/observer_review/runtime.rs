@@ -47,6 +47,9 @@ pub fn wake(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Resul
         super::consume::tokens(&home, &store, &state).ok()
     };
     state.pending = Some(pending);
+    if request.purpose == Purpose::Preparation {
+        return begin_preparation(store, state, &request);
+    }
     state.wakes += 1;
     state.stopped = false;
     let existing = state.observer.pane.is_some();
@@ -127,6 +130,53 @@ fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<(
     }
     Ok(())
 }
+pub fn prepare_context(worker: &str) -> Result<()> {
+    require_active(worker)?;
+    let prompt = super::preparation::prompt(worker)?;
+    let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=context_preparation")?);
+    let store = Store::open(worker)?;
+    let mut state = store
+        .load()?
+        .ok_or("PREPARATION_STATE stage=context_preparation")?;
+    let decision = state
+        .pending
+        .as_ref()
+        .ok_or("PREPARATION_PENDING stage=context_preparation")?
+        .id
+        .clone();
+    let sent = store
+        .directory
+        .join(format!("preparation-woken-{decision}.json"));
+    if sent.exists() {
+        return Ok(());
+    }
+    let existing = state.observer.pane.is_some();
+    if existing {
+        control::owned_pane(&state)?;
+    } else {
+        state.worker = crate::relay_store::endpoint(worker)?;
+        state.observer.pane = Some(create(&state)?);
+        state.observer.pid = None;
+        state.observer.process_stamp = None;
+    }
+    state.stopped = false;
+    state.wakes += 1;
+    store.save(&state)?;
+    drop(store);
+    deliver(&home, &state, &prompt, existing)?;
+    let store = Store::open(worker)?;
+    crate::unattended_report::save(
+        &store.directory,
+        sent.file_name().unwrap().to_str().unwrap(),
+        &json!({"decision":decision}),
+    )?;
+    drop(store);
+    super::lifecycle::start(worker)?;
+    if !existing {
+        startup_notice(&state)?;
+    }
+    Ok(())
+}
 pub(super) fn require_active(worker: &str) -> Result<()> {
     if kah_observer::session::paused(
         &kah_core::run_store::RunStore::default_state_root()?,
@@ -164,11 +214,15 @@ pub fn resume(worker: &str) -> Result<()> {
     workspace::prepare(&home, &state)?;
     let prompt = if let Some(pending) = &state.pending {
         let request = workspace::request(&store, &pending.id)?;
-        workspace::prompt(
-            &state,
-            &request,
-            &state.observer.workspace.join("inputs").join(&pending.id),
-        )?
+        if super::preparation::pending(worker, &pending.id)? {
+            super::preparation::prompt(worker)?
+        } else {
+            workspace::prompt(
+                &state,
+                &request,
+                &state.observer.workspace.join("inputs").join(&pending.id),
+            )?
+        }
     } else {
         String::new()
     };
@@ -221,4 +275,19 @@ fn startup_notice(state: &State) -> Result<()> {
         }
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+fn begin_preparation(store: Store, state: State, request: &super::state::Request) -> Result<Value> {
+    let packet = &request.trigger["preparation"];
+    let questions = serde_json::from_value(packet["questions"].clone())?;
+    super::preparation::stage(
+        request,
+        &packet["state"],
+        &questions,
+        packet["reason"].as_str().unwrap_or("token planning"),
+    )?;
+    store.save(&state)?;
+    drop(store);
+    prepare_context(&request.worker)?;
+    Ok(json!({"request":request.id,"status":"preparation_submitted"}))
 }

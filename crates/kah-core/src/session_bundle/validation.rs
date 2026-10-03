@@ -27,14 +27,14 @@ pub(super) fn validate_identifier(
 }
 
 pub(super) fn validate_content(value: &str) -> Result<(), SessionBundleError> {
-    if value.is_empty() || value.len() > MAX_CONTENT_BYTES || value.contains('\0') {
+    if value.is_empty() || value.contains('\0') {
         return Err(SessionBundleError::InvalidField("record content"));
     }
     Ok(())
 }
 
 pub(super) fn validate_native_goal_text(value: &str) -> Result<(), SessionBundleError> {
-    if value.is_empty() || value.len() > MAX_CONTENT_BYTES || value.contains('\0') {
+    if value.is_empty() || value.contains('\0') {
         return Err(SessionBundleError::InvalidField("native_goal text"));
     }
     Ok(())

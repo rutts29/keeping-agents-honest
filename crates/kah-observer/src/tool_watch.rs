@@ -20,10 +20,8 @@ impl Progress {
         action: Value,
     ) -> Result<Option<Vec<Value>>, String> {
         self.validate()?;
-        if !valid_id(turn) || !valid_id(id) || action.to_string().len() > 8192 {
-            return Err(
-                "OBSERVER_TOOL_EVENT stage=tool_watch: invalid or oversized native event".into(),
-            );
+        if !valid_id(turn) || !valid_id(id) {
+            return Err("OBSERVER_TOOL_EVENT stage=tool_watch: invalid native identifier".into());
         }
         if self.turn != turn {
             self.turn = turn.into();
@@ -45,7 +43,6 @@ impl Progress {
             || self.pending.len() >= BATCH
             || self.turn.len() > 512
             || self.seen.iter().any(|id| !valid_id(id))
-            || self.pending.iter().any(|a| a.to_string().len() > 8192)
         {
             return Err("OBSERVER_TOOL_STATE stage=tool_watch: invalid bounded progress".into());
         }

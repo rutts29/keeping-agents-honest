@@ -34,9 +34,6 @@ impl Dispatch {
             "[kah dispatch: existing source-linked user requirements]\nThe worker assignment remains your task goal. Honor these inherited requirements within that assignment; the parent's other deliverables are not assigned to this worker. These are original user quotes, not the delegating agent's paraphrase.\n{}",
             serde_json::to_string(&quotes)?
         );
-        if text.len() > 48 * 1024 {
-            return Err("DISPATCH_CONTEXT_BOUND stage=dispatch".into());
-        }
         Ok(text)
     }
 }
@@ -78,9 +75,6 @@ pub fn prepare(explicit: Option<&str>, task: &str) -> Result<Option<Dispatch>> {
             dispatch_item: Some(item.clone()),
         });
     }
-    if quotes.len() > 24 {
-        return Err("DISPATCH_SOURCE_BOUND stage=dispatch".into());
-    }
     let candidates = quotes
         .iter()
         .filter(|q| relevance_sources.contains(&q.source))
@@ -102,14 +96,8 @@ fn finish(dispatch: Dispatch) -> Result<Option<Dispatch>> {
     for quote in &dispatch.quotes {
         quote.validate()?;
     }
-    // Completion already permits 24 outcomes: reserve the worker goal and task item.
-    if dispatch.quotes.len() > 22 {
-        return Err("DISPATCH_OUTCOME_BOUND stage=dispatch".into());
-    }
+
     dispatch.context()?;
-    if serde_json::to_vec(&dispatch)?.len() > 256 * 1024 {
-        return Err("DISPATCH_RECORD_BOUND stage=dispatch".into());
-    }
     Ok(Some(dispatch))
 }
 /// Relevance may omit only clear goal/scope-expansion items. Constraints,

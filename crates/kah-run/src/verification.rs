@@ -94,10 +94,8 @@ pub fn execute_checked(
     let status = crate::child::wait(&mut command, interrupted)?;
     let mut bytes = Vec::new();
     std::fs::File::open(log)
-        .and_then(|file| file.take(8193).read_to_end(&mut bytes))
+        .and_then(|mut file| file.read_to_end(&mut bytes))
         .map_err(|e| format!("RUN_TEST_READ stage=verification: {e}"))?;
-    let truncated = bytes.len() > 8192;
-    bytes.truncate(8192);
     Ok(Receipt {
         commit: commit.into(),
         command: script.into(),
@@ -113,6 +111,6 @@ pub fn execute_checked(
             },
             String::from_utf8_lossy(&bytes)
         ),
-        output_truncated: truncated,
+        output_truncated: false,
     })
 }

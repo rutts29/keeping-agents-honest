@@ -16,7 +16,6 @@ use crate::intent_history::{SourceProvider, SourceRef, SourceRole};
 pub const SESSION_BUNDLE_SCHEMA_VERSION: u32 = 1;
 
 const MAX_IDENTIFIER_BYTES: usize = 16 * 1024;
-const MAX_CONTENT_BYTES: usize = 1024 * 1024;
 
 mod goal;
 mod records;

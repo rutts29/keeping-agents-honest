@@ -12,6 +12,7 @@ use std::{
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Purpose {
+    Preparation,
     Drift,
     Steering,
     Checkpoint,
@@ -169,19 +170,11 @@ pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.into()),
     };
-    if !metadata.is_file()
-        || metadata.permissions().mode() & 0o077 != 0
-        || metadata.len() > 128 * 1024 * 1024
-    {
+    if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
         return Err("REVIEW_STATE_PRIVATE stage=review_state".into());
     }
     let mut bytes = vec![];
-    File::open(path)?
-        .take(128 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > 128 * 1024 * 1024 {
-        return Err("REVIEW_STATE_BOUND stage=review_state".into());
-    }
+    File::open(path)?.read_to_end(&mut bytes)?;
     serde_json::from_slice(&bytes)
         .map(Some)
         .map_err(|_| "REVIEW_STATE_JSON stage=review_state".into())

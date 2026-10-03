@@ -3,13 +3,13 @@ use super::*;
 /// The schema version of an active projection payload.
 pub const PROJECTION_SCHEMA_VERSION: u32 = 1;
 
-/// The conservative default used by callers that do not choose a budget.
-pub const DEFAULT_PROJECTION_BYTE_BUDGET: usize = 32 * 1024;
+/// Legacy serialized accounting field; zero denotes no content cap.
+pub const DEFAULT_PROJECTION_BYTE_BUDGET: usize = 0;
 
 /// Configuration for deterministic projection rendering.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProjectionConfig {
-    /// Maximum number of bytes in the serialized prompt payload.
+    /// Legacy metadata, retained for compatibility; never limits content.
     pub byte_budget: usize,
 }
 

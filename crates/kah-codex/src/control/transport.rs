@@ -1,7 +1,7 @@
 use super::{ControlError, error};
 use serde_json::Value;
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Write},
     os::unix::net::UnixStream,
     path::Path,
     process::{Child, ChildStdin, Command, Stdio},
@@ -9,7 +9,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tungstenite::{Message, WebSocket, protocol::WebSocketConfig};
-const LIMIT: usize = 8 * 1024 * 1024;
 
 pub(super) enum Transport {
     Process {
@@ -58,8 +57,8 @@ impl Transport {
             .and_then(|()| stream.set_write_timeout(Some(timeout)))
             .map_err(|e| error("CODEX_RPC_SOCKET", e))?;
         let config = WebSocketConfig::default()
-            .max_message_size(Some(LIMIT))
-            .max_frame_size(Some(LIMIT));
+            .max_message_size(None)
+            .max_frame_size(None);
         let (socket, _) =
             tungstenite::client::client_with_config("ws://localhost/", stream, Some(config))
                 .map_err(|e| error("CODEX_RPC_HANDSHAKE", e))?;
@@ -121,14 +120,10 @@ fn receive_socket(
 fn read_message(reader: &mut impl BufRead) -> Result<Value, ControlError> {
     let mut bytes = Vec::new();
     let count = reader
-        .take(LIMIT as u64 + 1)
         .read_until(b'\n', &mut bytes)
         .map_err(|e| error("CODEX_RPC_READ", e))?;
     if count == 0 {
         return Err(error("CODEX_RPC_CLOSED", "native server exited"));
-    }
-    if bytes.len() > LIMIT {
-        return Err(error("CODEX_RPC_LIMIT", "native response exceeds 8 MiB"));
     }
     serde_json::from_slice(&bytes).map_err(|e| error("CODEX_RPC_JSON", e))
 }

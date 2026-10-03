@@ -169,10 +169,7 @@ impl History {
 fn claude_text(path: &Path) -> Result<String> {
     let mut text = String::new();
     fs::File::open(path)
-        .and_then(|file| {
-            file.take(kah_claude::transcript::MAX_BYTES as u64 + 1)
-                .read_to_string(&mut text)
-        })
+        .and_then(|mut file| file.read_to_string(&mut text))
         .map_err(|e| format!("RUN_HISTORY_IO stage=run_history: {e}"))?;
     Ok(text)
 }

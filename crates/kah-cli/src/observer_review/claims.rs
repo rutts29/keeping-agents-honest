@@ -10,11 +10,6 @@ pub fn schedule(worker: &str, turn: &str, text: &str) -> Result<()> {
     if text.trim().is_empty() {
         return Ok(());
     }
-    if text.len() > 128 * 1024 {
-        return Err(
-            "CHECKPOINT_CLAIM_BOUND stage=trigger: native text too large; not truncated".into(),
-        );
-    }
     let directory = Store::directory(worker)?.join("claim-events");
     kah_core::run_store::ensure_private_directory(&directory)?;
     let id = format!("{:x}", Sha256::digest(serde_json::to_vec(&(turn, text))?));

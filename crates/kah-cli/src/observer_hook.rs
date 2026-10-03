@@ -8,11 +8,11 @@ use kah_observer::{
     session::{Binding, State, Store},
 };
 use serde_json::{Value, json};
-use std::{env, io::Read, path::Path, time::Duration};
+use std::{env, path::Path, time::Duration};
 
 pub fn run() {
     let result: crate::Result<Value> = (|| {
-        let input: Value = serde_json::from_reader(std::io::stdin().take(1024 * 1024))?;
+        let input: Value = serde_json::from_reader(std::io::stdin())?;
         if let Err(reason) = crate::session_policy::enforce(&input) {
             return Ok(crate::session_policy::rejection(&input, &reason));
         }

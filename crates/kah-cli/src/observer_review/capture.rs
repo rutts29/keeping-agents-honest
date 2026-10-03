@@ -119,9 +119,6 @@ fn history(home: &Path, state: &State) -> Result<String> {
         } => json!(kah_codex::source::full_history(client, session)?),
         History::Claude { path, .. } => {
             let bytes = fs::read(path)?;
-            if bytes.len() > 128 * 1024 * 1024 {
-                return Err("REVIEW_CONTEXT_BOUND stage=context: full transcript exceeds 128 MiB; not truncated".into());
-            }
             Value::Array(
                 String::from_utf8(bytes)?
                     .lines()
@@ -205,11 +202,6 @@ fn decode_project(output: std::process::Output) -> Result<Value> {
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
-    }
-    if output.stdout.len() > 128 * 1024 * 1024 {
-        return Err(
-            "REVIEW_CONTEXT_BOUND stage=context: project context too large; not truncated".into(),
-        );
     }
     let mut value: Value =
         serde_json::from_slice(&output.stdout).map_err(|_| "REVIEW_PROJECT_JSON stage=context")?;

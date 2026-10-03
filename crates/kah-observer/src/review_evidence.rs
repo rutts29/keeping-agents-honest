@@ -62,18 +62,12 @@ impl Report {
         if self.request_id != request {
             return Err("REVIEW_REQUEST_MISMATCH stage=evidence".into());
         }
-        if self.findings.is_empty()
-            || self.findings.len() > 24
-            || serde_json::to_vec(self)
-                .map_err(|_| "REVIEW_JSON stage=evidence")?
-                .len()
-                > 64 * 1024
-        {
-            return Err("REVIEW_EVIDENCE_BOUND stage=evidence".into());
+        if self.findings.is_empty() {
+            return Err("REVIEW_EVIDENCE_EMPTY stage=evidence".into());
         }
         self.findings.iter().map(|finding| {
-            if finding.claim.trim().is_empty() || finding.claim.len()>2048 || finding.citations.is_empty() || finding.citations.len()>8 {
-                return Err("REVIEW_FINDING_BOUND stage=evidence".into());
+            if finding.claim.trim().is_empty() || finding.citations.is_empty() {
+                return Err("REVIEW_FINDING_EMPTY stage=evidence".into());
             }
             let citations = finding.citations.iter().map(|citation| verify_quote(citation, documents)).collect::<Result<Vec<_>,_>>()?;
             Ok(json!({"topic":finding.topic,"model_claim_not_a_decision":finding.claim,"citations":citations}))
@@ -81,8 +75,8 @@ impl Report {
     }
     pub fn schema() -> Value {
         json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{
-        "request_id":{"type":"string"},"findings":{"type":"array","minItems":1,"maxItems":24,"items":{"type":"object","additionalProperties":false,"required":["topic","claim","citations"],"properties":{
-            "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"citations":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
+        "request_id":{"type":"string"},"findings":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["topic","claim","citations"],"properties":{
+            "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
         }}}}})
     }
 }
@@ -95,8 +89,8 @@ fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, St
     if citation.digest != document.digest || digest != document.digest {
         return Err("REVIEW_SOURCE_CHANGED stage=evidence".into());
     }
-    if citation.quote.is_empty() || citation.quote.len() > 8192 {
-        return Err("REVIEW_QUOTE_BOUND stage=evidence".into());
+    if citation.quote.is_empty() {
+        return Err("REVIEW_QUOTE_EMPTY stage=evidence".into());
     }
     let (start, _) = document
         .text
@@ -108,17 +102,8 @@ fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, St
         .filter(|b| *b == b'\n')
         .count()
         + 1;
-    // Neighboring text prevents an exact substring from hiding a nearby negation.
-    // The model has the full file; only Jev's per-claim view is bounded here.
-    let mut begin = start.saturating_sub(1000);
-    while !document.text.is_char_boundary(begin) {
-        begin += 1;
-    }
-    let mut end = (start + citation.quote.len() + 1000).min(document.text.len());
-    while !document.text.is_char_boundary(end) {
-        end -= 1;
-    }
+    // Preserve the source context, including negations outside the exact quote.
     Ok(
-        json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"line":line,"context":&document.text[begin..end],"context_is_excerpt":begin>0||end<document.text.len()}),
+        json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"line":line,"context":document.text,"context_is_excerpt":false}),
     )
 }

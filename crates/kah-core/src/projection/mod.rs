@@ -131,22 +131,6 @@ fn closure_blockers(
 fn account_overflow(projection: &mut ActiveProjection) -> Result<(), ProjectionError> {
     let bytes = projection.try_rendered_prompt()?.len();
     projection.overflow.bytes = bytes;
-    if bytes > projection.overflow.budget {
-        projection.overflow.reason = Some(format!(
-            "rendered prompt payload is {bytes} bytes, over budget {}",
-            projection.overflow.budget
-        ));
-        projection.closure.blockers.push(ClosureBlocker {
-            kind: ClosureBlockerKind::ProjectionOverflow,
-            id: None,
-            reason: projection
-                .overflow
-                .reason
-                .clone()
-                .expect("overflow reason was set"),
-            source_refs: Vec::new(),
-        });
-    }
     Ok(())
 }
 

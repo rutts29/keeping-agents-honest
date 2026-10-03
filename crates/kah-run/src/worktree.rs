@@ -216,9 +216,6 @@ impl Worktree {
             "HEAD",
             "--",
         ]))?;
-        if output.stdout.len() > 64 * 1024 {
-            return Err("RUN_PATHS_BOUND stage=completion".into());
-        }
         output
             .stdout
             .split(|b| *b == 0)
@@ -228,7 +225,7 @@ impl Worktree {
             })
             .collect()
     }
-    pub fn diff_evidence(&self, limit: usize) -> Result<String, String> {
+    pub fn diff_evidence(&self) -> Result<String, String> {
         use std::{io::Read, process::Stdio};
         let mut child = self
             .git()
@@ -246,16 +243,11 @@ impl Worktree {
             .spawn()
             .map_err(io_error)?;
         let mut bytes = Vec::new();
-        let read = child
-            .stdout
-            .take()
-            .unwrap()
-            .take(limit as u64 + 1)
-            .read_to_end(&mut bytes);
-        if read.is_err() || bytes.len() > limit {
+        let read = child.stdout.take().unwrap().read_to_end(&mut bytes);
+        if read.is_err() {
             let _ = child.kill();
             let _ = child.wait();
-            return Err("RUN_DIFF_BOUND stage=completion: diff exceeds evidence bound".into());
+            return Err("RUN_DIFF_READ stage=completion".into());
         }
         if !child.wait().map_err(io_error)?.success() {
             return Err("RUN_DIFF_READ stage=completion".into());

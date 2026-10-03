@@ -28,7 +28,6 @@ impl Quote {
             .map_err(|e| e.to_string())?;
         if self.source.role != SourceRole::User
             || self.source.content_digest != record.content_digest()
-            || self.text.len() > 16 * 1024
             || self.receipt.is_empty()
             || self.receipt.len() > 128
         {
@@ -79,9 +78,6 @@ pub struct Inbox {
 }
 impl Inbox {
     pub fn validate(&self) -> Result<(), String> {
-        if self.quotes.len() > 128 {
-            return Err("INHERITED_BOUND stage=intake".into());
-        }
         for quote in &self.quotes {
             quote.validate()?;
         }

@@ -62,7 +62,13 @@ pub fn outcome(binding: &Binding, outcome: &mut Outcome) -> Result<()> {
     if !config.enabled {
         return Ok(());
     }
-    let (purpose, trigger) = if let Some(steering) = super::steering::pending(&binding.session)? {
+    let (purpose, trigger) = if let Some(preparation) = outcome
+        .verification
+        .as_ref()
+        .filter(|v| v.get("preparation").is_some())
+    {
+        (Purpose::Preparation, preparation.clone())
+    } else if let Some(steering) = super::steering::pending(&binding.session)? {
         (Purpose::Steering, steering)
     } else if let Some(trigger) = outcome.verification.take() {
         (Purpose::Drift, trigger)

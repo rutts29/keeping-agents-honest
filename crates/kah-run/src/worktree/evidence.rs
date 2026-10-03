@@ -8,12 +8,8 @@ impl Worktree {
         let commits = super::text(super::run(self.git().args([
             "rev-list",
             "--reverse",
-            "--max-count=65",
             &format!("{}..HEAD", self.base_commit),
         ]))?)?;
-        if commits.lines().count() > 64 {
-            return Err("RUN_COMMITS_BOUND stage=completion".into());
-        }
         let mut result = vec![];
         for commit in commits.lines() {
             let output = super::run(self.git().args([
@@ -26,9 +22,6 @@ impl Worktree {
                 "-z",
                 commit,
             ]))?;
-            if output.stdout.len() > 65536 {
-                return Err("RUN_COMMIT_PATHS_BOUND stage=completion".into());
-            }
             let paths = output
                 .stdout
                 .split(|b| *b == 0)
@@ -42,21 +35,16 @@ impl Worktree {
         }
         Ok(result)
     }
-    /// Bounded complete blobs clarify language/library evidence that a diff can
-    /// leave implicit. Omitted data is marked explicitly, never called complete.
+    /// Complete text blobs clarify evidence that a diff can leave implicit.
     pub fn file_evidence(&self) -> Result<Vec<Value>, String> {
-        let mut budget = 16 * 1024usize;
         let mut files = vec![];
-        for path in self.changed_paths()?.into_iter().take(8) {
-            let content = self.blob(&path, budget.min(4096))?;
-            if let Some(text) = &content {
-                budget = budget.saturating_sub(text.len());
-            }
+        for path in self.changed_paths()? {
+            let content = self.blob(&path)?;
             files.push(json!({"path":path,"complete":content.is_some(),"content":content,"source":"candidate Git commit"}));
         }
         Ok(files)
     }
-    fn blob(&self, path: &str, limit: usize) -> Result<Option<String>, String> {
+    fn blob(&self, path: &str) -> Result<Option<String>, String> {
         let mut child = self
             .git()
             .args([
@@ -70,16 +58,11 @@ impl Worktree {
             .spawn()
             .map_err(io_error)?;
         let mut bytes = Vec::new();
-        let read = child
-            .stdout
-            .take()
-            .unwrap()
-            .take(limit as u64 + 1)
-            .read_to_end(&mut bytes);
-        if read.is_err() || bytes.len() > limit {
+        let read = child.stdout.take().unwrap().read_to_end(&mut bytes);
+        if read.is_err() {
             let _ = child.kill();
             let _ = child.wait();
-            return Ok(None);
+            return Err("RUN_BLOB_READ stage=completion".into());
         }
         if !child.wait().map_err(io_error)?.success() {
             return Ok(None);

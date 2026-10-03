@@ -8,8 +8,6 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
-pub const MAX_BYTES: usize = 32 * 1024 * 1024;
-
 pub fn parse(text: &str, session: &str, project: &Path) -> Result<ObservationSnapshot, String> {
     parse_turn(text, session, project, None)
 }
@@ -20,9 +18,6 @@ pub fn parse_turn(
     project: &Path,
     required_prompt: Option<&str>,
 ) -> Result<ObservationSnapshot, String> {
-    if text.len() > MAX_BYTES {
-        return Err("CLAUDE_SOURCE_BOUND stage=transcript: transcript exceeds 32 MiB".into());
-    }
     let mut records = Vec::new();
     let mut seen = BTreeMap::new();
     let mut actions = Vec::new();
@@ -226,16 +221,7 @@ fn append(
 }
 
 fn action(actions: &mut Vec<Value>, row: &Value) {
-    let text = row
-        .get("toolUseResult")
-        .unwrap_or(&row["message"])
-        .to_string();
-    let mut end = text.len().min(4096);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    actions.push(json!({"id":row["uuid"],"kind":row["type"],"evidence":&text[..end],"truncated":end < text.len()}));
-    if actions.len() > 12 {
-        actions.remove(0);
-    }
+    let evidence = row.get("toolUseResult").unwrap_or(&row["message"]).clone();
+    actions
+        .push(json!({"id":row["uuid"],"kind":row["type"],"evidence":evidence,"truncated":false}));
 }

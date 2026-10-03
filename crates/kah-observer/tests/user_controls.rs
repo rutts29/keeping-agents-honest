@@ -141,7 +141,7 @@ fn oversized_intent_probe() {
     let outcome = f.observe(&[&text]);
     assert!(outcome.gap.is_none(), "{:?}", outcome.gap);
     let projection = outcome.projection.unwrap();
-    assert!(projection.is_overflowed());
+    assert!(!projection.is_overflowed());
     assert!(projection.compaction.is_none());
     assert!(projection.rendered_prompt().contains(&text[7..]));
     assert_eq!(f.state().usage.calls, 0);

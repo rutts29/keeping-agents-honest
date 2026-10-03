@@ -75,8 +75,8 @@ pub fn run(args: &[String]) -> Result<()> {
     delivered.map(|_| ())
 }
 pub fn prepare(sender: &str, receiver: &str, record: &str, paraphrase: &str) -> Result<Receipt> {
-    if paraphrase.trim().is_empty() || paraphrase.len() > 8192 {
-        return Err("RELAY_PARAPHRASE_BOUND stage=relay".into());
+    if paraphrase.trim().is_empty() {
+        return Err("RELAY_PARAPHRASE_EMPTY stage=relay".into());
     }
     let from = relay_store::endpoint(sender)?;
     relay_store::endpoint(receiver)?;

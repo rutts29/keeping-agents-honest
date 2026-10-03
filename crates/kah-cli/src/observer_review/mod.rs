@@ -5,6 +5,8 @@ pub mod control;
 pub mod dispatch;
 pub mod hook;
 pub mod launch;
+pub mod preparation;
+mod prepared_result;
 pub mod runtime;
 pub mod state;
 pub mod workspace;
@@ -40,6 +42,9 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     }
     if args.get(..2) == Some(&["observe".into(), "report".into()]) {
         return Some(workspace::submit(args));
+    }
+    if args.get(..2) == Some(&["observe".into(), "select".into()]) {
+        return Some(preparation::submit(args));
     }
     if args.len() != 2 {
         return None;

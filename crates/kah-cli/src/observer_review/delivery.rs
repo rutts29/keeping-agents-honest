@@ -79,7 +79,7 @@ fn diagnostic(state: &State, marker: &str, screen: &str) -> Result<()> {
         .as_ref()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .unwrap_or_default();
-    let samples=rows.lines().rev().take(24).filter_map(|s|serde_json::from_str::<Value>(s).ok()).map(|r|serde_json::json!({"type":r["type"],"isMeta":r["isMeta"],"sessionId":r["sessionId"],"payloadType":r["payload"]["type"],"role":r["payload"]["role"],"messageRole":r["message"]["role"],"messageContent":r["message"]["content"].to_string().chars().take(240).collect::<String>()})).collect::<Vec<_>>();
+    let samples=rows.lines().rev().filter_map(|s|serde_json::from_str::<Value>(s).ok()).map(|r|serde_json::json!({"type":r["type"],"isMeta":r["isMeta"],"sessionId":r["sessionId"],"payloadType":r["payload"]["type"],"role":r["payload"]["role"],"messageRole":r["message"]["role"],"messageContent":r["message"]["content"]})).collect::<Vec<_>>();
     let mut value = serde_json::json!({"marker":marker,"screen":screen,"recentNativeRows":samples});
     crate::privacy::scrub(&mut value);
     let archive =

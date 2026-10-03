@@ -125,10 +125,8 @@ impl ContextInjection {
         text: impl Into<String>,
     ) -> Result<Self, String> {
         let text = text.into();
-        if text.trim().is_empty() || text.len() > 16 * 1024 {
-            return Err(
-                "OBSERVATION_CONTEXT stage=injection: context must be nonempty and bounded".into(),
-            );
+        if text.trim().is_empty() {
+            return Err("OBSERVATION_CONTEXT stage=injection: context must be nonempty".into());
         }
         Ok(Self {
             revision,

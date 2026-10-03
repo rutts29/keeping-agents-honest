@@ -1,7 +1,7 @@
 use kah_cli::observer_review::consume::read_report;
 use std::{fs, os::unix::fs::symlink};
 #[test]
-fn report_cannot_read_host_symlink_or_unbounded_file() {
+fn report_preserves_whole_large_files_but_rejects_symlinks_and_devices() {
     let root = std::env::temp_dir().join(format!("kah-review-report-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let file = root.join("report.json");
@@ -11,8 +11,9 @@ fn report_cannot_read_host_symlink_or_unbounded_file() {
     symlink(&file, &link).unwrap();
     assert!(read_report(&link).is_err());
     assert!(read_report(&root).is_err());
-    fs::write(&file, vec![b' '; 65537]).unwrap();
-    assert!(read_report(&file).is_err());
+    let whole = "complete paragraph 完整\n".repeat(10000).into_bytes();
+    fs::write(&file, &whole).unwrap();
+    assert_eq!(read_report(&file).unwrap(), whole);
     fs::remove_dir_all(root).unwrap();
 }
 #[test]

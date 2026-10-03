@@ -19,8 +19,8 @@ pub(super) fn assess(
 ) -> Result<judge::decision::Assessment, String> {
     let prior_items = context.prior.map(items).unwrap_or_default();
     let questions = judge::questions::drift();
-    let mut input = bounded_state(state, &context, &prior_items);
-    let ignored = store.sources()?.into_iter().rev().filter(crate::intake::Input::recently_ignored).take(4).map(|i|json!({"source_record":i.source.record,"text":bounded(&i.text,1200),"classification":"previously ignored; user source, not accepted intent"})).collect::<Vec<_>>();
+    let mut input = whole_state(state, &context, &prior_items);
+    let ignored = store.sources()?.into_iter().filter(crate::intake::Input::recently_ignored).map(|i|json!({"source_record":i.source.record,"text":i.text,"classification":"previously ignored; user source, not accepted intent"})).collect::<Vec<_>>();
     input["intent"]["recent_ignored_user_messages"] = json!(ignored);
     let judgment = evaluate(state, store, &input, &questions, "drift")?;
     let assessment = judge::decision::assessment(&judgment, context.actions, state.failures.len());
@@ -29,7 +29,7 @@ pub(super) fn assess(
     Ok(assessment)
 }
 
-fn bounded_state(state: &State, context: &Context<'_>, prior_items: &[(String, String)]) -> Value {
+fn whole_state(state: &State, context: &Context<'_>, prior_items: &[(String, String)]) -> Value {
     let user = context
         .users
         .records()
@@ -51,7 +51,7 @@ fn bounded_state(state: &State, context: &Context<'_>, prior_items: &[(String, S
     json!({
         "prior_intent":{"goal":context.prior.map(|p|&p.goal.text),"items":prior_items},
         "intent":{"goal":context.projection.goal.text,"items":items(context.projection),"failures":state.failures,"completed_outcomes":[],"open_outcomes":[]},
-        "event":{"user_text":bounded(user,4096),"agent_text":bounded(&agent,4096),"actions":bounded_actions(context.actions)}
+        "event":{"user_text":user,"agent_text":agent,"actions":context.actions}
     })
 }
 fn items(projection: &ActiveProjection) -> Vec<(String, String)> {
@@ -62,13 +62,6 @@ fn items(projection: &ActiveProjection) -> Vec<(String, String)> {
         .chain(&projection.validation)
         .map(|i| (i.id.to_string(), i.text.clone()))
         .collect()
-}
-fn bounded(text: &str, limit: usize) -> &str {
-    let mut end = text.len().min(limit);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
 }
 fn record_usage(state: &mut State, judgment: &Judgment) {
     state.usage.calls += judgment.metrics.calls;
@@ -83,16 +76,12 @@ fn record_failures(state: &mut State, actions: &[Value]) {
         if action["kind"] != "commandExecution" {
             continue;
         }
-        // Status survives even when a long output was truncated mid-JSON.
         if (action["exit_code"].as_i64().is_some_and(|code| code != 0)
             || action["status"] == "failed")
             && !state.failures.iter().any(|old| old["id"] == action["id"])
         {
             state.failures.push(action.clone());
         }
-    }
-    if state.failures.len() > 8 {
-        state.failures.drain(..state.failures.len() - 8);
     }
 }
 
@@ -106,14 +95,35 @@ pub(super) fn evaluate(
     let home = env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or("JUDGE_HOME stage=observe")?;
-    let judgment = judge::routing::evaluate(
+    if super::context::plan(state, input, questions) {
+        super::context::stage(
+            store,
+            input,
+            questions,
+            purpose,
+            "usage-calibrated token planning",
+        )?;
+    }
+    let result = judge::routing::evaluate(
         &home,
         state.binding.judge,
         &state.binding.jev_model,
         input,
         questions,
-    )
-    .map_err(|e| {
+    );
+    if result
+        .as_ref()
+        .is_err_and(|e| e.code == "JEV_CONTEXT_LIMIT")
+    {
+        super::context::stage(
+            store,
+            input,
+            questions,
+            purpose,
+            "provider context rejection",
+        )?;
+    }
+    let judgment = result.map_err(|e| {
         state.usage.incomplete_calls += 1;
         e.to_string()
     })?;
@@ -121,23 +131,5 @@ pub(super) fn evaluate(
     let digest = format!("sha256:{:x}", Sha256::digest(input.to_string().as_bytes()));
     store.append(&json!({"kind":"judgment","source":"observer","purpose":purpose,"question_set":judge::questions::VERSION,"state_digest":digest,"judgment":judgment,"at_ms":crate::session::now_ms()}))?;
     state.judgments.push(judgment.clone());
-    if state.judgments.len() > 16 {
-        state.judgments.remove(0);
-    }
     Ok(judgment)
-}
-
-fn bounded_actions(actions: &[Value]) -> Vec<Value> {
-    let mut bytes = 0;
-    let mut selected = actions
-        .iter()
-        .rev()
-        .take_while(|action| {
-            bytes += action.to_string().len();
-            bytes <= 24 * 1024
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    selected.reverse();
-    selected
 }

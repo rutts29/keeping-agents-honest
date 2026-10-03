@@ -27,7 +27,6 @@ impl Message {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
             || text.trim().is_empty()
-            || text.len() > 65536
         {
             return Err("SEND_ARGUMENTS stage=delegate_channel".into());
         }

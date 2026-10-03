@@ -14,14 +14,12 @@ items with explicit `uncertain_supersedes` links. The original goal never change
 A confident withdrawal retains the exact withdrawal message as an active scope
 constraint and the withdrawn text in history.
 
-**Current implementation:** context/ledger compaction does not run. The old
+**Current implementation:** persistent native preparation is wired; live proof is pending. The old
 headless synthesizer was retired; canonical user words remain verbatim. The
 approved replacement uses the persistent full native observer to choose whole
 relevant items for one decision, with recorded selections/exclusions, reasons,
 source pointers and digests. Rust must preserve goal text and reject exclusion
-of active user/relayed items unless a verified superseding item is cited. This
-preparation pipeline is not wired yet; removing local bounds alone does not
-satisfy it.
+of active user/relayed items unless a verified superseding item is cited. The retired headless ledger summarizer remains absent; this is whole-item request selection, not user-text synthesis.
 
 New verbatim runs have a separate stable identity. Existing synthesized ledgers
 remain on disk; source replay rebuilds from native user records rather than
@@ -39,7 +37,7 @@ The provider owns the documented token limits: 32k for state plus the longest
 question, 64k per request. There is no official tokenizer/count endpoint; actual
 usage.input_tokens may calibrate planning, never a hard rejection estimate.
 Genuine context rejection must invoke observer preparation and one recorded
-retry; this path is pending. No mirror auto-update is used.
+retry; its native live proof is pending. No mirror auto-update is used.
 
 The HTTP adapter follows the [API reference](https://docs.typesafe.ai/api),
 [Python](https://docs.typesafe.ai/sdk/python) and

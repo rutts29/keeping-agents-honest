@@ -18,7 +18,7 @@ fn whole_items_are_selected_with_accounting_and_user_authority() {
             reason: "Observer relevance decision".into(),
             superseded_by: None,
         };
-        if item.pointer == "/event/actions/1" {
+        if item.pointer.starts_with("/event/actions/1/") {
             manifest.excluded.push(choice);
         } else {
             manifest.selected.push(choice);
@@ -42,6 +42,42 @@ fn whole_items_are_selected_with_accounting_and_user_authority() {
         context_selection::prepare("drift-1", &state, &items, &manifest, &BTreeMap::new())
             .unwrap_err()
             .starts_with("CONTEXT_USER_AUTHORITY")
+    );
+}
+
+#[test]
+fn whole_source_context_can_be_excluded_without_cutting_the_verified_quote_or_user_items() {
+    let state = json!({"intent":{"goal":"Original goal","items":[{"id":"active","text":"Never truncate my words.","source":[{"role":"user","origin":"relayed"}]}]},"event":{"actions":[{"evidence":{"citations":[{"quote":"Whole relevant paragraph.\n","context":"Unrelated full source.\n".repeat(10000)}]}}]}});
+    let items = context_selection::items(&state, &BTreeSet::from(["active".into()]));
+    let mut manifest = Manifest {
+        decision: "one".into(),
+        selected: vec![],
+        excluded: vec![],
+    };
+    for item in &items {
+        let selection = Selection {
+            id: item.id.clone(),
+            digest: item.digest.clone(),
+            reason: "Native observer selected relevant whole fields".into(),
+            superseded_by: None,
+        };
+        if item.pointer.ends_with("/context") {
+            manifest.excluded.push(selection);
+        } else {
+            manifest.selected.push(selection);
+        }
+    }
+    let prepared =
+        context_selection::prepare("one", &state, &items, &manifest, &BTreeMap::new()).unwrap();
+    assert_eq!(prepared["intent"], state["intent"]);
+    assert_eq!(
+        prepared["event"]["actions"][0]["evidence"]["citations"][0]["quote"],
+        "Whole relevant paragraph.\n"
+    );
+    assert!(
+        prepared["event"]["actions"][0]["evidence"]["citations"][0]
+            .get("context")
+            .is_none()
     );
 }
 

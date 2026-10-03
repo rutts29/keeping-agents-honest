@@ -78,7 +78,6 @@ fn claude_tools(history: &kah_cli::native_history::History) {
     // Completion intentionally sees only recent actions. Tool-parity proof must
     // inspect the whole primary transcript: later commits can evict the first Write.
     let text = fs::read_to_string(path).unwrap();
-    assert!(text.len() <= kah_claude::transcript::MAX_BYTES);
     let rows = text
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).unwrap())
