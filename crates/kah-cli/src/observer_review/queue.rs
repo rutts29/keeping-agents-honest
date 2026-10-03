@@ -52,20 +52,27 @@ pub fn drain(worker: &str) -> Result<Value> {
         }
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
-    let Some((path, job)) = entries(worker)?.into_iter().next() else {
-        return Ok(json!({"status":"idle"}));
-    };
-    let receipt = super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)?;
-    if matches!(
-        receipt["status"].as_str(),
-        Some("submitted" | "preparation_submitted")
-    ) {
-        fs::remove_file(path)?;
+    for (path, job) in entries(worker)? {
+        if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
+            let handled = Store::directory(worker)?.join("covered-triggers");
+            kah_core::run_store::ensure_private_directory(&handled)?;
+            fs::rename(&path, handled.join(path.file_name().unwrap()))?;
+            continue;
+        }
+        let receipt = super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)?;
+        if matches!(
+            receipt["status"].as_str(),
+            Some("submitted" | "preparation_submitted")
+        ) {
+            fs::remove_file(path)?;
+        }
+        return Ok(receipt);
     }
-    Ok(receipt)
+    Ok(json!({"status":"idle"}))
 }
 pub fn kick(worker: &str) -> Result<()> {
     if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
+        super::hook::spawn("__review-retry", worker)?;
         return Ok(());
     }
     if !entries(worker)?.is_empty() {

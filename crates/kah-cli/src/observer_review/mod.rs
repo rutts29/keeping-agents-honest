@@ -61,6 +61,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__checkpoint-worker" => events::run(&args[1]),
         "__checkpoint-claims" => claims::run(&args[1]),
         "__review-resume" => runtime::resume(&args[1]),
+        "__review-retry" => runtime::retry_pending(&args[1]),
         _ => return None,
     };
     Some(result.inspect_err(|e| {

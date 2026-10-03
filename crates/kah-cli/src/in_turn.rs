@@ -118,7 +118,8 @@ pub(crate) fn batch(
         .as_str()
         .or_else(|| input["prompt_id"].as_str())
         .unwrap_or("session");
-    let action = action(input, id);
+    let mut action = action(input, id);
+    action["turn"] = turn.into();
     let mut journal = fs::OpenOptions::new()
         .append(true)
         .create(true)

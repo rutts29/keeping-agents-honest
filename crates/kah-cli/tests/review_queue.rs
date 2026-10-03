@@ -34,3 +34,14 @@ fn busy_reviews_preserve_every_trigger_and_whole_preparation_packet_across_turns
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn uncertain_steering_cannot_discard_a_simultaneous_drift_trigger() {
+    let drift = json!({"verified_actions":["whole drift evidence"]});
+    let steering = json!({"uncertain_user_input":{"text":"whole user instruction"}});
+    let triggers =
+        kah_cli::observer_review::dispatch::triggers(Some(drift.clone()), Some(steering.clone()));
+    assert_eq!(triggers.len(), 2);
+    assert_eq!(triggers[0], (Purpose::Steering, steering));
+    assert_eq!(triggers[1], (Purpose::Drift, drift));
+}

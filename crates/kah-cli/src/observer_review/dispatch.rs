@@ -63,21 +63,32 @@ pub fn outcome(binding: &Binding, outcome: &mut Outcome) -> Result<()> {
     if !config.enabled {
         return Ok(());
     }
-    let (purpose, trigger) = if let Some(preparation) = outcome
-        .verification
-        .as_ref()
-        .filter(|v| v.get("preparation").is_some())
-    {
-        (Purpose::Preparation, preparation.clone())
-    } else if let Some(steering) = super::steering::pending(&binding.session)? {
-        (Purpose::Steering, steering)
-    } else if let Some(trigger) = outcome.verification.take() {
-        (Purpose::Drift, trigger)
-    } else {
+    let triggers = triggers(
+        outcome.verification.take(),
+        super::steering::pending(&binding.session)?,
+    );
+    if triggers.is_empty() {
         return Ok(());
-    };
-    super::queue::enqueue(&binding.session, purpose, &config.turn, trigger)?;
+    }
+    for (purpose, trigger) in triggers {
+        super::queue::enqueue(&binding.session, purpose, &config.turn, trigger)?;
+    }
     hook::spawn("__review-wake", &binding.session)
+}
+pub fn triggers(verification: Option<Value>, steering: Option<Value>) -> Vec<(Purpose, Value)> {
+    let mut triggers = vec![];
+    if let Some(steering) = steering {
+        triggers.push((Purpose::Steering, steering));
+    }
+    if let Some(verification) = verification {
+        let purpose = if verification.get("preparation").is_some() {
+            Purpose::Preparation
+        } else {
+            Purpose::Drift
+        };
+        triggers.push((purpose, verification));
+    }
+    triggers
 }
 pub fn run(worker: &str) -> Result<()> {
     super::queue::drain(worker)?;

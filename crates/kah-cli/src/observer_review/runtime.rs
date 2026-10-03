@@ -249,6 +249,47 @@ pub fn resume(worker: &str) -> Result<()> {
     startup_notice(&state)
 }
 
+pub fn retry_pending(worker: &str) -> Result<()> {
+    require_active(worker)?;
+    let store = Store::open(worker)?;
+    let Some(state) = store.load()? else {
+        return Ok(());
+    };
+    let Some(pending) = &state.pending else {
+        return Ok(());
+    };
+    let gap_path = store.directory.join("gap.json");
+    let gap: Option<Value> = super::state::read(&gap_path)?;
+    if !gap.as_ref().is_some_and(|g| {
+        g["error"].as_str().is_some_and(|s| {
+            s.starts_with("REVIEW_REPORT_MISSING")
+                || s.starts_with("REVIEW_NOT_IDLE")
+                || s.starts_with("REVIEW_SUBMISSION_UNCONFIRMED")
+        })
+    }) {
+        return Ok(());
+    }
+    let request = workspace::request(&store, &pending.id)?;
+    let prompt = workspace::prompt(
+        &state,
+        &request,
+        &state.observer.workspace.join("inputs").join(&pending.id),
+    )?;
+    let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);
+    drop(store);
+    deliver(&home, &state, &prompt, true)?;
+    let store = Store::open(worker)?;
+    if super::state::read::<Value>(&gap_path)? == gap {
+        std::fs::remove_file(gap_path)?;
+    }
+    crate::unattended_report::save(
+        &store.directory,
+        "redelivery.json",
+        &json!({"request":request.id,"status":"submitted","at_ms":kah_observer::session::now_ms()}),
+    )?;
+    Ok(())
+}
+
 fn startup_notice(state: &State) -> Result<()> {
     let (socket, _) = transport(state)?;
     let pane = state

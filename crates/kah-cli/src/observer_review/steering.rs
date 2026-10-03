@@ -20,6 +20,22 @@ pub fn pending(worker: &str) -> Result<Option<Value>> {
         })
         .map(|i| json!({"uncertain_user_input":i})))
 }
+pub fn covered(worker: &str, trigger: &Value) -> Result<bool> {
+    let source: Input = serde_json::from_value(trigger["uncertain_user_input"].clone())?;
+    let store = match Store::open(&RunStore::default_state_root()?, worker, Duration::ZERO) {
+        Ok(store) => store,
+        Err(error) if error.starts_with("OBSERVER_BUSY") => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    Ok(store.sources()?.iter().any(|current| {
+        current.key() == source.key()
+            && current.text == source.text
+            && current.source == source.source
+            && (current.dismissed
+                || current.promoted
+                || matches!(current.decision, Some(Decision::Jev { .. })))
+    }))
+}
 pub fn judge(home: &Path, request: &Request, actions: &[Value]) -> Result<(Judgment, Value)> {
     let source: Input = serde_json::from_value(request.trigger["uncertain_user_input"].clone())?;
     let items = request.intent["items"]
