@@ -53,23 +53,58 @@ pub fn drain(worker: &str) -> Result<Value> {
         }
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
-    for (path, job) in entries(worker)? {
+    let mut jobs = entries(worker)?;
+    while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
             kah_core::run_store::ensure_private_directory(&handled)?;
-            fs::rename(&path, handled.join(path.file_name().unwrap()))?;
+            fs::rename(path, handled.join(path.file_name().unwrap()))?;
+            jobs.remove(0);
             continue;
         }
+        break;
+    }
+    if let Some((job, paths)) = batch(&jobs) {
         let receipt = super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)?;
         if matches!(
             receipt["status"].as_str(),
             Some("submitted" | "preparation_submitted")
         ) {
-            fs::remove_file(path)?;
+            let handled = Store::directory(worker)?.join("covered-triggers");
+            kah_core::run_store::ensure_private_directory(&handled)?;
+            for path in paths {
+                fs::rename(&path, handled.join(path.file_name().unwrap()))?;
+            }
         }
         return Ok(receipt);
     }
     Ok(json!({"status":"idle"}))
+}
+/// Snapshot only existing queued events. Later events retain their own files
+/// and cause a follow-up; the in-flight review is never mutated.
+pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
+    let first = jobs.first()?;
+    if first.1.purpose != Purpose::Drift {
+        return Some((first.1.clone(), vec![first.0.clone()]));
+    }
+    let group = jobs
+        .iter()
+        .filter(|(_, job)| job.purpose == Purpose::Drift)
+        .collect::<Vec<_>>();
+    let mut job = group.last()?.1.clone();
+    job.trigger["coalesced_triggers"] = json!(
+        group
+            .iter()
+            .map(|(_, job)| &job.trigger)
+            .collect::<Vec<_>>()
+    );
+    job.trigger["actions"] = json!(
+        group
+            .iter()
+            .flat_map(|(_, job)| job.trigger["actions"].as_array().into_iter().flatten())
+            .collect::<Vec<_>>()
+    );
+    Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
 }
 pub fn kick(worker: &str) -> Result<()> {
     if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {

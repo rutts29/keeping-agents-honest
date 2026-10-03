@@ -58,6 +58,13 @@ pub fn run(worker: &str) -> Result<()> {
     let tokens = tokens(&home, &store, &state);
     let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":kah_observer::verified_judgment::VERSION,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
     archive(&store.directory, &request.id, &result)?;
+    if request.purpose == Purpose::Drift {
+        crate::unattended_report::save(
+            &store.directory,
+            "last-drift-review.json",
+            &json!({"request":request.id,"snapshot_created_ms":request.created_ms,"completed_ms":kah_observer::session::now_ms()}),
+        )?;
+    }
     record(worker, &request, &input, &judgment)?;
     if request.purpose == Purpose::Checkpoint {
         super::checkpoint::record(&store, &mut state, &request, &result)?;

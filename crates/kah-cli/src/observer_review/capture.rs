@@ -30,6 +30,13 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         &history,
     ));
     let mut project = project_context(&home, state)?;
+    let mut trigger = trigger;
+    if purpose == Purpose::Drift {
+        trigger["last_completed_drift_review"] = super::state::read::<Value>(
+            &super::state::Store::directory(&state.worker.session)?.join("last-drift-review.json"),
+        )?
+        .unwrap_or(Value::Null);
+    }
     project_documents(&mut project, &trigger, &mut documents)?;
     add_previous(state, &mut documents)?;
     let id = format!(

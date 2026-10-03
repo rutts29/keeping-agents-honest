@@ -49,7 +49,7 @@ pub fn consume(worker: &str) -> Result<()> {
     primary.save(&source)?;
     drop(primary);
     if packet["purpose"] == "drift" {
-        drift(&store.directory, &request, &input, &judgment)?;
+        drift(&request, &input, &judgment)?;
     }
     state.latest = Some(
         json!({"request":pending.id,"purpose":"preparation","judgment":judgment,"prepared_state":input}),
@@ -78,7 +78,6 @@ fn apply_steering(
     Ok(())
 }
 fn drift(
-    directory: &std::path::Path,
     request: &super::state::Request,
     input: &Value,
     judgment: &kah_observer::judge::Judgment,
@@ -87,16 +86,12 @@ fn drift(
         .as_array()
         .cloned()
         .unwrap_or_default();
-    let assessment = kah_observer::judge::decision::assessment(
-        judgment,
-        &actions,
-        input["intent"]["failures"].as_array().map_or(0, Vec::len),
-    );
-    if assessment.state == kah_observer::judge::decision::AssessmentState::MaterialDrift {
-        crate::unattended_report::save(
-            directory,
-            "reminder.json",
-            &json!({"request":request.id,"turn":request.turn,"purpose":"drift","text":format!("[kah observer-prepared context; not user steering] {}",assessment.reason)}),
+    if let Some(trigger) = kah_observer::verification::trigger(judgment, &actions) {
+        super::queue::enqueue(
+            &request.worker,
+            super::state::Purpose::Drift,
+            &request.turn,
+            trigger,
         )?;
     }
     Ok(())

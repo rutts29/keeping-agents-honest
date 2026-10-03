@@ -26,7 +26,10 @@ pub fn trigger(judgment: &Judgment, actions: &[Value]) -> Option<Value> {
     let suspect=matches!(judgment.answers.get("alignment"),Some(Answer::Choice{choice,..}) if choice=="accidental_drift" || choice=="stalled")
         || ["repeating_failed_approach","polishing_instead_of_progress"].iter().any(|key|matches!(judgment.answers.get(*key),Some(Answer::Noul{noul}) if *noul>=crate::judge::questions::STRONG_FAILURE_SIGNAL))
         || matches!(judgment.answers.get("claim_supported"),Some(Answer::Noul{noul}) if *noul<0.5);
-    (judgment.backend == "jev" && suspect).then(|| json!({"tripwire":judgment,"actions":actions}))
+    let assessment = crate::judge::decision::assessment(judgment, actions, 0);
+    let uncertain = assessment.state == crate::judge::decision::AssessmentState::Uncertain;
+    (judgment.backend == "jev" && (suspect || uncertain))
+        .then(|| json!({"tripwire":judgment,"assessment":assessment,"actions":actions}))
 }
 
 pub fn uncertain_impact(judgment: &Judgment) -> bool {

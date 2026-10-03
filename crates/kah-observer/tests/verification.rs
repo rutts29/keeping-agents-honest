@@ -96,3 +96,32 @@ fn uncertain_no_replacement_choice_still_checks_a_plausible_supersession() {
     );
     assert!(!verification::uncertain_impact(&j));
 }
+
+#[test]
+fn existing_uncertain_alignment_routes_to_full_context_thinking() {
+    use kah_observer::judge::decision::{AssessmentState, assessment};
+    let mut j = judgment("new_constraint", 0.99);
+    j.answers.insert(
+        "alignment".into(),
+        Answer::Choice {
+            choice: "on_track".into(),
+            confidence: 0.62,
+            probabilities: BTreeMap::from([
+                ("on_track".into(), 0.62),
+                ("accidental_drift".into(), 0.23),
+                ("stalled".into(), 0.15),
+            ]),
+        },
+    );
+    let actions = [serde_json::json!({"id":"uncertain-tool","kind":"commandExecution"})];
+    assert_eq!(
+        assessment(&j, &actions, 0).state,
+        AssessmentState::Uncertain
+    );
+    assert!(verification::trigger(&j, &actions).is_some());
+    if let Some(Answer::Choice { confidence, .. }) = j.answers.get_mut("alignment") {
+        *confidence = 0.99;
+    }
+    assert_eq!(assessment(&j, &actions, 0).state, AssessmentState::Aligned);
+    assert!(verification::trigger(&j, &actions).is_none());
+}
