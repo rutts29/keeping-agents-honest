@@ -13,6 +13,8 @@ pub struct Message {
     pub relayer: String,
     pub receipt: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
 }
 impl Message {
     pub fn new(relayer: &str, receipt: &str, text: &str) -> Result<Self, String> {
@@ -34,12 +36,19 @@ impl Message {
             relayer: relayer.into(),
             receipt: receipt.into(),
             text: text.into(),
+            supersedes: None,
         })
     }
     pub fn wire(&self) -> String {
         format!(
-            "[kah-user] relayer={} receipt={}\n{}",
-            self.relayer, self.receipt, self.text
+            "[kah-user] relayer={} receipt={}{}\n{}",
+            self.relayer,
+            self.receipt,
+            self.supersedes
+                .as_ref()
+                .map(|r| format!(" supersedes={r}"))
+                .unwrap_or_default(),
+            self.text
         )
     }
     pub fn parse(text: &str) -> Result<Option<Self>, String> {
@@ -53,7 +62,15 @@ impl Message {
             .strip_prefix("relayer=")
             .and_then(|s| s.split_once(" receipt="))
             .ok_or("STEER_RELAY_FRAME stage=relayed_user")?;
-        Self::new(relayer, receipt, body).map(Some)
+        let (receipt, supersedes) = receipt
+            .split_once(" supersedes=")
+            .map_or((receipt, None), |(r, s)| (r, Some(s)));
+        let mut message = Self::new(relayer, receipt, body)?;
+        if let Some(target) = supersedes {
+            Self::new(relayer, target, "validate receipt")?;
+            message.supersedes = Some(target.into());
+        }
+        Ok(Some(message))
     }
     pub fn quote(&self, session: &str, provider: SourceProvider) -> Result<Quote, String> {
         let record = format!("relayed-user:{}:{}", self.relayer, self.receipt);
@@ -68,6 +85,7 @@ impl Message {
         );
         source.origin = Some(SourceOrigin::Relayed);
         source.relayer = Some(self.relayer.clone());
+        source.supersedes_receipt = self.supersedes.clone();
         Ok(Quote {
             receipt: self.receipt.clone(),
             source,

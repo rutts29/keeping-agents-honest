@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 
 fn input(category: &str) -> Input {
     Input {
+        prior_intent: None,
+        newer_conflicts: vec![],
         source: SourceRef::new(
             SourceProvider::Codex,
             "parent",

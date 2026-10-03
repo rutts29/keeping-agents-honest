@@ -38,7 +38,14 @@ pub fn covered(worker: &str, trigger: &Value) -> Result<bool> {
 }
 pub fn judge(home: &Path, request: &Request, actions: &[Value]) -> Result<(Judgment, Value)> {
     let source: Input = serde_json::from_value(request.trigger["uncertain_user_input"].clone())?;
-    let items = request.intent["items"]
+    let store = Store::open(
+        &RunStore::default_state_root()?,
+        &request.worker,
+        Duration::from_secs(2),
+    )?;
+    let prior = kah_observer::chronology::stored_context(&store, &source)?;
+    drop(store);
+    let items = prior["items"]
         .as_array()
         .map(|items| {
             items
@@ -50,8 +57,8 @@ pub fn judge(home: &Path, request: &Request, actions: &[Value]) -> Result<(Judgm
         })
         .unwrap_or_default();
     let mut input = judge::questions::steering_state(
-        request.intent["goal"].as_str(),
-        goal_item(request).as_deref(),
+        prior["goal"].as_str(),
+        prior["goal_item_id"].as_str(),
         &items,
         &source.text,
         "",
@@ -63,22 +70,8 @@ pub fn judge(home: &Path, request: &Request, actions: &[Value]) -> Result<(Judgm
     }
     let (judgment, input) =
         super::preparation::evaluate(home, request, &input, &judge::questions::steering(&items))?;
+    super::steering_conflict::check(home, request)?;
     Ok((judgment, input))
-}
-fn goal_item(request: &Request) -> Option<String> {
-    let ledger: Value =
-        serde_json::from_str(&request.documents.iter().find(|d| d.id == "ledger")?.text).ok()?;
-    let sources = ledger["goal"]["source_refs"].as_array()?;
-    ["preserve", "frontier", "validation"]
-        .iter()
-        .filter_map(|k| ledger[*k].as_array())
-        .flatten()
-        .find(|i| {
-            i["introduced_by"]
-                .as_array()
-                .is_some_and(|refs| refs.iter().any(|r| sources.contains(r)))
-        })
-        .and_then(|i| i["id"].as_str().map(str::to_owned))
 }
 /// Preserve any intervening explicit user review. The next native event applies
 /// the verified decision through the existing verbatim ledger machinery.

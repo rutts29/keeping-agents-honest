@@ -42,6 +42,10 @@ pub struct Input {
     pub dismissed: bool,
     #[serde(default)]
     pub promoted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_intent: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub newer_conflicts: Vec<String>,
 }
 impl Input {
     pub fn key(&self) -> &str {

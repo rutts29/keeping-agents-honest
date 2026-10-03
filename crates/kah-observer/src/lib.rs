@@ -8,6 +8,7 @@ pub mod tool_watch;
 pub mod judge;
 
 pub mod checkpoint;
+pub mod chronology;
 pub mod compaction;
 pub mod context_budget;
 pub mod context_selection;

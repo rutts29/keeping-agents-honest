@@ -48,6 +48,16 @@ impl Store {
                             .map_err(|_| "OBSERVER_DECISION_SCHEMA stage=source_history")?,
                     );
                 }
+                Some("source_context_v1") => {
+                    let index = position(&positions, &value)?;
+                    inputs[index].prior_intent = Some(value["prior_intent"].clone());
+                }
+                Some("source_conflict_v1") => {
+                    let index = position(&positions, &value)?;
+                    inputs[index].newer_conflicts =
+                        serde_json::from_value(value["newer_ids"].clone())
+                            .map_err(|_| "OBSERVER_CONFLICT_SCHEMA stage=source_history")?;
+                }
                 Some("source_review_v1") => {
                     let index = position(&positions, &value)?;
                     inputs[index].dismissed = value["action"] == "dismiss";
@@ -63,6 +73,17 @@ impl Store {
     }
     pub fn source_decision(&mut self, record: &str, decision: &Decision) -> Result<(), String> {
         self.append(&json!({"kind":"source_decision_v1","record":record,"decision":decision}))
+    }
+    pub fn source_context(&mut self, record: &str, prior: &Value) -> Result<(), String> {
+        self.append(&json!({"kind":"source_context_v1","record":record,"prior_intent":prior}))
+    }
+    pub fn source_conflicts(
+        &mut self,
+        record: &str,
+        newer: &[String],
+        judgment: &crate::judge::Judgment,
+    ) -> Result<(), String> {
+        self.append(&json!({"kind":"source_conflict_v1","record":record,"newer_ids":newer,"judgment":judgment}))
     }
 }
 fn position(positions: &BTreeMap<String, usize>, value: &Value) -> Result<usize, String> {

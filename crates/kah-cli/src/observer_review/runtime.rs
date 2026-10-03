@@ -141,12 +141,13 @@ pub fn prepare_context(worker: &str) -> Result<()> {
         .load()?
         .ok_or("PREPARATION_STATE stage=context_preparation")?;
     let updated = helper_changed(&state)?;
-    let decision = state
+    let review = state
         .pending
         .as_ref()
         .ok_or("PREPARATION_PENDING stage=context_preparation")?
         .id
         .clone();
+    let decision = super::preparation::active_decision(worker, &review)?;
     let sent = store
         .directory
         .join(format!("preparation-woken-{decision}.json"));

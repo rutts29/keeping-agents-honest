@@ -13,12 +13,25 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let base = RunStore::default_state_root()?.join("runs");
     let id = args.get(1).ok_or("RUN_ID_REQUIRED stage=arguments")?;
     if args[0] == "steer" && !id.starts_with("run-") {
-        if args.len() != 3 && !(args.len() == 5 && args[3] == "--receipt") {
+        if args.len() < 3 || !(args.len() - 3).is_multiple_of(2) {
             return Err(
-                "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID]".into(),
+                "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID] [--supersedes RECEIPT]".into(),
             );
         }
-        return crate::send_cli::user(id, &args[2], args.get(4).map(String::as_str));
+        let mut receipt = None;
+        let mut supersedes = None;
+        for pair in args[3..].chunks_exact(2) {
+            match pair[0].as_str() {
+                "--receipt" => receipt = Some(pair[1].as_str()),
+                "--supersedes" => supersedes = Some(pair[1].as_str()),
+                _ => return Err("SEND_ARGUMENTS stage=arguments".into()),
+            }
+        }
+        return if let Some(target) = supersedes {
+            crate::send_cli::linked_user(id, &args[2], receipt, target)
+        } else {
+            crate::send_cli::user(id, &args[2], receipt)
+        };
     }
     match args[0].as_str() {
         "steer" if args.len()==3=>{

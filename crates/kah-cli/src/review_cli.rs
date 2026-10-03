@@ -2,6 +2,11 @@ use crate::Result;
 use kah_core::run_store::RunStore;
 use kah_observer::review;
 pub fn run(args: &[String]) -> Result<()> {
+    if args.len() == 5 && args[2] == "--withdraw-link" {
+        review::withdraw_linked(&args[1], &args[3], &args[4])?;
+        println!("Recorded withdrawal of {} citing {}.", args[3], args[4]);
+        return Ok(());
+    }
     if args.len() == 4 && matches!(args[2].as_str(), "--confirm" | "--dismiss" | "--promote") {
         review::apply(&args[1], args[2].trim_start_matches("--"), &args[3])?;
         println!("Recorded user decision {} for {}.", args[2], args[3]);

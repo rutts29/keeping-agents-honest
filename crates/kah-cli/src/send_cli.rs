@@ -30,6 +30,28 @@ pub fn run(args: &[String]) -> Result<()> {
 pub fn user(session: &str, text: &str, receipt: Option<&str>) -> Result<()> {
     deliver(session, text, "operator", receipt, true)
 }
+pub fn linked_user(
+    session: &str,
+    text: &str,
+    receipt: Option<&str>,
+    supersedes: &str,
+) -> Result<()> {
+    let generated = format!(
+        "r{:x}-{}",
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
+        std::process::id()
+    );
+    println!(
+        "{}",
+        crate::user_steer::deliver_linked(
+            session,
+            text,
+            receipt.unwrap_or(&generated),
+            Some(supersedes)
+        )?
+    );
+    Ok(())
+}
 fn deliver(
     session: &str,
     text: &str,

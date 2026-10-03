@@ -372,6 +372,8 @@ fn model_ignored_input_remains_retrievable_and_can_be_promoted_without_inference
     )
     .unwrap();
     let input = Input {
+        prior_intent: None,
+        newer_conflicts: vec![],
         local_record: None,
         source: SourceRef::new(
             SourceProvider::Bundle,

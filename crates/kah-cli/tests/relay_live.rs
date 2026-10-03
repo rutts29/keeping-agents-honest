@@ -71,7 +71,9 @@ fn relay_and_dispatch() {
     }
     fs::write(
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(
-            if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
+            if std::env::var_os("KAH_GATE_LINKED_STEER").is_some() {
+                "linked-steering.json"
+            } else if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
                 "verified-drift.json"
             } else if std::env::var_os("KAH_GATE_REVIEW").is_some() {
                 "persistent-handoff.json"

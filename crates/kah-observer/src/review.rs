@@ -74,6 +74,56 @@ pub fn apply(session: &str, action: &str, id: &str) -> Result<(), String> {
     state.gap = None;
     store.save(&state)
 }
+
+/// Explicit operator repair cites an existing later user source, without
+/// changing either source message or asking a model to reinterpret it.
+pub fn withdraw_linked(session: &str, id: &str, later: &str) -> Result<(), String> {
+    let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
+    let mut store = Store::open(&base, session, Duration::from_secs(30))?;
+    let mut state = store.load()?.ok_or("REVIEW_SESSION stage=review")?;
+    let inputs = store.sources()?;
+    let target = inputs
+        .iter()
+        .position(|i| i.id() == id)
+        .ok_or("REVIEW_SOURCE_UNKNOWN stage=review")?;
+    let replacement = inputs
+        .iter()
+        .position(|i| i.id() == later)
+        .ok_or("REVIEW_SOURCE_UNKNOWN stage=review")?;
+    if target >= replacement {
+        return Err("REVIEW_CHRONOLOGY stage=review: superseding source must be later".into());
+    }
+    let source = inspect_source(&state, &inputs, &store)?;
+    let previous = source
+        .open(&state.binding.project)
+        .map_err(|e| e.to_string())?
+        .map(|r| r.recovered)
+        .ok_or("REVIEW_HISTORY stage=review")?;
+    let mut history = previous.history.clone();
+    if history.intent(id).is_some_and(|i| i.is_active()) {
+        history
+            .append(Event::RequirementWithdrawn {
+                intent_id: id.into(),
+                source_refs: vec![inputs[replacement].source.clone()],
+                approval: None,
+            })
+            .map_err(|e| e.to_string())?;
+    }
+    let mut projection = ActiveProjection::from_history(&history, ProjectionConfig::default())
+        .map_err(|e| e.to_string())?;
+    projection.generated_by.component = "kah.user-controlled-verbatim".into();
+    reconcile::persist(
+        &state.binding.project,
+        &source,
+        Some(&previous),
+        &history,
+        &projection,
+    )?;
+    store.append(&json!({"kind":"source_review_v1","record":inputs[target].key(),"action":"dismiss","source":"user","receipt":inputs[replacement].source,"superseded_by":later}))?;
+    state.action_digest = None;
+    state.gap = None;
+    store.save(&state)
+}
 fn apply_history(
     history: &mut Option<History>,
     input: &Input,

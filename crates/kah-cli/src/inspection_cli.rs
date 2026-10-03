@@ -10,7 +10,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
         && args.iter().any(|s| {
             matches!(
                 s.as_str(),
-                "--review" | "--confirm" | "--dismiss" | "--promote"
+                "--review" | "--confirm" | "--dismiss" | "--promote" | "--withdraw-link"
             )
         })
     {

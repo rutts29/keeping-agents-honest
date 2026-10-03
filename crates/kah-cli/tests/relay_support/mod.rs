@@ -1,4 +1,5 @@
 use kah_cli::{Arguments, run_pane::Pane};
+mod linked_steer;
 mod review;
 mod review_drift;
 mod trace;
@@ -28,15 +29,27 @@ impl Drop for Panes {
     }
 }
 pub fn run(root: &Path) -> Value {
+    if let Some(run) = special_run() {
+        return run(root);
+    }
+    ordinary_run(root)
+}
+fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_LINKED_STEER").is_some() {
+        return Some(linked_steer::run);
+    }
     if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
-        return review_drift::run(root);
+        return Some(review_drift::run);
     }
     if std::env::var_os("KAH_GATE_REVIEW").is_some() {
-        return review::run(root);
+        return Some(review::run);
     }
     if std::env::var_os("KAH_GATE_USER_STEER").is_some() {
-        return user_steer::run(root);
+        return Some(user_steer::run);
     }
+    None
+}
+fn ordinary_run(root: &Path) -> Value {
     let socket = std::env::var("HERDR_SOCKET_PATH").unwrap();
     assert!(
         socket.contains("kah-gate-"),
@@ -111,6 +124,14 @@ fn versions(home: &Path) -> Value {
     )
 }
 fn start_claude(home: &Path, fixture: &crate::claude_support::Fixture, root: &Path) -> Pane {
+    start_claude_prompt(home, fixture, root, FORBIDDEN)
+}
+fn start_claude_prompt(
+    home: &Path,
+    fixture: &crate::claude_support::Fixture,
+    root: &Path,
+    prompt: &str,
+) -> Pane {
     let args = Arguments::parse(vec![
         "--agent".into(),
         "claude".into(),
@@ -123,7 +144,7 @@ fn start_claude(home: &Path, fixture: &crate::claude_support::Fixture, root: &Pa
         fixture.id.clone(),
         "--permission-mode".into(),
         "acceptEdits".into(),
-        FORBIDDEN.into(),
+        prompt.into(),
     ])
     .unwrap();
     let command = kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap();

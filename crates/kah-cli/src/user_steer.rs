@@ -7,6 +7,14 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 pub fn deliver(session: &str, text: &str, receipt: &str) -> Result<Value> {
+    deliver_linked(session, text, receipt, None)
+}
+pub fn deliver_linked(
+    session: &str,
+    text: &str,
+    receipt: &str,
+    supersedes: Option<&str>,
+) -> Result<Value> {
     let endpoint = relay_store::endpoint(session)?;
     let pane = endpoint
         .pane
@@ -25,7 +33,11 @@ pub fn deliver(session: &str, text: &str, receipt: &str) -> Result<Value> {
         );
     }
     let relayer = relayer()?;
-    let envelope = Message::new(&relayer, receipt, text)?;
+    let mut envelope = Message::new(&relayer, receipt, text)?;
+    if let Some(target) = supersedes {
+        Message::new(&relayer, target, "validate receipt")?;
+        envelope.supersedes = Some(target.into());
+    }
     let mut delivery = Delivery::user(session, receipt, &envelope.wire())?;
     delivery.client_id = format!("kah-user-relayed:{relayer}:{receipt}");
     let mut saved = Receipt::open(&RunStore::default_state_root()?, &delivery)?;

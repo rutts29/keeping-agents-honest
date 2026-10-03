@@ -102,6 +102,8 @@ pub struct SourceRef {
     pub origin: Option<SourceOrigin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relayer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes_receipt: Option<String>,
 }
 
 impl fmt::Debug for SourceRef {
@@ -133,6 +135,7 @@ impl SourceRef {
             content_digest: content_digest.into(),
             origin: None,
             relayer: None,
+            supersedes_receipt: None,
         }
     }
 
@@ -144,6 +147,15 @@ impl SourceRef {
     }
 
     pub fn validate(&self) -> Result<(), HistoryError> {
+        if self.supersedes_receipt.as_ref().is_some_and(|r| {
+            r.is_empty()
+                || self.role != SourceRole::User
+                || self.origin != Some(SourceOrigin::Relayed)
+        }) {
+            return Err(HistoryError::InvalidSourceRef {
+                field: "explicit supersedes provenance",
+            });
+        }
         if self.origin.is_some() != self.relayer.is_some()
             || self.origin.is_some()
                 && (self.role != SourceRole::User

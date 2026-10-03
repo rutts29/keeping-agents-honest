@@ -28,6 +28,14 @@ fn job_path(worker: &str, decision: &str) -> Result<PathBuf> {
 pub fn pending(worker: &str, decision: &str) -> Result<bool> {
     Ok(job_path(worker, decision)?.exists())
 }
+pub fn active_decision(worker: &str, review: &str) -> Result<String> {
+    let active: Option<Value> =
+        super::state::read(&Store::directory(worker)?.join("preparation-current.json"))?;
+    Ok(active
+        .filter(|v| v["review"] == review)
+        .and_then(|v| v["decision"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| review.into()))
+}
 pub fn evaluate(
     home: &Path,
     request: &Request,
@@ -86,6 +94,14 @@ pub fn stage(request: &Request, input: &Value, questions: &Questions, reason: &s
         &Store::directory(&request.worker)?,
         &format!("preparation-{}.json", request.id),
         &serde_json::to_value(job)?,
+    )?;
+    let review = Store::read(&request.worker)?
+        .and_then(|s| s.pending.map(|p| p.id))
+        .unwrap_or_else(|| request.id.clone());
+    crate::unattended_report::save(
+        &Store::directory(&request.worker)?,
+        "preparation-current.json",
+        &json!({"review":review,"decision":request.id}),
     )
 }
 pub fn prompt(worker: &str) -> Result<String> {
@@ -94,7 +110,8 @@ pub fn prompt(worker: &str) -> Result<String> {
         .pending
         .as_ref()
         .ok_or("PREPARATION_PENDING stage=context_preparation")?;
-    let job: Job = super::state::read(&job_path(worker, &pending.id)?)?
+    let decision = active_decision(worker, &pending.id)?;
+    let job: Job = super::state::read(&job_path(worker, &decision)?)?
         .ok_or("PREPARATION_JOB stage=context_preparation")?;
     let directory = state.observer.workspace.join("inputs").join(&pending.id);
     let name = format!("preparation-{}.json", crate::relay_store::nonce());
@@ -106,7 +123,7 @@ pub fn prompt(worker: &str) -> Result<String> {
         .observer
         .workspace
         .join("outbox")
-        .join(format!("selection-{}.json", pending.id));
+        .join(format!("selection-{decision}.json"));
     let mut command = std::process::Command::new(state.observer.workspace.join("bin/kah"));
     command
         .args(["observe", "select", "--request"])

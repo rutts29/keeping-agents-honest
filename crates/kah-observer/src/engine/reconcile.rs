@@ -40,11 +40,15 @@ pub(super) fn update_intent(
                 }),
                 dismissed: false,
                 promoted: false,
+                prior_intent: None,
+                newer_conflicts: vec![],
             };
             journal.add_source(&input)?;
             inputs.push(input);
         }
+        capture_prior(journal, history.as_ref(), &mut inputs, index)?;
         resolve_input(state, journal, &mut history, &mut inputs[index])?;
+        apply_chronology(&mut history, &inputs)?;
     }
     let mut projection = history
         .as_ref()
@@ -69,6 +73,26 @@ pub(super) fn update_intent(
         history.as_ref().is_some_and(|h| h.records().len() > before),
     ))
 }
+fn apply_chronology(history: &mut Option<History>, inputs: &[Input]) -> Result<(), String> {
+    if let Some(history) = history {
+        crate::chronology::apply_links(history, inputs)?;
+        crate::chronology::apply_conflicts(history, inputs)?;
+    }
+    Ok(())
+}
+fn capture_prior(
+    journal: &mut Store,
+    history: Option<&History>,
+    inputs: &mut [Input],
+    index: usize,
+) -> Result<(), String> {
+    if inputs[index].prior_intent.is_none() {
+        let prior = crate::chronology::before(history, inputs, inputs[index].key())?;
+        journal.source_context(inputs[index].key(), &prior)?;
+        inputs[index].prior_intent = Some(prior);
+    }
+    Ok(())
+}
 fn resolve_input(
     state: &mut State,
     journal: &mut Store,
@@ -77,7 +101,12 @@ fn resolve_input(
 ) -> Result<(), String> {
     if input.decision.is_none() {
         let mut decision = intake::decide(&input.text, input.source.role.clone(), || {
-            type_message(state, journal, history.as_ref(), &input.text)
+            type_message(
+                state,
+                journal,
+                input.prior_intent.as_ref().unwrap(),
+                &input.text,
+            )
         })
         .unwrap_or_else(|reason| Decision::Gap { reason });
         if crate::verification::enabled(&state.binding.session)?
@@ -126,29 +155,18 @@ fn validate_sources(inputs: &[Input], users: &NeutralSessionBundle) -> Result<()
 fn type_message(
     state: &mut State,
     journal: &mut Store,
-    history: Option<&History>,
+    prior: &serde_json::Value,
     text: &str,
 ) -> Result<judge::Judgment, String> {
-    let items = history
-        .map(|h| {
-            h.intents()
-                .values()
-                .filter(|i| i.is_active())
-                .map(|i| (i.id.to_string(), i.text.clone()))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let items = prior["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|i| Some((i["id"].as_str()?.into(), i["text"].as_str()?.into())))
+        .collect::<Vec<_>>();
     let questions = judge::questions::steering(&items);
-    let goal = history.map(|h| h.goal().text.as_str());
-    let goal_id = history
-        .and_then(|h| {
-            h.intents().values().find(|i| {
-                i.introduced_by
-                    .iter()
-                    .any(|r| h.goal().source_refs.contains(r))
-            })
-        })
-        .map(|i| i.id.as_str());
+    let goal = prior["goal"].as_str();
+    let goal_id = prior["goal_item_id"].as_str();
     let input = judge::questions::steering_state(goal, goal_id, &items, text, "");
     super::judgment::evaluate(state, journal, &input, &questions, "steering")
 }
