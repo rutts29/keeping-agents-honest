@@ -71,3 +71,24 @@ fn tool_window_and_identity_memory_stay_bounded() {
     assert_eq!(checks, 250);
     assert!(serde_json::to_vec(&progress).unwrap().len() < 4096);
 }
+
+#[test]
+fn partial_batch_survives_a_turn_boundary_and_preserves_whole_large_results() {
+    let mut progress = Progress::default();
+    let whole = "Whole result with final instruction.\n".repeat(10000);
+    for id in ["a", "b", "c"] {
+        assert!(
+            progress
+                .push("old", id, json!({"id":id,"evidence":whole}))
+                .unwrap()
+                .is_none()
+        );
+    }
+    let batch = progress
+        .push("new", "d", json!({"id":"d","evidence":whole}))
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.len(), 4);
+    assert_eq!(batch[0]["evidence"], whole);
+    assert_eq!(batch[3]["evidence"], whole);
+}

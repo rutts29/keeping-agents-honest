@@ -7,6 +7,7 @@ pub mod hook;
 pub mod launch;
 pub mod preparation;
 mod prepared_result;
+pub mod queue;
 pub mod runtime;
 pub mod state;
 pub mod workspace;

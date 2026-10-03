@@ -97,8 +97,9 @@ pub fn prompt(worker: &str) -> Result<String> {
     let job: Job = super::state::read(&job_path(worker, &pending.id)?)?
         .ok_or("PREPARATION_JOB stage=context_preparation")?;
     let directory = state.observer.workspace.join("inputs").join(&pending.id);
-    let file = directory.join("preparation.json");
-    fs::write(&file, serde_json::to_vec_pretty(&job)?)?;
+    let name = format!("preparation-{}.json", crate::relay_store::nonce());
+    let file = directory.join(&name);
+    crate::unattended_report::save(&directory, &name, &serde_json::to_value(&job)?)?;
     kah_run::access::share_tree(&directory, kah_run::access::service_uid()?, false)?;
     let output = state
         .observer
@@ -138,7 +139,7 @@ pub fn submit(args: &[String]) -> Result<()> {
         .and_then(Path::parent)
         .and_then(Path::parent)
         .ok_or("PREPARATION_PATH stage=context_preparation")?;
-    crate::unattended_report::save(
+    super::workspace::publish_output(
         &root.join("outbox"),
         &format!("selected-{}.json", job.decision),
         &serde_json::to_value(manifest)?,

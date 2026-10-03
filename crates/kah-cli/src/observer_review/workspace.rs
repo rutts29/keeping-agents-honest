@@ -172,19 +172,31 @@ pub fn submit(args: &[String]) -> Result<()> {
         .and_then(Path::parent)
         .ok_or("REVIEW_REPORT_PATH stage=report")?
         .join("outbox");
-    let target = directory.join(format!("submitted-{}.json", request.id));
+    publish_output(
+        &directory,
+        &format!("submitted-{}.json", request.id),
+        &serde_json::to_value(report)?,
+    )?;
+    println!(
+        "{}",
+        json!({"request":request.id,"status":"evidence_submitted","decision":"Jev pending"})
+    );
+    Ok(())
+}
+
+/// Shared sandbox output uses the established default ACL and a writable mask;
+/// private host archives continue to use 0600.
+pub fn publish_output(directory: &Path, name: &str, value: &serde_json::Value) -> Result<()> {
+    let target = directory.join(name);
     let temporary = target.with_extension(format!("{}.tmp", std::process::id()));
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o660)
         .open(&temporary)?;
-    file.write_all(&serde_json::to_vec(&report)?)?;
+    file.write_all(&serde_json::to_vec(value)?)?;
     file.sync_all()?;
     fs::rename(temporary, &target)?;
-    println!(
-        "{}",
-        json!({"request":request.id,"status":"evidence_submitted","decision":"Jev pending"})
-    );
+    fs::File::open(directory)?.sync_all()?;
     Ok(())
 }

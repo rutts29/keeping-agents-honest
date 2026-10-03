@@ -34,23 +34,17 @@ pub fn run(worker: &str) -> Result<()> {
     let Some(pending) = state.pending.clone() else {
         return Ok(());
     };
+    if super::preparation::pending(worker, &pending.id)? && super::runtime::helper_changed(&state)?
+    {
+        drop(store);
+        return super::runtime::prepare_context(worker);
+    }
     if pending.purpose == Purpose::Preparation {
         drop(store);
         return super::prepared_result::consume(worker);
     }
-    let path = state
-        .observer
-        .workspace
-        .join("outbox")
-        .join(format!("submitted-{}.json", pending.id));
     let request = workspace::request(&store, &pending.id)?;
-    let report: Report = serde_json::from_slice(&read_report(&path)?)?;
-    let verified = report.verify(&pending.id, &request.documents)?;
-    let actions = verified
-        .into_iter()
-        .enumerate()
-        .map(|(i, v)| json!({"id":format!("verified-{i}"),"kind":"verifiedEvidence","evidence":v}))
-        .collect::<Vec<_>>();
+    let (path, report, actions) = evidence(&state, &request)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
     let decision = decide(&home, &request, &actions);
     if decision
@@ -64,6 +58,7 @@ pub fn run(worker: &str) -> Result<()> {
     let tokens = tokens(&home, &store, &state);
     let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":kah_observer::verified_judgment::VERSION,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
     archive(&store.directory, &request.id, &result)?;
+    record(worker, &request, &input, &judgment)?;
     if request.purpose == Purpose::Checkpoint {
         super::checkpoint::record(&store, &mut state, &request, &result)?;
     }
@@ -85,6 +80,25 @@ pub fn run(worker: &str) -> Result<()> {
         super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
     }
     finish(store, &path, worker)
+}
+
+fn evidence(
+    state: &State,
+    request: &super::state::Request,
+) -> Result<(PathBuf, Report, Vec<Value>)> {
+    let path = state
+        .observer
+        .workspace
+        .join("outbox")
+        .join(format!("submitted-{}.json", request.id));
+    let report: Report = serde_json::from_slice(&read_report(&path)?)?;
+    let actions = report
+        .verify(&request.id, &request.documents)?
+        .into_iter()
+        .enumerate()
+        .map(|(i, v)| json!({"id":format!("verified-{i}"),"kind":"verifiedEvidence","evidence":v}))
+        .collect();
+    Ok((path, report, actions))
 }
 
 pub fn archive(directory: &Path, request: &str, result: &Value) -> Result<()> {
@@ -179,7 +193,7 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
     }
     let store = Store::open(worker)?;
     let path = store.directory.join("reminder.json");
-    let Some(reminder) = super::state::read::<Value>(&path)? else {
+    let Some(mut reminder) = super::state::read::<Value>(&path)? else {
         if let Some(notice) = super::preparation::notice(worker)? {
             return Ok(Some(json!({"systemMessage":notice})));
         }
@@ -187,7 +201,7 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
     };
     fs::remove_file(path)?;
     if reminder["purpose"] == "drift" && reminder["turn"] != turn {
-        return Ok(None);
+        reminder["text"] = format!("[kah confirmed finding from previous turn {}; retained context, not new user steering] {}",reminder["turn"],reminder["text"].as_str().unwrap_or("")).into();
     }
     Ok(Some(
         json!({"hookSpecificOutput":{"hookEventName":event,"additionalContext":reminder["text"]}}),
@@ -220,8 +234,31 @@ fn finish(store: Store, path: &Path, worker: &str) -> Result<()> {
         fs::remove_file(gap)?;
     }
     drop(store);
-    if super::events::pending(worker)? {
-        super::hook::spawn("__checkpoint-worker", worker)?;
-    }
+    super::queue::kick(worker)
+}
+
+fn record(
+    worker: &str,
+    request: &super::state::Request,
+    input: &Value,
+    judgment: &judge::Judgment,
+) -> Result<()> {
+    use kah_observer::session;
+    use std::time::Duration;
+    let mut primary = session::Store::open(
+        &kah_core::run_store::RunStore::default_state_root()?,
+        worker,
+        Duration::from_secs(110),
+    )?;
+    let mut source = primary
+        .load()?
+        .ok_or("REVIEW_PRIMARY_STATE stage=consume")?;
+    primary.append(&json!({"kind":"judgment","source":"verified_observer","purpose":request.purpose,"review_request":request.id,"prepared":super::preparation::pending(worker,&request.id)?,"judgment":judgment,"question_set":kah_observer::verified_judgment::VERSION,"at_ms":session::now_ms(),"state_digest":kah_observer::context_selection::digest(input)}))?;
+    source.judgments.push(judgment.clone());
+    source.usage.calls += judgment.metrics.calls;
+    source.usage.input_tokens += judgment.metrics.input_tokens;
+    source.usage.output_tokens += judgment.metrics.output_tokens;
+    source.usage.elapsed_ms += judgment.metrics.elapsed_ms;
+    primary.save(&source)?;
     Ok(())
 }

@@ -56,7 +56,8 @@ pub fn consume(worker: &str) -> Result<()> {
     );
     state.pending = None;
     store.save(&state)?;
-    Ok(())
+    drop(store);
+    super::queue::kick(worker)
 }
 fn apply_steering(
     primary: &mut session::Store,

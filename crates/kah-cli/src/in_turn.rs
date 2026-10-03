@@ -6,7 +6,12 @@ use kah_observer::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+use std::{
+    fs,
+    io::Write,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    path::Path,
+};
 
 pub fn event(input: &Value) -> bool {
     matches!(
@@ -49,6 +54,40 @@ pub fn output(input: &Value, outcome: engine::Outcome) -> Value {
     }
     output
 }
+/// A full-review reminder must not consume a completed tool's Tier-1 evidence.
+pub fn merge(mut review: Value, tool: Value) -> Value {
+    if let Some(text) = tool["hookSpecificOutput"]["additionalContext"].as_str() {
+        if review["hookSpecificOutput"].is_object() {
+            review["hookSpecificOutput"]["additionalContext"] = format!(
+                "{}\n{text}",
+                review["hookSpecificOutput"]["additionalContext"]
+                    .as_str()
+                    .unwrap_or("")
+            )
+            .into();
+        } else {
+            review["hookSpecificOutput"] = tool["hookSpecificOutput"].clone();
+        }
+    }
+    for (key, value) in tool
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| key.as_str() != "hookSpecificOutput")
+    {
+        if key == "systemMessage" && review[key].is_string() {
+            review[key] = format!(
+                "{}\n{}",
+                review[key].as_str().unwrap(),
+                value.as_str().unwrap_or("")
+            )
+            .into();
+        } else if review.get(key).is_none() {
+            review[key] = value.clone();
+        }
+    }
+    review
+}
 fn observation_id(input: &Value) -> String {
     format!(
         "tool-batch:{}",
@@ -61,6 +100,15 @@ pub(crate) fn batch(
     input: &Value,
 ) -> Result<Option<Vec<Value>>, String> {
     let directory = Store::directory(base, &binding.session);
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(directory.join("tool-progress.lock"))
+        .map_err(|e| e.to_string())?;
+    lock.lock().map_err(|e| e.to_string())?;
     let path = directory.join("tool-progress.json");
     let mut progress = read(&path)?;
     let id = input["tool_use_id"]
@@ -70,7 +118,15 @@ pub(crate) fn batch(
         .as_str()
         .or_else(|| input["prompt_id"].as_str())
         .unwrap_or("session");
-    let result = progress.push(turn, id, action(input, id))?;
+    let action = action(input, id);
+    let mut journal = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .mode(0o600)
+        .open(directory.join("tool-events.jsonl"))
+        .map_err(|e| e.to_string())?;
+    writeln!(journal, "{}", json!({"turn":turn,"action":action})).map_err(|e| e.to_string())?;
+    let result = progress.push(turn, id, action)?;
     crate::unattended_report::save(
         &directory,
         "tool-progress.json",

@@ -253,8 +253,10 @@ fn wait_worker(f: &Fixture) {
     let directory = Store::directory(&f.home.join("state/kah"), "session");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        let lock = fs::File::open(directory.join("tool-worker.lock")).unwrap();
-        if lock.try_lock().is_ok() && !directory.join("tool-job.json").exists() {
+        let busy = fs::File::open(directory.join("tool-worker.lock"))
+            .is_ok_and(|lock| lock.try_lock().is_err());
+        let jobs = directory.join("tool-jobs");
+        if !busy && (!jobs.exists() || fs::read_dir(jobs).unwrap().next().is_none()) {
             break;
         }
         assert!(
@@ -307,15 +309,30 @@ fn busy_worker_does_not_block_hooks_or_start_another_worker() {
     for event in ["PreToolUse", "PostToolUse", "Stop"] {
         let mut input = f.input();
         input["hook_event_name"] = event.into();
+        input["tool_use_id"] = "initial-busy-tool".into();
         let started = std::time::Instant::now();
         assert_eq!(f.run(input), json!({}));
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
     assert!(!directory.join("tool-job.json").exists());
+    for n in 0..4 {
+        let mut input = f.input();
+        input["hook_event_name"] = "PostToolUse".into();
+        input["tool_use_id"] = format!("busy-{n}").into();
+        assert_eq!(f.run(input), json!({}));
+    }
+    let events = fs::read_to_string(directory.join("tool-events.jsonl")).unwrap();
+    for n in 0..4 {
+        assert!(events.contains(&format!("busy-{n}")));
+    }
+    assert_eq!(
+        fs::read_dir(directory.join("tool-jobs")).unwrap().count(),
+        1
+    );
 }
 
 #[test]
-fn queued_reminder_is_delivered_once_and_new_user_input_discards_it() {
+fn queued_reminder_is_delivered_once_and_new_user_input_preserves_it_as_context() {
     let f = Fixture::new();
     f.run(f.input());
     let directory = Store::directory(&f.home.join("state/kah"), "session");
@@ -334,15 +351,17 @@ fn queued_reminder_is_delivered_once_and_new_user_input_discards_it() {
         "fixture reminder"
     );
     kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
-    assert_ne!(
-        f.run(f.input())["hookSpecificOutput"]["additionalContext"],
-        "fixture reminder"
+    assert!(
+        f.run(f.input())["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("fixture reminder")
     );
     assert!(!directory.join("tool-result.json").exists());
 }
 
 #[test]
-fn user_input_while_worker_is_busy_invalidates_its_future_reminder() {
+fn user_input_while_worker_is_busy_retains_its_finding_as_previous_turn_context() {
     let f = Fixture::new();
     f.run(f.input());
     let directory = Store::directory(&f.home.join("state/kah"), "session");
@@ -354,10 +373,12 @@ fn user_input_while_worker_is_busy_invalidates_its_future_reminder() {
     drop(lock);
     let mut input = f.input();
     input["hook_event_name"] = "PreToolUse".into();
-    assert_ne!(
-        f.run(input)["hookSpecificOutput"]["additionalContext"],
-        "stale reminder"
-    );
+    let context = f.run(input)["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(context.contains("stale reminder"));
+    assert!(context.contains("previous turn"));
     assert!(!directory.join("tool-result.json").exists());
 }
 

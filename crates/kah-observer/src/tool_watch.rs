@@ -26,7 +26,6 @@ impl Progress {
         if self.turn != turn {
             self.turn = turn.into();
             self.seen.clear();
-            self.pending.clear();
         }
         if self.seen.iter().any(|seen| seen == id) {
             return Ok(None);

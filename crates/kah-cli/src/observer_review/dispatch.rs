@@ -1,5 +1,5 @@
 use super::{
-    control, hook, runtime,
+    control, hook,
     state::{Purpose, Store},
 };
 use crate::Result;
@@ -31,6 +31,7 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
     if super::events::pending(&binding.session)? {
         hook::spawn("__checkpoint-worker", &binding.session)?;
     }
+    super::queue::kick(&binding.session)?;
     if let Some(state) = Store::read(&binding.session)?
         && let Some(pending) = state.pending
         && super::state::read::<Value>(
@@ -75,29 +76,10 @@ pub fn outcome(binding: &Binding, outcome: &mut Outcome) -> Result<()> {
     } else {
         return Ok(());
     };
-    let store = Store::open(&binding.session)?;
-    if store.load()?.is_some_and(|s| {
-        s.pending.is_some() || s.last_verified_turn.as_deref() == Some(&config.turn)
-    }) {
-        return Ok(());
-    }
-    crate::unattended_report::save(
-        &store.directory,
-        "wake.json",
-        &json!({"purpose":purpose,"turn":config.turn,"trigger":trigger}),
-    )?;
-    drop(store);
+    super::queue::enqueue(&binding.session, purpose, &config.turn, trigger)?;
     hook::spawn("__review-wake", &binding.session)
 }
 pub fn run(worker: &str) -> Result<()> {
-    let path = Store::directory(worker)?.join("wake.json");
-    let job: Value = super::state::read(&path)?.ok_or("REVIEW_WAKE_MISSING stage=dispatch")?;
-    let purpose: Purpose = serde_json::from_value(job["purpose"].clone())?;
-    runtime::wake(
-        worker,
-        purpose,
-        job["turn"].as_str().ok_or("REVIEW_TURN stage=dispatch")?,
-        job["trigger"].clone(),
-    )?;
+    super::queue::drain(worker)?;
     Ok(())
 }

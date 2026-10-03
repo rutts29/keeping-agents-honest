@@ -53,11 +53,19 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     initialize(&base, binding)?;
+    let tool = if crate::in_turn::event(input) {
+        Some(crate::in_turn::codex(binding, input)?)
+    } else {
+        None
+    };
     crate::relay_hook::handle(binding, input, "codex").map_err(|e| e.to_string())?;
     if let Some(output) = crate::observer_review::dispatch::register(binding, input, "codex")
         .map_err(|e| e.to_string())?
     {
-        return Ok(Some(output));
+        return Ok(Some(crate::in_turn::merge(
+            output,
+            tool.unwrap_or(json!({})),
+        )));
     }
     if let Some(context) =
         crate::dispatch::startup_context(binding, input, "codex").map_err(|e| e.to_string())?
@@ -83,8 +91,8 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
             ))
         };
     }
-    if crate::in_turn::event(input) {
-        return crate::in_turn::codex(binding, input).map(Some);
+    if tool.is_some() {
+        return Ok(tool);
     }
     crate::in_turn_worker::pending(binding, input)
 }

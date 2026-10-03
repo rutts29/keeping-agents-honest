@@ -46,6 +46,9 @@ fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_fa
         serde_json::from_slice(&std::fs::read(store.directory.join("reminder.json")).unwrap())
             .unwrap();
     assert_eq!(reminder["purpose"], "checkpoint");
+    drop(store);
+    previous_finding(&worker);
+    let store = Store::open(&worker).unwrap();
     state.checkpoint.as_mut().unwrap()["passed"] = true.into();
     assert_eq!(checkpoint::covers(&state, "abc", 2), Some(true));
     state.pending = Some(Pending::from(&request));
@@ -53,6 +56,32 @@ fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_fa
     let directory = store.directory.clone();
     drop(store);
     std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
+
+fn previous_finding(worker: &str) {
+    let store = Store::open(worker).unwrap();
+    kah_cli::unattended_report::save(
+        &store.directory,
+        "reminder.json",
+        &json!({"purpose":"drift","turn":"previous","text":"Confirmed integration failure"}),
+    )
+    .unwrap();
+    drop(store);
+    let delivered = kah_cli::observer_review::consume::take(worker, "PostToolUse", "new")
+        .unwrap()
+        .unwrap();
+    assert!(
+        delivered["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("previous turn")
+    );
+    assert!(
+        delivered["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("Confirmed integration failure")
+    );
 }
 
 fn saved_binding(worker: &str, home: &std::path::Path) {

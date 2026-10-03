@@ -108,11 +108,19 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
 
 fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
+    let tool = if crate::in_turn::event(input) {
+        Some(crate::in_turn::claude(binding, input)?)
+    } else {
+        None
+    };
     crate::relay_hook::handle(binding, input, "claude").map_err(|e| e.to_string())?;
     if let Some(output) = crate::observer_review::dispatch::register(binding, input, "claude")
         .map_err(|e| e.to_string())?
     {
-        return Ok(Some(output));
+        return Ok(Some(crate::in_turn::merge(
+            output,
+            tool.unwrap_or(json!({})),
+        )));
     }
     if let Some(context) =
         crate::dispatch::startup_context(binding, input, "claude").map_err(|e| e.to_string())?
@@ -120,8 +128,8 @@ fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
         return Ok(Some(context));
     }
     crate::dispatch::receive(binding, input, "claude").map_err(|e| e.to_string())?;
-    if crate::in_turn::event(input) {
-        return crate::in_turn::claude(binding, input).map(Some);
+    if tool.is_some() {
+        return Ok(tool);
     }
     crate::in_turn_worker::pending(binding, input)
 }

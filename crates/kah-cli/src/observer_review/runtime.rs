@@ -14,6 +14,11 @@ use std::{
 /// Called from a bounded detached host job, never synchronously by a tool hook.
 pub fn wake(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Result<Value> {
     require_active(worker)?;
+    super::queue::enqueue(worker, purpose, turn, trigger)?;
+    super::queue::drain(worker)
+}
+pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Result<Value> {
+    require_active(worker)?;
     let started = kah_observer::session::now_ms();
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=wake")?);
     let store = Store::open(worker)?;
@@ -29,10 +34,8 @@ pub fn wake(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Resul
             json!({"status":"resumed_pending","pending":state.pending,"pane":state.observer.pane}),
         );
     }
-    if state.pending.is_some()
-        || purpose != Purpose::Checkpoint && state.last_verified_turn.as_deref() == Some(turn)
-    {
-        return Ok(json!({"status":"coalesced","pending":state.pending}));
+    if state.pending.is_some() {
+        return Ok(json!({"status":"queued","pending":state.pending}));
     }
     transport(&state)?;
     store.save(&state)?;
@@ -132,12 +135,12 @@ fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<(
 }
 pub fn prepare_context(worker: &str) -> Result<()> {
     require_active(worker)?;
-    let prompt = super::preparation::prompt(worker)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=context_preparation")?);
     let store = Store::open(worker)?;
     let mut state = store
         .load()?
         .ok_or("PREPARATION_STATE stage=context_preparation")?;
+    let updated = helper_changed(&state)?;
     let decision = state
         .pending
         .as_ref()
@@ -147,9 +150,11 @@ pub fn prepare_context(worker: &str) -> Result<()> {
     let sent = store
         .directory
         .join(format!("preparation-woken-{decision}.json"));
-    if sent.exists() {
+    if sent.exists() && !updated {
         return Ok(());
     }
+    workspace::prepare(&home, &state)?;
+    let prompt = super::preparation::prompt(worker)?;
     let existing = state.observer.pane.is_some();
     if existing {
         control::owned_pane(&state)?;
@@ -162,20 +167,27 @@ pub fn prepare_context(worker: &str) -> Result<()> {
     state.stopped = false;
     state.wakes += 1;
     store.save(&state)?;
-    drop(store);
-    deliver(&home, &state, &prompt, existing)?;
-    let store = Store::open(worker)?;
     crate::unattended_report::save(
         &store.directory,
         sent.file_name().unwrap().to_str().unwrap(),
         &json!({"decision":decision}),
     )?;
     drop(store);
+    if let Err(error) = deliver(&home, &state, &prompt, existing) {
+        let _ = std::fs::remove_file(&sent);
+        return Err(error);
+    }
     super::lifecycle::start(worker)?;
     if !existing {
         startup_notice(&state)?;
     }
     Ok(())
+}
+
+pub(super) fn helper_changed(state: &State) -> Result<bool> {
+    let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=helper")?);
+    Ok(std::fs::read(state.observer.workspace.join("bin/kah")).ok()
+        != Some(std::fs::read(home.join(".local/bin/kah"))?))
 }
 pub(super) fn require_active(worker: &str) -> Result<()> {
     if kah_observer::session::paused(

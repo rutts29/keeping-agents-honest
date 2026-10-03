@@ -4,12 +4,15 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub fn digest(value: &Value) -> String {
+    format!("sha256:{:x}", Sha256::digest(value.to_string().as_bytes()))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Item {
     pub id: String,
     pub pointer: String,
     pub digest: String,
-    pub value: Value,
     pub active_user: bool,
     pub goal: bool,
 }
@@ -57,7 +60,7 @@ fn collect(value: &Value, pointer: &str, active: &BTreeSet<String>, out: &mut Ve
     }
 }
 fn push(value: &Value, pointer: &str, active: &BTreeSet<String>, out: &mut Vec<Item>) {
-    let digest = format!("sha256:{:x}", Sha256::digest(value.to_string().as_bytes()));
+    let digest = digest(value);
     let native_id = value["id"]
         .as_str()
         .or_else(|| value.get(0).and_then(Value::as_str));
@@ -68,7 +71,6 @@ fn push(value: &Value, pointer: &str, active: &BTreeSet<String>, out: &mut Vec<I
         id: pointer.into(),
         pointer: pointer.into(),
         digest,
-        value: value.clone(),
         goal,
         active_user: goal || user_text || native_id.is_some_and(|id| active.contains(id)),
     });

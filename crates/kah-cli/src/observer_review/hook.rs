@@ -124,6 +124,9 @@ fn validate(state: &State, input: &Value) -> Result<()> {
     Ok(())
 }
 pub fn spawn(command: &str, worker: &str) -> Result<()> {
+    if command == "__review-wake" {
+        return spawn_command(command, worker, Stdio::null());
+    }
     let lock = OpenOptions::new()
         .read(true)
         .write(true)
@@ -136,11 +139,14 @@ pub fn spawn(command: &str, worker: &str) -> Result<()> {
         Err(fs::TryLockError::WouldBlock) => return Ok(()),
         Err(e) => return Err(e.into()),
     }
+    spawn_command(command, worker, Stdio::from(lock))
+}
+fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
     Command::new("/usr/bin/timeout")
         .args(["--kill-after=2s", "90s"])
         .arg(env::current_exe()?)
         .args([command, worker])
-        .stdin(Stdio::from(lock))
+        .stdin(stdin)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .process_group(0)
@@ -148,13 +154,15 @@ pub fn spawn(command: &str, worker: &str) -> Result<()> {
     Ok(())
 }
 pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
-    if error.to_string().starts_with("REVIEW_PAUSED") {
+    if error.to_string().starts_with("REVIEW_PAUSED")
+        || error.to_string().starts_with("REVIEW_BUSY")
+    {
         return Ok(());
     }
     let store = Store::open(worker)?;
     crate::unattended_report::save(
         &store.directory,
         "gap.json",
-        &json!({"error":error.to_string(),"at_ms":kah_observer::session::now_ms()}),
+        &json!({"error":if error.to_string().contains(" stage=") { error.to_string() } else {format!("REVIEW_IO stage=review: {error}")},"at_ms":kah_observer::session::now_ms()}),
     )
 }

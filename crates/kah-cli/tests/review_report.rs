@@ -40,6 +40,29 @@ fn first_report_creates_a_private_durable_archive() {
     assert!(kah_cli::observer_review::consume::archive(&root, "../escape", &value).is_err());
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn sandbox_acknowledgements_use_shared_output_permissions_without_widening_private_archives() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("kah-shared-output-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let value = serde_json::json!({"decision":"review-unit","status":"selected"});
+    kah_cli::observer_review::workspace::publish_output(&root, "selected.json", &value).unwrap();
+    assert_eq!(
+        fs::metadata(root.join("selected.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o660
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(root.join("selected.json")).unwrap())
+            .unwrap(),
+        value
+    );
+    fs::remove_dir_all(root).unwrap();
+}
 #[test]
 fn native_subdirectories_stay_bound_but_symlink_escapes_do_not() {
     let root = std::env::temp_dir().join(format!("kah-review-cwd-{}", std::process::id()));

@@ -64,8 +64,14 @@ impl<C: Client> Judge for Jev<C> {
 pub struct HttpClient {
     agent: ureq::Agent,
     authorization: ureq::http::HeaderValue,
+    error_response: std::cell::RefCell<Option<Value>>,
 }
 impl HttpClient {
+    /// Diagnostic callers can privately archive a real response; errors printed
+    /// by the application still contain only a stable code and HTTP status.
+    pub fn last_error_response(&self) -> Option<Value> {
+        self.error_response.borrow().clone()
+    }
     pub fn from_home(home: &Path) -> Result<Self, Error> {
         let path = home.join(".config/kah/typesafe.key");
         let metadata =
@@ -97,6 +103,7 @@ impl HttpClient {
         Ok(Self {
             agent: ureq::Agent::new_with_config(config),
             authorization,
+            error_response: std::cell::RefCell::new(None),
         })
     }
 }
@@ -116,10 +123,14 @@ impl Client for HttpClient {
                 .body_mut()
                 .with_config()
                 .limit(1024 * 1024)
-                .read_json::<Value>()
-                .ok();
+                .read_to_string()
+                .ok()
+                .map(|text| serde_json::from_str::<Value>(&text).unwrap_or(Value::String(text)));
+            *self.error_response.borrow_mut() = body
+                .clone()
+                .map(|body| serde_json::json!({"status":status,"body":body}));
             return Err(Error {
-                code: if body.as_ref().is_some_and(context_rejection) {
+                code: if status == 413 || body.as_ref().is_some_and(context_rejection) {
                     "JEV_CONTEXT_LIMIT"
                 } else {
                     "JEV_HTTP_STATUS"
@@ -154,7 +165,7 @@ fn context_rejection(body: &Value) -> bool {
             .filter(|(key, _)| {
                 matches!(
                     key.as_str(),
-                    "error" | "detail" | "message" | "msg" | "code" | "type"
+                    "error" | "detail" | "message" | "msg" | "code" | "type" | "error_type"
                 )
             })
             .any(|(_, value)| context_rejection(value)),
