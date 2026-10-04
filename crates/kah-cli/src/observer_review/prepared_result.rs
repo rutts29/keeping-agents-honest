@@ -2,10 +2,10 @@ use super::{preparation, state::Store, workspace};
 use crate::Result;
 use kah_observer::{intake::Decision, session};
 use serde_json::{Value, json};
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 
 pub fn consume(worker: &str) -> Result<()> {
-    let store = Store::open(worker)?;
+    let store = Store::open_wait(worker)?;
     let mut state = store
         .load()?
         .ok_or("PREPARATION_STATE stage=context_preparation")?;
@@ -30,7 +30,7 @@ pub fn consume(worker: &str) -> Result<()> {
     }
     let (judgment, input) = evaluated?;
     let base = kah_core::run_store::RunStore::default_state_root()?;
-    let mut primary = session::Store::open(&base, worker, Duration::from_secs(110))?;
+    let mut primary = session::Store::open_wait(&base, worker)?;
     if packet["purpose"] == "steering" {
         apply_steering(&mut primary, &input, &judgment)?;
     }

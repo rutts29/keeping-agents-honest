@@ -1,0 +1,79 @@
+//! Preserve private, scrubbed failure evidence before native fixture purge.
+use super::*;
+use kah_cli::observer_review::state::{State, Store as Reviews};
+use sha2::{Digest, Sha256};
+
+pub fn archive(home: &Path, state: &State) -> kah_cli::Result<()> {
+    assert!(
+        state
+            .worker
+            .socket
+            .as_ref()
+            .unwrap()
+            .to_string_lossy()
+            .contains("kah-gate-")
+    );
+    let root = home
+        .join(".local/share/kah-eval/replay-traces")
+        .join(format!(
+            "{}-{}",
+            state.worker.session,
+            kah_observer::session::now_ms()
+        ));
+    kah_core::run_store::ensure_private_directory(&root)?;
+    let review = Reviews::directory(&state.worker.session)?;
+    retain(&review, &root)?;
+    retain(
+        &state.observer.workspace.join("outbox"),
+        &root.join("outbox"),
+    )?;
+    if let Some(path) = &state.observer.transcript {
+        let mut rows = json!(
+            fs::read_to_string(path)?
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line)
+                    .unwrap_or_else(|_| json!({"raw":line})))
+                .collect::<Vec<_>>()
+        );
+        crate::privacy::scrub(&mut rows);
+        kah_cli::observer_review::source_store::save(&root, "native-transcript.json", &rows)?;
+    }
+    eprintln!("private review trace: {}", root.display());
+    Ok(())
+}
+fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
+    if !source.exists() {
+        return Ok(());
+    }
+    kah_core::run_store::ensure_private_directory(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = destination.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.is_dir() {
+            retain(&path, &target)?;
+        } else if metadata.is_file() && source.file_name().is_some_and(|s| s == "sources") {
+            let digest = entry.file_name().to_string_lossy().into_owned();
+            if digest.len() == 64 {
+                assert_eq!(format!("{:x}", Sha256::digest(fs::read(&path)?)), digest);
+                fs::hard_link(&path, &target)?;
+            }
+        } else if metadata.is_file()
+            && matches!(
+                path.extension().and_then(|s| s.to_str()),
+                Some("json" | "jsonl" | "log")
+            )
+        {
+            let text = fs::read_to_string(&path)?;
+            let mut value = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({"rows":text.lines().map(|line|serde_json::from_str::<Value>(line).unwrap_or_else(|_|json!({"raw":line}))).collect::<Vec<_>>()}));
+            crate::privacy::scrub(&mut value);
+            kah_cli::unattended_report::save(
+                destination,
+                entry.file_name().to_str().unwrap(),
+                &value,
+            )?;
+        }
+    }
+    Ok(())
+}

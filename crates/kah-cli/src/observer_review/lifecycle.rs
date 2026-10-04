@@ -7,7 +7,6 @@ use std::{
     io::Write,
     os::unix::{fs::OpenOptionsExt, process::CommandExt},
     process::{Command, Stdio},
-    time::{Duration, Instant},
 };
 
 pub fn start(worker: &str) -> Result<()> {
@@ -76,16 +75,7 @@ fn stop(worker: &str, pid: u32, stamp: &str) -> Result<()> {
     if Store::read(worker)?.is_none() {
         return Ok(());
     }
-    let deadline = Instant::now() + Duration::from_secs(95);
-    let store = loop {
-        match Store::open(worker) {
-            Ok(store) => break store,
-            Err(e) if e.to_string().starts_with("REVIEW_BUSY") && Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(100))
-            }
-            Err(e) => return Err(e),
-        }
-    };
+    let store = Store::open_wait(worker)?;
     let Some(mut state) = store.load()? else {
         return Ok(());
     };

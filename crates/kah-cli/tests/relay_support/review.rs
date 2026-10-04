@@ -202,7 +202,6 @@ pub(super) fn wait_review(
     pane: &Pane,
     provider: &str,
 ) -> kah_cli::observer_review::state::State {
-    let deadline = Instant::now() + Duration::from_secs(240);
     let mut consent = false;
     loop {
         let state = Reviews::read(id).unwrap().unwrap();
@@ -221,10 +220,6 @@ pub(super) fn wait_review(
         let gap = fs::read_to_string(Reviews::directory(id).unwrap().join("gap.json"))
             .unwrap_or_default();
         assert!(gap.is_empty(), "review gap: {gap}; screen {screen}");
-        assert!(
-            Instant::now() < deadline,
-            "review timeout: {gap}; screen {screen}"
-        );
         std::thread::sleep(Duration::from_millis(250));
     }
 }
@@ -264,6 +259,11 @@ pub(super) struct Cleanup {
 impl Drop for Cleanup {
     fn drop(&mut self) {
         if let Ok(Some(state)) = Reviews::read(&self.worker) {
+            if std::thread::panicking()
+                && let Err(error) = super::review_trace::archive(&self.home, &state)
+            {
+                eprintln!("private review trace failed: {error}");
+            }
             if let Some(pane) = &state.observer.pane {
                 let _ = Pane { id: pane.clone() }.close();
             }

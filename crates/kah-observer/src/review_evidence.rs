@@ -107,13 +107,29 @@ fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, St
         .match_indices(&citation.quote)
         .nth(citation.occurrence)
         .ok_or("REVIEW_QUOTE_MISSING stage=evidence")?;
+    let end = start + citation.quote.len();
+    if joins_word(
+        document.text[..start].chars().next_back(),
+        citation.quote.chars().next(),
+    ) || joins_word(
+        citation.quote.chars().next_back(),
+        document.text[end..].chars().next(),
+    ) {
+        return Err("REVIEW_QUOTE_UNIT stage=evidence: the brain must select a complete meaningful unit, never part of a word".into());
+    }
     let line = document.text[..start]
         .bytes()
         .filter(|b| *b == b'\n')
         .count()
         + 1;
-    // Preserve the source context, including negations outside the exact quote.
+    // The brain chooses a complete meaningful span, including any nearby
+    // context it needs. Keep the full source in the immutable snapshot/CAS;
+    // repeating it here would undo evidence extraction and swamp Jev.
     Ok(
-        json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"line":line,"context":document.text,"context_is_excerpt":false}),
+        json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"end_byte":end,"line":line}),
     )
+}
+fn joins_word(left: Option<char>, right: Option<char>) -> bool {
+    left.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        && right.is_some_and(|c| c.is_alphanumeric() || c == '_')
 }

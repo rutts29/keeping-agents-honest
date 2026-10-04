@@ -21,10 +21,21 @@ impl Store {
     pub fn open(base: &Path, session: &str, wait: Duration) -> Result<Self, String> {
         Self::open_lock(base, session, wait, "lock")
     }
+    pub fn open_wait(base: &Path, session: &str) -> Result<Self, String> {
+        Self::locked(base, session, None, "lock")
+    }
     pub(super) fn open_lock(
         base: &Path,
         session: &str,
         wait: Duration,
+        name: &str,
+    ) -> Result<Self, String> {
+        Self::locked(base, session, Some(wait), name)
+    }
+    fn locked(
+        base: &Path,
+        session: &str,
+        wait: Option<Duration>,
         name: &str,
     ) -> Result<Self, String> {
         if session.is_empty() || session.len() > 512 || session.chars().any(char::is_control) {
@@ -50,7 +61,11 @@ impl Store {
             .mode(0o600)
             .open(lock_path)
             .map_err(io_error)?;
-        let deadline = Instant::now() + wait;
+        if wait.is_none() {
+            lock.lock().map_err(io_error)?;
+            return Ok(Self { path, _lock: lock });
+        }
+        let deadline = Instant::now() + wait.unwrap();
         loop {
             match lock.try_lock() {
                 Ok(()) => return Ok(Self { path, _lock: lock }),

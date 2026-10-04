@@ -3,6 +3,7 @@ mod linked_steer;
 mod replay;
 mod review;
 mod review_drift;
+mod review_trace;
 mod trace;
 mod user_steer;
 use kah_core::run_store::RunStore;

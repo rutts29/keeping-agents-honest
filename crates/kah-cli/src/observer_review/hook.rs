@@ -45,8 +45,13 @@ fn receive(worker: &str) -> Result<()> {
     }
 }
 pub(super) fn apply(worker: &str, event: &super::hook_queue::Event) -> Result<()> {
+    apply_store(worker, event, Store::open(worker)?)
+}
+pub(super) fn apply_wait(worker: &str, event: &super::hook_queue::Event) -> Result<()> {
+    apply_store(worker, event, Store::open_wait(worker)?)
+}
+fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> Result<()> {
     let input = &event.input;
-    let store = Store::open(worker)?;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
     validate(&state, event)?;
     let events = store.directory.join("hook-observations.jsonl");
@@ -109,9 +114,23 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
     if matches!(event, "Stop" | "PostToolUse")
         && let Some(pending) = &state.pending
     {
-        if pending.purpose == super::state::Purpose::Preparation {
-            if super::preparation::accept(worker, &pending.id)? {
+        let decision = super::preparation::active_decision(worker, &pending.id)?;
+        if super::preparation::pending(worker, &decision)? {
+            if state
+                .observer
+                .workspace
+                .join("outbox")
+                .join(format!("selected-{decision}.json"))
+                .exists()
+            {
                 spawn("__review-consume", worker)?;
+            } else if event == "Stop" {
+                gap(
+                    worker,
+                    &format!(
+                        "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection for {decision}; request retained"
+                    ),
+                )?;
             }
             return Ok(());
         }
@@ -170,13 +189,16 @@ pub fn spawn(command: &str, worker: &str) -> Result<()> {
     spawn_command(command, worker, Stdio::from(lock))
 }
 fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
-    Command::new("/usr/bin/timeout")
-        .args(["--kill-after=2s", "90s"])
-        .arg(env::current_exe()?)
+    let log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(Store::directory(worker)?.join(format!("job-{command}.log")))?;
+    Command::new(env::current_exe()?)
         .args([command, worker])
         .stdin(stdin)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(log))
         .process_group(0)
         .spawn()?;
     Ok(())

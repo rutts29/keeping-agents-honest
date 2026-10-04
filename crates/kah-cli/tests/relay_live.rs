@@ -20,12 +20,7 @@ mod relay_support;
 #[path = "terminal_support/version.rs"]
 mod version;
 use serde_json::{Value, json};
-use std::{
-    fs,
-    path::PathBuf,
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::{fs, path::PathBuf, process::Command, time::Duration};
 
 #[test]
 #[ignore = "two-way native relay and both native worker dispatches in a private Herdr server"]
@@ -93,7 +88,6 @@ fn relay_and_dispatch() {
 }
 
 fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> (Value, bool) {
-    let deadline = Instant::now() + Duration::from_secs(900);
     let mut notified = false;
     loop {
         terminal.respond_to_cursor_queries();
@@ -103,12 +97,6 @@ fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> (Value
         }
         if let Ok(bytes) = fs::read(root.join("result.json")) {
             return (serde_json::from_slice(&bytes).unwrap(), notified);
-        }
-        if Instant::now() >= deadline {
-            return (
-                json!({"passed":false,"failure":"relay helper timed out"}),
-                notified,
-            );
         }
         std::thread::sleep(Duration::from_millis(200));
     }

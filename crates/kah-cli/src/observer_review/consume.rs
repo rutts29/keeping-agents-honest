@@ -29,7 +29,7 @@ pub fn read_report(path: &Path) -> Result<Vec<u8>> {
 }
 pub fn run(worker: &str) -> Result<()> {
     super::runtime::require_active(worker)?;
-    let store = Store::open(worker)?;
+    let store = Store::open_wait(worker)?;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=consume")?;
     let Some(pending) = state.pending.clone() else {
         return Ok(());
@@ -272,11 +272,9 @@ fn record(
     judgment: &judge::Judgment,
 ) -> Result<()> {
     use kah_observer::session;
-    use std::time::Duration;
-    let mut primary = session::Store::open(
+    let mut primary = session::Store::open_wait(
         &kah_core::run_store::RunStore::default_state_root()?,
         worker,
-        Duration::from_secs(110),
     )?;
     let mut source = primary
         .load()?

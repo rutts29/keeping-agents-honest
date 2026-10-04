@@ -154,7 +154,7 @@ fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<(
 pub fn prepare_context(worker: &str) -> Result<()> {
     require_active(worker)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=context_preparation")?);
-    let store = Store::open(worker)?;
+    let store = Store::open_wait(worker)?;
     let mut state = store
         .load()?
         .ok_or("PREPARATION_STATE stage=context_preparation")?;
@@ -270,7 +270,7 @@ pub fn resume(worker: &str) -> Result<()> {
 
 pub fn retry_pending(worker: &str) -> Result<()> {
     require_active(worker)?;
-    let store = Store::open(worker)?;
+    let store = Store::open_wait(worker)?;
     let Some(state) = store.load()? else {
         return Ok(());
     };
@@ -282,6 +282,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if !gap.as_ref().is_some_and(|g| {
         g["error"].as_str().is_some_and(|s| {
             s.starts_with("REVIEW_REPORT_MISSING")
+                || s.starts_with("REVIEW_PREPARATION_MISSING")
                 || s.starts_with("REVIEW_REMINDER_MISSING")
                 || s.starts_with("REVIEW_REMINDER_NATIVE_LIMIT")
                 || s.starts_with("REVIEW_NOT_IDLE")
@@ -291,11 +292,16 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     }
     let request = workspace::request(&store, &pending.id)?;
-    let prompt = workspace::prompt(
-        &state,
-        &request,
-        &state.observer.workspace.join("inputs").join(&pending.id),
-    )?;
+    let decision = super::preparation::active_decision(worker, &pending.id)?;
+    let prompt = if super::preparation::pending(worker, &decision)? {
+        super::preparation::prompt(worker)?
+    } else {
+        workspace::prompt(
+            &state,
+            &request,
+            &state.observer.workspace.join("inputs").join(&pending.id),
+        )?
+    };
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);
     let number = super::redelivery::begin(
         &store,
@@ -306,7 +312,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     )?;
     drop(store);
     let delivery = deliver(&home, &state, &prompt, true);
-    let store = Store::open(worker)?;
+    let store = Store::open_wait(worker)?;
     super::redelivery::outcome(
         &store,
         &request.id,

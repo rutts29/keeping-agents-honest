@@ -3,10 +3,7 @@ use super::{hook, state::Store};
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    fs,
-    time::{Duration, Instant},
-};
+use std::fs;
 #[derive(Serialize, Deserialize)]
 pub struct Event {
     pub input: Value,
@@ -39,28 +36,24 @@ pub fn run(worker: &str) -> Result<()> {
     if !root.exists() {
         return Ok(());
     }
+    loop {
+        let files = entries(&root)?;
+        if files.is_empty() {
+            return Ok(());
+        }
+        for path in files {
+            let event: Event =
+                super::state::read(&path)?.ok_or("REVIEW_HOOK_EVENT_MISSING stage=hook")?;
+            hook::apply_wait(worker, &event)?;
+            fs::remove_file(path)?;
+        }
+    }
+}
+fn entries(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     let mut files = fs::read_dir(root)?
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     files.sort();
     files.retain(|p| p.extension().is_some_and(|e| e == "json"));
-    for path in files {
-        let event: Event =
-            super::state::read(&path)?.ok_or("REVIEW_HOOK_EVENT_MISSING stage=hook")?;
-        let started = Instant::now();
-        loop {
-            match hook::apply(worker, &event) {
-                Ok(()) => break,
-                Err(e)
-                    if e.to_string().starts_with("REVIEW_BUSY")
-                        && started.elapsed() < Duration::from_secs(90) =>
-                {
-                    std::thread::sleep(Duration::from_millis(100))
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        fs::remove_file(path)?;
-    }
-    Ok(())
+    Ok(files)
 }

@@ -71,7 +71,7 @@ fn duplicate_quotes_need_an_existing_occurrence_and_empty_reports_fail() {
 }
 
 #[test]
-fn complete_context_and_many_findings_survive_without_quote_windows() {
+fn brain_selected_whole_quotes_keep_full_source_pointers_without_document_copies() {
     let text = format!(
         "{}\nRELEVANT whole sentence.\n{}\nLate negation: not integrated.\n",
         "before 完整\n".repeat(1000),
@@ -81,9 +81,39 @@ fn complete_context_and_many_findings_survive_without_quote_windows() {
     let findings = (0..30).map(|_|json!({"topic":"integration","claim":"Whole finding ".repeat(300),"citations":(0..9).map(|_|json!({"source":"plan","digest":document.digest,"quote":"RELEVANT whole sentence."})).collect::<Vec<_>>()})).collect::<Vec<_>>();
     let report: Report =
         serde_json::from_value(json!({"request_id":"large","findings":findings})).unwrap();
-    let verified = report.verify("large", &[document]).unwrap();
+    let verified = report
+        .verify("large", std::slice::from_ref(&document))
+        .unwrap();
     assert_eq!(verified.len(), 30);
     assert_eq!(verified[29]["citations"].as_array().unwrap().len(), 9);
-    assert_eq!(verified[29]["citations"][8]["context"], text);
-    assert_eq!(verified[29]["citations"][8]["context_is_excerpt"], false);
+    let citation = &verified[29]["citations"][8];
+    assert_eq!(citation["quote"], "RELEVANT whole sentence.");
+    assert_eq!(citation["digest"], document.digest);
+    assert_eq!(citation["uri"], "docs/PLAN.md");
+    assert!(citation.get("context").is_none());
+    let start = citation["start_byte"].as_u64().unwrap() as usize;
+    let end = citation["end_byte"].as_u64().unwrap() as usize;
+    assert_eq!(
+        &document.text[start..end],
+        citation["quote"].as_str().unwrap()
+    );
+    assert!(document.text.contains("Late negation: not integrated."));
+}
+
+#[test]
+fn a_brain_span_cannot_begin_or_end_inside_a_word() {
+    let document = Document::new(
+        "message",
+        "user_message",
+        "native:message",
+        "Do not delete confidential material.",
+    );
+    let value = json!({"request_id":"r","findings":[{"topic":"intent","claim":"Preserve confidential material","citations":[{"source":"message","digest":document.digest,"quote":"fidential material."}]}]});
+    let report: Report = serde_json::from_value(value).unwrap();
+    assert!(
+        report
+            .verify("r", std::slice::from_ref(&document))
+            .unwrap_err()
+            .starts_with("REVIEW_QUOTE_UNIT")
+    );
 }

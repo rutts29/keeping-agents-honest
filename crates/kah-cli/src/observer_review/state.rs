@@ -131,6 +131,14 @@ impl Store {
         Ok(Sessions::directory(&RunStore::default_state_root()?, worker).join("review"))
     }
     pub fn open(worker: &str) -> Result<Self> {
+        Self::lock(worker, false)
+    }
+    /// Detached jobs wait for the owner to release its OS lock. No review
+    /// deadline: a live judge or native turn may legitimately take minutes.
+    pub fn open_wait(worker: &str) -> Result<Self> {
+        Self::lock(worker, true)
+    }
+    fn lock(worker: &str, wait: bool) -> Result<Self> {
         let directory = Self::directory(worker)?;
         ensure_private_directory(&directory)?;
         ensure_private_directory(&directory.join("sources"))?;
@@ -147,8 +155,12 @@ impl Store {
             .truncate(false)
             .mode(0o600)
             .open(path)?;
-        file.try_lock()
-            .map_err(|_| "REVIEW_BUSY stage=review_state")?;
+        if wait {
+            file.lock()?;
+        } else {
+            file.try_lock()
+                .map_err(|_| "REVIEW_BUSY stage=review_state")?;
+        }
         Ok(Self {
             directory,
             _lock: file,
