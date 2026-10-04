@@ -46,7 +46,7 @@ pub fn run(worker: &str) -> Result<()> {
     let request = workspace::request(&store, &pending.id)?;
     let (path, report, actions) = evidence(&state, &request)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
-    let decision = decide(&home, &request, &actions);
+    let decision = decide(&home, &request, &actions, &report);
     if decision
         .as_ref()
         .is_err_and(|e| e.to_string().starts_with("JEV_PREPARATION_PENDING"))
@@ -128,7 +128,11 @@ fn decide(
     home: &Path,
     request: &super::state::Request,
     actions: &[Value],
+    report: &Report,
 ) -> Result<(judge::Judgment, Value, Value)> {
+    if report.decision_units.is_some() && request.purpose != Purpose::Steering {
+        return super::decisions::evaluate(home, request, report, actions);
+    }
     if request.purpose == Purpose::Checkpoint {
         return super::checkpoint::evaluate(home, request, actions);
     }

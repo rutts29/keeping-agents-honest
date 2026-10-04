@@ -94,6 +94,52 @@ fn previous_finding(worker: &str) {
     );
 }
 
+#[test]
+fn a_named_user_question_does_not_create_a_false_violation_or_freeze_other_turns() {
+    let worker = format!("checkpoint-question-unit-{}", std::process::id());
+    let home = std::env::temp_dir().join(&worker);
+    saved_binding(&worker, &home);
+    let mut state = State::new(
+        Endpoint {
+            provider: "codex".into(),
+            session: worker.clone(),
+            project: home,
+            pane: None,
+            socket: None,
+        },
+        &std::env::temp_dir(),
+    )
+    .unwrap();
+    let store = Store::open(&worker).unwrap();
+    let request = Request {
+        id: "review-question".into(),
+        worker,
+        purpose: Purpose::Checkpoint,
+        turn: "t".into(),
+        head: Some("sha".into()),
+        intent: json!({"revision":1}),
+        trigger: json!({}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    let result = json!({"assessment":{"state":"checkpoint_needs_user","passed":null,"needs_user":["format"],"unproven":["format"],"deferrals":[]}});
+    checkpoint::record(&store, &mut state, &request, &result).unwrap();
+    assert!(state.pending.is_none());
+    assert_eq!(checkpoint::covers(&state, "sha", 1), None);
+    assert_eq!(
+        state.checkpoint.as_ref().unwrap()["needs_user"],
+        json!(["format"])
+    );
+    assert!(
+        kah_cli::observer_review::reminder_queue::next(&store.directory)
+            .unwrap()
+            .is_none()
+    );
+    let directory = store.directory.clone();
+    drop(store);
+    std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
+
 fn saved_binding(worker: &str, home: &std::path::Path) {
     let base = kah_core::run_store::RunStore::default_state_root().unwrap();
     let mut primary =

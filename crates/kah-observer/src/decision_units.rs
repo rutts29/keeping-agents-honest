@@ -23,6 +23,8 @@ pub struct Requirement {
     pub name: String,
     pub dimension: Dimension,
     pub authority_items: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deferral_id: Option<String>,
     pub citations: Vec<Citation>,
     pub components: Vec<Component>,
     pub checks: Vec<CheckReceipt>,
