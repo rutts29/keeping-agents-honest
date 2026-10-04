@@ -3,12 +3,25 @@ use kah_run::verification::Receipt;
 use std::{cell::Cell, fs};
 
 fn key() -> Key {
-    Key { instance: "controller-1".into(), commit: "commit-a".into(), user_sequence: 1,
-        action_digest: "actions-a".into(), command: "test integration".into(), online: false }
+    Key {
+        instance: "controller-1".into(),
+        commit: "commit-a".into(),
+        user_sequence: 1,
+        action_digest: "actions-a".into(),
+        command: "test integration".into(),
+        online: false,
+    }
 }
 fn receipt(key: &Key) -> Receipt {
-    Receipt { commit: key.commit.clone(), command: key.command.clone(), success: true,
-        exit_code: Some(0), elapsed_ms: 10, output: "integration passed".into(), output_truncated: false }
+    Receipt {
+        commit: key.commit.clone(),
+        command: key.command.clone(),
+        success: true,
+        exit_code: Some(0),
+        elapsed_ms: 10,
+        output: "integration passed".into(),
+        output_truncated: false,
+    }
 }
 
 #[test]
@@ -17,10 +30,13 @@ fn waiting_for_review_reuses_tests_but_changed_completion_inputs_reverify() {
     fs::create_dir_all(&root).unwrap();
     let calls = Cell::new(0);
     let original = key();
-    let check = |key: &Key| verified(&root, key, || {
-        calls.set(calls.get() + 1);
-        Ok((receipt(key), false))
-    }).unwrap();
+    let check = |key: &Key| {
+        verified(&root, key, || {
+            calls.set(calls.get() + 1);
+            Ok((receipt(key), false))
+        })
+        .unwrap()
+    };
     let first = check(&original);
     assert_eq!(check(&original).id().unwrap(), first.id().unwrap());
     assert_eq!(calls.get(), 1);
@@ -40,7 +56,8 @@ fn waiting_for_review_reuses_tests_but_changed_completion_inputs_reverify() {
 
 #[test]
 fn a_verification_receipt_cannot_be_cached_under_another_commit() {
-    let root = std::env::temp_dir().join(format!("kah-completion-cache-wrong-{}", std::process::id()));
+    let root =
+        std::env::temp_dir().join(format!("kah-completion-cache-wrong-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let key = key();
     let mut wrong = receipt(&key);

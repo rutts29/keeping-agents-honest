@@ -7,6 +7,7 @@ pub mod claude_setup;
 pub mod completion_capture;
 pub mod completion_inputs;
 pub mod completion_replay;
+pub mod completion_review;
 pub mod dispatch;
 pub mod herdr;
 pub mod in_turn;
