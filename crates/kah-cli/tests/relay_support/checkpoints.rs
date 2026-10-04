@@ -48,7 +48,13 @@ fn case(home: &Path, provider: &str) -> Value {
         home: home.into(),
         worker: worker.clone(),
     };
-    let first = checkpoint(&worker, provider, &mut panes, None);
+    let first = checkpoint(
+        &worker,
+        provider,
+        &mut panes,
+        None,
+        &files::git_oid(project, "HEAD"),
+    );
     let initial = Reviews::read(&worker).unwrap().unwrap();
     assert!(
         !initial.deferrals.is_empty(),
@@ -108,7 +114,13 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
     panes.0[0].prompt(task).unwrap();
     super::linked_steer::wait_input(worker, task);
     ready(&panes.0[0], provider);
-    let mut result = checkpoint(worker, provider, panes, Some(first));
+    let mut result = checkpoint(
+        worker,
+        provider,
+        panes,
+        Some(first),
+        &files::git_oid(project, "refs/tags/phase-2"),
+    );
     assert_eq!(
         result["assessment"]["passed"], false,
         "separate passes hid integration failure: {result}"
@@ -158,7 +170,13 @@ fn repaired(
         "host kah gate: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let result = checkpoint(worker, provider, panes, Some(second));
+    let result = checkpoint(
+        worker,
+        provider,
+        panes,
+        Some(second),
+        &files::git_oid(project, "HEAD"),
+    );
     assert_eq!(
         result["assessment"]["passed"], true,
         "repaired integration: {result}"
@@ -175,7 +193,13 @@ fn repaired(
     result
 }
 
-fn checkpoint(worker: &str, provider: &str, panes: &mut Panes, previous: Option<&Value>) -> Value {
+fn checkpoint(
+    worker: &str,
+    provider: &str,
+    panes: &mut Panes,
+    previous: Option<&Value>,
+    head: &str,
+) -> Value {
     loop {
         if let Some(state) = Reviews::read(worker).unwrap() {
             if let Some(id) = state.observer.pane {
@@ -195,7 +219,7 @@ fn checkpoint(worker: &str, provider: &str, panes: &mut Panes, previous: Option<
                 && let Some(checkpoint) = state.checkpoint
             {
                 let request = checkpoint["request"].as_str().unwrap();
-                if previous.is_none_or(|p| p["request"] != request) {
+                if checkpoint["head"] == head && previous.is_none_or(|p| p["request"] != request) {
                     let result: Value = source_store::read(
                         &Reviews::directory(worker)
                             .unwrap()
