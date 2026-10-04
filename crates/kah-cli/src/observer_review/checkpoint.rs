@@ -5,7 +5,6 @@ use kah_observer::{
     judge::{self, Answer, Judgment, Question},
 };
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub fn evaluate(
@@ -13,7 +12,7 @@ pub fn evaluate(
     request: &Request,
     actions: &[Value],
 ) -> Result<(Judgment, Value, Value)> {
-    let deferrals = deferrals(request, actions)?;
+    let deferrals = super::deferrals::collect(request, actions)?;
     let mut questions = checkpoint::questions();
     for item in &deferrals {
         let id = item["id"]
@@ -69,31 +68,6 @@ fn confirmed(judgment: &Judgment, key: &str, expected: &str) -> bool {
     judgment.backend == "jev"
         && matches!(judgment.answers.get(key),Some(Answer::Choice{choice,confidence,probabilities}) if choice==expected && *confidence>=judge::questions::COMPLETE_CONFIDENCE && probabilities.get(expected).is_some_and(|p|*p>=judge::questions::COMPLETE_PROBABILITY))
 }
-fn deferrals(request: &Request, actions: &[Value]) -> Result<Vec<Value>> {
-    let mut items = request.intent["open_deferrals"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    for action in actions
-        .iter()
-        .filter(|a| a["evidence"]["topic"] == "deferral")
-    {
-        let evidence = &action["evidence"];
-        let id = format!(
-            "{:x}",
-            Sha256::digest(
-                evidence["model_claim_not_a_decision"]
-                    .to_string()
-                    .as_bytes()
-            )
-        );
-        if !items.iter().any(|i| i["id"] == id) {
-            items.push(json!({"id":id,"evidence":evidence,"introduced_at":request.id}));
-        }
-    }
-    Ok(items)
-}
-
 pub fn record(
     store: &super::state::Store,
     state: &mut super::state::State,

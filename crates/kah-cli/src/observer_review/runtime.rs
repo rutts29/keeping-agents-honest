@@ -287,6 +287,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
                 || s.starts_with("REVIEW_REMINDER_NATIVE_LIMIT")
                 || s.starts_with("REVIEW_NOT_IDLE")
                 || s.starts_with("REVIEW_SUBMISSION_UNCONFIRMED")
+                || s.starts_with("REVIEW_DEFERRAL_")
         })
     }) {
         return Ok(());

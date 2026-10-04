@@ -19,6 +19,12 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
     if !config.enabled {
         return Ok(None);
     }
+    if matches!(
+        input["hook_event_name"].as_str(),
+        Some("SessionStart" | "PostToolUse" | "Stop")
+    ) {
+        super::tags::schedule(&binding.session)?;
+    }
     // Capture Stop before any pending tripwire/reminder can short-circuit the
     // hook. Checkpoints are independent of the tripwire's lease and verdict.
     if input["hook_event_name"] == "Stop" {

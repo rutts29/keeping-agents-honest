@@ -216,7 +216,7 @@ fn decode_project(output: std::process::Output) -> Result<Value> {
     Ok(value)
 }
 
-fn worktree_git(state: &State) -> Result<Option<PathBuf>> {
+pub(super) fn worktree_git(state: &State) -> Result<Option<PathBuf>> {
     let Some(id) = state
         .worker
         .project

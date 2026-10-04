@@ -2,6 +2,7 @@
 pub mod capture;
 pub mod consume;
 pub mod control;
+pub mod deferrals;
 pub mod dispatch;
 pub mod hook;
 pub mod hook_queue;
@@ -16,6 +17,7 @@ pub mod runtime;
 pub mod snapshot;
 pub mod source_store;
 pub mod state;
+pub mod tags;
 pub mod workspace;
 
 pub fn command(args: &[String]) -> Option<crate::Result<()>> {
@@ -70,6 +72,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__review-wake" => dispatch::run(&args[1]),
         "__checkpoint-worker" => events::run(&args[1]),
         "__checkpoint-claims" => claims::run(&args[1]),
+        "__checkpoint-tags" => tags::run(&args[1]),
         "__review-resume" => runtime::resume(&args[1]),
         "__review-retry" => runtime::retry_pending(&args[1]),
         _ => return None,

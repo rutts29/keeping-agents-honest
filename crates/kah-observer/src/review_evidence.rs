@@ -48,10 +48,21 @@ pub enum Topic {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct Deferral {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub phase: String,
+    pub requirement_citation: usize,
+    pub dependency_citation: usize,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Finding {
     pub topic: Topic,
     pub claim: String,
     pub citations: Vec<Citation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deferral: Option<Deferral>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -80,13 +91,21 @@ impl Report {
                 return Err("REVIEW_FINDING_EMPTY stage=evidence".into());
             }
             let citations = finding.citations.iter().map(|citation| verify_quote(citation, documents)).collect::<Result<Vec<_>,_>>()?;
-            Ok(json!({"topic":finding.topic,"model_claim_not_a_decision":finding.claim,"citations":citations}))
+            let mut value=json!({"topic":finding.topic,"model_claim_not_a_decision":finding.claim,"citations":citations});
+            if let Some(deferral)=&finding.deferral {
+                let dependency=citations.get(deferral.dependency_citation).ok_or("REVIEW_DEFERRAL_CITATION stage=evidence")?;
+                if citations.get(deferral.requirement_citation).is_none() || deferral.phase.trim().is_empty() || !dependency["quote"].as_str().is_some_and(|q|q.contains(&deferral.phase)) {
+                    return Err("REVIEW_DEFERRAL_PHASE stage=evidence: named phase needs an exact dependency citation".into());
+                }
+                value["deferral"]=serde_json::to_value(deferral).map_err(|_|"REVIEW_DEFERRAL_JSON stage=evidence")?;
+            }
+            Ok(value)
         }).collect()
     }
     pub fn schema() -> Value {
         json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{"reminder":Reminder::schema(),
         "request_id":{"type":"string"},"findings":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["topic","claim","citations"],"properties":{
-            "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
+            "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"deferral":{"type":"object","additionalProperties":false,"required":["phase","requirement_citation","dependency_citation"],"properties":{"id":{"type":["string","null"]},"phase":{"type":"string"},"requirement_citation":{"type":"integer","minimum":0},"dependency_citation":{"type":"integer","minimum":0}}},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
         }}}}})
     }
 }
