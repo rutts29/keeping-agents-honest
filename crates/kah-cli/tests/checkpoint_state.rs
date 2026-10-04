@@ -42,9 +42,9 @@ fn checkpoint_receipts_cover_only_the_reviewed_commit_and_intent_and_preserve_fa
     assert_eq!(checkpoint::covers(&state, "def", 2), None);
     assert_eq!(checkpoint::covers(&state, "abc", 3), None);
     assert_eq!(state.deferrals.len(), 1);
-    let reminder: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(store.directory.join("reminder.json")).unwrap())
-            .unwrap();
+    let (_, reminder) = kah_cli::observer_review::reminder_queue::next(&store.directory)
+        .unwrap()
+        .unwrap();
     assert_eq!(reminder["purpose"], "checkpoint");
     store.save(&state).unwrap();
     drop(store);
@@ -68,6 +68,15 @@ fn previous_finding(worker: &str) {
     )
     .unwrap();
     drop(store);
+    let delivered = kah_cli::observer_review::consume::take(worker, "PostToolUse", "new")
+        .unwrap()
+        .unwrap();
+    assert!(
+        delivered["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("Checkpoint on")
+    );
     let delivered = kah_cli::observer_review::consume::take(worker, "PostToolUse", "new")
         .unwrap()
         .unwrap();

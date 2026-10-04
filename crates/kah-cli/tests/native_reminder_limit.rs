@@ -44,8 +44,9 @@ fn oversized_reminder_stays_recoverable_and_produces_a_visible_gap() {
             .unwrap()
             .contains("REVIEW_REMINDER_NATIVE_LIMIT")
     );
-    let retained: serde_json::Value =
-        serde_json::from_slice(&fs::read(directory.join("reminder.json")).unwrap()).unwrap();
+    let (_, retained) = kah_cli::observer_review::reminder_queue::next(&directory)
+        .unwrap()
+        .unwrap();
     assert_eq!(retained["text"], original);
     assert!(directory.join("gap.json").exists());
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();

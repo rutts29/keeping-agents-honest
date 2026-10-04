@@ -7,9 +7,8 @@ use serde_json::json;
 pub fn save(store: &Store, request: &Request, report: &Report) -> Result<()> {
     let state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=reminder")?;
     let text = text(&state, request, report)?;
-    crate::unattended_report::save(
+    super::reminder_queue::save(
         &store.directory,
-        "reminder.json",
         &json!({"request":request.id,"turn":request.turn,"purpose":request.purpose,"text":text,"source":"observer_composed"}),
     )
 }

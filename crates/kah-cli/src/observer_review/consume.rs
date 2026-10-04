@@ -206,8 +206,7 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
     if let Some(notice) = super::redelivery::take(&store)? {
         return Ok(Some(notice));
     }
-    let path = store.directory.join("reminder.json");
-    let Some(mut reminder) = super::state::read::<Value>(&path)? else {
+    let Some((path, mut reminder)) = super::reminder_queue::next(&store.directory)? else {
         if let Some(notice) = super::preparation::notice(worker)? {
             return Ok(Some(json!({"systemMessage":notice})));
         }

@@ -12,6 +12,7 @@ mod prepared_result;
 pub mod queue;
 pub mod redelivery;
 pub mod reminder;
+pub mod reminder_queue;
 pub mod request_context;
 pub mod runtime;
 pub mod snapshot;

@@ -106,9 +106,8 @@ pub fn record(
             result["assessment"]["unproven"],
             request.id
         );
-        crate::unattended_report::save(
+        super::reminder_queue::save(
             &store.directory,
-            "reminder.json",
             &json!({"request":request.id,"purpose":"checkpoint","turn":request.turn,"text":text}),
         )?;
     }

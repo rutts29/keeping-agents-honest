@@ -129,10 +129,13 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
             .iter()
             .any(|v| v == "integration" || v == "deferrals")
     );
-    let reminder: Value = serde_json::from_slice(
-        &fs::read(Reviews::directory(worker).unwrap().join("reminder.json")).unwrap(),
-    )
-    .unwrap();
+    let reminder =
+        kah_cli::observer_review::reminder_queue::pending(&Reviews::directory(worker).unwrap())
+            .unwrap()
+            .into_iter()
+            .map(|(_, v)| v)
+            .find(|v| v["request"] == result["request"] && v["purpose"] == "checkpoint")
+            .expect("matching checkpoint reminder is still pending");
     assert_eq!(reminder["purpose"], "checkpoint");
     assert!(
         reminder["text"]
@@ -154,7 +157,7 @@ fn repaired(
     panes: &mut Panes,
     second: &Value,
 ) -> Value {
-    let task = "Continue by consuming the checkpoint feedback. Correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate.";
+    let task = "First inspect the current SHA and run integration.cjs with a native tool so its hook can deliver pending checkpoint feedback. Then consume that feedback, correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate.";
     super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
     let issued_ms = kah_observer::session::now_ms();
