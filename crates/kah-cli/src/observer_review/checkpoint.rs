@@ -1,9 +1,6 @@
 use super::state::Request;
 use crate::Result;
-use kah_observer::{
-    checkpoint,
-    judge::{self, Answer, Judgment},
-};
+use kah_observer::{checkpoint, judge::Judgment};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -21,7 +18,7 @@ pub fn evaluate(
         let id = item["id"]
             .as_str()
             .ok_or("REVIEW_DEFERRAL_ID stage=checkpoint")?;
-        questions.insert(format!("deferral.{id}"), checkpoint::deferral_question(id));
+        questions.extend(checkpoint::deferral_questions(id));
     }
     let mut input = decision_context(
         &request.intent,
@@ -72,22 +69,24 @@ pub fn require_coverage(actions: &[Value]) -> Result<()> {
             return Err(format!("REVIEW_CHECKPOINT_EVIDENCE_MISSING stage=checkpoint: provide a {topic} finding with complete exact source quotes for the CURRENT claimed phase and commit; the same request remains pending").into());
         }
     }
+    if !actions.iter().any(|a| {
+        a["evidence"]["topic"] == "integration" && a["evidence"]["checkpoint_scope"].is_object()
+    }) {
+        return Err("REVIEW_CHECKPOINT_SCOPE_MISSING stage=checkpoint: name the current phase and component list with a verified authorization citation; the same request remains pending".into());
+    }
     Ok(())
 }
 pub fn assess(judgment: &Judgment, deferrals: Vec<Value>) -> Value {
-    let mut outcome = checkpoint::decide(judgment);
+    let ids = deferrals
+        .iter()
+        .map(|d| d["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    let outcome = checkpoint::decide_with_deferrals(judgment, &ids);
     let mut open = vec![];
     for item in deferrals {
-        let key = format!("deferral.{}", item["id"].as_str().unwrap());
-        let resolved = confirmed(judgment, &key, "resolved");
+        let resolved = checkpoint::closed(judgment, item["id"].as_str().unwrap());
         if !resolved {
             open.push(item);
-        }
-        if !resolved && !confirmed(judgment, &key, "necessary_future") {
-            outcome.passed = false;
-            if !outcome.unproven.iter().any(|s| s == "deferrals") {
-                outcome.unproven.push("deferrals".into());
-            }
         }
     }
     json!({"state":if outcome.passed {"checkpoint_passed"} else {"checkpoint_failed"},"passed":outcome.passed,"unproven":outcome.unproven,"deferrals":open,"checkpoint_question_set":checkpoint::VERSION})
@@ -107,11 +106,17 @@ pub fn decision_context(
         fields.remove("failures");
         fields.remove("open_deferrals");
     }
-    json!({"intent":authority,"event":{"head":head,"trigger":trigger,"actions":actions,"open_and_proposed_deferrals":deferrals}})
-}
-fn confirmed(judgment: &Judgment, key: &str, expected: &str) -> bool {
-    judgment.backend == "jev"
-        && matches!(judgment.answers.get(key),Some(Answer::Choice{choice,confidence,probabilities}) if choice==expected && *confidence>=judge::questions::COMPLETE_CONFIDENCE && probabilities.get(expected).is_some_and(|p|*p>=judge::questions::COMPLETE_PROBABILITY))
+    let mut state = json!({"intent":authority,"event":{"head":head,"trigger":trigger,"actions":actions,"open_and_proposed_deferrals":deferrals}});
+    if let Some(scope) = actions.as_array().and_then(|items| {
+        items
+            .iter()
+            .filter(|a| a["evidence"]["topic"] == "integration")
+            .map(|a| &a["evidence"]["checkpoint_scope"])
+            .find(|s| s.is_object())
+    }) {
+        state["event"]["checkpoint_scope"] = scope.clone();
+    }
+    state
 }
 pub fn record(
     store: &super::state::Store,

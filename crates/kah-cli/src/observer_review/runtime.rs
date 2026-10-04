@@ -293,6 +293,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
                 || s.starts_with("REVIEW_DEFERRAL_")
                 || s.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN")
                 || s.starts_with("REVIEW_CHECKPOINT_EVIDENCE_MISSING")
+                || s.starts_with("REVIEW_CHECKPOINT_SCOPE_MISSING")
         })
     }) {
         return Ok(());

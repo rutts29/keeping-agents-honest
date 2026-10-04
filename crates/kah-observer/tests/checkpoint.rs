@@ -7,17 +7,17 @@ fn satisfied() -> Judgment {
     Judgment {
         backend: "jev".into(),
         model: "jev-latest".into(),
-        answers: checkpoint::DIMENSIONS
+        answers: ["intent", "end_to_end", "work_accounted", "drift"]
             .into_iter()
             .map(|id| {
                 (
                     id.into(),
                     Answer::Choice {
-                        choice: "satisfied".into(),
+                        choice: "yes".into(),
                         confidence: 0.95,
                         probabilities: BTreeMap::from([
-                            ("satisfied".into(), 0.95),
-                            ("violated".into(), 0.03),
+                            ("yes".into(), 0.95),
+                            ("no".into(), 0.03),
                             ("unclear".into(), 0.02),
                         ]),
                     },
@@ -33,13 +33,13 @@ fn individually_passing_phases_cannot_override_failed_cumulative_integration() {
     let mut judgment = satisfied();
     assert!(checkpoint::decide(&judgment).passed);
     judgment.answers.insert(
-        "integration".into(),
+        "end_to_end".into(),
         Answer::Choice {
-            choice: "violated".into(),
+            choice: "no".into(),
             confidence: 0.95,
             probabilities: BTreeMap::from([
-                ("violated".into(), 0.98),
-                ("satisfied".into(), 0.01),
+                ("no".into(), 0.98),
+                ("yes".into(), 0.01),
                 ("unclear".into(), 0.01),
             ]),
         },
@@ -48,7 +48,7 @@ fn individually_passing_phases_cannot_override_failed_cumulative_integration() {
 }
 #[test]
 fn every_dimension_requires_the_existing_completion_thresholds_and_jev() {
-    for id in checkpoint::DIMENSIONS {
+    for id in ["intent", "end_to_end", "work_accounted", "drift"] {
         let mut judgment = satisfied();
         if let Answer::Choice { confidence, .. } = judgment.answers.get_mut(id).unwrap() {
             *confidence = 0.84;
@@ -60,5 +60,5 @@ fn every_dimension_requires_the_existing_completion_thresholds_and_jev() {
     let mut judgment = satisfied();
     judgment.backend = "untrusted_model_claim".into();
     assert!(!checkpoint::decide(&judgment).passed);
-    assert_eq!(checkpoint::questions().len(), 4);
+    assert_eq!(checkpoint::questions().len(), 6);
 }

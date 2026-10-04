@@ -10,6 +10,7 @@ pub(super) fn gap(worker: &str, previous: &mut Option<Value>) {
         error.starts_with("REVIEW_DEFERRAL_")
             || error.starts_with("REVIEW_REPORT_MISSING")
             || error.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN")
+            || error.starts_with("REVIEW_CHECKPOINT_SCOPE_MISSING")
             || error.starts_with("REVIEW_CHECKPOINT_EVIDENCE_MISSING"),
         "checkpoint gap: {gap}"
     );

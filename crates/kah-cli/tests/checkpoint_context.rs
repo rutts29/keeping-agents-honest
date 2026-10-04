@@ -20,6 +20,22 @@ fn current_checkpoint_uses_selected_evidence_without_reinjecting_old_failure_and
 }
 
 #[test]
+fn named_scope_is_a_literal_path_in_the_shared_decision_state() {
+    let scope =
+        json!({"phase":"Phase 2","components":["parser","renderer"],"authorization_citation":0});
+    let actions = json!([{"evidence":{"topic":"integration","checkpoint_scope":scope,"citations":[{"quote":"Phase 2 integrates parser and renderer."}]}}]);
+    let prepared = kah_cli::observer_review::checkpoint::decision_context(
+        &json!({"goal":"exact user words"}),
+        &json!({}),
+        Some("sha"),
+        &actions,
+        json!([]),
+    );
+    assert_eq!(prepared["event"]["checkpoint_scope"], scope);
+    assert_eq!(prepared["event"]["actions"], actions);
+}
+
+#[test]
 fn the_real_native_checkpoint_keeps_every_authority_item_and_selected_citation() {
     let r: serde_json::Value = serde_json::from_str(include_str!(
         "../../../docs/gates/evidence/phase-5o-c/failures/codex-after-tests-judgment.json"

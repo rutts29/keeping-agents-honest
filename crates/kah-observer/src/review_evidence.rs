@@ -57,12 +57,21 @@ pub struct Deferral {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct CheckpointScope {
+    pub phase: String,
+    pub components: Vec<String>,
+    pub authorization_citation: usize,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Finding {
     pub topic: Topic,
     pub claim: String,
     pub citations: Vec<Citation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferral: Option<Deferral>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_scope: Option<CheckpointScope>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -92,6 +101,14 @@ impl Report {
             }
             let citations = finding.citations.iter().map(|citation| verify_quote(citation, documents)).collect::<Result<Vec<_>,_>>()?;
             let mut value=json!({"topic":finding.topic,"model_claim_not_a_decision":finding.claim,"citations":citations});
+            if let Some(scope) = &finding.checkpoint_scope {
+                if !matches!(finding.topic, Topic::Integration) || scope.phase.trim().is_empty()
+                    || scope.components.is_empty() || scope.components.iter().any(|c| c.trim().is_empty())
+                    || citations.get(scope.authorization_citation).is_none() {
+                    return Err("REVIEW_CHECKPOINT_SCOPE stage=evidence: name the current phase and components with a verified authorization citation".into());
+                }
+                value["checkpoint_scope"] = serde_json::to_value(scope).map_err(|_| "REVIEW_CHECKPOINT_SCOPE_JSON stage=evidence")?;
+            }
             if let Some(deferral)=&finding.deferral {
                 let dependency=citations.get(deferral.dependency_citation).ok_or("REVIEW_DEFERRAL_CITATION stage=evidence")?;
                 if citations.get(deferral.requirement_citation).is_none() || deferral.phase.trim().is_empty() || !dependency["quote"].as_str().is_some_and(|q|q.contains(&deferral.phase)) {
@@ -105,7 +122,7 @@ impl Report {
     pub fn schema() -> Value {
         json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{"reminder":Reminder::schema(),
         "request_id":{"type":"string"},"findings":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["topic","claim","citations"],"properties":{
-            "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"deferral":{"type":"object","additionalProperties":false,"required":["phase","requirement_citation","dependency_citation"],"properties":{"id":{"type":["string","null"]},"phase":{"type":"string"},"requirement_citation":{"type":"integer","minimum":0},"dependency_citation":{"type":"integer","minimum":0}}},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
+            "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"checkpoint_scope":{"type":"object","additionalProperties":false,"required":["phase","components","authorization_citation"],"properties":{"phase":{"type":"string"},"components":{"type":"array","minItems":1,"items":{"type":"string"}},"authorization_citation":{"type":"integer","minimum":0}}},"deferral":{"type":"object","additionalProperties":false,"required":["phase","requirement_citation","dependency_citation"],"properties":{"id":{"type":["string","null"]},"phase":{"type":"string"},"requirement_citation":{"type":"integer","minimum":0},"dependency_citation":{"type":"integer","minimum":0}}},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
         }}}}})
     }
 }

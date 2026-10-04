@@ -60,6 +60,7 @@ fn case(home: &Path, provider: &str) -> Value {
         0,
     );
     let initial = Reviews::read(&worker).unwrap().unwrap();
+    super::checkpoint_heldout::record(provider, "first", &first);
     assert!(
         !initial.deferrals.is_empty(),
         "honest dependency not kept open"
@@ -88,15 +89,10 @@ fn case(home: &Path, provider: &str) -> Value {
 
 fn confirm_deferrals(first: &Value, deferrals: &[Value]) -> bool {
     deferrals.iter().all(|item| {
-        let answer =
-            &first["judgment"]["answers"][format!("deferral.{}", item["id"].as_str().unwrap())];
-        answer["choice"] == "necessary_future"
-            && answer["confidence"].as_f64().unwrap()
-                >= kah_observer::judge::questions::COMPLETE_CONFIDENCE
-            && answer["probabilities"]["necessary_future"]
-                .as_f64()
-                .unwrap()
-                >= kah_observer::judge::questions::COMPLETE_PROBABILITY
+        kah_observer::checkpoint::future(
+            &serde_json::from_value(first["judgment"].clone()).unwrap(),
+            item["id"].as_str().unwrap(),
+        )
     })
 }
 
@@ -111,12 +107,7 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
     super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
     let committed_probe = files::probe_commit(project, "refs/tags/phase-2");
-    fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
-            .join(format!("tagged-commit-probe-{provider}.json")),
-        serde_json::to_vec_pretty(&committed_probe).unwrap(),
-    )
-    .unwrap();
+    save_probe(provider, &committed_probe);
     assert!(committed_probe["phase1"] == true && committed_probe["phase2"] == true);
     assert_eq!(
         committed_probe["integration"], false,
@@ -130,6 +121,8 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
         &files::git_oid(project, "refs/tags/phase-2"),
         0,
     );
+    result["taggedCommitProbe"] = committed_probe.clone();
+    super::checkpoint_heldout::record(provider, "broken", &result);
     assert_eq!(
         result["assessment"]["passed"], false,
         "separate passes hid integration failure: {result}"
@@ -157,10 +150,18 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
     );
     assert!(!project.join("phase3.txt").exists());
     result["separateTests"] = json!(separate);
-    result["taggedCommitProbe"] = committed_probe;
     result["independentCombinedTest"] = combined;
     result["reminderBeforePhase3"] = reminder;
     result
+}
+
+fn save_probe(provider: &str, probe: &Value) {
+    fs::write(
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+            .join(format!("tagged-commit-probe-{provider}.json")),
+        serde_json::to_vec_pretty(probe).unwrap(),
+    )
+    .unwrap();
 }
 
 fn repaired(
@@ -191,6 +192,7 @@ fn repaired(
         &files::git_oid(project, "HEAD"),
         issued_ms,
     );
+    super::checkpoint_heldout::record(provider, "repaired", &result);
     assert_eq!(
         result["assessment"]["passed"], true,
         "repaired integration: {result}"

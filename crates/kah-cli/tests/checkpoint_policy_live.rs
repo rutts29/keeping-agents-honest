@@ -45,7 +45,7 @@ fn partial_phase_policy_replay() {
         results.push(case(&home, name, text, expected));
     }
     let passed = results.iter().all(|r| r["matchesExpected"] == true);
-    fs::write(evidence.join("checkpoint-policy-v2-replay.json"),serde_json::to_vec_pretty(&json!({"cases":results,"checkpointQuestionSet":kah_observer::checkpoint::VERSION,"numericalThresholdsUnchanged":true,"nativeBrainReportsReused":true,"passed":passed})).unwrap()).unwrap();
+    fs::write(evidence.join(format!("checkpoint-policy-v{}-replay.json",kah_observer::checkpoint::VERSION)),serde_json::to_vec_pretty(&json!({"cases":results,"checkpointQuestionSet":kah_observer::checkpoint::VERSION,"numericalThresholdsUnchanged":true,"nativeBrainReportsReused":true,"passed":passed})).unwrap()).unwrap();
     assert!(
         passed,
         "paired replay contains unproven cases; all outcomes retained"
@@ -71,10 +71,7 @@ fn case(home: &std::path::Path, name: &str, text: &str, expected: bool) -> Value
         .unwrap()
     {
         let id = d["id"].as_str().unwrap();
-        questions.insert(
-            format!("deferral.{id}"),
-            kah_observer::checkpoint::deferral_question(id),
-        );
+        questions.extend(kah_observer::checkpoint::deferral_questions(id));
     }
     let judgment = routing::evaluate(
         home,
