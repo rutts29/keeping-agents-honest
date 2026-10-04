@@ -47,12 +47,14 @@ pub fn run(worker: &str) -> Result<()> {
     let turn = super::control::config(worker)?
         .map(|c| c.turn)
         .unwrap_or_else(|| "checkpoint".into());
-    let receipt = runtime::wake(worker, Purpose::Checkpoint, &turn, json!({"events":events}))?;
-    if receipt["status"] == "submitted" {
-        for path in paths {
-            fs::remove_file(path)?;
-        }
+    // Ownership transfers once durable in the queue, even while another review
+    // holds its lock. Waiting for native submission re-enqueued this same batch
+    // on every follow-up and kept an idle observer reviewing its own triggers.
+    super::queue::enqueue(worker, Purpose::Checkpoint, &turn, json!({"events":events}))?;
+    for path in paths {
+        fs::remove_file(path)?;
     }
+    super::queue::drain(worker)?;
     Ok(())
 }
 pub fn cli(args: &[String]) -> Result<()> {

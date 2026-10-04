@@ -138,11 +138,20 @@ impl Store {
     pub fn open_wait(worker: &str) -> Result<Self> {
         Self::lock(worker, true)
     }
+    pub fn open_delivery(worker: &str) -> Result<Self> {
+        Self::delivery_at(&Self::directory(worker)?, false)
+    }
+    pub fn delivery_at(directory: &Path, wait: bool) -> Result<Self> {
+        Self::lock_directory(directory.to_path_buf(), wait, "delivery-lock")
+    }
     fn lock(worker: &str, wait: bool) -> Result<Self> {
         let directory = Self::directory(worker)?;
+        Self::lock_directory(directory, wait, "lock")
+    }
+    fn lock_directory(directory: PathBuf, wait: bool, name: &str) -> Result<Self> {
         ensure_private_directory(&directory)?;
         ensure_private_directory(&directory.join("sources"))?;
-        let path = directory.join("lock");
+        let path = directory.join(name);
         if fs::symlink_metadata(&path)
             .is_ok_and(|m| !m.is_file() || m.permissions().mode() & 0o077 != 0)
         {

@@ -202,11 +202,11 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
     if !matches!(event, "PreToolUse" | "PostToolUse" | "UserPromptSubmit") {
         return Ok(None);
     }
-    let store = Store::open(worker)?;
+    let store = Store::open_delivery(worker)?;
     if let Some(notice) = super::redelivery::take(&store)? {
         return Ok(Some(notice));
     }
-    let Some((path, mut reminder)) = super::reminder_queue::next(&store.directory)? else {
+    let Some((path, mut reminder)) = super::reminder_queue::next_locked(&store)? else {
         if let Some(notice) = super::preparation::notice(worker)? {
             return Ok(Some(json!({"systemMessage":notice})));
         }

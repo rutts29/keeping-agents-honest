@@ -8,6 +8,10 @@ use std::{
 };
 
 pub fn save(root: &Path, value: &Value) -> Result<()> {
+    let _delivery = super::state::Store::delivery_at(root, true)?;
+    save_locked(root, value)
+}
+fn save_locked(root: &Path, value: &Value) -> Result<()> {
     let directory = root.join("reminders");
     kah_core::run_store::ensure_private_directory(&directory)?;
     let identity = if value["request"].is_string() {
@@ -32,6 +36,13 @@ pub fn next(root: &Path) -> Result<Option<(PathBuf, Value)>> {
     Ok(pending(root)?.into_iter().next())
 }
 pub fn pending(root: &Path) -> Result<Vec<(PathBuf, Value)>> {
+    let _delivery = super::state::Store::delivery_at(root, true)?;
+    pending_locked(root)
+}
+pub(crate) fn next_locked(store: &super::state::Store) -> Result<Option<(PathBuf, Value)>> {
+    Ok(pending_locked(&store.directory)?.into_iter().next())
+}
+fn pending_locked(root: &Path) -> Result<Vec<(PathBuf, Value)>> {
     let legacy = root.join("reminder.json");
     if let Some(mut value) = super::state::read::<Value>(&legacy)? {
         let at = fs::metadata(&legacy)?
@@ -40,7 +51,7 @@ pub fn pending(root: &Path) -> Result<Vec<(PathBuf, Value)>> {
             .unwrap_or_default()
             .as_nanos();
         value["delivery_order"] = format!("{at:032x}-legacy").into();
-        save(root, &value)?;
+        save_locked(root, &value)?;
         fs::remove_file(&legacy)?;
     }
     let directory = root.join("reminders");
