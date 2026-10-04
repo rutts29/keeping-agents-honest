@@ -5,6 +5,7 @@ pub mod claude_launch;
 pub mod claude_policy;
 pub mod claude_setup;
 pub mod completion_capture;
+pub mod completion_checkpoint;
 pub mod completion_inputs;
 pub mod completion_replay;
 pub mod completion_review;

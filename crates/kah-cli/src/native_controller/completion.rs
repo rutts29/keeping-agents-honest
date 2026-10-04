@@ -33,39 +33,38 @@ impl Run<'_> {
     pub(super) fn assess(&mut self, state: &session::State) -> Result<()> {
         let record = self.record()?;
         let native = record.native.as_ref().unwrap();
-        if !native.synchronized() || self.history.is_none() {
+        let Some(snapshot) = self.fresh_completion(native)? else {
             return Ok(());
-        }
-        if !self.history.as_mut().unwrap().completed()? {
-            return Ok(());
-        }
-        let snapshot = self.history.as_mut().unwrap().snapshot()?;
-        if Some(&snapshot.action_digest) == native.processed_digest.as_ref() {
-            return Ok(());
-        }
+        };
         let projection = self.refresh(state, &snapshot)?;
         let sequence = record.control.inputs().last().unwrap().sequence;
         let candidate = self.capture_candidate()?;
         let commit = self.record()?.control.last_checkpoint().unwrap().to_owned();
-        let (tests, changed) = self.verify(&candidate, &commit, sequence)?;
+        let Some((tests, changed, checkpoint_passed)) = self.reviewed_verification(
+            state,
+            &projection,
+            &snapshot,
+            &candidate,
+            &commit,
+            sequence,
+        )?
+        else {
+            return Ok(());
+        };
         let completion = if tests.success && !changed {
             let activity = self.history.as_mut().unwrap().completion_activity()?;
             Some(self.judge_candidate(state, &projection, &activity, &candidate, &tests)?)
         } else {
             None
         };
-        let pane = self.pane.inspect()?;
-        let current = self.synchronize(&pane)?;
-        let unchanged = self.tree.sandbox_state(&self.executor)?.0 == commit
-            && current.is_some_and(|s| {
-                s.action_digest.as_ref() == Some(&snapshot.action_digest) && s.inflight.is_none()
-            })
-            && matches!(pane["agent_status"].as_str(), Some("idle" | "done"));
+        let unchanged = self.completion_unchanged(&commit, &snapshot)?;
         let proof = CompletionEvidence {
             ledger_user_sequence: sequence,
             commit: commit.clone(),
             tests_passed: tests.success && !changed,
-            outcomes_met: unchanged && completion.as_ref().is_some_and(|c| c.complete),
+            outcomes_met: unchanged
+                && checkpoint_passed
+                && completion.as_ref().is_some_and(|c| c.complete),
         };
         let current = self.update(|r| {
             if r.native.as_ref().unwrap().synchronized() {
@@ -79,15 +78,108 @@ impl Run<'_> {
             &format!("completion-{commit}-{sequence}-{}.json", session::now_ms()),
             &json!({"proof":{"commit":commit,"userSequence":sequence,"tests":tests,"unchanged":unchanged},"judgments":completion.map(|c|c.judgments),"completed":current.control.status() == RunStatus::Completed}),
         )?;
+        self.finish_assessment(
+            &current,
+            sequence,
+            unchanged,
+            tests,
+            commit,
+            (checkpoint_passed, changed),
+        )
+    }
+    fn fresh_completion(
+        &mut self,
+        native: &kah_run::native::Native,
+    ) -> Result<Option<kah_core::observation::ObservationSnapshot>> {
+        if !native.synchronized() {
+            return Ok(None);
+        }
+        let Some(history) = self.history.as_mut() else {
+            return Ok(None);
+        };
+        if !history.completed()? {
+            return Ok(None);
+        }
+        let snapshot = history.snapshot()?;
+        Ok((Some(&snapshot.action_digest) != native.processed_digest.as_ref()).then_some(snapshot))
+    }
+    fn completion_unchanged(
+        &mut self,
+        commit: &str,
+        snapshot: &kah_core::observation::ObservationSnapshot,
+    ) -> Result<bool> {
+        let pane = self.pane.inspect()?;
+        let current = self.synchronize(&pane)?;
+        Ok(self.tree.sandbox_state(&self.executor)?.0 == commit
+            && current.is_some_and(|s| {
+                s.action_digest.as_ref() == Some(&snapshot.action_digest) && s.inflight.is_none()
+            })
+            && matches!(pane["agent_status"].as_str(), Some("idle" | "done")))
+    }
+    fn finish_assessment(
+        &mut self,
+        current: &Record,
+        sequence: u64,
+        unchanged: bool,
+        tests: verification::Receipt,
+        commit: String,
+        review_flags: (bool, bool),
+    ) -> Result<()> {
+        let (checkpoint_passed, changed) = review_flags;
         let uncommitted = self.tree.sandbox_state(&self.executor)?.1;
         let feedback = format!(
             "[kah-builder] Verification of your HEAD commit {commit}: {}. Only this SHA is delivered; uncommitted changes are NOT delivered. Commit only intended deliverable work, keeping confidential/personal/internal files out of commits. If the user's instructions prohibit committing necessary code, explain the conflict and ask. This is automated evidence, not new user intent.",
             serde_json::to_string(
-                &json!({"testSuccess":tests.success,"candidateChanged":changed,"uncommittedChangesPresent":uncommitted,"output":tests.output})
+                &json!({"testSuccess":tests.success,"checkpointPassed":checkpoint_passed,"candidateChanged":changed,"uncommittedChangesPresent":uncommitted,"output":tests.output})
             )?
         );
         self.tests = Some(tests);
-        self.continue_work(&current, sequence, unchanged, &feedback)
+        self.continue_work(current, sequence, unchanged, &feedback)
+    }
+    fn reviewed_verification(
+        &mut self,
+        state: &session::State,
+        projection: &kah_core::projection::ActiveProjection,
+        snapshot: &kah_core::observation::ObservationSnapshot,
+        candidate: &Worktree,
+        commit: &str,
+        sequence: u64,
+    ) -> Result<Option<(verification::Receipt, bool, bool)>> {
+        let native = self.record()?.native.unwrap();
+        let key = crate::completion_review::Key {
+            instance: native.instance.ok_or("RUN_INSTANCE stage=completion")?,
+            commit: commit.into(),
+            user_sequence: sequence,
+            action_digest: snapshot.action_digest.clone(),
+            command: self.settings.test.clone(),
+            online: self.online,
+        };
+        let directory = self.directory.clone();
+        let verified = crate::completion_review::verified(&directory, &key, || {
+            self.verify(candidate, commit, sequence)
+        })?;
+        if !verified.receipt.success || verified.changed {
+            return Ok(Some((verified.receipt, verified.changed, false)));
+        }
+        let status = crate::completion_checkpoint::request(
+            &directory,
+            &state.binding.session,
+            &key,
+            projection.revision,
+            &verified.receipt,
+        )?;
+        match status {
+            crate::completion_checkpoint::Status::Pending => {
+                self.tests = Some(verified.receipt);
+                Ok(None)
+            }
+            crate::completion_checkpoint::Status::Passed => {
+                Ok(Some((verified.receipt, verified.changed, true)))
+            }
+            crate::completion_checkpoint::Status::Failed(_) => {
+                Ok(Some((verified.receipt, verified.changed, false)))
+            }
+        }
     }
     fn refresh(
         &self,

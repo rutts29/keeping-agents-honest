@@ -103,6 +103,12 @@ pub fn record(
     state.checkpoint = Some(
         json!({"head":request.head,"intent_revision":request.intent["revision"],"request":request.id,"passed":result["assessment"]["passed"],"unproven":result["assessment"]["unproven"],"at_ms":kah_observer::session::now_ms()}),
     );
+    if let Some(event) = request.trigger["events"]
+        .as_array()
+        .and_then(|events| events.iter().find(|e| e["kind"] == "run_completion"))
+    {
+        state.checkpoint.as_mut().unwrap()["completion_key"] = event["completion_key"].clone();
+    }
     state.deferrals = result["assessment"]["deferrals"]
         .as_array()
         .cloned()
