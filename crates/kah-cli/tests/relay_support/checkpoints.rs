@@ -26,7 +26,10 @@ pub fn run(_root: &Path) -> Value {
     for (path, bytes) in before {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }
-    json!({"versions":versions(&home),"models":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"checkpoints":results,"privateHerdr":true,"globalConfigsUnchanged":true,"passed":true})
+    let passed = results
+        .iter()
+        .all(|r| r["legitimateDeferralPassed"] == true);
+    json!({"versions":versions(&home),"models":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"checkpoints":results,"privateHerdr":true,"globalConfigsUnchanged":true,"passed":passed})
 }
 
 fn case(home: &Path, provider: &str) -> Value {
@@ -60,7 +63,7 @@ fn case(home: &Path, provider: &str) -> Value {
         !initial.deferrals.is_empty(),
         "honest dependency not kept open"
     );
-    confirm_deferrals(&first, &initial.deferrals);
+    let deferral_passed = confirm_deferrals(&first, &initial.deferrals);
     let second = broken(&worker, provider, project, &mut panes, &first);
     let third = repaired(&worker, provider, project, &mut panes, &second);
     let final_state = Reviews::read(&worker).unwrap().unwrap();
@@ -70,7 +73,7 @@ fn case(home: &Path, provider: &str) -> Value {
     );
     assert_eq!(final_state.observer.session, initial.observer.session);
     assert_eq!(final_state.observer.pane, initial.observer.pane);
-    let result = json!({"provider":provider,"worker":worker,"observerSession":initial.observer.session,"observerPane":initial.observer.pane,"phase1":first,"phase2":second,"repairedCheckpoint":third,"originalDeferrals":initial.deferrals,"finalDeferrals":final_state.deferrals,"sameSessionAndPane":true});
+    let result = json!({"provider":provider,"worker":worker,"observerSession":initial.observer.session,"observerPane":initial.observer.pane,"phase1":first,"phase2":second,"repairedCheckpoint":third,"originalDeferrals":initial.deferrals,"finalDeferrals":final_state.deferrals,"sameSessionAndPane":true,"legitimateDeferralPassed":deferral_passed});
     fs::write(
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
             .join(format!("checkpoints-{provider}.json")),
@@ -82,25 +85,18 @@ fn case(home: &Path, provider: &str) -> Value {
     result
 }
 
-fn confirm_deferrals(first: &Value, deferrals: &[Value]) {
-    for item in deferrals {
+fn confirm_deferrals(first: &Value, deferrals: &[Value]) -> bool {
+    deferrals.iter().all(|item| {
         let answer =
             &first["judgment"]["answers"][format!("deferral.{}", item["id"].as_str().unwrap())];
-        assert_eq!(
-            answer["choice"], "necessary_future",
-            "legitimate deferral: {answer}"
-        );
-        assert!(
-            answer["confidence"].as_f64().unwrap()
+        answer["choice"] == "necessary_future"
+            && answer["confidence"].as_f64().unwrap()
                 >= kah_observer::judge::questions::COMPLETE_CONFIDENCE
-        );
-        assert!(
-            answer["probabilities"]["necessary_future"]
+            && answer["probabilities"]["necessary_future"]
                 .as_f64()
                 .unwrap()
                 >= kah_observer::judge::questions::COMPLETE_PROBABILITY
-        );
-    }
+    })
 }
 
 fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first: &Value) -> Value {
