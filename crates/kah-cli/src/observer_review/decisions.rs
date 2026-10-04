@@ -4,6 +4,7 @@ use crate::Result;
 use kah_observer::review_evidence::Report;
 use serde_json::Value;
 mod coverage;
+mod steering;
 pub use coverage::checkpoint as checkpoint_coverage;
 
 pub fn active_items(intent: &Value) -> Vec<String> {
@@ -44,6 +45,7 @@ pub fn evaluate(
         serde_json::json!(deferrals),
     );
     input["decision"] = decision_units::ReviewUnits::named_state(&verified)?;
+    steering::context(request, report, &mut input)?;
     crate::privacy::scrub(&mut input);
     let mut questions = decision_units::questions(units);
     if request.purpose == super::state::Purpose::Checkpoint
@@ -74,6 +76,7 @@ pub fn evaluate(
     }
     checkpoint_coverage(request, units, &deferrals)?;
     let mut assessment = assessment(request, units, &judgment, deferrals);
+    steering::apply(request, units, &judgment, &mut assessment)?;
     assessment["private_replay"] = serde_json::to_value(archive)?;
     assessment["jev_called"] = (!questions.is_empty()).into();
     Ok((judgment, prepared, assessment))

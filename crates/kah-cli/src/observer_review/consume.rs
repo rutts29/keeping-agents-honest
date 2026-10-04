@@ -94,9 +94,13 @@ pub fn needs_reminder(assessment: &Value, judgment: &judge::Judgment) -> bool {
     ) || assessment["state"] == "steering_reviewed"
         && assessment["application"] == "verified_for_next_native_event"
         && matches!(judgment.answers.get("is_steering"),Some(judge::Answer::Noul{noul}) if *noul>=kah_observer::judge::questions::STEERING_PROBABILITY)
+        || assessment["state"] == "steering_passed"
+            && assessment["application"] == "verified_for_next_native_event"
+            && assessment["steering_directs"] == true
+            && kah_observer::decision_units::confirmed(judgment, "steering.proposal", "supported")
 }
 pub fn question_version(request: &super::state::Request, report: &Report) -> u32 {
-    if report.decision_units.is_some() && request.purpose != Purpose::Steering {
+    if report.decision_units.is_some() {
         kah_observer::decision_units::VERSION
     } else {
         match request.purpose {
@@ -148,7 +152,7 @@ fn decide(
     actions: &[Value],
     report: &Report,
 ) -> Result<(judge::Judgment, Value, Value)> {
-    if report.decision_units.is_some() && request.purpose != Purpose::Steering {
+    if report.decision_units.is_some() {
         return super::decisions::evaluate(home, request, report, actions);
     }
     if request.purpose == Purpose::Checkpoint {

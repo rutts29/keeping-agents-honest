@@ -27,6 +27,10 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     documents.push(history(&home, state)?);
     let mut project = project_context(&home, state)?;
     let mut trigger = trigger;
+    if purpose == Purpose::Steering {
+        let input = serde_json::from_value(trigger["uncertain_user_input"].clone())?;
+        trigger["steering_context"] = super::steering::context(&state.worker.session, &input)?;
+    }
     if purpose == Purpose::Drift {
         trigger["last_completed_drift_review"] = super::state::read::<Value>(
             &super::state::Store::directory(&state.worker.session)?.join("last-drift-review.json"),

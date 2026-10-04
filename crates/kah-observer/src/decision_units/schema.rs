@@ -5,7 +5,8 @@ pub fn schema() -> Value {
         &["requirements"],
         json!({
             "requirements":{"type":"array","minItems":1,"items":requirement()},
-            "proportion":{"anyOf":[{"type":"null"},proportion()]}
+            "proportion":{"anyOf":[{"type":"null"},proportion()]},
+            "steering":{"anyOf":[{"type":"null"},crate::steering_proposal::schema()]}
         }),
     );
     value["$defs"] = json!({"citation":citation(),"indices":{"type":"array","minItems":1,"items":{"type":"integer","minimum":0}}});

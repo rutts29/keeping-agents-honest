@@ -176,6 +176,7 @@ pub fn submit(args: &[String]) -> Result<()> {
     report.verify(&request.id, &request.documents)?;
     require_units(&request, &report)?;
     super::decisions::verify(&request, &report)?;
+    super::steering::verify_proposal(&request, &report)?;
     super::reminder::validate_report(&report, &request)?;
     let directory = Path::new(&args[3])
         .parent()

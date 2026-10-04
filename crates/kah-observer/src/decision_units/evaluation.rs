@@ -57,6 +57,9 @@ pub fn questions(units: &ReviewUnits) -> Questions {
             criteria:[("proportionate","The spent effort is proportionate to the supported worst-case consequence and authorized job context."),("disproportionate","The spent effort is excessive relative to the supported worst-case consequence and job context."),("unclear","The estimates or context are insufficient to decide proportion.")].into_iter().map(|(k,v)|(k.into(),v.into())).collect(),
         });
     }
+    if let Some(proposal) = &units.steering {
+        questions.extend(crate::steering_proposal::questions(proposal));
+    }
     questions
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -108,6 +111,13 @@ pub fn assess(units: &ReviewUnits, judgment: &Judgment) -> Outcome {
         } else if !confirmed(judgment, "proportion", "proportionate") {
             outcome.needs_thinker.push("proportion".into());
         }
+    }
+    if units
+        .steering
+        .as_ref()
+        .is_some_and(|p| !crate::steering_proposal::validated(p, judgment))
+    {
+        outcome.needs_thinker.push("steering".into());
     }
     outcome.passed = !units.requirements.is_empty()
         && outcome.violations.is_empty()

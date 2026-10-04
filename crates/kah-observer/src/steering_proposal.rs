@@ -87,6 +87,9 @@ impl Proposal {
         {
             return Err("REVIEW_STEERING_CONFLICT_COVERAGE stage=steering: every newer directive needs a named compatibility decision".into());
         }
+        self.evidence(documents)
+    }
+    pub fn evidence(&self, documents: &[Document]) -> Result<Value, String> {
         let mut value =
             serde_json::to_value(self).map_err(|_| "REVIEW_STEERING_JSON stage=steering")?;
         value["citations"] = quotes(&self.reasoning, &self.citations, documents)?;

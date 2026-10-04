@@ -2,7 +2,8 @@ use kah_cli::observer_review::{state::Purpose, workspace};
 
 #[test]
 fn new_checkpoint_and_drift_reports_require_named_decisions() {
-    for purpose in [Purpose::Checkpoint, Purpose::Drift] {
+    // User decision private-receipt-omitted applies the same pattern to steering.
+    for purpose in [Purpose::Checkpoint, Purpose::Drift, Purpose::Steering] {
         let schema = workspace::schema(&purpose);
         assert!(
             schema["required"]
@@ -18,13 +19,6 @@ fn new_checkpoint_and_drift_reports_require_named_decisions() {
         assert!(instruction.contains("proportion"));
         assert!(!instruction.contains("stronger model"));
     }
-    assert!(
-        !workspace::schema(&Purpose::Steering)["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|x| x == "decision_units")
-    );
 }
 
 #[test]
@@ -51,7 +45,7 @@ fn new_native_submission_rejects_a_legacy_checkpoint_report() {
             .to_string()
             .starts_with("REVIEW_UNITS_REQUIRED")
     );
-    request.purpose = Purpose::Steering;
+    request.purpose = Purpose::Preparation;
     workspace::require_units(&request, &report).unwrap();
 }
 

@@ -15,6 +15,8 @@ pub struct ReviewUnits {
     pub requirements: Vec<Requirement>,
     #[serde(default)]
     pub proportion: Option<Proportion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steering: Option<crate::steering_proposal::Proposal>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -132,7 +134,9 @@ impl ReviewUnits {
                 return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
             }
         }
-        Ok(json!({"requirements":named,"proportion":verified["proportion"]}))
+        Ok(
+            json!({"requirements":named,"proportion":verified["proportion"],"steering":verified["steering"]}),
+        )
     }
     pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
         let mut ids = BTreeSet::new();
@@ -165,6 +169,11 @@ impl ReviewUnits {
             .as_ref()
             .map(|p| validation::proportion(p, documents))
             .transpose()?;
-        Ok(json!({"requirements":requirements,"proportion":proportion}))
+        let steering = self
+            .steering
+            .as_ref()
+            .map(|p| p.evidence(documents))
+            .transpose()?;
+        Ok(json!({"requirements":requirements,"proportion":proportion,"steering":steering}))
     }
 }

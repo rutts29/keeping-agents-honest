@@ -160,3 +160,15 @@ fn validated_operation_copies_verbatim_words_without_synthetic_scores() {
     assert_eq!(added.introduced_by, vec![source]);
     assert!(!added.review_required);
 }
+
+#[test]
+fn named_decision_state_preserves_the_complete_steering_proposal() {
+    let value = json!({"requirements":[],"proportion":null,"steering":proposal()});
+    let parsed: kah_observer::decision_units::ReviewUnits =
+        serde_json::from_value(value.clone()).unwrap();
+    assert!(parsed.steering.is_some());
+    let named = kah_observer::decision_units::ReviewUnits::named_state(&value).unwrap();
+    assert_eq!(named["steering"], value["steering"]);
+    let schema = kah_observer::decision_units::schema::schema();
+    assert!(schema["properties"]["steering"].is_object());
+}
