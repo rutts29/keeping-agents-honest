@@ -110,6 +110,18 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
     let task = "Proceed with Phase 2 in PLAN.md using the supplied second component and pipeline. Run the component checks, commit your work, create the native git tag phase-2, and report Phase 2 complete. Await the checkpoint review before Phase 3.";
     super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
+    let committed_probe = files::probe_commit(project, "refs/tags/phase-2");
+    fs::write(
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+            .join(format!("tagged-commit-probe-{provider}.json")),
+        serde_json::to_vec_pretty(&committed_probe).unwrap(),
+    )
+    .unwrap();
+    assert!(committed_probe["phase1"] == true && committed_probe["phase2"] == true);
+    assert_eq!(
+        committed_probe["integration"], false,
+        "CHECKPOINT_FIXTURE_SELF_CORRECTED: tagged integration already works; cannot claim the observer caught an injected failure"
+    );
     let mut result = checkpoint(
         worker,
         provider,
@@ -145,6 +157,7 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
     );
     assert!(!project.join("phase3.txt").exists());
     result["separateTests"] = json!(separate);
+    result["taggedCommitProbe"] = committed_probe;
     result["independentCombinedTest"] = combined;
     result["reminderBeforePhase3"] = reminder;
     result

@@ -106,6 +106,28 @@ pub(super) fn git_oid(project: &Path, reference: &str) -> String {
     );
     String::from_utf8(output.stdout).unwrap().trim().into()
 }
+pub(super) fn probe_commit(project: &Path, reference: &str) -> Value {
+    let sha = git_oid(project, reference);
+    let script = "set -eu; checkpoint_probe=$(mktemp -d); git -c core.hooksPath=/dev/null -c core.fsmonitor=false archive \"$1\" >\"$checkpoint_probe/source.tar\"; tar -C \"$checkpoint_probe\" -xf \"$checkpoint_probe/source.tar\"; node -e 'const p=process.argv[1],v=[-3,-0.5,0,0.25,7],d=require(p+\"/double.cjs\"),i=require(p+\"/increment.cjs\"),f=require(p+\"/pipeline.cjs\");console.log(JSON.stringify({phase1:v.every(n=>d(n)===2*n),phase2:v.every(n=>i(n)===n+1),integration:v.every(n=>f(n)===2*n+1)}));' \"$checkpoint_probe\"; rm -rf \"$checkpoint_probe\"";
+    let output = sandbox_output(
+        project,
+        &[
+            "/bin/sh".into(),
+            "-c".into(),
+            script.into(),
+            "kah-checkpoint-probe".into(),
+            sha.clone(),
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "sandbox commit probe: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
+    receipt["commit"] = sha.into();
+    receipt
+}
 fn sandbox_output(root: &Path, args: &[String]) -> std::process::Output {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let project = kah_sandbox::Project {
