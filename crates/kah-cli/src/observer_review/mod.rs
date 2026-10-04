@@ -4,6 +4,7 @@ pub mod consume;
 pub mod control;
 pub mod dispatch;
 pub mod hook;
+pub mod hook_queue;
 pub mod launch;
 pub mod preparation;
 mod prepared_result;
@@ -11,6 +12,7 @@ pub mod queue;
 pub mod redelivery;
 pub mod reminder;
 pub mod runtime;
+pub mod snapshot;
 pub mod source_store;
 pub mod state;
 pub mod workspace;
@@ -63,6 +65,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
             Ok(())
         }
         "__review-consume" => consume::run(&args[1]),
+        "__review-hook-events" => hook_queue::run(&args[1]),
         "__review-wake" => dispatch::run(&args[1]),
         "__checkpoint-worker" => events::run(&args[1]),
         "__checkpoint-claims" => claims::run(&args[1]),

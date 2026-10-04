@@ -72,6 +72,45 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
     diagnostic(state, &marker, &text)?;
     Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; inspect private review/delivery-gap.json".into())
 }
+/// Cold launch is not acceptance. Native SessionStart and the persisted user
+/// record prove it; an idle client with no receipt gets the same original wake.
+pub fn cold(state: &State, prompt: &str) -> Result<()> {
+    let request = state
+        .pending
+        .as_ref()
+        .ok_or("REVIEW_PENDING_MISSING stage=delivery")?
+        .id
+        .clone();
+    let started = Instant::now();
+    loop {
+        let current =
+            Store::read(&state.worker.session)?.ok_or("REVIEW_STATE_MISSING stage=delivery")?;
+        if current.observer.session.is_some()
+            && current
+                .observer
+                .transcript
+                .as_ref()
+                .is_some_and(|p| p.exists())
+        {
+            let marker = format!("kah review request {request} ");
+            if wait_receipt(&current, &marker, 0)? {
+                return Ok(());
+            }
+            diagnostic(&current, &marker, &screen(&current)?)?;
+            return warm(&current, prompt);
+        }
+        if started.elapsed() >= Duration::from_secs(15) {
+            diagnostic(
+                &current,
+                "cold launch: native binding absent",
+                &screen(&current)?,
+            )?;
+            return Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: cold native binding absent; request retained".into());
+        }
+        runtime::require_active(&state.worker.session)?;
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
 fn diagnostic(state: &State, marker: &str, screen: &str) -> Result<()> {
     let rows = state
         .observer

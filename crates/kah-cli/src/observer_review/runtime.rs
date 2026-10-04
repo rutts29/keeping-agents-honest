@@ -147,6 +147,7 @@ fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<(
             ],
             Some(socket),
         )?;
+        super::delivery::cold(state, prompt)?;
     }
     Ok(())
 }

@@ -65,7 +65,18 @@ pub fn drain(worker: &str) -> Result<Value> {
         break;
     }
     if let Some((job, paths)) = batch(&jobs) {
-        let receipt = super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)?;
+        let submitted = if let Some(snapshot) = job.trigger.get("captured_snapshot") {
+            super::snapshot::submit(worker, snapshot)
+        } else {
+            super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)
+        };
+        let receipt = match submitted {
+            Ok(receipt) => receipt,
+            Err(error) if error.to_string().starts_with("REVIEW_BUSY") => {
+                return Ok(json!({"status":"queued","reason":"review_store_busy"}));
+            }
+            Err(error) => return Err(error),
+        };
         if matches!(
             receipt["status"].as_str(),
             Some("submitted" | "preparation_submitted")
@@ -84,12 +95,14 @@ pub fn drain(worker: &str) -> Result<Value> {
 /// and cause a follow-up; the in-flight review is never mutated.
 pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
     let first = jobs.first()?;
-    if first.1.purpose != Purpose::Drift {
+    if first.1.purpose != Purpose::Drift || first.1.trigger.get("captured_snapshot").is_some() {
         return Some((first.1.clone(), vec![first.0.clone()]));
     }
     let group = jobs
         .iter()
-        .filter(|(_, job)| job.purpose == Purpose::Drift)
+        .filter(|(_, job)| {
+            job.purpose == Purpose::Drift && job.trigger.get("captured_snapshot").is_none()
+        })
         .collect::<Vec<_>>();
     let mut job = group.last()?.1.clone();
     job.trigger["coalesced_triggers"] = json!(

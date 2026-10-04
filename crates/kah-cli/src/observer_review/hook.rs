@@ -32,9 +32,36 @@ fn receive(worker: &str) -> Result<()> {
     if input["agent_id"].is_string() {
         return Ok(());
     }
+    let provider = Store::read(worker)?
+        .ok_or("REVIEW_STATE_MISSING stage=hook")?
+        .worker
+        .provider;
+    let event = super::hook_queue::Event::capture(input, super::control::native_parent(&provider));
+    match apply(worker, &event) {
+        Err(e) if e.to_string().starts_with("REVIEW_BUSY") => {
+            super::hook_queue::enqueue(worker, &event)
+        }
+        other => other,
+    }
+}
+pub(super) fn apply(worker: &str, event: &super::hook_queue::Event) -> Result<()> {
+    let input = &event.input;
     let store = Store::open(worker)?;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
-    validate(&state, &input)?;
+    validate(&state, event)?;
+    let events = store.directory.join("hook-observations.jsonl");
+    use std::io::Write;
+    let mut journal = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(events)?;
+    writeln!(
+        journal,
+        "{}",
+        json!({"event":input["hook_event_name"],"session":input["session_id"],"pid":event.pid,"at_ms":kah_observer::session::now_ms()})
+    )?;
+    journal.sync_all()?;
     let session = input["session_id"]
         .as_str()
         .ok_or("REVIEW_SESSION_ID stage=hook")?;
@@ -49,7 +76,7 @@ fn receive(worker: &str) -> Result<()> {
         return Err("REVIEW_SESSION_MISMATCH stage=hook".into());
     }
     state.observer.session = Some(session.into());
-    state.observer.pid = super::control::native_parent(&state.worker.provider);
+    state.observer.pid = event.pid;
     state.observer.process_stamp = state
         .observer
         .pid
@@ -79,7 +106,7 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             ],
         )?;
     }
-    if event == "Stop"
+    if matches!(event, "Stop" | "PostToolUse")
         && let Some(pending) = &state.pending
     {
         if pending.purpose == super::state::Purpose::Preparation {
@@ -103,7 +130,7 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             )?;
             drop(store);
             spawn("__review-consume", worker)?;
-        } else {
+        } else if event == "Stop" {
             gap(
                 worker,
                 &"REVIEW_REPORT_MISSING stage=observer: native turn ended without a submitted evidence report; focus the observer to inspect it",
@@ -112,12 +139,13 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
     }
     Ok(())
 }
-fn validate(state: &State, input: &Value) -> Result<()> {
+fn validate(state: &State, event: &super::hook_queue::Event) -> Result<()> {
+    let input = &event.input;
     if !input["cwd"]
         .as_str()
         .is_some_and(|p| super::control::contains_workspace(&state.observer.workspace, p))
-        || env::var("HERDR_PANE_ID").ok().as_deref() != state.observer.pane.as_deref()
-        || env::var_os("HERDR_SOCKET_PATH").map(PathBuf::from) != state.worker.socket
+        || event.pane.as_deref() != state.observer.pane.as_deref()
+        || event.socket != state.worker.socket
     {
         return Err("REVIEW_HOOK_SCOPE stage=hook".into());
     }

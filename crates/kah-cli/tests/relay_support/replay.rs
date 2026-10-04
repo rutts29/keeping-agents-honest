@@ -1,7 +1,7 @@
 //! Same native observer lifecycle and Jev decisions over recorded evidence.
 use super::*;
 use kah_cli::observer_review::{
-    runtime,
+    snapshot,
     state::{Purpose, Request, State, Store as Reviews},
 };
 #[path = "replay_cases.rs"]
@@ -68,7 +68,30 @@ fn review_case(home: &Path, worker: &str, case: &cases::Case, panes: &mut Panes)
         documents: case.documents.clone(),
         created_ms: kah_observer::session::now_ms(),
     };
-    let receipt = runtime::submit_snapshot(store, state, &request, home).unwrap();
+    drop(store);
+    let receipt = snapshot::wake(&request).unwrap();
+    let receipt = if receipt["pane"].is_string() {
+        receipt
+    } else {
+        let started = Instant::now();
+        loop {
+            let current = Reviews::read(worker).unwrap().unwrap();
+            if current.pending.as_ref().is_some_and(|p| p.id == request.id)
+                || current
+                    .latest
+                    .as_ref()
+                    .is_some_and(|v| v["request"] == request.id)
+            {
+                break json!({"pane":current.observer.pane});
+            }
+            kah_cli::observer_review::queue::drain(worker).unwrap();
+            assert!(
+                started.elapsed() < Duration::from_secs(240),
+                "snapshot stayed queued"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    };
     let pane = Pane {
         id: receipt["pane"].as_str().unwrap().into(),
     };

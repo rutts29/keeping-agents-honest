@@ -90,3 +90,57 @@ fn uncertain_ticks_coalesce_at_snapshot_and_later_events_remain_queued() {
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn a_busy_startup_store_preserves_the_trigger_without_failing_the_wake() {
+    let worker = format!("busy-wake-unit-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    queue::enqueue(
+        &worker,
+        Purpose::Drift,
+        "startup",
+        json!({"actions":[{"id":"first"}]}),
+    )
+    .unwrap();
+    let receipt = queue::drain(&worker).unwrap();
+    assert_eq!(receipt["status"], "queued");
+    assert_eq!(queue::entries(&worker).unwrap().len(), 1);
+    let directory = store.directory.clone();
+    drop(store);
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
+    use kah_cli::observer_review::{snapshot, state::Request};
+    let worker = format!("snapshot-busy-unit-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    let request = Request {
+        id: "review-original".into(),
+        worker: worker.clone(),
+        purpose: Purpose::Drift,
+        turn: "historical".into(),
+        head: None,
+        intent: json!({"goal":"Original whole user words."}),
+        trigger: json!({"chronology":"unchanged"}),
+        documents: vec![],
+        created_ms: 1,
+    };
+    let receipt = snapshot::wake(&request).unwrap();
+    assert_eq!(receipt["status"], "queued");
+    queue::enqueue(
+        &worker,
+        Purpose::Drift,
+        "next",
+        json!({"actions":[{"id":"next"}]}),
+    )
+    .unwrap();
+    let jobs = queue::entries(&worker).unwrap();
+    let (first, paths) = queue::batch(&jobs).unwrap();
+    assert_eq!(paths.len(), 1);
+    assert_eq!(first.trigger["captured_snapshot"]["intent"], request.intent);
+    assert_eq!(jobs.len(), 2);
+    let directory = store.directory.clone();
+    drop(store);
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
