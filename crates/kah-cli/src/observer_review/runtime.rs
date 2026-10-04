@@ -291,13 +291,14 @@ pub fn retry_pending(worker: &str) -> Result<()> {
                 || s.starts_with("REVIEW_NOT_IDLE")
                 || s.starts_with("REVIEW_SUBMISSION_UNCONFIRMED")
                 || s.starts_with("REVIEW_DEFERRAL_")
+                || s.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN")
         })
     }) {
         return Ok(());
     }
     let request = workspace::request(&store, &pending.id)?;
     let decision = super::preparation::active_decision(worker, &pending.id)?;
-    let prompt = if super::preparation::pending(worker, &decision)? {
+    let mut prompt = if super::preparation::pending(worker, &decision)? {
         super::preparation::prompt(worker)?
     } else {
         workspace::prompt(
@@ -306,6 +307,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
             &state.observer.workspace.join("inputs").join(&pending.id),
         )?
     };
+    prompt.push_str(&format!("\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",gap.as_ref().unwrap()["error"]));
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);
     let number = super::redelivery::begin(
         &store,

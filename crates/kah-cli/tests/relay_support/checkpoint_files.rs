@@ -37,11 +37,7 @@ pub(super) fn inject(project: &Path) {
 }
 
 pub(super) fn verify(project: &Path, name: &str, success: bool) -> Value {
-    let output = Command::new("node")
-        .arg(name)
-        .current_dir(project)
-        .output()
-        .unwrap();
+    let output = sandbox_output(project, &["node".into(), name.into()]);
     assert_eq!(output.status.success(), success, "{name}: {output:?}");
     json!({"command":format!("node {name}"),"success":output.status.success(),"exitCode":output.status.code(),"stdout":String::from_utf8(output.stdout).unwrap(),"stderr":String::from_utf8(output.stderr).unwrap()})
 }
@@ -90,37 +86,39 @@ pub(super) fn command(
 }
 
 pub(super) fn git_oid(project: &Path, reference: &str) -> String {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let project = kah_sandbox::Project {
-        domain: kah_sandbox::Domain::Research,
-        root: project.into(),
-        relative_cwd: Default::default(),
-        needs_creation: false,
-    };
-    let executor = kah_cli::native_setup::executor(&home, &project, Default::default(), None)
-        .unwrap()
-        .read_only_project();
-    let output = executor
-        .command(
-            &project.root,
-            &[
-                "git".into(),
-                "-c".into(),
-                "core.hooksPath=/dev/null".into(),
-                "-c".into(),
-                "core.fsmonitor=false".into(),
-                "rev-parse".into(),
-                "--verify".into(),
-                format!("{reference}^{{commit}}"),
-            ],
-        )
-        .unwrap()
-        .output()
-        .unwrap();
+    let output = sandbox_output(
+        project,
+        &[
+            "git".into(),
+            "-c".into(),
+            "core.hooksPath=/dev/null".into(),
+            "-c".into(),
+            "core.fsmonitor=false".into(),
+            "rev-parse".into(),
+            "--verify".into(),
+            format!("{reference}^{{commit}}"),
+        ],
+    );
     assert!(
         output.status.success(),
         "read-only fixture Git identity: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout).unwrap().trim().into()
+}
+fn sandbox_output(root: &Path, args: &[String]) -> std::process::Output {
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let project = kah_sandbox::Project {
+        domain: kah_sandbox::Domain::Research,
+        root: root.into(),
+        relative_cwd: Default::default(),
+        needs_creation: false,
+    };
+    kah_cli::native_setup::executor(&home, &project, Default::default(), None)
+        .unwrap()
+        .read_only_project()
+        .command(root, args)
+        .unwrap()
+        .output()
+        .unwrap()
 }

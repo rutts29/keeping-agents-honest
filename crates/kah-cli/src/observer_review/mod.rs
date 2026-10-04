@@ -82,6 +82,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     }))
 }
 pub mod checkpoint;
+pub mod checkpoint_claim;
 pub mod claims;
 pub mod delivery;
 pub mod events;

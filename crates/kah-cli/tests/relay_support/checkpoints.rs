@@ -57,6 +57,7 @@ fn case(home: &Path, provider: &str) -> Value {
         &mut panes,
         None,
         &files::git_oid(project, "HEAD"),
+        0,
     );
     let initial = Reviews::read(&worker).unwrap().unwrap();
     assert!(
@@ -115,6 +116,7 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
         panes,
         Some(first),
         &files::git_oid(project, "refs/tags/phase-2"),
+        0,
     );
     assert_eq!(
         result["assessment"]["passed"], false,
@@ -155,6 +157,7 @@ fn repaired(
     let task = "Continue by consuming the checkpoint feedback. Correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate.";
     super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
+    let issued_ms = kah_observer::session::now_ms();
     let output = Command::new(env!("CARGO_BIN_EXE_kah"))
         .args(["gate", worker])
         .output()
@@ -170,6 +173,7 @@ fn repaired(
         panes,
         Some(second),
         &files::git_oid(project, "HEAD"),
+        issued_ms,
     );
     assert_eq!(
         result["assessment"]["passed"], true,
@@ -193,7 +197,9 @@ fn checkpoint(
     panes: &mut Panes,
     previous: Option<&Value>,
     head: &str,
+    gate_after_ms: u64,
 ) -> Value {
+    let mut retried_gap = None;
     loop {
         if let Some(state) = Reviews::read(worker).unwrap() {
             if let Some(id) = state.observer.pane {
@@ -213,7 +219,24 @@ fn checkpoint(
                 && let Some(checkpoint) = state.checkpoint
             {
                 let request = checkpoint["request"].as_str().unwrap();
-                if checkpoint["head"] == head && previous.is_none_or(|p| p["request"] != request) {
+                let snapshot: kah_cli::observer_review::state::Request = source_store::read(
+                    &Reviews::directory(worker)
+                        .unwrap()
+                        .join("requests")
+                        .join(format!("{request}.json")),
+                )
+                .unwrap();
+                let gate_matches = gate_after_ms == 0
+                    || snapshot.trigger["events"].as_array().is_some_and(|events| {
+                        events.iter().any(|e| {
+                            e["kind"] == "user_gate"
+                                && e["at_ms"].as_u64().is_some_and(|at| at >= gate_after_ms)
+                        })
+                    });
+                if gate_matches
+                    && checkpoint["head"] == head
+                    && previous.is_none_or(|p| p["request"] != request)
+                {
                     let result: Value = source_store::read(
                         &Reviews::directory(worker)
                             .unwrap()
@@ -227,9 +250,7 @@ fn checkpoint(
                 }
             }
         }
-        let gap = fs::read_to_string(Reviews::directory(worker).unwrap().join("gap.json"))
-            .unwrap_or_default();
-        assert!(gap.is_empty(), "checkpoint gap: {gap}");
+        super::checkpoint_retry::gap(worker, &mut retried_gap);
         std::thread::sleep(Duration::from_millis(250));
     }
 }

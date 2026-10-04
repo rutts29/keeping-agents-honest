@@ -63,7 +63,7 @@ fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
         } else if metadata.is_file()
             && matches!(
                 path.extension().and_then(|s| s.to_str()),
-                Some("json" | "jsonl" | "log")
+                Some("json" | "jsonl" | "log" | "done")
             )
         {
             let text = fs::read_to_string(&path)?;

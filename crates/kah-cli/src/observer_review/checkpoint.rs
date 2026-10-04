@@ -14,6 +14,9 @@ pub fn evaluate(
 ) -> Result<(Judgment, Value, Value)> {
     let deferrals = super::deferrals::collect(request, actions)?;
     let mut questions = checkpoint::questions();
+    if super::checkpoint_claim::doubtful(request) {
+        questions.insert("claim_made".into(), super::checkpoint_claim::question());
+    }
     for item in &deferrals {
         let id = item["id"]
             .as_str()
@@ -46,6 +49,9 @@ pub fn evaluate(
         checkpoint::VERSION,
     )?;
     let judgment = evaluated?;
+    if let Some(assessment) = super::checkpoint_claim::assessment(&judgment)? {
+        return Ok((judgment, prepared_input, assessment));
+    }
     let mut outcome = checkpoint::decide(&judgment);
     let mut open = vec![];
     for item in deferrals {
@@ -61,7 +67,10 @@ pub fn evaluate(
             }
         }
     }
-    let assessment = json!({"state":if outcome.passed {"checkpoint_passed"} else {"checkpoint_failed"},"passed":outcome.passed,"unproven":outcome.unproven,"deferrals":open,"checkpoint_question_set":checkpoint::VERSION,"private_replay":archive});
+    let mut assessment = json!({"state":if outcome.passed {"checkpoint_passed"} else {"checkpoint_failed"},"passed":outcome.passed,"unproven":outcome.unproven,"deferrals":open,"checkpoint_question_set":checkpoint::VERSION,"private_replay":archive});
+    if super::checkpoint_claim::doubtful(request) {
+        assessment["claim_question_set"] = super::claims::VERSION.into();
+    }
     Ok((judgment, prepared_input, assessment))
 }
 fn confirmed(judgment: &Judgment, key: &str, expected: &str) -> bool {
@@ -74,6 +83,9 @@ pub fn record(
     request: &Request,
     result: &Value,
 ) -> Result<()> {
+    if result["assessment"]["state"] == "checkpoint_not_claimed" {
+        return Ok(());
+    }
     state.checkpoint = Some(
         json!({"head":request.head,"intent_revision":request.intent["revision"],"request":request.id,"passed":result["assessment"]["passed"],"unproven":result["assessment"]["unproven"],"at_ms":kah_observer::session::now_ms()}),
     );
@@ -103,7 +115,9 @@ pub fn record(
     Ok(())
 }
 pub fn notify(state: &super::state::State, request: &Request, result: &Value) -> Result<()> {
-    if result["assessment"]["passed"] == true {
+    if result["assessment"]["passed"] == true
+        || result["assessment"]["state"] == "checkpoint_not_claimed"
+    {
         return Ok(());
     }
     let (socket, _) = super::runtime::transport(state)?;
