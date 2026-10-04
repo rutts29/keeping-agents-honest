@@ -9,6 +9,8 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+mod rendering;
+pub use rendering::{native_document, render};
 
 pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> Result<Request> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=context")?);
@@ -22,13 +24,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         "kah:ledger",
         &serde_json::to_string_pretty(&projection)?,
     )];
-    let history = history(&home, state)?;
-    documents.push(Document::new(
-        "transcript",
-        "worker_transcript",
-        &format!("native:{}:{}", state.worker.provider, state.worker.session),
-        &history,
-    ));
+    documents.push(history(&home, state)?);
     let mut project = project_context(&home, state)?;
     let mut trigger = trigger;
     if purpose == Purpose::Drift {
@@ -111,7 +107,7 @@ fn add_previous(state: &State, documents: &mut Vec<Document>) -> Result<()> {
     Ok(())
 }
 
-fn history(home: &Path, state: &State) -> Result<String> {
+fn history(home: &Path, state: &State) -> Result<Document> {
     let directory = super::state::Store::directory(&state.worker.session)?;
     let mut history = History::open(
         home,
@@ -135,33 +131,7 @@ fn history(home: &Path, state: &State) -> Result<String> {
         }
     };
     crate::privacy::scrub(&mut value);
-    Ok(render(&value))
-}
-pub fn render(value: &Value) -> String {
-    // Preserve all native fields, decoding string leaves for exact human quotes.
-    fn walk(value: &Value, path: &str, out: &mut String) {
-        match value {
-            Value::Object(map) => {
-                for (key, value) in map {
-                    walk(value, &format!("{path}/{key}"), out);
-                }
-            }
-            Value::Array(values) => {
-                for (index, value) in values.iter().enumerate() {
-                    walk(value, &format!("{path}/{index}"), out);
-                }
-            }
-            Value::String(text) => {
-                out.push_str(&format!("\n[{path}]\n{text}\n"));
-            }
-            other => {
-                out.push_str(&format!("\n[{path}]\n{other}\n"));
-            }
-        }
-    }
-    let mut text = String::new();
-    walk(value, "native", &mut text);
-    text
+    native_document(&state.worker.provider, &state.worker.session, &value)
 }
 
 fn project_context(home: &Path, state: &State) -> Result<Value> {

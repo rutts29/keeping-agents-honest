@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+mod native_record;
 mod reminder;
+pub use native_record::NativeRecord;
 pub use reminder::{IntentQuote, Reminder};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -14,6 +16,12 @@ pub struct Document {
     pub uri: String,
     pub text: String,
     pub digest: String,
+    #[serde(
+        default,
+        with = "native_record::encoded",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub native_records: Vec<NativeRecord>,
 }
 impl Document {
     pub fn new(id: &str, kind: &str, uri: &str, text: &str) -> Self {
@@ -23,6 +31,7 @@ impl Document {
             uri: uri.into(),
             text: text.into(),
             digest: format!("sha256:{:x}", Sha256::digest(text.as_bytes())),
+            native_records: vec![],
         }
     }
 }
@@ -161,9 +170,25 @@ fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, St
     // The brain chooses a complete meaningful span, including any nearby
     // context it needs. Keep the full source in the immutable snapshot/CAS;
     // repeating it here would undo evidence extraction and swamp Jev.
-    Ok(
-        json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"end_byte":end,"line":line}),
-    )
+    let evidence = json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"end_byte":end,"line":line});
+    Ok(with_native_records(evidence, document, start, end))
+}
+fn with_native_records(
+    mut evidence: Value,
+    document: &Document,
+    start: usize,
+    end: usize,
+) -> Value {
+    let records = document
+        .native_records
+        .iter()
+        .filter(|r| r.start_byte < end && r.end_byte > start)
+        .map(|r| r.context.clone())
+        .collect::<Vec<_>>();
+    if !records.is_empty() {
+        evidence["native_records"] = json!(records);
+    }
+    evidence
 }
 fn joins_word(left: Option<char>, right: Option<char>) -> bool {
     left.is_some_and(|c| c.is_alphanumeric() || c == '_')
