@@ -30,9 +30,12 @@ pub(super) fn submit(worker: &str, provider: &str, project: &Path, pane: &Pane, 
             super::linked_steer::wait_input(worker, text);
             return;
         }
+        // 0.160.0's inspection server has no live thread in its own registry;
+        // it marks an external in-progress rollout interrupted. Only explicit
+        // failure evidence is terminal here; a persisted completion is required.
         assert!(
-            turn["status"] != "failed" && turn["status"] != "interrupted",
-            "native fixture turn ended unsuccessfully: {turn}"
+            turn["error"].is_null(),
+            "native fixture turn failed: {turn}"
         );
         std::thread::sleep(Duration::from_millis(250));
     }
@@ -48,6 +51,13 @@ fn finished(provider: &str, previous: &Value, current: &Value, seen: bool, compl
 fn an_intake_receipt_does_not_make_the_previous_native_turn_the_new_completion() {
     let previous = json!({"id":"phase-2","status":"completed"});
     assert!(!finished("codex", &previous, &previous, true, true));
+    assert!(!finished(
+        "codex",
+        &previous,
+        &json!({"id":"repair","status":"interrupted","completedAt":null,"error":null}),
+        true,
+        false
+    ));
     assert!(!finished(
         "codex",
         &previous,
