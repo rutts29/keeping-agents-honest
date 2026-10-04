@@ -86,10 +86,9 @@ fn read_tags(home: &Path, state: &State) -> Result<Vec<String>> {
             needs_creation: false,
         };
         let git = super::capture::worktree_git(state)?;
-        let mut executor =
+        let executor =
             crate::native_setup::executor(home, &project, Default::default(), git.as_deref())?
                 .read_only_project();
-        executor.use_nobody();
         executor
             .command(&project.root, &args.map(str::to_owned))?
             .output()?

@@ -187,7 +187,6 @@ fn restricted_context(home: &Path, state: &State) -> Result<std::process::Output
     let git = worktree_git(state)?;
     let mut executor =
         crate::native_setup::executor(home, &project, LaunchOptions::default(), git.as_deref())?;
-    executor.use_nobody();
     let binary = state.observer.workspace.join("bin/kah");
     executor = executor
         .with_read_only_mounts(&[(binary.clone(), binary.clone())])?
@@ -335,6 +334,12 @@ fn git(root: &Path, args: &[&str]) -> Result<Option<String>> {
         .arg(format!("safe.directory={}", root.display()))
         .args(args)
         .output()?;
+    if !output.status.success() {
+        eprintln!(
+            "REVIEW_GIT_COMMAND stage=context: git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
     Ok(output
         .status
         .success()

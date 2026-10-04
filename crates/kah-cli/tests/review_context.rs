@@ -62,3 +62,27 @@ fn cumulative_context_includes_older_committed_code_and_current_changes() {
     assert_eq!(git(&root, &["rev-parse", "HEAD"]), head);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn incomplete_git_context_reports_the_failed_command_and_native_cause() {
+    let root = std::env::temp_dir().join(format!("kah-review-bare-context-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    git(&root, &["init", "--quiet"]);
+    git(&root, &["config", "core.bare", "true"]);
+    let output = Command::new(env!("CARGO_BIN_EXE_kah"))
+        .arg("__review-project-context")
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        error.contains("REVIEW_GIT_COMMAND stage=context"),
+        "{error}"
+    );
+    assert!(
+        error.contains("status") && error.contains("work tree"),
+        "{error}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}

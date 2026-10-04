@@ -1,4 +1,5 @@
 use kah_cli::{Arguments, run_pane::Pane};
+mod checkpoints;
 mod linked_steer;
 mod replay;
 mod review;
@@ -38,6 +39,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_CHECKPOINTS").is_some() {
+        return Some(checkpoints::run);
+    }
     if std::env::var_os("KAH_GATE_UNCERTAIN_STEER").is_some() {
         return Some(uncertain_steer::run);
     }
