@@ -1,7 +1,8 @@
 //! Preserve private, scrubbed failure evidence before native fixture purge.
-use super::*;
 use kah_cli::observer_review::state::{State, Store as Reviews};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::{fs, path::Path};
 
 pub fn archive(home: &Path, state: &State) -> kah_cli::Result<()> {
     assert!(

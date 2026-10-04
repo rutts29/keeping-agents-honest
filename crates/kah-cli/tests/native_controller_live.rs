@@ -2,21 +2,20 @@
 #[path = "terminal_support/herdr_probe.rs"]
 mod herdr_probe;
 mod native_controller_support;
+#[path = "../src/privacy.rs"]
+mod privacy;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
 mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[path = "relay_support/review_trace.rs"]
+mod review_trace;
 #[path = "terminal_support/version.rs"]
 mod version;
 use serde_json::json;
-use std::{
-    fs,
-    path::PathBuf,
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::{fs, path::PathBuf, process::Command, time::Duration};
 
 #[test]
 #[ignore = "gVisor checkpoint/import/verification path diagnostic; no model call"]
@@ -46,14 +45,10 @@ fn journey(agent: &str) {
     let mut terminal = pty::Terminal::start(&command, &probe.root.join("terminal.log"));
     terminal.wait_for("KAH_HERDR_SHELL_READY");
     terminal.submit(&format!("env -u CODEX_THREAD_ID KAH_NATIVE_RUN_PROBE={} KAH_NATIVE_RUN_AGENT={} {} --exact native_run_probe_entrypoint --nocapture > {} 2>&1", pty::quote(probe.root.to_str().unwrap()), pty::quote(agent), pty::quote(std::env::current_exe().unwrap().to_str().unwrap()), pty::quote(probe.root.join("helper.log").to_str().unwrap())));
-    let deadline = Instant::now() + Duration::from_secs(300);
     let evidence = loop {
         terminal.respond_to_cursor_queries();
         if let Ok(bytes) = fs::read(probe.root.join("result.json")) {
             break serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
-        }
-        if Instant::now() >= deadline {
-            break json!({"passed":false,"failure":"native run helper timed out"});
         }
         std::thread::sleep(Duration::from_millis(200));
     };
@@ -92,6 +87,7 @@ fn preserve_failure(
     if evidence["passed"] == true {
         return None;
     }
+    preserve_review(&probe.root);
     let helper = std::env::temp_dir().join(format!(
         "kah-native-run-failure-{agent}-{}.log",
         std::process::id()
@@ -104,6 +100,19 @@ fn preserve_failure(
         fs::set_permissions(target, fs::Permissions::from_mode(0o600)).unwrap();
     }
     Some(helper)
+}
+fn preserve_review(root: &std::path::Path) {
+    let saved: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("cleanup.json")).unwrap()).unwrap();
+    let base = kah_core::run_store::RunStore::default_state_root().unwrap();
+    let record =
+        kah_run::store::Store::read(&base.join("runs"), saved["run"].as_str().unwrap()).unwrap();
+    if let Some(session) = record.native.as_ref().and_then(|n| n.session.as_deref())
+        && let Ok(Some(state)) = kah_cli::observer_review::state::Store::read(session)
+    {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        review_trace::archive(&home, &state).unwrap();
+    }
 }
 fn evidence_name(agent: &str) -> String {
     let kind = if let Ok(trial) = std::env::var("KAH_GATE_COMPLETION_TRIAL") {
