@@ -9,7 +9,8 @@ pub(super) fn gap(worker: &str, previous: &mut Option<Value>) {
     assert!(
         error.starts_with("REVIEW_DEFERRAL_")
             || error.starts_with("REVIEW_REPORT_MISSING")
-            || error.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN"),
+            || error.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN")
+            || error.starts_with("REVIEW_CHECKPOINT_EVIDENCE_MISSING"),
         "checkpoint gap: {gap}"
     );
     if previous.as_ref() == Some(&gap) {

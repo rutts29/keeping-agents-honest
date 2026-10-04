@@ -58,12 +58,21 @@ pub fn evaluate(
     if let Some(assessment) = super::checkpoint_claim::assessment(&judgment)? {
         return Ok((judgment, prepared_input, assessment));
     }
+    require_coverage(actions)?;
     let mut assessment = assess(&judgment, deferrals);
     assessment["private_replay"] = serde_json::to_value(archive)?;
     if super::checkpoint_claim::doubtful(request) {
         assessment["claim_question_set"] = super::claims::VERSION.into();
     }
     Ok((judgment, prepared_input, assessment))
+}
+pub fn require_coverage(actions: &[Value]) -> Result<()> {
+    for topic in ["intent", "integration", "drift"] {
+        if !actions.iter().any(|a| a["evidence"]["topic"] == topic) {
+            return Err(format!("REVIEW_CHECKPOINT_EVIDENCE_MISSING stage=checkpoint: provide a {topic} finding with complete exact source quotes for the CURRENT claimed phase and commit; the same request remains pending").into());
+        }
+    }
+    Ok(())
 }
 pub fn assess(judgment: &Judgment, deferrals: Vec<Value>) -> Value {
     let mut outcome = checkpoint::decide(judgment);
