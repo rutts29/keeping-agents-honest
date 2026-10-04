@@ -118,7 +118,8 @@ pub fn focus(worker: &str) -> Result<()> {
 }
 pub fn status(worker: &str) -> Result<Value> {
     let gap: Option<Value> = state::read(&Store::directory(worker)?.join("gap.json"))?;
-    Ok(Store::read(worker)?.map(|s|json!({"session":s.observer.session,"pane":s.observer.pane,"model":s.observer.model,"effort":s.observer.effort,"wakes":s.wakes,"pending":s.pending,"latest":s.latest,"deferrals":s.deferrals,"gap":gap})).unwrap_or_else(||gap.map(|g|json!({"gap":g})).unwrap_or(Value::Null)))
+    let questions = super::questions::pending(&Store::directory(worker)?)?;
+    Ok(Store::read(worker)?.map(|s|json!({"session":s.observer.session,"pane":s.observer.pane,"model":s.observer.model,"effort":s.observer.effort,"wakes":s.wakes,"pending":s.pending,"latest":s.latest,"deferrals":s.deferrals,"questions":questions,"gap":gap})).unwrap_or_else(||gap.map(|g|json!({"gap":g,"questions":questions})).unwrap_or_else(||if questions.is_empty(){Value::Null}else{json!({"questions":questions})})))
 }
 
 pub fn owned_pane(state: &State) -> Result<crate::run_pane::Pane> {

@@ -120,6 +120,12 @@ pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
     Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
 }
 pub fn kick(worker: &str) -> Result<()> {
+    if super::questions::pending(&Store::directory(worker)?)?
+        .iter()
+        .any(|q| q["delivery"] != "submitted")
+    {
+        super::hook::spawn("__review-questions", worker)?;
+    }
     if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
         super::hook::spawn("__review-retry", worker)?;
         return Ok(());

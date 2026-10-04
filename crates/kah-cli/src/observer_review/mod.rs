@@ -10,6 +10,7 @@ pub mod hook_queue;
 pub mod launch;
 pub mod preparation;
 mod prepared_result;
+pub mod questions;
 pub mod queue;
 pub mod redelivery;
 pub mod reminder;
@@ -77,6 +78,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__checkpoint-tags" => tags::run(&args[1]),
         "__review-resume" => runtime::resume(&args[1]),
         "__review-retry" => runtime::retry_pending(&args[1]),
+        "__review-questions" => questions::deliver(&args[1]),
         _ => return None,
     };
     Some(result.inspect_err(|e| {
