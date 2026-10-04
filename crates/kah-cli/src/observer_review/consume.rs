@@ -58,7 +58,7 @@ pub fn run(worker: &str) -> Result<()> {
     let tokens = tokens(&home, &store, &state);
     let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":kah_observer::verified_judgment::VERSION,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
     archive(&store.directory, &request.id, &result)?;
-    super::questions::store(&store.directory, &request, &report, &assessment)?;
+    super::uncertainty::record(&store, &request, &report, &assessment, &judgment)?;
     if request.purpose == Purpose::Drift {
         crate::unattended_report::save(
             &store.directory,
@@ -235,6 +235,9 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
         ));
     }
     fs::remove_file(path)?;
+    if reminder["system_notice"] == true {
+        return Ok(Some(json!({"systemMessage":reminder["text"]})));
+    }
     Ok(Some(
         json!({"hookSpecificOutput":{"hookEventName":event,"additionalContext":reminder["text"]}}),
     ))

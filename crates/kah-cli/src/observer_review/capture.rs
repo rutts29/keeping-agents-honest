@@ -17,7 +17,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     let source = Store::read(&RunStore::default_state_root()?, &state.worker.session)?
         .ok_or("REVIEW_WORKER_STATE stage=context")?;
     let projection = engine::projection(&source)?;
-    let intent=projection.as_ref().map(|p|json!({"revision":p.revision,"goal":p.goal.text,"items":p.preserve.iter().chain(&p.frontier).chain(&p.validation).map(|i|json!({"id":i.id,"text":i.text,"source":i.introduced_by})).collect::<Vec<_>>(),"failures":source.failures,"completed_outcomes":[],"open_outcomes":[],"open_deferrals":state.deferrals})).unwrap_or(Value::Null);
+    let intent=projection.as_ref().map(|p|json!({"revision":p.revision,"goal":p.goal.text,"goal_source":p.goal.source_refs,"items":p.preserve.iter().chain(&p.frontier).chain(&p.validation).map(|i|json!({"id":i.id,"text":i.text,"source":i.introduced_by})).collect::<Vec<_>>(),"failures":source.failures,"completed_outcomes":[],"open_outcomes":[],"open_deferrals":state.deferrals})).unwrap_or(Value::Null);
     let mut documents = vec![Document::new(
         "ledger",
         "ledger",
@@ -35,6 +35,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     }
     project_documents(&mut project, &trigger, &mut documents)?;
     add_previous(state, &mut documents)?;
+    add_reconsideration(state, &trigger, &mut documents)?;
     let id = format!(
         "review-{}-{}",
         kah_observer::session::now_ms(),
@@ -51,6 +52,31 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         documents,
         created_ms: kah_observer::session::now_ms(),
     })
+}
+fn add_reconsideration(
+    state: &State,
+    trigger: &Value,
+    documents: &mut Vec<Document>,
+) -> Result<()> {
+    let Some(id) = trigger["reconsideration"]["request"].as_str() else {
+        return Ok(());
+    };
+    if !id.starts_with("review-") || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return Err("REVIEW_REQUEST_ID stage=reconsideration".into());
+    }
+    let result: Value = super::state::read(
+        &super::state::Store::directory(&state.worker.session)?
+            .join("results")
+            .join(format!("{id}.json")),
+    )?
+    .ok_or("REVIEW_RESULT_MISSING stage=reconsideration")?;
+    documents.push(Document::new(
+        "reconsidered-review",
+        "prior_review",
+        &format!("kah:{id}"),
+        &serde_json::to_string_pretty(&result)?,
+    ));
+    Ok(())
 }
 fn project_documents(
     project: &mut Value,

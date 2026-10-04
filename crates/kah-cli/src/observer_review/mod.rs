@@ -21,6 +21,7 @@ pub mod snapshot;
 pub mod source_store;
 pub mod state;
 pub mod tags;
+pub mod uncertainty;
 pub mod workspace;
 
 pub fn command(args: &[String]) -> Option<crate::Result<()>> {
@@ -79,6 +80,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__review-resume" => runtime::resume(&args[1]),
         "__review-retry" => runtime::retry_pending(&args[1]),
         "__review-questions" => questions::deliver(&args[1]),
+        "__review-rethink" => uncertainty::resume(&args[1]),
         _ => return None,
     };
     Some(result.inspect_err(|e| {

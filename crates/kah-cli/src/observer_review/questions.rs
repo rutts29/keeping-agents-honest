@@ -5,6 +5,11 @@ use kah_observer::{decision_units::Thinking, review_evidence::Report};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
+mod answers;
+mod resolve;
+pub use answers::queue as queue_answers;
+pub use resolve::new_user_items;
+pub use resolve::resolve;
 
 pub fn store(
     root: &Path,
@@ -18,6 +23,7 @@ pub fn store(
     kah_core::run_store::ensure_private_directory(&root.join("sources"))?;
     let directory = root.join("questions");
     kah_core::run_store::ensure_private_directory(&directory)?;
+    let _delivery = super::state::Store::delivery_at(&directory, true)?;
     let mut created = vec![];
     for r in &units.requirements {
         if !assessment["needs_user"]
@@ -51,6 +57,8 @@ pub fn store(
         }
         let mut value = json!({"id":id,"worker":request.worker,"requirement":r.id,"name":r.name,"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"reason":reason,"summary":summary,"question":question,"options":options,"ledger_review":ledger_review,"status":"pending","delivery":"queued","at_ms":kah_observer::session::now_ms(),"scope":"Only this decision waits; unrelated authorized work continues"});
         crate::privacy::scrub(&mut value);
+        value["authority_at_question"] = json!(super::decisions::active_items(&request.intent));
+        value["goal_at_question"] = request.intent["goal"].clone();
         super::source_store::save(
             &directory,
             path.file_name().unwrap().to_str().unwrap(),

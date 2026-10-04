@@ -21,6 +21,12 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
     }
     if matches!(
         input["hook_event_name"].as_str(),
+        Some("PostToolUse" | "Stop" | "UserPromptSubmit")
+    ) {
+        super::uncertainty::schedule(&binding.session)?;
+    }
+    if matches!(
+        input["hook_event_name"].as_str(),
         Some("SessionStart" | "PostToolUse" | "Stop")
     ) {
         super::tags::schedule(&binding.session)?;
