@@ -27,6 +27,7 @@ fn recoverable(error: &str) -> bool {
     [
         "REVIEW_DEFERRAL_",
         "REVIEW_REPORT_MISSING",
+        "REVIEW_PREPARATION_MISSING",
         "REVIEW_PHASE_CLAIM_UNCERTAIN",
         "REVIEW_CHECKPOINT_SCOPE_MISSING",
         "REVIEW_CHECKPOINT_EVIDENCE_MISSING",
@@ -42,5 +43,8 @@ fn late_native_binding_does_not_abort_a_review_that_is_already_working() {
     // pane. The existing loop must keep watching; redeliver only once idle.
     let error = "REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: cold native binding absent; request retained";
     assert!(recoverable(error));
+    assert!(recoverable(
+        "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection; request retained"
+    ));
     assert!(!recoverable("REVIEW_SESSION_MISMATCH stage=hook"));
 }

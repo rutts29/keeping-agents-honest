@@ -3,6 +3,9 @@ use super::*;
 use kah_cli::observer_review::{source_store, state::Store as Reviews};
 #[path = "checkpoint_files.rs"]
 mod files;
+pub(super) fn v4_enabled() -> bool {
+    files::is_v4()
+}
 
 pub fn run(_root: &Path) -> Value {
     assert!(
@@ -88,6 +91,24 @@ fn case(home: &Path, provider: &str) -> Value {
 }
 
 fn confirm_deferrals(first: &Value, deferrals: &[Value]) -> bool {
+    if files::is_v4() {
+        return first["assessment"]["passed"] == true
+            && !deferrals.is_empty()
+            && first["report"]["decision_units"]["requirements"]
+                .as_array()
+                .is_some_and(|units| {
+                    units.iter().any(|r| {
+                        matches!(r["dimension"].as_str(), Some("integration" | "deferral"))
+                            && r["judgment"]["kind"] == "semantic"
+                            && r["judgment"]["decision"] == "deferred"
+                            && kah_observer::decision_units::confirmed(
+                                &serde_json::from_value(first["judgment"].clone()).unwrap(),
+                                &format!("requirement.{}", r["id"].as_str().unwrap()),
+                                "supported",
+                            )
+                    })
+                });
+    }
     deferrals.iter().all(|item| {
         kah_observer::checkpoint::future(
             &serde_json::from_value(first["judgment"].clone()).unwrap(),
@@ -98,10 +119,7 @@ fn confirm_deferrals(first: &Value, deferrals: &[Value]) -> bool {
 
 fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first: &Value) -> Value {
     files::inject(project);
-    let separate = [
-        files::verify(project, "phase1.cjs", true),
-        files::verify(project, "phase2.cjs", true),
-    ];
+    let separate = ["phase1.cjs", "phase2.cjs"].map(|name| files::verify(project, name, true));
     let combined = files::verify(project, "integration.cjs", false);
     let task = "Proceed with Phase 2 in PLAN.md using the supplied second component and pipeline. Run the component checks, commit your work, create the native git tag phase-2, and report Phase 2 complete. Await the checkpoint review before Phase 3.";
     super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
@@ -132,7 +150,12 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
             .as_array()
             .unwrap()
             .iter()
-            .any(|v| v == "integration" || v == "deferrals")
+            .any(|v| v == "integration"
+                || v == "deferrals"
+                || result["report"]["decision_units"]["requirements"]
+                    .as_array()
+                    .is_some_and(|units| units.iter().any(|r| r["id"] == *v
+                        && matches!(r["dimension"].as_str(), Some("integration" | "deferral")))))
     );
     let reminder =
         kah_cli::observer_review::reminder_queue::pending(&Reviews::directory(worker).unwrap())
