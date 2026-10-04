@@ -49,6 +49,11 @@ fn named_question_is_durable_deduplicated_and_scoped_to_one_requirement() {
     assert!(
         questions::message(&pending[0])
             .unwrap()
+            .starts_with("[kah-builder] [kah-question]")
+    );
+    assert!(
+        questions::message(&pending[0])
+            .unwrap()
             .contains("Unrelated authorized work can continue")
     );
     std::fs::remove_dir_all(root).unwrap();

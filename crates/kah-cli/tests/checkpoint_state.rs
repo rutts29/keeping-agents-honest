@@ -161,3 +161,57 @@ fn saved_binding(worker: &str, home: &std::path::Path) {
         .unwrap();
     drop(primary);
 }
+
+#[test]
+fn run_completion_cannot_skip_an_unanswered_named_question() {
+    let worker = format!("checkpoint-unanswered-unit-{}", std::process::id());
+    let home = std::env::temp_dir().join(&worker);
+    saved_binding(&worker, &home);
+    let mut state = State::new(
+        Endpoint {
+            provider: "codex".into(),
+            session: worker.clone(),
+            project: home.clone(),
+            pane: None,
+            socket: None,
+        },
+        &home,
+    )
+    .unwrap();
+    let store = Store::open(&worker).unwrap();
+    let directory = store.directory.join("questions");
+    kah_core::run_store::ensure_private_directory(&directory).unwrap();
+    kah_cli::unattended_report::save(
+        &directory,
+        "question-format.json",
+        &json!({"id":"question-format","status":"pending","requirement":"format"}),
+    )
+    .unwrap();
+    let request = Request {
+        id: "review-completion".into(),
+        worker,
+        purpose: Purpose::Checkpoint,
+        turn: "t".into(),
+        head: Some("sha".into()),
+        intent: json!({"revision":1}),
+        trigger: json!({"events":[{"kind":"run_completion","completion_key":"key"}]}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    checkpoint::record(
+        &store,
+        &mut state,
+        &request,
+        &json!({"assessment":{"passed":true,"deferrals":[],"unproven":[]}}),
+    )
+    .unwrap();
+    assert_eq!(checkpoint::covers(&state, "sha", 1), None);
+    assert_eq!(
+        state.checkpoint.as_ref().unwrap()["needs_user"],
+        json!(["format"])
+    );
+    assert!(state.pending.is_none());
+    let directory = store.directory.clone();
+    drop(store);
+    std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}

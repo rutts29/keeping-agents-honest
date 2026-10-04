@@ -36,6 +36,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     project_documents(&mut project, &trigger, &mut documents)?;
     add_previous(state, &mut documents)?;
     add_reconsideration(state, &trigger, &mut documents)?;
+    add_questions(state, &mut documents)?;
     let id = format!(
         "review-{}-{}",
         kah_observer::session::now_ms(),
@@ -52,6 +53,19 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         documents,
         created_ms: kah_observer::session::now_ms(),
     })
+}
+fn add_questions(state: &State, documents: &mut Vec<Document>) -> Result<()> {
+    let questions =
+        super::questions::pending(&super::state::Store::directory(&state.worker.session)?)?;
+    if !questions.is_empty() {
+        documents.push(Document::new(
+            "pending-questions",
+            "controller_questions",
+            "kah:pending-questions",
+            &serde_json::to_string_pretty(&questions)?,
+        ));
+    }
+    Ok(())
 }
 fn add_reconsideration(
     state: &State,

@@ -93,7 +93,7 @@ pub fn pending(root: &Path) -> Result<Vec<Value>> {
 pub fn message(question: &Value) -> Result<String> {
     let options = serde_json::to_string(&question["options"])?;
     Ok(format!(
-        "[kah-question] {} worker={} requirement={}\n{}\nThinker's summary: {}\nOptions: {}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. Relay the user's answer with this question id via kah steer; this is a question, not new user authority.",
+        "[kah-builder] [kah-question] {} worker={} requirement={}\n{}\nThinker's summary: {}\nOptions: {}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. Relay the user's answer with this question id via kah steer; this is a question, not new user authority.",
         question["id"]
             .as_str()
             .ok_or("REVIEW_QUESTION_ID stage=question")?,

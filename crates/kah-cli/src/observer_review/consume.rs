@@ -55,8 +55,9 @@ pub fn run(worker: &str) -> Result<()> {
         return super::runtime::prepare_context(worker);
     }
     let (judgment, input, assessment) = decision?;
+    let version = question_version(&request, &report);
     let tokens = tokens(&home, &store, &state);
-    let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":kah_observer::verified_judgment::VERSION,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
+    let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":version,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
     archive(&store.directory, &request.id, &result)?;
     super::uncertainty::record(&store, &request, &report, &assessment, &judgment)?;
     if request.purpose == Purpose::Drift {
@@ -66,14 +67,11 @@ pub fn run(worker: &str) -> Result<()> {
             &json!({"request":request.id,"snapshot_created_ms":request.created_ms,"completed_ms":kah_observer::session::now_ms()}),
         )?;
     }
-    record(worker, &request, &input, &judgment)?;
+    record(worker, &request, &input, &judgment, version)?;
     if request.purpose == Purpose::Checkpoint {
         super::checkpoint::record(&store, &mut state, &request, &result)?;
     }
-    let confirmed_steering = assessment["state"] == "steering_reviewed"
-        && assessment["application"] == "verified_for_next_native_event"
-        && matches!(judgment.answers.get("is_steering"),Some(judge::Answer::Noul{noul}) if *noul>=kah_observer::judge::questions::STEERING_PROBABILITY);
-    if assessment["state"] == "material_drift" || confirmed_steering {
+    if needs_reminder(&assessment, &judgment) {
         super::reminder::save(&store, &request, &report)?;
     }
     state.latest = Some(result);
@@ -88,6 +86,25 @@ pub fn run(worker: &str) -> Result<()> {
         super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
     }
     finish(store, &path, worker)
+}
+pub fn needs_reminder(assessment: &Value, judgment: &judge::Judgment) -> bool {
+    matches!(
+        assessment["state"].as_str(),
+        Some("material_drift" | "drift_failed")
+    ) || assessment["state"] == "steering_reviewed"
+        && assessment["application"] == "verified_for_next_native_event"
+        && matches!(judgment.answers.get("is_steering"),Some(judge::Answer::Noul{noul}) if *noul>=kah_observer::judge::questions::STEERING_PROBABILITY)
+}
+pub fn question_version(request: &super::state::Request, report: &Report) -> u32 {
+    if report.decision_units.is_some() && request.purpose != Purpose::Steering {
+        kah_observer::decision_units::VERSION
+    } else {
+        match request.purpose {
+            Purpose::Checkpoint => kah_observer::checkpoint::VERSION,
+            Purpose::Steering => judge::questions::VERSION,
+            _ => kah_observer::verified_judgment::VERSION,
+        }
+    }
 }
 
 fn evidence(
@@ -277,6 +294,7 @@ fn record(
     request: &super::state::Request,
     input: &Value,
     judgment: &judge::Judgment,
+    version: u32,
 ) -> Result<()> {
     use kah_observer::session;
     let mut primary = session::Store::open_wait(
@@ -286,7 +304,7 @@ fn record(
     let mut source = primary
         .load()?
         .ok_or("REVIEW_PRIMARY_STATE stage=consume")?;
-    primary.append(&json!({"kind":"judgment","source":"verified_observer","purpose":request.purpose,"review_request":request.id,"prepared":super::preparation::pending(worker,&request.id)?,"judgment":judgment,"question_set":kah_observer::verified_judgment::VERSION,"at_ms":session::now_ms(),"state_digest":kah_observer::context_selection::digest(input)}))?;
+    primary.append(&json!({"kind":"judgment","source":"verified_observer","purpose":request.purpose,"review_request":request.id,"prepared":super::preparation::pending(worker,&request.id)?,"judgment":judgment,"question_set":version,"at_ms":session::now_ms(),"state_digest":kah_observer::context_selection::digest(input)}))?;
     source.judgments.push(judgment.clone());
     source.usage.calls += judgment.metrics.calls;
     source.usage.input_tokens += judgment.metrics.input_tokens;

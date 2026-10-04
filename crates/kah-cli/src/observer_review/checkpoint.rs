@@ -135,6 +135,7 @@ pub fn record(
         .and_then(|events| events.iter().find(|e| e["kind"] == "run_completion"))
     {
         state.checkpoint.as_mut().unwrap()["completion_key"] = event["completion_key"].clone();
+        completion_questions(store, state)?;
     }
     state.deferrals = result["assessment"]["deferrals"]
         .as_array()
@@ -151,6 +152,29 @@ pub fn record(
             &store.directory,
             &json!({"request":request.id,"purpose":"checkpoint","turn":request.turn,"text":text}),
         )?;
+    }
+    Ok(())
+}
+fn completion_questions(
+    store: &super::state::Store,
+    state: &mut super::state::State,
+) -> Result<()> {
+    let questions = super::questions::pending(&store.directory)?;
+    let checkpoint = state
+        .checkpoint
+        .as_mut()
+        .ok_or("REVIEW_CHECKPOINT_MISSING stage=completion")?;
+    if !questions.is_empty() && checkpoint["passed"] == true {
+        checkpoint["passed"] = Value::Null;
+        checkpoint["state"] = "checkpoint_needs_user".into();
+        checkpoint["needs_user"] = json!(
+            questions
+                .iter()
+                .map(|q| &q["requirement"])
+                .collect::<Vec<_>>()
+        );
+        checkpoint["pending_questions"] =
+            json!(questions.iter().map(|q| &q["id"]).collect::<Vec<_>>());
     }
     Ok(())
 }
