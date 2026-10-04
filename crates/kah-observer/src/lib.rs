@@ -19,6 +19,7 @@ pub mod intake;
 pub mod relayed_user;
 pub mod review;
 pub mod review_evidence;
+pub mod steering_proposal;
 pub mod verbatim;
 pub mod verification;
 pub mod verified_judgment;

@@ -5,6 +5,8 @@ use crate::{
 };
 use kah_core::intent_history::*;
 use sha2::{Digest, Sha256};
+mod typed;
+pub use typed::apply as apply_validated;
 
 use crate::judge::questions::{
     REPLACE_CONFIDENCE, REPLACE_PROBABILITY, STEERING_PROBABILITY, TYPE_CONFIDENCE,

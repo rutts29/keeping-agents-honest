@@ -33,7 +33,10 @@ pub fn covered(worker: &str, trigger: &Value) -> Result<bool> {
             && current.source == source.source
             && (current.dismissed
                 || current.promoted
-                || matches!(current.decision, Some(Decision::Jev { .. })))
+                || matches!(
+                    current.decision,
+                    Some(Decision::Jev { .. } | Decision::Validated { .. })
+                ))
     }))
 }
 pub fn judge(home: &Path, request: &Request, actions: &[Value]) -> Result<(Judgment, Value)> {

@@ -26,10 +26,22 @@ pub fn presence(probability: f64, record: f64, ignore: f64) -> Presence {
 pub enum Decision {
     Force,
     Aside,
-    Inherited { item: Box<IntentItem> },
-    Jev { judgment: Box<Judgment> },
-    Verification { judgment: Box<Judgment> },
-    Gap { reason: String },
+    Inherited {
+        item: Box<IntentItem>,
+    },
+    Jev {
+        judgment: Box<Judgment>,
+    },
+    Verification {
+        judgment: Box<Judgment>,
+    },
+    Validated {
+        proposal: Box<crate::steering_proposal::Proposal>,
+        judgment: Box<Judgment>,
+    },
+    Gap {
+        reason: String,
+    },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Input {
@@ -115,6 +127,9 @@ impl Decision {
             Self::Jev { judgment } => {
                 matches!(judgment.answers.get("is_steering"),Some(Answer::Noul{noul}) if *noul>IGNORE_PROBABILITY)
             }
+            Self::Validated { proposal, judgment } => {
+                proposal.directs && crate::steering_proposal::validated(proposal, judgment)
+            }
             _ => false,
         }
     }
@@ -144,6 +159,9 @@ impl Decision {
                 Ok(())
             }
             Self::Jev { judgment } => verbatim::apply(history, text, source, judgment),
+            Self::Validated { proposal, judgment } => {
+                verbatim::apply_validated(history, text, source, proposal, judgment)
+            }
             Self::Aside | Self::Gap { .. } | Self::Verification { .. } => Ok(()),
         }
     }
