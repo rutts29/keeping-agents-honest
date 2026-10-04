@@ -1,0 +1,142 @@
+//! The thinker decomposes facts and decides semantics. It never emits model
+//! probabilities; Jev validates these units before code can apply a verdict.
+use crate::review_evidence::{Citation, Document};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::collections::BTreeSet;
+mod validation;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewUnits {
+    pub requirements: Vec<Requirement>,
+    #[serde(default)]
+    pub proportion: Option<Proportion>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Requirement {
+    pub id: String,
+    pub name: String,
+    pub dimension: Dimension,
+    pub authority_items: Vec<String>,
+    pub citations: Vec<Citation>,
+    pub components: Vec<Component>,
+    pub checks: Vec<CheckReceipt>,
+    pub judgment: Thinking,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Dimension {
+    Intent,
+    Integration,
+    Deferral,
+    Drift,
+    Steering,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Component {
+    pub name: String,
+    pub role: ComponentRole,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComponentRole {
+    Implementation,
+    Test,
+    Supporting,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckReceipt {
+    pub name: String,
+    pub command_citation: usize,
+    pub result_citation: usize,
+    pub sha_citation: usize,
+    pub sha: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Thinking {
+    Fact {
+        condition: String,
+        evidence_citations: Vec<usize>,
+    },
+    Semantic {
+        decision: SemanticDecision,
+        reasoning: String,
+        evidence_citations: Vec<usize>,
+    },
+    NeedsUser {
+        reason: UncertaintyReason,
+        summary: String,
+        question: String,
+        options: Vec<String>,
+        evidence_citations: Vec<usize>,
+    },
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticDecision {
+    Satisfied,
+    Violated,
+    Deferred,
+    NotApplicable,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UncertaintyReason {
+    ComplexContext,
+    AmbiguousInstructions,
+    ContradictoryInstructions,
+    JobContext,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Proportion {
+    pub id: String,
+    pub name: String,
+    pub worst_case_consequence: String,
+    pub estimated_recovery_seconds: f64,
+    pub estimated_recovery_usage: String,
+    pub spent_seconds: f64,
+    pub spent_usage: String,
+    pub reasoning: String,
+    pub citations: Vec<Citation>,
+}
+impl ReviewUnits {
+    pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
+        let mut ids = BTreeSet::new();
+        let mut covered = BTreeSet::new();
+        let mut requirements = vec![];
+        for requirement in &self.requirements {
+            if !validation::id(&requirement.id) || !ids.insert(&requirement.id) {
+                return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
+            }
+            let value = validation::requirement(requirement, documents)?;
+            if requirement
+                .authority_items
+                .iter()
+                .any(|id| !active_items.contains(id))
+            {
+                return Err("REVIEW_REQUIREMENT_AUTHORITY stage=decision_units: authority item is not in the protected input".into());
+            }
+            covered.extend(requirement.authority_items.iter());
+            requirements.push(value);
+        }
+        for item in active_items {
+            if !covered.contains(item) {
+                return Err(format!(
+                    "REVIEW_REQUIREMENT_COVERAGE stage=decision_units: active item {item} has no named requirement"
+                ));
+            }
+        }
+        let proportion = self
+            .proportion
+            .as_ref()
+            .map(|p| validation::proportion(p, documents))
+            .transpose()?;
+        Ok(json!({"requirements":requirements,"proportion":proportion}))
+    }
+}

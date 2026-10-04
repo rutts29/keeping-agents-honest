@@ -135,7 +135,7 @@ impl Report {
         }}}}})
     }
 }
-fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, String> {
+pub(crate) fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, String> {
     let document = documents
         .iter()
         .find(|d| d.id == citation.source)
