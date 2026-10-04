@@ -80,7 +80,7 @@ fn confirmed_violation_blocks_but_uncertainty_is_a_named_user_decision() {
 #[test]
 fn unresolved_thinker_question_does_not_invent_a_jev_verdict() {
     let uncertain = units(
-        json!({"kind":"needs_user","reason":"complex_context","summary":"Two authorization sources cannot be reconciled.","question":"Which contract should apply?","options":["First contract","Second contract"],"evidence_citations":[0]}),
+        json!({"kind":"needs_user","reason":"complex_context","summary":"Two authorization sources cannot be reconciled.","question":"Which contract should apply?","options":["First contract","Second contract"],"evidence_citations":[0],"ledger_review":{"reasoning":"Existing decisions do not resolve the contradiction.","citations":[0]}}),
     );
     assert!(decision_units::questions(&uncertain).is_empty());
     assert!(

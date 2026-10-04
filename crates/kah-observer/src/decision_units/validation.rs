@@ -26,6 +26,17 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     for receipt in &r.checks {
         check(receipt, &citations)?;
     }
+    if let Thinking::NeedsUser { ledger_review, .. } = &r.judgment {
+        nonempty(&ledger_review.reasoning)?;
+        if ledger_review.citations.is_empty()
+            || ledger_review
+                .citations
+                .iter()
+                .any(|i| !citations.get(*i).is_some_and(|c| c["kind"] == "ledger"))
+        {
+            return Err("REVIEW_LEDGER_CHECK stage=decision_units: cite existing ledger decisions before asking the user".into());
+        }
+    }
     let mut value =
         serde_json::to_value(r).map_err(|_| "REVIEW_REQUIREMENT_JSON stage=decision_units")?;
     value["citations"] = json!(citations);

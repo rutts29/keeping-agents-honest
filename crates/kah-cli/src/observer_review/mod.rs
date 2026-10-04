@@ -2,6 +2,7 @@
 pub mod capture;
 pub mod consume;
 pub mod control;
+pub mod decisions;
 pub mod deferrals;
 pub mod dispatch;
 pub mod hook;

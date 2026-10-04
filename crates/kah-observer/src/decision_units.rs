@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 mod evaluation;
+pub mod schema;
 mod validation;
 pub use evaluation::{Outcome, VERSION, assess, confirmed, questions};
 
@@ -76,7 +77,14 @@ pub enum Thinking {
         question: String,
         options: Vec<String>,
         evidence_citations: Vec<usize>,
+        ledger_review: LedgerReview,
     },
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerReview {
+    pub reasoning: String,
+    pub citations: Vec<usize>,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

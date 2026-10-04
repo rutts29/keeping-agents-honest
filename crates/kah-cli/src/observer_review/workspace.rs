@@ -171,6 +171,7 @@ pub fn submit(args: &[String]) -> Result<()> {
     let bytes = fs::read(&args[5])?;
     let report:Report=serde_json::from_slice(&bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no decision/probability fields")?;
     report.verify(&request.id, &request.documents)?;
+    super::decisions::verify(&request, &report)?;
     super::reminder::validate_report(&report, &request)?;
     let directory = Path::new(&args[3])
         .parent()

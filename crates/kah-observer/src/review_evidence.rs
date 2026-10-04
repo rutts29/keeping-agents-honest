@@ -1,5 +1,5 @@
-//! A model proposes evidence, never probabilities or decisions. The host checks
-//! every quote against its immutable full-context snapshot before invoking Jev.
+//! The thinker supplies evidence and typed semantic decisions, never model
+//! probabilities. Host verifies original sources before Jev validation.
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -89,8 +89,20 @@ pub struct Report {
     pub findings: Vec<Finding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reminder: Option<Reminder>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_units: Option<crate::decision_units::ReviewUnits>,
 }
 impl Report {
+    pub fn verify_units(
+        &self,
+        documents: &[Document],
+        active_items: &[String],
+    ) -> Result<Option<Value>, String> {
+        self.decision_units
+            .as_ref()
+            .map(|u| u.verify(documents, active_items))
+            .transpose()
+    }
     pub fn reminder_text(&self, intent: &Value, record: &str) -> Result<String, String> {
         self.reminder
             .as_ref()
@@ -129,10 +141,14 @@ impl Report {
         }).collect()
     }
     pub fn schema() -> Value {
-        json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{"reminder":Reminder::schema(),
+        let mut value = json!({"type":"object","additionalProperties":false,"required":["request_id","findings"],"properties":{"reminder":Reminder::schema(),
         "request_id":{"type":"string"},"findings":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["topic","claim","citations"],"properties":{
             "topic":{"type":"string","enum":["intent","integration","deferral","drift","steering","claim"]},"claim":{"type":"string"},"checkpoint_scope":{"type":"object","additionalProperties":false,"required":["phase","components","authorization_citation"],"properties":{"phase":{"type":"string"},"components":{"type":"array","minItems":1,"items":{"type":"string"}},"authorization_citation":{"type":"integer","minimum":0}}},"deferral":{"type":"object","additionalProperties":false,"required":["phase","requirement_citation","dependency_citation"],"properties":{"id":{"type":["string","null"]},"phase":{"type":"string"},"requirement_citation":{"type":"integer","minimum":0},"dependency_citation":{"type":"integer","minimum":0}}},"citations":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["source","digest","quote"],"properties":{"source":{"type":"string"},"digest":{"type":"string"},"quote":{"type":"string"},"occurrence":{"type":"integer","minimum":0}}}}
-        }}}}})
+        }}}}});
+        let mut units = crate::decision_units::schema::schema();
+        value["$defs"] = units.as_object_mut().unwrap().remove("$defs").unwrap();
+        value["properties"]["decision_units"] = units;
+        value
     }
 }
 pub(crate) fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, String> {

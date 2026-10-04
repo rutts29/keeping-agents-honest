@@ -15,7 +15,7 @@ fn report(document: &Document) -> Value {
 fn semantic_thought_is_retained_but_cannot_supply_probabilities_or_fake_sources() {
     let doc = Document::new(
         "user",
-        "user_message",
+        "ledger",
         "native:user",
         "Integrate parser and renderer; do not publish.",
     );
@@ -65,12 +65,12 @@ fn an_active_constraint_cannot_disappear_from_the_requirement_mapping() {
 fn genuine_uncertainty_has_a_named_user_question_and_no_model_score() {
     let doc = Document::new(
         "user",
-        "user_message",
+        "ledger",
         "native:user",
         "Keep spacing exact. Normalize all spacing.",
     );
     let mut value = report(&doc);
-    value["requirements"][0]["judgment"] = json!({"kind":"needs_user","reason":"contradictory_instructions","summary":"Exact and normalized spacing conflict.","question":"Should output preserve or normalize spacing?","options":["Preserve spacing","Normalize spacing"],"evidence_citations":[0]});
+    value["requirements"][0]["judgment"] = json!({"kind":"needs_user","reason":"contradictory_instructions","summary":"Exact and normalized spacing conflict.","question":"Should output preserve or normalize spacing?","options":["Preserve spacing","Normalize spacing"],"evidence_citations":[0],"ledger_review":{"reasoning":"The two current rules conflict and no existing resolution is cited.","citations":[0]}});
     value["requirements"][0]["authority_items"] = json!(["goal"]);
     let units: ReviewUnits = serde_json::from_value(value).unwrap();
     let verified = units.verify(&[doc], &["goal".into()]).unwrap();
