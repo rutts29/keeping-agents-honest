@@ -4,7 +4,9 @@ use crate::review_evidence::{Citation, Document};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+mod evaluation;
 mod validation;
+pub use evaluation::{Outcome, VERSION, assess, confirmed, questions};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -106,6 +108,22 @@ pub struct Proportion {
     pub citations: Vec<Citation>,
 }
 impl ReviewUnits {
+    /// Reindex complete verified units by name without removing any content.
+    pub fn named_state(verified: &Value) -> Result<Value, String> {
+        let requirements = verified["requirements"]
+            .as_array()
+            .ok_or("REVIEW_REQUIREMENT_STATE stage=decision_units")?;
+        let mut named = serde_json::Map::new();
+        for item in requirements {
+            let id = item["id"]
+                .as_str()
+                .ok_or("REVIEW_REQUIREMENT_ID stage=decision_units")?;
+            if !validation::id(id) || named.insert(id.into(), item.clone()).is_some() {
+                return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
+            }
+        }
+        Ok(json!({"requirements":named,"proportion":verified["proportion"]}))
+    }
     pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
         let mut ids = BTreeSet::new();
         let mut covered = BTreeSet::new();
