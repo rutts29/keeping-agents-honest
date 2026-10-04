@@ -37,20 +37,23 @@ pub fn run(worker: &str) -> Result<()> {
             .unwrap_or_else(|| State::new(crate::relay_store::endpoint(worker)?, &home))?;
         let current = read_tags(&home, &state)?;
         let prior: Option<Vec<String>> = super::state::read(&root.join("git-tags.json"))?;
-        if let Some(prior) = prior {
-            let added = additions(&prior, &current);
-            if !added.is_empty() {
-                super::events::enqueue(
-                    worker,
-                    json!({"kind":"native_git_tag","tags":added,"source":"controller Git metadata","at_ms":kah_observer::session::now_ms()}),
-                )?;
-            }
+        let added = observed_additions(prior.as_deref(), &current);
+        if !added.is_empty() {
+            super::events::enqueue(
+                worker,
+                json!({"kind":"native_git_tag","tags":added,"source":"controller Git metadata","initial_sample":prior.is_none(),"at_ms":kah_observer::session::now_ms()}),
+            )?;
         }
         crate::unattended_report::save(&root, "git-tags.json", &json!(current))?;
         for path in paths {
             fs::remove_file(path)?
         }
     }
+}
+/// A background startup sample can race the first tool. Review existing tags
+/// once on an unobserved session rather than silently losing that first tag.
+pub fn observed_additions(previous: Option<&[String]>, current: &[String]) -> Vec<String> {
+    additions(previous.unwrap_or_default(), current)
 }
 pub fn additions(previous: &[String], current: &[String]) -> Vec<String> {
     current

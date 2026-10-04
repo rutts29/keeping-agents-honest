@@ -11,3 +11,15 @@ fn new_and_retargeted_tags_trigger_but_existing_tags_do_not() {
         after
     );
 }
+
+#[test]
+fn first_sample_cannot_hide_a_tag_created_before_background_startup() {
+    let current = vec!["refs/tags/phase-1 abc".into()];
+    assert_eq!(
+        kah_cli::observer_review::tags::observed_additions(None, &current),
+        current
+    );
+    assert!(
+        kah_cli::observer_review::tags::observed_additions(Some(&current), &current).is_empty()
+    );
+}
