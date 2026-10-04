@@ -16,10 +16,12 @@ use fixture::prepare;
 pub fn research() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();
-    let (launch, f) = prepare(&home, "research", false);
-    let initial_commit = baseline(&home, &f);
+    let (launch, mut f) = prepare(&home, "research", false);
+    baseline(&home, &f);
     let mut client = Client::start_command(launch.command(true), &f.stderr);
     let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":true}));
+    f.sessions
+        .push(start["thread"]["id"].as_str().unwrap().into());
     assert_eq!(start["model"], "gpt-6.1-sol");
     assert_eq!(start["reasoningEffort"], "low");
     let config = client.request(
@@ -50,7 +52,7 @@ pub fn research() {
     assert_eq!(fs::read_to_string(&f.canary).unwrap(), "untouched");
     drop(client);
     assert_eq!(fs::read(home.join(".codex/config.toml")).unwrap(), before);
-    let evidence = json!({"operations":operations,"model":start["model"],"effort":start["reasoningEffort"],"globalConfigUnchanged":true,"hostCanaryUnchanged":true,"initialCommit":initial_commit,"newProjectCommitted":true,"sharedLoginAndHistory":true,"passed":true});
+    let evidence = json!({"operations":operations,"model":start["model"],"effort":start["reasoningEffort"],"globalConfigUnchanged":true,"hostCanaryUnchanged":true,"initialCommit":null,"initializedWithoutAuthoredCommit":true,"sharedLoginAndHistory":true,"passed":true});
     let output = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/gates/evidence/phase-2/launcher-research.json");
     fs::write(
@@ -60,7 +62,7 @@ pub fn research() {
     .unwrap();
 }
 
-fn baseline(home: &Path, f: &fixture::Fixture) -> String {
+fn baseline(home: &Path, f: &fixture::Fixture) {
     for name in ["auth.json", "sessions"] {
         assert_eq!(
             fs::canonicalize(f.overlay.join(name)).unwrap(),
@@ -73,20 +75,23 @@ fn baseline(home: &Path, f: &fixture::Fixture) -> String {
         .args(["rev-parse", "--verify", "HEAD"])
         .output()
         .unwrap();
-    assert!(head.status.success());
+    assert!(
+        !head.status.success(),
+        "kah must leave new projects uncommitted"
+    );
     let clean = std::process::Command::new("git")
         .arg("-C")
         .arg(&f.project)
         .args(["status", "--porcelain"])
         .output()
         .unwrap();
-    assert!(clean.status.success() && clean.stdout.is_empty());
+    assert!(clean.status.success());
+    assert!(String::from_utf8_lossy(&clean.stdout).contains("?? AGENTS.md"));
     assert!(
         fs::read_to_string(f.project.join("AGENTS.md"))
             .unwrap()
             .contains("Dependency decisions")
     );
-    String::from_utf8(head.stdout).unwrap().trim().into()
 }
 
 fn operations(events: &[Value]) -> Vec<Value> {

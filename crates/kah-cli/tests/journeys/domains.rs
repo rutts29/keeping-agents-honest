@@ -19,6 +19,7 @@ pub fn all_domains() {
         ("research", false),
         ("research", true),
         ("untrusted", false),
+        ("untrusted", true),
     ] {
         reports.push(journey(&home, domain, online));
     }
@@ -39,9 +40,8 @@ fn journey(home: &Path, domain: &str, online: bool) -> Value {
     assert_eq!(start["model"], "gpt-6.1-sol");
     assert_eq!(start["reasoningEffort"], "low");
     let id = start["thread"]["id"].as_str().unwrap();
-    if online {
-        f.sessions.push(id.into());
-    }
+    // Ephemeral threads still spawn host observer helpers; retire those too.
+    f.sessions.push(id.into());
     let turn = client.turn(id,"Implement a small Node.js utility in sum.cjs exporting a function that sums an array of integers. Use native apply_patch to create it, then native exec_command with node:assert/strict to test empty array => 0, [1,2,3] => 6, [-2,5] => 3. Print SUM_TESTS_PASSED only after all three assertions pass. No dependencies, MCP, subagents, network, or commits. Report and stop.");
     assert_eq!(turn["status"], "completed");
     let task_operations = operations(&client.events);
@@ -88,8 +88,7 @@ fn search(client: &mut Client, id: &str, f: &Fixture, online: bool) -> Value {
         "config/read",
         json!({"cwd":f.project,"includeLayers":false}),
     );
-    let mode = if online { "live" } else { "disabled" };
-    assert_eq!(config["config"]["web_search"], mode);
+    assert_eq!(config["config"]["web_search"], "live");
     let before = client.events.len();
     let turn = client.turn(id,"Use the model's hosted web_search tool to search for the official IANA example domains documentation. Do not use curl, commands, MCP, subagents or other fallbacks. If hosted web search is unavailable, reply exactly HOSTED_SEARCH_UNAVAILABLE. Otherwise return the official page title and link. Then stop.");
     assert_eq!(turn["status"], "completed");
@@ -103,27 +102,22 @@ fn search(client: &mut Client, id: &str, f: &Fixture, online: bool) -> Value {
         .filter(|i| i["type"] == "webSearch")
         .cloned()
         .collect();
+    assert!(
+        !searches.is_empty(),
+        "no live hosted search occurred: {items:?}"
+    );
     let text = items
         .iter()
         .filter(|i| i["type"] == "agentMessage")
         .map(|i| i["text"].as_str().unwrap_or(""))
         .collect::<String>();
-    if online {
-        assert!(
-            !searches.is_empty(),
-            "no live hosted search occurred: {items:?}"
-        );
-    } else {
-        assert!(searches.is_empty());
-        assert!(text.contains("HOSTED_SEARCH_UNAVAILABLE"), "{items:?}");
-    }
     assert!(
         !items
             .iter()
             .any(|i| matches!(i["type"].as_str(), Some("commandExecution" | "mcpToolCall"))),
         "search used an unwanted fallback"
     );
-    json!({"configuredMode":mode,"searchEvents":searches,"response":text,"passed":true})
+    json!({"configuredMode":config["config"]["web_search"],"sandboxOnline":online,"searchEvents":searches,"response":text,"passed":true})
 }
 
 fn hostile_project(f: &Fixture) {
