@@ -32,11 +32,13 @@ fn receive(worker: &str) -> Result<()> {
     if input["agent_id"].is_string() {
         return Ok(());
     }
-    let provider = Store::read(worker)?
-        .ok_or("REVIEW_STATE_MISSING stage=hook")?
-        .worker
-        .provider;
-    let event = super::hook_queue::Event::capture(input, super::control::native_parent(&provider));
+    let state = Store::read(worker)?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
+    let mut event = super::hook_queue::Event::capture(
+        input,
+        super::control::native_parent(&state.worker.provider),
+    );
+    validate(&state, &event)?;
+    event.context = super::request_context::capture(&state, &event.input)?;
     match apply(worker, &event) {
         Err(e) if e.to_string().starts_with("REVIEW_BUSY") => {
             super::hook_queue::enqueue(worker, &event)
@@ -64,7 +66,7 @@ fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> 
     writeln!(
         journal,
         "{}",
-        json!({"event":input["hook_event_name"],"session":input["session_id"],"pid":event.pid,"at_ms":kah_observer::session::now_ms()})
+        json!({"event":input["hook_event_name"],"session":input["session_id"],"pid":event.pid,"request_context":event.context,"pending":state.pending.as_ref().map(|p|&p.id),"at_ms":kah_observer::session::now_ms()})
     )?;
     journal.sync_all()?;
     let session = input["session_id"]
@@ -89,14 +91,29 @@ fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> 
     if let Some(path) = input["transcript_path"].as_str() {
         state.observer.transcript = Some(PathBuf::from(path));
     }
-    let event = input["hook_event_name"].as_str().unwrap_or("");
-    if event == "SessionEnd" {
+    let kind = input["hook_event_name"].as_str().unwrap_or("");
+    if kind == "SessionEnd" {
         state.observer.pane = None;
         state.stopped = true;
     }
     store.save(&state)?;
     drop(store);
-    handle_event(worker, &state, event)
+    if matches!(kind, "PostToolUse" | "Stop") && stale(worker, &state, event.context.as_ref())? {
+        return Ok(());
+    }
+    handle_event(worker, &state, kind)
+}
+fn stale(
+    worker: &str,
+    state: &State,
+    context: Option<&super::request_context::Context>,
+) -> Result<bool> {
+    let (Some(pending), Some(context)) = (&state.pending, context) else {
+        return Ok(false);
+    };
+    let decision = super::preparation::active_decision(worker, &pending.id)?;
+    Ok(context.request != pending.id && context.request != decision
+        || super::preparation::pending(worker, &decision)? && !context.preparation)
 }
 fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
     if event == "SessionStart" {

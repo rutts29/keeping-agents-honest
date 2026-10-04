@@ -10,6 +10,8 @@ pub struct Event {
     pub pid: Option<u32>,
     pub pane: Option<String>,
     pub socket: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub context: Option<super::request_context::Context>,
 }
 impl Event {
     pub fn capture(input: Value, pid: Option<u32>) -> Self {
@@ -18,6 +20,7 @@ impl Event {
             pid,
             pane: std::env::var("HERDR_PANE_ID").ok(),
             socket: std::env::var_os("HERDR_SOCKET_PATH").map(Into::into),
+            context: None,
         }
     }
 }

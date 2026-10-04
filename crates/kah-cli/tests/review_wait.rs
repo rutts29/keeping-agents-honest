@@ -69,6 +69,7 @@ fn deferred_native_binding_keeps_original_identity_and_scope_after_contention() 
         pid: Some(std::process::id()),
         pane: Some("observer-pane".into()),
         socket: Some("/private/herdr.sock".into()),
+        context: None,
     };
     kah_cli::unattended_report::save(&events, "first.json", &serde_json::to_value(event).unwrap())
         .unwrap();
@@ -128,6 +129,7 @@ fn idle_without_a_preparation_acknowledgement_keeps_the_request_and_shows_a_name
         pid: Some(std::process::id()),
         pane: Some("observer-pane".into()),
         socket: Some("/private/herdr.sock".into()),
+        context: None,
     };
     kah_cli::unattended_report::save(&events, "stop.json", &serde_json::to_value(event).unwrap())
         .unwrap();
@@ -140,6 +142,59 @@ fn idle_without_a_preparation_acknowledgement_keeps_the_request_and_shows_a_name
     let gap = fs::read_to_string(directory.join("gap.json")).unwrap();
     assert!(gap.contains("REVIEW_PREPARATION_MISSING"));
     assert!(gap.contains("review-selection"));
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+    fs::remove_dir_all(workspace).unwrap();
+}
+
+#[test]
+fn a_deferred_stop_for_the_old_request_cannot_fault_the_new_review() {
+    use kah_cli::observer_review::{
+        hook_queue,
+        request_context::Context,
+        state::{Pending, Purpose},
+    };
+    use serde_json::json;
+    let worker = format!("old-stop-unit-{}", std::process::id());
+    let workspace = std::env::temp_dir().join(&worker);
+    fs::create_dir_all(&workspace).unwrap();
+    let mut state = fixture_state(&worker, &workspace);
+    state.pending = Some(Pending {
+        id: "review-new".into(),
+        purpose: Purpose::Drift,
+        turn: "t".into(),
+        head: None,
+        created_ms: 0,
+        native_tokens_before: Some(0),
+    });
+    let store = Store::open(&worker).unwrap();
+    store.save(&state).unwrap();
+    let directory = store.directory.clone();
+    let events = directory.join("hook-events");
+    kah_core::run_store::ensure_private_directory(&events).unwrap();
+    let event = hook_queue::Event {
+        input: json!({"hook_event_name":"Stop","session_id":"native-session","cwd":workspace}),
+        pid: Some(std::process::id()),
+        pane: Some("observer-pane".into()),
+        socket: Some("/private/herdr.sock".into()),
+        context: Some(Context {
+            request: "review-old".into(),
+            preparation: false,
+        }),
+    };
+    kah_cli::unattended_report::save(
+        &events,
+        "old-stop.json",
+        &serde_json::to_value(event).unwrap(),
+    )
+    .unwrap();
+    drop(store);
+    hook_queue::run(&worker).unwrap();
+    assert!(!directory.join("gap.json").exists());
+    assert_eq!(
+        Store::read(&worker).unwrap().unwrap().pending.unwrap().id,
+        "review-new"
+    );
+    assert!(!events.join("old-stop.json").exists());
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
     fs::remove_dir_all(workspace).unwrap();
 }
