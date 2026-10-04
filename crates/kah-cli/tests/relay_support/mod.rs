@@ -5,6 +5,7 @@ mod review;
 mod review_drift;
 mod review_trace;
 mod trace;
+mod uncertain_steer;
 mod user_steer;
 use kah_core::run_store::RunStore;
 use kah_observer::session::Store;
@@ -37,6 +38,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_UNCERTAIN_STEER").is_some() {
+        return Some(uncertain_steer::run);
+    }
     if std::env::var_os("KAH_GATE_LINKED_STEER").is_some() {
         return Some(linked_steer::run);
     }

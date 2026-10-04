@@ -27,6 +27,13 @@ impl Version {
             self.target,
             "native updater changed the fixture binary; rerun before claiming an exact version"
         );
-        assert_eq!(reported.as_str(), Some(self.text.as_str()));
+        assert!(
+            self.matches(reported),
+            "reported native version differs from the captured binary"
+        );
+    }
+    pub fn matches(&self, reported: &serde_json::Value) -> bool {
+        self.binary.canonicalize().is_ok_and(|p| p == self.target)
+            && reported.as_str() == Some(self.text.as_str())
     }
 }

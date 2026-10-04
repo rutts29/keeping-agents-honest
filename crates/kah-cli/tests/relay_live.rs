@@ -63,28 +63,52 @@ fn relay_and_dispatch() {
     drop(terminal);
     native_controller_support::cleanup(&probe.root);
     assert_eq!(evidence["passed"], true, "{evidence}");
+    retain_version_failure(&versions, &evidence, reviewer_notified);
     for (n, agent) in ["codex", "claude"].iter().enumerate() {
         versions[n].verify(&evidence["versions"][agent]);
     }
     fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(
-            if std::env::var_os("KAH_GATE_LINKED_STEER").is_some() {
-                "linked-steering.json"
-            } else if std::env::var_os("KAH_GATE_REPLAY").is_some() {
-                "historical-replay.json"
-            } else if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
-                "verified-drift.json"
-            } else if std::env::var_os("KAH_GATE_REVIEW").is_some() {
-                "persistent-handoff.json"
-            } else if reviewer_notified {
-                "user-steer.json"
-            } else {
-                "relay-dispatch.json"
-            },
-        ),
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+            .join(evidence_name(reviewer_notified)),
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
+}
+fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value, notified: bool) {
+    if ["codex", "claude"]
+        .iter()
+        .enumerate()
+        .any(|(i, agent)| !versions[i].matches(&evidence["versions"][agent]))
+    {
+        let mut retained = evidence.clone();
+        retained["passed"] = false.into();
+        retained["failure"] =
+            "NATIVE_VERSION_CHANGED: provider journeys completed, exact-version proof unvalidated"
+                .into();
+        let root = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
+        fs::write(
+            root.join(format!("version-change-{}", evidence_name(notified))),
+            serde_json::to_vec_pretty(&retained).unwrap(),
+        )
+        .unwrap();
+    }
+}
+fn evidence_name(reviewer_notified: bool) -> &'static str {
+    [
+        ("KAH_GATE_UNCERTAIN_STEER", "uncertain-steering.json"),
+        ("KAH_GATE_LINKED_STEER", "linked-steering.json"),
+        ("KAH_GATE_REPLAY", "historical-replay.json"),
+        ("KAH_GATE_REVIEW_DRIFT", "verified-drift.json"),
+        ("KAH_GATE_REVIEW", "persistent-handoff.json"),
+    ]
+    .into_iter()
+    .find(|(flag, _)| std::env::var_os(flag).is_some())
+    .map(|(_, name)| name)
+    .unwrap_or(if reviewer_notified {
+        "user-steer.json"
+    } else {
+        "relay-dispatch.json"
+    })
 }
 
 fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> (Value, bool) {

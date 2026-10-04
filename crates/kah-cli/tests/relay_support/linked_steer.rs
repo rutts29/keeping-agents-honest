@@ -97,7 +97,7 @@ fn prove(id: &str, project: &Path, provider: &str, old: &str, new: &str) -> Valu
     );
     json!({"provider":provider,"worker":id,"olderReceipt":old,"newerReceipt":new,"linkPreserved":true,"olderWithdrawn":true,"verbatim":true,"redMarker":true})
 }
-fn steer(home: &Path, id: &str, text: &str, receipt: &str, supersedes: Option<&str>) {
+pub(super) fn steer(home: &Path, id: &str, text: &str, receipt: &str, supersedes: Option<&str>) {
     let mut command = Command::new(home.join(".local/bin/kah"));
     command.args(["steer", id, text, "--receipt", receipt]);
     if let Some(previous) = supersedes {
@@ -110,7 +110,7 @@ fn steer(home: &Path, id: &str, text: &str, receipt: &str, supersedes: Option<&s
         String::from_utf8_lossy(&output.stderr)
     );
 }
-fn wait_input(id: &str, text: &str) {
+pub(super) fn wait_input(id: &str, text: &str) {
     let deadline = Instant::now() + Duration::from_secs(600);
     loop {
         if let Ok(primary) =
