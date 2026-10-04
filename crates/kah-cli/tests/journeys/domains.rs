@@ -9,6 +9,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+#[path = "search_records.rs"]
+mod search_records;
 
 pub fn all_domains() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
@@ -36,7 +38,10 @@ fn journey(home: &Path, domain: &str, online: bool) -> Value {
         hostile_project(&f);
     }
     let mut client = Client::start_command(launch.command(true), &f.stderr);
-    let start = client.request("thread/start", json!({"cwd":f.project,"ephemeral":!online}));
+    let start = client.request(
+        "thread/start",
+        json!({"cwd":f.project,"ephemeral":domain=="mine" && !online}),
+    );
     assert_eq!(start["model"], "gpt-6.1-sol");
     assert_eq!(start["reasoningEffort"], "low");
     let id = start["thread"]["id"].as_str().unwrap();
@@ -90,7 +95,7 @@ fn search(client: &mut Client, id: &str, f: &Fixture, online: bool) -> Value {
     );
     assert_eq!(config["config"]["web_search"], "live");
     let before = client.events.len();
-    let turn = client.turn(id,"Use the model's hosted web_search tool to search for the official IANA example domains documentation. Do not use curl, commands, MCP, subagents or other fallbacks. If hosted web search is unavailable, reply exactly HOSTED_SEARCH_UNAVAILABLE. Otherwise return the official page title and link. Then stop.");
+    let turn = client.turn(id,"Search the web for the official IANA example domains documentation and return its official title and link. No shell commands, MCP, subagents or fallback fetching. If the native search capability really fails, report the actual error honestly. Then stop.");
     assert_eq!(turn["status"], "completed");
     let items: Vec<_> = client.events[before..]
         .iter()
@@ -106,6 +111,19 @@ fn search(client: &mut Client, id: &str, f: &Fixture, online: bool) -> Value {
         !searches.is_empty(),
         "no live hosted search occurred: {items:?}"
     );
+    let read = client.request("thread/read", json!({"threadId":id,"includeTurns":false}));
+    let raw = fs::read_to_string(
+        read["thread"]["path"]
+            .as_str()
+            .expect("search needs a persistent native transcript"),
+    )
+    .unwrap();
+    let rows = raw
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let (calls, results) = search_records::verify(&rows);
     let text = items
         .iter()
         .filter(|i| i["type"] == "agentMessage")
@@ -117,7 +135,7 @@ fn search(client: &mut Client, id: &str, f: &Fixture, online: bool) -> Value {
             .any(|i| matches!(i["type"].as_str(), Some("commandExecution" | "mcpToolCall"))),
         "search used an unwanted fallback"
     );
-    json!({"configuredMode":config["config"]["web_search"],"sandboxOnline":online,"searchEvents":searches,"response":text,"passed":true})
+    json!({"configuredMode":config["config"]["web_search"],"sandboxOnline":online,"searchEvents":searches,"nativeCalls":calls,"nativeResults":results,"response":text,"passed":true})
 }
 
 fn hostile_project(f: &Fixture) {

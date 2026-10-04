@@ -3,6 +3,7 @@ mod checkpoint_heldout;
 mod checkpoint_retry;
 mod checkpoint_turn;
 mod checkpoints;
+mod hosted_search;
 mod linked_steer;
 mod replay;
 mod review;
@@ -42,6 +43,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_HOSTED_SEARCH").is_some() {
+        return Some(hosted_search::run);
+    }
     if std::env::var_os("KAH_GATE_CHECKPOINTS").is_some() {
         return Some(checkpoints::run);
     }

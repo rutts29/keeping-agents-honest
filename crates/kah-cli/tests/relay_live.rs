@@ -95,6 +95,7 @@ fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value, no
 }
 fn evidence_name(reviewer_notified: bool) -> &'static str {
     [
+        ("KAH_GATE_HOSTED_SEARCH", "hosted-search.json"),
         ("KAH_GATE_CHECKPOINTS", "cumulative-checkpoints.json"),
         ("KAH_GATE_UNCERTAIN_STEER", "uncertain-steering.json"),
         ("KAH_GATE_LINKED_STEER", "linked-steering.json"),
