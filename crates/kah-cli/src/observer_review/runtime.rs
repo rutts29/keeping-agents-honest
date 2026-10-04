@@ -133,8 +133,8 @@ fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<(
         .pane
         .as_deref()
         .ok_or("REVIEW_PANE_ID stage=launch")?;
-    if existing {
-        super::delivery::warm(state, prompt)?;
+    let delivered = if existing {
+        super::delivery::warm(state, prompt)
     } else {
         let command = launch::command(home, state, prompt)?;
         require_active(&state.worker.session)?;
@@ -147,9 +147,12 @@ fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<(
             ],
             Some(socket),
         )?;
-        super::delivery::cold(state, prompt)?;
+        super::delivery::cold(state, prompt)
+    };
+    if delivered.is_err() {
+        startup_notice(state)?;
     }
-    Ok(())
+    delivered
 }
 pub fn prepare_context(worker: &str) -> Result<()> {
     require_active(worker)?;

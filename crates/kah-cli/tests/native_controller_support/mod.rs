@@ -220,8 +220,10 @@ fn launch(
 fn wait(base: &Path, id: &str, agent: &str) -> Record {
     let mut accepted = false;
     let mut stopped = false;
+    let mut observer_consents = std::collections::BTreeSet::new();
     loop {
         let record = Store::read(base, id).unwrap();
+        observer_consent(&record, &mut observer_consents);
         if std::env::var_os("KAH_GATE_CONSENT_ONLY").is_some()
             && accepted
             && !stopped
@@ -263,6 +265,47 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
             }
         }
         std::thread::sleep(Duration::from_millis(300));
+    }
+}
+fn observer_consent(record: &Record, accepted: &mut std::collections::BTreeSet<String>) {
+    use kah_cli::observer_review::state::Store as Reviews;
+    let Some(session) = record.native.as_ref().and_then(|n| n.session.as_deref()) else {
+        return;
+    };
+    let Ok(Some(state)) = Reviews::read(session) else {
+        return;
+    };
+    let Some(pane) = state.observer.pane else {
+        return;
+    };
+    if state.observer.session.is_some() || accepted.contains(&pane) {
+        return;
+    }
+    assert_eq!(
+        state.worker.socket,
+        record.native.as_ref().unwrap().herdr_socket
+    );
+    assert!(
+        state
+            .worker
+            .socket
+            .unwrap()
+            .to_string_lossy()
+            .contains("kah-gate-")
+    );
+    let output = Command::new("herdr")
+        .args([
+            "pane", "read", &pane, "--source", "recent", "--format", "text",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    if text.contains("Quick safety check:")
+        || text.contains("Yes, I trust this folder")
+        || text.contains("Open restricted")
+    {
+        native_consent(&pane, &state.worker.provider);
+        accepted.insert(pane);
     }
 }
 fn accept_consent(id: &str, pane: &str, agent: &str) {
