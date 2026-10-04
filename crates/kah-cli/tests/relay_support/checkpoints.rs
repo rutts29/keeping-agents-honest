@@ -107,8 +107,7 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
     ];
     let combined = files::verify(project, "integration.cjs", false);
     let task = "Proceed with Phase 2 in PLAN.md using the supplied second component and pipeline. Run the component checks, commit your work, create the native git tag phase-2, and report Phase 2 complete. Await the checkpoint review before Phase 3.";
-    panes.0[0].prompt(task).unwrap();
-    super::linked_steer::wait_input(worker, task);
+    super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
     let mut result = checkpoint(
         worker,
@@ -154,8 +153,7 @@ fn repaired(
     second: &Value,
 ) -> Value {
     let task = "Continue by consuming the checkpoint feedback. Correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate.";
-    panes.0[0].prompt(task).unwrap();
-    super::linked_steer::wait_input(worker, task);
+    super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
     let output = Command::new(env!("CARGO_BIN_EXE_kah"))
         .args(["gate", worker])

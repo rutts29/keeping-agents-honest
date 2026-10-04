@@ -1,4 +1,5 @@
 use kah_cli::{Arguments, run_pane::Pane};
+mod checkpoint_turn;
 mod checkpoints;
 mod linked_steer;
 mod replay;
