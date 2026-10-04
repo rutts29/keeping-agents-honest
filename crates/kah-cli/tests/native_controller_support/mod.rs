@@ -94,7 +94,29 @@ fn completion(root: &Path, agent: &str) -> Value {
     for (path, bytes) in before {
         assert_eq!(bytes, fs::read(path).unwrap());
     }
-    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
+    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"checkpointReview":checkpoint_proof(&record),"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
+}
+fn checkpoint_proof(record: &Record) -> Value {
+    use kah_cli::observer_review::state::Store as Reviews;
+    let session = record.native.as_ref().unwrap().session.as_deref().unwrap();
+    let state = Reviews::read(session).unwrap().unwrap();
+    let checkpoint = state.checkpoint.unwrap();
+    assert_eq!(checkpoint["passed"], true);
+    assert_eq!(
+        checkpoint["head"].as_str(),
+        record.control.last_checkpoint()
+    );
+    let root = Reviews::directory(session).unwrap();
+    let result: Value = kah_cli::observer_review::state::read(
+        &root
+            .join("results")
+            .join(format!("{}.json", checkpoint["request"].as_str().unwrap())),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(result["assessment"]["passed"], true);
+    assert_eq!(result["judgment"]["backend"], "jev");
+    json!({"checkpoint":checkpoint,"result":result})
 }
 fn consent_result(
     home: &Path,
