@@ -24,7 +24,7 @@ pub fn record(provider: &str, stage: &str, result: &Value) {
     assert!(!path.exists(), "never overwrite a v6 result");
     fs::write(path, serde_json::to_vec_pretty(&evidence).unwrap()).unwrap();
 }
-fn verify(registration: &Value) {
+pub(super) fn verify(registration: &Value) {
     for (path, source) in [
         (
             "crates/kah-observer/src/decision_units/evaluation.rs",
