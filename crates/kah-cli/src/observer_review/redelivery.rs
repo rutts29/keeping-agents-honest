@@ -2,6 +2,35 @@
 use super::state::Store;
 use crate::Result;
 use serde_json::{Value, json};
+mod reviewer;
+pub use reviewer::notify;
+
+pub fn retryable(error: &str) -> bool {
+    super::delivery::wait_timeout(error)
+        || [
+            "REVIEW_REPORT_MISSING",
+            "REVIEW_PREPARATION_MISSING",
+            "REVIEW_REMINDER_MISSING",
+            "REVIEW_REMINDER_NATIVE_LIMIT",
+            "REVIEW_NOT_IDLE",
+            "REVIEW_SUBMISSION_UNCONFIRMED",
+            "REVIEW_QUESTION_REFERENCE",
+            "REVIEW_REQUIREMENT_DIMENSION",
+            "REVIEW_DEFERRAL_",
+            "REVIEW_PHASE_CLAIM_UNCERTAIN",
+            "REVIEW_CHECKPOINT_EVIDENCE_MISSING",
+            "REVIEW_CHECKPOINT_SCOPE_MISSING",
+            "REVIEW_APPLICABILITY_",
+            "REVIEW_PROTOCOL_",
+            "REVIEW_BLOCKER_",
+            "REVIEW_WORKER_QUESTION_",
+            "REVIEW_COMPLETION_RECEIPT_",
+            "CONTEXT_",
+            "REVIEW_OBSERVER_STALLED",
+        ]
+        .iter()
+        .any(|prefix| error.starts_with(prefix))
+}
 
 pub fn prompt(
     home: &std::path::Path,

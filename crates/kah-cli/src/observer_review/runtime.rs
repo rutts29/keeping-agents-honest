@@ -281,26 +281,18 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     };
     let gap_path = store.directory.join("gap.json");
+    if super::delivery::in_progress(&state).unwrap_or(false) {
+        if gap_path.exists() {
+            std::fs::remove_file(&gap_path)?;
+        }
+        super::redelivery::completed(&store, &pending.id)?;
+        return Ok(());
+    }
     let gap: Option<Value> = super::state::read(&gap_path)?;
     if !gap.as_ref().is_some_and(|g| {
-        g["error"].as_str().is_some_and(|s| {
-            s.starts_with("REVIEW_REPORT_MISSING")
-                || s.starts_with("REVIEW_PREPARATION_MISSING")
-                || s.starts_with("REVIEW_REMINDER_MISSING")
-                || s.starts_with("REVIEW_REMINDER_NATIVE_LIMIT")
-                || s.starts_with("REVIEW_NOT_IDLE")
-                || s.starts_with("REVIEW_SUBMISSION_UNCONFIRMED")
-                || s.starts_with("REVIEW_DEFERRAL_")
-                || s.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN")
-                || s.starts_with("REVIEW_CHECKPOINT_EVIDENCE_MISSING")
-                || s.starts_with("REVIEW_CHECKPOINT_SCOPE_MISSING")
-                || s.starts_with("REVIEW_APPLICABILITY_")
-                || s.starts_with("REVIEW_PROTOCOL_")
-                || s.starts_with("REVIEW_BLOCKER_")
-                || s.starts_with("REVIEW_WORKER_QUESTION_")
-                || s.starts_with("REVIEW_COMPLETION_RECEIPT_")
-                || s.starts_with("CONTEXT_")
-        })
+        g["error"]
+            .as_str()
+            .is_some_and(super::redelivery::retryable)
     }) {
         return Ok(());
     }
@@ -318,6 +310,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
             .unwrap_or("missing evidence report"),
     )?;
     drop(store);
+    super::redelivery::notify(&state)?;
     let delivery = deliver(&home, &state, &prompt, true);
     let store = Store::open_wait(worker)?;
     super::redelivery::outcome(
@@ -326,6 +319,8 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         number,
         delivery.as_ref().err().map(ToString::to_string),
     )?;
+    drop(store);
+    super::redelivery::notify(&state)?;
     delivery?;
     if super::state::read::<Value>(&gap_path)? == gap {
         std::fs::remove_file(gap_path)?;

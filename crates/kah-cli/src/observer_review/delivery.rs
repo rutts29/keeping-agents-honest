@@ -77,15 +77,34 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
 pub fn idle_wait(result: Result<std::process::Output>) -> Result<std::process::Output> {
     result.map_err(|error| {
         let text = error.to_string();
-        let timeout = text.strip_prefix("RUN_HERDR_COMMAND stage=pane: agent wait: ")
-            .and_then(|body| serde_json::from_str::<Value>(body.trim()).ok())
-            .is_some_and(|body| body["error"]["code"] == "timeout");
-        if timeout {
+        if wait_timeout(&text) {
             format!("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native observer is not idle yet; request retained; {text}").into()
         } else {
             error
         }
     })
+}
+pub fn wait_timeout(text: &str) -> bool {
+    text.strip_prefix("RUN_HERDR_COMMAND stage=pane: agent wait: ")
+        .and_then(|body| serde_json::from_str::<Value>(body.trim()).ok())
+        .is_some_and(|body| body["error"]["code"] == "timeout")
+}
+pub fn in_progress(state: &State) -> Result<bool> {
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    let (socket, _) = runtime::transport(state)?;
+    let Some(pane) = state.observer.pane.as_deref() else {
+        return Ok(false);
+    };
+    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
+    if view["result"]["pane"]["agent_status"] != "working" {
+        return Ok(false);
+    }
+    Ok(
+        super::request_context::capture(state, &serde_json::json!({"hook_event_name":"Stop"}))?
+            .is_some_and(|context| context.request == pending.id),
+    )
 }
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
 /// record prove it; an idle client with no receipt gets the same original wake.

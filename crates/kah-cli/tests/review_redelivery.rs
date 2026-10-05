@@ -23,6 +23,14 @@ fn invalid_context_selection_retries_without_accepting_or_discarding_it() {
     failed_redelivery("CONTEXT_UNKNOWN_ITEM stage=context_selection", "selection");
 }
 
+#[test]
+fn historical_agent_wait_timeout_retries_after_later_worker_events() {
+    failed_redelivery(
+        "RUN_HERDR_COMMAND stage=pane: agent wait: {\"error\":{\"code\":\"timeout\",\"message\":\"timed out waiting for agent status\"},\"id\":\"cli:agent:wait\"}\n",
+        "wait-timeout",
+    );
+}
+
 fn failed_redelivery(error: &str, suffix: &str) {
     let worker = format!("redelivery-unit-{suffix}-{}", std::process::id());
     let home = std::env::temp_dir().join(&worker);
@@ -209,4 +217,41 @@ fn actual_warm_idle_timeout_retains_the_review_without_hiding_other_herdr_errors
     let other =
         "RUN_HERDR_COMMAND stage=pane: agent wait: {\"error\":{\"code\":\"agent_not_found\"}}";
     assert_eq!(idle_wait(Err(other.into())).unwrap_err().to_string(), other);
+}
+
+#[test]
+fn an_undeliverable_reviewer_notice_is_durable_and_named() {
+    use kah_cli::observer_review::redelivery;
+    let worker = format!("reviewer-notice-unit-{}", std::process::id());
+    let home = std::env::temp_dir().join(&worker);
+    let state = setup(&worker, &home);
+    let store = Store::open(&worker).unwrap();
+    redelivery::begin(
+        &store,
+        "review-stalled",
+        "REVIEW_REPORT_MISSING stage=observer",
+    )
+    .unwrap();
+    redelivery::begin(
+        &store,
+        "review-stalled",
+        "REVIEW_REPORT_MISSING stage=observer",
+    )
+    .unwrap();
+    let root = store.directory.clone();
+    drop(store);
+    redelivery::notify(&state).unwrap();
+    let notice: serde_json::Value =
+        kah_cli::observer_review::state::read(&root.join("redelivery-reviewer-notice.json"))
+            .unwrap()
+            .unwrap();
+    assert_eq!(notice["submitted"], false);
+    assert_eq!(notice["notice"]["request"], "review-stalled");
+    assert!(
+        notice["notice"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("REVIEW_REPORT_MISSING")
+    );
+    fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }

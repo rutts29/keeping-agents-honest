@@ -16,6 +16,7 @@ pub mod preparation;
 mod prepared_result;
 pub mod questions;
 pub mod queue;
+pub mod recovery;
 pub mod redelivery;
 pub mod reminder;
 pub mod reminder_queue;
@@ -86,6 +87,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__checkpoint-tags" => tags::run(&args[1]),
         "__review-resume" => runtime::resume(&args[1]),
         "__review-retry" => runtime::retry_pending(&args[1]),
+        "__review-recover" => recovery::run(&args[1]).map(|value| println!("{value}")),
         "__review-questions" => questions::deliver(&args[1]),
         "__review-rethink" => uncertainty::resume(&args[1]),
         _ => return None,
