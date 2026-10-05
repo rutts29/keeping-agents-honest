@@ -6,6 +6,31 @@ use serde_json::{Value, json};
 use std::{path::Path, process::Command};
 
 pub fn command(home: &Path, state: &State, prompt: &str) -> Result<Command> {
+    let args = arguments(state, prompt)?;
+    let project = Project {
+        domain: Domain::Research,
+        root: state.observer.workspace.clone(),
+        relative_cwd: Default::default(),
+        needs_creation: false,
+    };
+    let mut command = if state.worker.provider == "claude" {
+        claude(home, state, project, args)?
+    } else {
+        codex(home, state, project, args)?
+    };
+    for name in [
+        "CODEX_THREAD_ID",
+        "KAH_OBSERVER_BINDING",
+        "KAH_CLAUDE_BINDING",
+        "KAH_RUN_ID",
+        "KAH_RUN_INSTANCE",
+    ] {
+        command.env_remove(name);
+    }
+    Ok(command)
+}
+
+fn arguments(state: &State, prompt: &str) -> Result<Arguments> {
     let choice = kah_observer::compaction::CompactorConfig::new(
         &state.observer.model,
         Some(&state.observer.effort),
@@ -44,28 +69,12 @@ pub fn command(home: &Path, state: &State, prompt: &str) -> Result<Command> {
     if !prompt.is_empty() {
         args.native.extend(["--".into(), prompt.into()]);
     }
-    let project = Project {
-        domain: Domain::Research,
-        root: state.observer.workspace.clone(),
-        relative_cwd: Default::default(),
-        needs_creation: false,
-    };
-    let mut command = if state.worker.provider == "claude" {
-        claude(home, state, project, args)?
-    } else {
-        codex(home, state, project, args)?
-    };
-    for name in [
-        "CODEX_THREAD_ID",
-        "KAH_OBSERVER_BINDING",
-        "KAH_CLAUDE_BINDING",
-        "KAH_RUN_ID",
-        "KAH_RUN_INSTANCE",
-    ] {
-        command.env_remove(name);
-    }
-    Ok(command)
+    Ok(args)
 }
+
+#[cfg(test)]
+#[path = "../../tests/observer_unit/launch_flags.rs"]
+mod tests;
 
 fn codex(home: &Path, state: &State, project: Project, args: Arguments) -> Result<Command> {
     let launch = Launch::prepare_project(

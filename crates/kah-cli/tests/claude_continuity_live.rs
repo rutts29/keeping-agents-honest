@@ -37,9 +37,17 @@ fn mine_claude_resume_and_compact() {
     f.settled(&mut terminal, resumed);
     let restored = choices(&f);
     assert_eq!(
-        first, restored,
-        "native resume changed model/effort without a launch override"
+        first["model"], restored["model"],
+        "native resume changed model"
     );
+    assert!(
+        matches!(
+            restored["effort"].as_str(),
+            Some("low" | "medium" | "high" | "xhigh" | "max")
+        ),
+        "unsupported native resumed effort: {restored}"
+    );
+    assert_eq!(restored["effort"], restored["perTurnEffort"]);
     compact(&f, &mut terminal);
     let after =
         "Using the standing marker requirement, create after-compact.txt with the required color.";
@@ -64,6 +72,7 @@ fn mine_claude_resume_and_compact() {
         "resume-compact.json",
         json!({"version":version,"passed":true,"nativeBash":true,
         "resumeLaunchModelEffortArgs":false,"beforeChoices":first,"resumedChoices":restored,
+        "nativeEffortParity":true,"effortRule":"Claude CLI --effort is current-session only; native supported default on no-override resume",
         "nativeCompactBoundary":true,"colorPreservedAfterResumeAndCompact":true,"observerGap":false}),
     );
 }
@@ -94,6 +103,10 @@ fn mine_claude_native_subagent() {
     let task = "Use the native Agent tool to start one Claude Sonnet 5.5 subagent at low effort with this task: write child.txt containing CHILD_OK in this project. Wait for it to finish. Do not write the file yourself. Then reply CHILD_DONE.";
     f.prompt(&mut terminal, task);
     f.wait(&mut terminal, || f.has_file("child.txt", "CHILD_OK"));
+    while !claude_support::subagent_completion::completed(&f.rows()) {
+        terminal.respond_to_cursor_queries();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
     f.settled(&mut terminal, task);
     assert!(
         tools(&f)
@@ -117,6 +130,7 @@ fn mine_claude_native_subagent() {
         "subagents.json",
         json!({"version":version,"passed":true,"fixtureModel":"claude-sonnet-5-5",
         "nativeAgentTool":true,"childTranscriptCount":f.child_transcripts(),"childFileCreated":true,
+        "correlatedChildResultThenParentDoneAndTurnDuration":true,
         "authoritativeUserInputs":inputs.len(),"parentBindingPreserved":true,"observerGap":false}),
     );
 }

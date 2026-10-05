@@ -151,7 +151,14 @@ impl Terminal {
 impl Drop for Terminal {
     fn drop(&mut self) {
         if std::thread::panicking() {
-            let diagnostic = format!("/tmp/kah-terminal-failure-{}.log", std::process::id());
+            let thread = std::thread::current();
+            let name = thread
+                .name()
+                .unwrap_or("unnamed")
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect::<String>();
+            let diagnostic = format!("/tmp/kah-terminal-failure-{name}-{}.log", self.tag);
             let _ = fs::copy(&self.log, &diagnostic);
             let _ = fs::set_permissions(&diagnostic, fs::Permissions::from_mode(0o600));
             eprintln!("terminal diagnostic: {diagnostic}");

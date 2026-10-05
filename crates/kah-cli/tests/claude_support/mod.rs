@@ -9,6 +9,7 @@ use std::{
 };
 mod cleanup;
 mod completion;
+pub mod subagent_completion;
 
 pub struct Fixture {
     root: PathBuf,
