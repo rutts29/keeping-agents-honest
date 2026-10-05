@@ -62,6 +62,56 @@ fn failed_native_redelivery_retains_the_pending_review_and_visible_gap() {
     );
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn redelivery_refreshes_old_helper_and_schema_without_changing_request_sources() {
+    let worker = format!("redelivery-upgrade-unit-{}", std::process::id());
+    // CAS sharing uses hard links; keep this workspace on the state filesystem.
+    let home = kah_core::run_store::RunStore::default_state_root()
+        .unwrap()
+        .join(&worker);
+    let state = setup(&worker, &home);
+    fs::create_dir_all(home.join(".local/bin")).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_kah"), home.join(".local/bin/kah")).unwrap();
+    fs::create_dir_all(state.observer.workspace.join("bin")).unwrap();
+    fs::write(state.observer.workspace.join("bin/kah"), "old helper").unwrap();
+    let request = Request {
+        id: "review-upgrade-unit".into(),
+        worker: worker.clone(),
+        purpose: Purpose::Drift,
+        turn: "original".into(),
+        head: None,
+        intent: json!({"goal":"Original whole user words."}),
+        trigger: json!({}),
+        documents: vec![],
+        created_ms: 1,
+    };
+    let original = serde_json::to_value(&request).unwrap();
+    let store = Store::open(&worker).unwrap();
+    let prompt =
+        kah_cli::observer_review::redelivery::prompt(&home, &store, &state, &request, &request.id)
+            .unwrap();
+    assert!(prompt.contains("applicability first"));
+    assert_ne!(
+        fs::read(state.observer.workspace.join("bin/kah")).unwrap(),
+        b"old helper"
+    );
+    let input = state.observer.workspace.join("inputs").join(&request.id);
+    let restored: Request =
+        kah_cli::observer_review::source_store::read(&input.join("request.json")).unwrap();
+    assert_eq!(serde_json::to_value(restored).unwrap(), original);
+    let schema: serde_json::Value =
+        serde_json::from_slice(&fs::read(input.join("schema.json")).unwrap()).unwrap();
+    assert!(
+        serde_json::to_string(&schema)
+            .unwrap()
+            .contains("applicability")
+    );
+    let directory = store.directory.clone();
+    drop(store);
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+    fs::remove_dir_all(home).unwrap();
+}
 fn setup(worker: &str, home: &Path) -> State {
     let base = kah_core::run_store::RunStore::default_state_root().unwrap();
     let binding = session::Binding {

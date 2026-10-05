@@ -9,6 +9,9 @@ pub(super) fn v4_enabled() -> bool {
 pub(super) fn v5_enabled() -> bool {
     files::is_v5()
 }
+pub(super) fn v6_enabled() -> bool {
+    files::is_v6()
+}
 
 pub fn run(_root: &Path) -> Value {
     assert!(
@@ -94,7 +97,7 @@ fn case(home: &Path, provider: &str) -> Value {
 }
 
 fn confirm_deferrals(first: &Value, deferrals: &[Value]) -> bool {
-    if files::is_v4() || files::is_v5() {
+    if files::is_v4() || files::is_v5() || files::is_v6() {
         return first["assessment"]["passed"] == true
             && !deferrals.is_empty()
             && first["report"]["decision_units"]["requirements"]
@@ -200,7 +203,7 @@ fn repaired(
     panes: &mut Panes,
     second: &Value,
 ) -> Value {
-    let task = if files::is_v5() {
+    let task = if files::is_v5() || files::is_v6() {
         "First inspect HEAD and run integration.cjs so its native hook delivers pending checkpoint feedback. Consume it, repair cumulative integration before Phase 3, commit implementation plus the unchanged PLAN.md and all supplied tests, and retag phase-2 to your repaired HEAD. Verify ALL THREE COMMITTED tests in a FRESH CHECKOUT of that exact tagged SHA (git clone --no-hardlinks --no-checkout into a temporary directory; checkout --detach the SHA there). Print checkout HEAD and tag SHA, run phase1.cjs, phase2.cjs and integration.cjs there, and remove that temporary checkout when done. Do not edit tests/plan or start Phase 3. Report the exact verified SHA; the user then requests kah gate."
     } else {
         "First inspect the current SHA and run integration.cjs with a native tool so its hook can deliver pending checkpoint feedback. Then consume that feedback, correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate."
@@ -225,7 +228,7 @@ fn repaired(
         &files::git_oid(project, "HEAD"),
         issued_ms,
     );
-    if files::is_v5() {
+    if files::is_v5() || files::is_v6() {
         let probe = files::probe_commit(project, "refs/tags/phase-2");
         assert_eq!(probe["commit"], files::git_oid(project, "HEAD"));
         assert_eq!(

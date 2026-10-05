@@ -3,6 +3,24 @@ use super::state::Store;
 use crate::Result;
 use serde_json::{Value, json};
 
+pub fn prompt(
+    home: &std::path::Path,
+    store: &Store,
+    state: &super::state::State,
+    request: &super::state::Request,
+    decision: &str,
+) -> Result<String> {
+    // The sources/request stay identical; only helper/schema/instructions are
+    // refreshed so an in-flight native session can correct an older report.
+    super::workspace::prepare(home, state)?;
+    let report_prompt = super::workspace::publish(store, state, request)?;
+    if super::preparation::pending(&request.worker, decision)? {
+        super::preparation::prompt(&request.worker)
+    } else {
+        Ok(report_prompt)
+    }
+}
+
 pub fn begin(store: &Store, request: &str, error: &str) -> Result<u64> {
     let mut log = load(store)?;
     let record = log["requests"]

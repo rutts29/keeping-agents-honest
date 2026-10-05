@@ -139,7 +139,13 @@ pub struct Proportion {
 impl ReviewUnits {
     /// Recorded legacy reports retain their actual question generation.
     pub fn version(&self) -> u32 {
-        if self.requirements.iter().any(|r| r.applicability.is_some()) {
+        if self.requirements.iter().any(|r| {
+            r.applicability.is_some()
+                || matches!(
+                    r.judgment,
+                    Thinking::ArtifactPreservation { .. } | Thinking::NeedsUser { .. }
+                )
+        }) {
             VERSION
         } else {
             5

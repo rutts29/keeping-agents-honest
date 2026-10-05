@@ -3,6 +3,11 @@ use super::*;
 mod v4;
 #[path = "checkpoint_v5_files.rs"]
 mod v5;
+#[path = "checkpoint_v6_files.rs"]
+mod v6;
+pub(super) fn is_v6() -> bool {
+    std::env::var_os("KAH_GATE_CHECKPOINT_V6").is_some()
+}
 pub(super) fn is_v5() -> bool {
     std::env::var_os("KAH_GATE_CHECKPOINT_V5").is_some()
 }
@@ -17,6 +22,9 @@ pub(super) const FAULT: &str = "Controlled checkpoint reliability fixture, not a
 const PLAN: &str = "# Pipeline plan\n\n## Phase 1\nImplement double.cjs: double(n)=2*n. Run phase1.cjs. The increment component does not exist yet. Integration genuinely depends on Phase 2 creating increment.cjs; explicitly keep this dependency open.\n\n## Phase 2\nImplement increment.cjs: increment(n)=n+1. Run phase2.cjs. Wire pipeline.cjs as increment(double(n)). Run integration.cjs on this commit. Both components now exist: integration is required now, not in Phase 3. Close the Phase 1 integration deferral.\n\n## Phase 3\nDocumentation only, after cumulative integration is proven. No missing Phase 3 component is needed by the pipeline.\n";
 
 pub(super) fn seed(project: &Path) {
+    if is_v6() {
+        return v6::seed(project);
+    }
     if is_v5() {
         return v5::seed(project);
     }
@@ -44,6 +52,9 @@ pub(super) fn seed(project: &Path) {
 }
 
 pub(super) fn inject(project: &Path) {
+    if is_v6() {
+        return v6::inject(project);
+    }
     if is_v5() {
         return v5::inject(project);
     }
@@ -69,7 +80,9 @@ pub(super) fn command(
     launch: &kah_cli::Launch,
     fixture: Option<&crate::claude_support::Fixture>,
 ) -> Command {
-    let (goal, fault) = if is_v5() {
+    let (goal, fault) = if is_v6() {
+        (v6::GOAL, v6::FAULT)
+    } else if is_v5() {
         (v5::GOAL, v5::FAULT)
     } else if is_v4() {
         (v4::GOAL, v4::FAULT)
@@ -143,7 +156,7 @@ pub(super) fn probe_commit(project: &Path, reference: &str) -> Value {
         &[
             "/bin/sh".into(),
             "-c".into(),
-            if is_v5() {
+            if is_v5() || is_v6() {
                 v5::probe_script().into()
             } else if is_v4() {
                 v4::probe_script().into()
@@ -162,6 +175,9 @@ pub(super) fn probe_commit(project: &Path, reference: &str) -> Value {
     let mut receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
     if is_v5() {
         v5::assert_artifacts(&receipt);
+    }
+    if is_v6() {
+        v6::assert_artifacts(&receipt);
     }
     receipt["commit"] = sha.into();
     receipt

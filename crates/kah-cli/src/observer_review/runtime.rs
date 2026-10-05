@@ -294,23 +294,17 @@ pub fn retry_pending(worker: &str) -> Result<()> {
                 || s.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN")
                 || s.starts_with("REVIEW_CHECKPOINT_EVIDENCE_MISSING")
                 || s.starts_with("REVIEW_CHECKPOINT_SCOPE_MISSING")
+                || s.starts_with("REVIEW_APPLICABILITY_")
         })
     }) {
         return Ok(());
     }
     let request = workspace::request(&store, &pending.id)?;
     let decision = super::preparation::active_decision(worker, &pending.id)?;
-    let mut prompt = if super::preparation::pending(worker, &decision)? {
-        super::preparation::prompt(worker)?
-    } else {
-        workspace::prompt(
-            &state,
-            &request,
-            &state.observer.workspace.join("inputs").join(&pending.id),
-        )?
-    };
-    prompt.push_str(&format!("\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",gap.as_ref().unwrap()["error"]));
+    transport(&state)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);
+    let mut prompt = super::redelivery::prompt(&home, &store, &state, &request, &decision)?;
+    prompt.push_str(&format!("\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",gap.as_ref().unwrap()["error"]));
     let number = super::redelivery::begin(
         &store,
         &request.id,
