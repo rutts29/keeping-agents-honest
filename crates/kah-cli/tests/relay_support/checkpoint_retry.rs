@@ -18,8 +18,17 @@ pub(super) fn gap(worker: &str, previous: &mut Option<Value>) {
         pane.inspect().unwrap()["agent_status"].as_str(),
         Some("idle" | "done")
     ) {
-        runtime::retry_pending(worker).unwrap();
+        retry_outcome(runtime::retry_pending(worker)).unwrap();
         *previous = Some(gap);
+    }
+}
+
+fn retry_outcome(result: kah_cli::Result<()>) -> kah_cli::Result<()> {
+    match result {
+        // A delivery acknowledgement gap retains the same pending request.
+        // Watch its live native turn/report instead of aborting and killing it.
+        Err(error) if recoverable(&error.to_string()) => Ok(()),
+        other => other,
     }
 }
 
@@ -47,4 +56,10 @@ fn late_native_binding_does_not_abort_a_review_that_is_already_working() {
         "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection; request retained"
     ));
     assert!(!recoverable("REVIEW_SESSION_MISMATCH stage=hook"));
+}
+
+#[test]
+fn a_retained_retry_delivery_gap_does_not_kill_the_active_native_review() {
+    assert!(retry_outcome(Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; inspect private review/delivery-gap.json".into())).is_ok());
+    assert!(retry_outcome(Err("REVIEW_SESSION_MISMATCH stage=hook".into())).is_err());
 }
