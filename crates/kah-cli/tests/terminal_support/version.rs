@@ -1,8 +1,10 @@
 //! Abort evidence publication if a native updater changed the launch binary.
 use std::{path::PathBuf, process::Command};
+#[derive(serde::Serialize)]
 pub struct Version {
     binary: PathBuf,
     target: PathBuf,
+    #[serde(rename = "version")]
     text: String,
 }
 impl Version {

@@ -117,16 +117,7 @@ fn stale(
 }
 fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
     if event == "SessionStart" {
-        let (socket, _) = runtime::transport(state)?;
-        crate::relay_transport::herdr(
-            socket,
-            &[
-                "agent",
-                "rename",
-                state.observer.pane.as_deref().unwrap(),
-                &state.observer.name,
-            ],
-        )?;
+        bind_name(state)?;
     }
     if matches!(event, "Stop" | "PostToolUse")
         && let Some(pending) = &state.pending
@@ -173,6 +164,24 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             )?;
         }
     }
+    if state.pending.is_none() {
+        // A queued wake can lose a nonblocking store race with this hook.
+        // The writer has released the store; complete that handoff now.
+        super::queue::kick(worker)?;
+    }
+    Ok(())
+}
+fn bind_name(state: &State) -> Result<()> {
+    let (socket, _) = runtime::transport(state)?;
+    crate::relay_transport::herdr(
+        socket,
+        &[
+            "agent",
+            "rename",
+            state.observer.pane.as_deref().unwrap(),
+            &state.observer.name,
+        ],
+    )?;
     Ok(())
 }
 fn validate(state: &State, event: &super::hook_queue::Event) -> Result<()> {

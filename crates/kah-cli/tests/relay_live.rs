@@ -29,6 +29,12 @@ fn relay_and_dispatch() {
         version::Version::capture("codex"),
         version::Version::capture("claude"),
     ];
+    fs::write(
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+            .join("native-versions-before.json"),
+        serde_json::to_vec_pretty(&json!({"codex":versions[0],"claude":versions[1]})).unwrap(),
+    )
+    .unwrap();
     let probe = herdr_probe::setup();
     let command = format!(
         "HERDR_CONFIG_PATH={} herdr --session {}",

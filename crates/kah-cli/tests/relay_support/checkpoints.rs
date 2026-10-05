@@ -295,13 +295,8 @@ fn checkpoint(
                         .join(format!("{request}.json")),
                 )
                 .unwrap();
-                let gate_matches = gate_after_ms == 0
-                    || snapshot.trigger["events"].as_array().is_some_and(|events| {
-                        events.iter().any(|e| {
-                            e["kind"] == "user_gate"
-                                && e["at_ms"].as_u64().is_some_and(|at| at >= gate_after_ms)
-                        })
-                    });
+                let gate_matches =
+                    matches_event(&snapshot.trigger, previous.is_some(), gate_after_ms);
                 if gate_matches
                     && checkpoint["head"] == head
                     && previous.is_none_or(|p| p["request"] != request)
@@ -322,4 +317,56 @@ fn checkpoint(
         super::checkpoint_retry::gap(worker, &mut retried_gap);
         std::thread::sleep(Duration::from_millis(250));
     }
+}
+
+fn matches_event(trigger: &Value, previous: bool, gate_after_ms: u64) -> bool {
+    if !previous && gate_after_ms == 0 {
+        return true;
+    }
+    trigger["events"].as_array().is_some_and(|events| {
+        events.iter().any(|event| {
+            if gate_after_ms > 0 {
+                event["kind"] == "user_gate"
+                    && event["at_ms"]
+                        .as_u64()
+                        .is_some_and(|at| at >= gate_after_ms)
+            } else {
+                event["kind"] == "native_git_tag"
+                    && event["tags"].as_array().is_some_and(|tags| {
+                        tags.iter().any(|tag| {
+                            tag.as_str()
+                                .is_some_and(|s| s.starts_with("refs/tags/phase-2 "))
+                        })
+                    })
+            }
+        })
+    })
+}
+
+#[test]
+fn a_phase1_rethink_on_phase2_head_is_not_the_phase2_tag_checkpoint() {
+    let old_claim =
+        json!({"events":[{"kind":"native_phase_claim"}],"reconsideration":{"request":"phase1"}});
+    assert!(!matches_event(&old_claim, true, 0));
+    assert!(matches_event(&old_claim, false, 0));
+    assert!(matches_event(
+        &json!({"events":[{"kind":"native_git_tag","tags":["refs/tags/phase-2 aaaaa"]}]}),
+        true,
+        0
+    ));
+    assert!(!matches_event(
+        &json!({"events":[{"kind":"native_git_tag","tags":["refs/tags/phase-1 aaaaa"]}]}),
+        true,
+        0
+    ));
+    assert!(!matches_event(
+        &json!({"events":[{"kind":"user_gate","at_ms":4}]}),
+        true,
+        5
+    ));
+    assert!(matches_event(
+        &json!({"events":[{"kind":"user_gate","at_ms":5}]}),
+        true,
+        5
+    ));
 }
