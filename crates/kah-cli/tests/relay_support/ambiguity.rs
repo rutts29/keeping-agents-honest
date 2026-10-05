@@ -126,13 +126,56 @@ pub(super) fn prove_delivery(question: &Value, pane: &Pane) {
     let reviewer = ready(pane, "codex");
     let endpoint = kah_cli::relay_store::endpoint(&reviewer).unwrap();
     let message = questions::message(question).unwrap();
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let mut history = kah_cli::native_history::History::open(
+        &home,
+        &kah_cli::relay_store::directory(&reviewer).unwrap(),
+        "codex",
+        &endpoint.project,
+        &reviewer,
+    )
+    .unwrap();
     loop {
-        let users = kah_cli::relay::native_users(&endpoint).unwrap().unwrap();
-        if users.records().iter().any(|r| r.content() == message) {
-            return;
+        if let kah_cli::native_history::History::Codex {
+            client, session, ..
+        } = &mut history
+        {
+            let records = kah_codex::source::full_history(client, session).unwrap();
+            if delivered(&records, &message) {
+                return;
+            }
         }
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+fn delivered(records: &[Value], message: &str) -> bool {
+    // Delivery is transport evidence, not user authority. The question's
+    // [kah-builder] prefix correctly excludes it from relay::native_users.
+    records.iter().any(|r| {
+        r["item"]["type"] == "userMessage"
+            && r["item"]["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|c| c["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("")
+                == message
+    })
+}
+
+#[test]
+fn native_delegate_receipt_is_delivery_evidence_without_promoting_it_to_authority() {
+    let message = "[kah-builder] [kah-question] Worker's question (verbatim):\nWhich policy?";
+    let records =
+        [json!({"item":{"type":"userMessage","content":[{"type":"text","text":message}]}})];
+    assert!(delivered(&records, message));
+    assert!(!delivered(&records, "Which policy?"));
+    assert!(!delivered(
+        &[json!({"item":{"type":"agentMessage","text":message}})],
+        message
+    ));
 }
 
 fn independent_work(worker: &str, project: &Path, pane: &Pane) {
