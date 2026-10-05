@@ -112,16 +112,15 @@ fn journey(
         .collect::<Vec<_>>();
     drop(store);
     let next = next_request(worker, &pending.id, &existing, panes);
-    let pane = Pane {
-        id: state.observer.pane.clone().unwrap(),
-    };
-    super::review::wait_review(worker, &pane, "codex");
-    let checkpoint_result = super::ambiguity::read_result(worker, &next.id);
+    let checkpoint_result = super::ambiguity::wait_result(worker, &next.id, panes);
+    let first_result = super::ambiguity::read_result(worker, &pending.id);
     let actual = Reviews::read(worker).unwrap().unwrap();
-    let result = json!({"passed":next.purpose==Purpose::Checkpoint,"worker":worker,"firstPending":pending,"nextRequest":next,"checkpointResult":checkpoint_result,"statusBeforeRelease":status,"sameObserverSession":actual.observer.session==state.observer.session,"sameObserverPane":actual.observer.pane==state.observer.pane,"queuedRoutineTriggersPreserved":preserved(worker),"protocol":"Real CLI kah gate, real tentative relayed input, native review in progress; checkpoint review priority is independent of its alignment verdict."});
+    let same_session = first_result["observer_session"] == checkpoint_result["observer_session"]
+        && first_result["observer_session"].is_string();
+    let result = json!({"passed":next.purpose==Purpose::Checkpoint&&same_session&&preserved(worker),"worker":worker,"firstPending":pending,"firstResult":first_result,"nextRequest":next,"checkpointResult":checkpoint_result,"statusBeforeRelease":status,"sameObserverSession":same_session,"sameObserverPane":actual.observer.pane==state.observer.pane,"queuedRoutineTriggersPreserved":preserved(worker),"protocol":"Real CLI kah gate, real tentative relayed input, native review in progress; checkpoint review priority is independent of its alignment verdict."});
     super::ambiguity::retain(home, "queue-next-native-review", &result);
     assert_eq!(next.purpose, Purpose::Checkpoint);
-    assert_eq!(actual.observer.session, state.observer.session);
+    assert!(same_session);
     assert!(preserved(worker));
     json!({"passed":true,"worker":worker,"nextPurpose":next.purpose,"checkpointRequest":next.id,"checkpointAssessment":checkpoint_result["assessment"],"observerSession":actual.observer.session,"sameObserverSession":true,"sameObserverPane":true,"queuedRoutineTriggersPreserved":true})
 }
@@ -144,6 +143,15 @@ fn active_review(worker: &str, panes: &mut Panes) {
             super::review::wait_review(worker, &pane, "codex");
         } else {
             runtime::wake(worker, Purpose::Drift, "queue-inflight", json!({"event":"Review actual JSON formatter progress and its tentative user policy question."})).unwrap();
+            while Reviews::read(worker)
+                .unwrap()
+                .is_none_or(|s| s.pending.is_none())
+            {
+                // A queued wake waiting on another host job's lock must not
+                // generate another trigger on every read of the same state.
+                queue::drain(worker).unwrap();
+                std::thread::sleep(Duration::from_millis(200));
+            }
         }
     }
 }

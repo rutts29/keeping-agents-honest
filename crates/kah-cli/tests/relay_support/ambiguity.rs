@@ -125,12 +125,14 @@ fn journey(home: &Path, worker: &str, project: &Path, panes: &mut Panes) -> Valu
 fn prove_delivery(question: &Value, pane: &Pane) {
     let reviewer = ready(pane, "codex");
     let endpoint = kah_cli::relay_store::endpoint(&reviewer).unwrap();
-    let users = kah_cli::relay::native_users(&endpoint).unwrap().unwrap();
     let message = questions::message(question).unwrap();
-    assert!(
-        users.records().iter().any(|r| r.content() == message),
-        "question delivery requires a native transcript receipt"
-    );
+    loop {
+        let users = kah_cli::relay::native_users(&endpoint).unwrap().unwrap();
+        if users.records().iter().any(|r| r.content() == message) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 fn independent_work(worker: &str, project: &Path, pane: &Pane) {
@@ -187,6 +189,30 @@ pub(super) fn read_result(worker: &str, request: &str) -> Value {
             .join(format!("{request}.json")),
     )
     .unwrap()
+}
+pub(super) fn wait_result(worker: &str, request: &str, panes: &mut Panes) -> Value {
+    let path = Reviews::directory(worker)
+        .unwrap()
+        .join("results")
+        .join(format!("{request}.json"));
+    loop {
+        if path.exists() {
+            return read_result(worker, request);
+        }
+        if let Some(state) = Reviews::read(worker).unwrap()
+            && state.pending.is_some()
+        {
+            let pane = Pane {
+                id: state.observer.pane.unwrap(),
+            };
+            if !panes.0.iter().any(|p| p.id == pane.id) {
+                panes.0.push(pane.clone());
+            }
+            super::review::wait_review(worker, &pane, "codex");
+        }
+        kah_cli::observer_review::queue::drain(worker).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 pub(super) fn retain(home: &Path, label: &str, value: &Value) {
     let mut private = value.clone();
