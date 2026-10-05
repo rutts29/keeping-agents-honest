@@ -17,6 +17,7 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
         .map(|c| verify_quote(c, documents))
         .collect::<Result<Vec<_>, _>>()?;
     let indices = thinking(&r.judgment)?;
+    super::blocker::validate(r, &citations)?;
     if let Some(a) = &r.applicability {
         applicability::validate(a, &citations)?;
     }

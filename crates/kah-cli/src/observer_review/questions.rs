@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 mod answers;
+mod native;
 mod resolve;
 pub use answers::queue as queue_answers;
 pub use resolve::new_user_items;
@@ -20,6 +21,7 @@ pub fn store(
     let Some(units) = &report.decision_units else {
         return Ok(vec![]);
     };
+    let verified = native::verified(request, report)?;
     kah_core::run_store::ensure_private_directory(&root.join("sources"))?;
     let directory = root.join("questions");
     kah_core::run_store::ensure_private_directory(&directory)?;
@@ -43,19 +45,27 @@ pub fn store(
         else {
             continue;
         };
-        let identity = serde_json::to_vec(&json!([
-            request.worker,
-            r.id,
-            r.authority_items,
+        let source = native::source(&verified, r)?;
+        let identity = serde_json::to_vec(&native::identity(
+            &request.worker,
+            r,
             question,
-            options
-        ]))?;
+            options,
+            &source,
+        ))?;
         let id = format!("question-{:x}", Sha256::digest(identity));
         let path = directory.join(format!("{id}.json"));
         if super::state::read::<Value>(&path)?.is_some() {
             continue;
         }
         let mut value = json!({"id":id,"worker":request.worker,"requirement":r.id,"name":r.name,"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"reason":reason,"summary":summary,"question":question,"options":options,"ledger_review":ledger_review,"status":"pending","delivery":"queued","at_ms":kah_observer::session::now_ms(),"scope":"Only this decision waits; unrelated authorized work continues"});
+        value["question_origin"] = if source.is_some() {
+            "worker"
+        } else {
+            "observer"
+        }
+        .into();
+        value["worker_question_source"] = json!(source);
         crate::privacy::scrub(&mut value);
         value["authority_at_question"] = json!(super::decisions::active_items(&request.intent));
         value["goal_at_question"] = request.intent["goal"].clone();
@@ -93,12 +103,13 @@ pub fn pending(root: &Path) -> Result<Vec<Value>> {
 pub fn message(question: &Value) -> Result<String> {
     let options = serde_json::to_string(&question["options"])?;
     Ok(format!(
-        "[kah-builder] [kah-question] {} worker={} requirement={}\n{}\nThinker's summary: {}\nOptions: {}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. Relay the user's answer with this question id via kah steer; this is a question, not new user authority.",
+        "[kah-builder] [kah-question] {} worker={} requirement={}\n{}{}\nThinker's summary: {}\nOptions: {}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. Relay the user's answer with this question id via kah steer; this is a question, not new user authority.",
         question["id"]
             .as_str()
             .ok_or("REVIEW_QUESTION_ID stage=question")?,
         question["worker"],
         question["requirement"],
+        native::label(question),
         question["question"].as_str().unwrap_or(""),
         question["summary"].as_str().unwrap_or(""),
         options,

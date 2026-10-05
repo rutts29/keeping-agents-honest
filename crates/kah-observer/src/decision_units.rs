@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 mod applicability;
 pub mod artifact;
+mod blocker;
 mod evaluation;
 pub use applicability::Applicability;
 mod literal;
@@ -17,6 +18,8 @@ pub use evaluation::{Outcome, VERSION, assess, confirmed, questions};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewUnits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
     pub requirements: Vec<Requirement>,
     #[serde(default)]
     pub proportion: Option<Proportion>,
@@ -31,6 +34,10 @@ pub struct Requirement {
     pub dimension: Dimension,
     pub authority_items: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocker: Option<Blocker>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker_question: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferral_id: Option<String>,
     pub citations: Vec<Citation>,
     pub components: Vec<Component>,
@@ -38,6 +45,12 @@ pub struct Requirement {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applicability: Option<Applicability>,
     pub judgment: Thinking,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Blocker {
+    FutureImplementation,
+    UserDecision,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -139,6 +152,9 @@ pub struct Proportion {
 impl ReviewUnits {
     /// Recorded legacy reports retain their actual question generation.
     pub fn version(&self) -> u32 {
+        if let Some(version) = self.version {
+            return version;
+        }
         if self.requirements.iter().any(|r| {
             r.applicability.is_some()
                 || matches!(
@@ -146,7 +162,7 @@ impl ReviewUnits {
                     Thinking::ArtifactPreservation { .. } | Thinking::NeedsUser { .. }
                 )
         }) {
-            VERSION
+            6
         } else {
             5
         }
@@ -170,6 +186,11 @@ impl ReviewUnits {
         )
     }
     pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
+        if self.version.is_some_and(|version| version != 7) {
+            return Err(
+                "REVIEW_PROTOCOL_VERSION stage=decision_units: unknown report protocol".into(),
+            );
+        }
         let mut ids = BTreeSet::new();
         let mut covered = BTreeSet::new();
         let mut requirements = vec![];
@@ -178,6 +199,9 @@ impl ReviewUnits {
                 return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
             }
             let value = validation::requirement(requirement, documents)?;
+            if self.version == Some(7) {
+                blocker::require_typed(requirement)?;
+            }
             if requirement
                 .authority_items
                 .iter()

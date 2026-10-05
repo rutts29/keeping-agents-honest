@@ -2,8 +2,9 @@ use serde_json::{Value, json};
 mod thinking;
 pub fn schema() -> Value {
     let mut value = object(
-        &["requirements"],
+        &["version", "requirements"],
         json!({
+            "version":{"const":7},
             "requirements":{"type":"array","minItems":1,"items":requirement()},
             "proportion":{"anyOf":[{"type":"null"},proportion()]},
             "steering":{"anyOf":[{"type":"null"},crate::steering_proposal::schema()]}
@@ -19,6 +20,7 @@ fn requirement() -> Value {
             "name",
             "dimension",
             "authority_items",
+            "blocker",
             "citations",
             "components",
             "checks",
@@ -29,6 +31,8 @@ fn requirement() -> Value {
             "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$"},"name":{"type":"string"},
             "dimension":{"enum":["intent","integration","deferral","drift","steering"]},
             "authority_items":{"type":"array","minItems":1,"items":{"type":"string"}},
+            "blocker":{"enum":[null,"future_implementation","user_decision"]},
+            "worker_question":{"type":["integer","null"],"minimum":0},
             "deferral_id":{"type":["string","null"]},
             "citations":citations(),
             "components":{"type":"array","items":object(&["name","role"],json!({"name":{"type":"string"},"role":{"enum":["implementation","test","supporting"]}}))},

@@ -149,3 +149,81 @@ fn answer_detection_preserves_old_authority_and_includes_a_new_user_goal() {
     assert_eq!(candidates[0]["id"], "goal");
     assert_eq!(candidates[0]["text"], "Use exact output.");
 }
+
+#[test]
+fn a_worker_asked_question_is_relayed_verbatim_and_named_as_the_workers_question() {
+    let native_question = "Preserve CSV quoting or normalize it?";
+    let mut question = serde_json::json!({"id":"q-native","worker":"worker","requirement":"policy","question":native_question,"options":["Preserve","Normalize"],"summary":"The user has not chosen.","ledger_review":{"reasoning":"No answer exists."},"question_origin":"worker","worker_question_source":{"source":"transcript","digest":"sha256:source","occurrence":0}});
+    let message = questions::message(&question).unwrap();
+    assert!(
+        message.contains("Worker's question (verbatim):\nPreserve CSV quoting or normalize it?\n")
+    );
+    question["question_origin"] = "observer".into();
+    assert!(
+        !questions::message(&question)
+            .unwrap()
+            .contains("Worker's question (verbatim)")
+    );
+}
+
+#[test]
+fn native_question_keeps_one_durable_id_when_transcript_and_option_labels_change() {
+    use kah_observer::review_evidence::{Document, NativeRecord};
+    let root = std::env::temp_dir().join(format!("kah-native-question-{}", std::process::id()));
+    let ledger = Document::new(
+        "ledger",
+        "ledger",
+        "kah:ledger",
+        "No CSV quoting decision exists.",
+    );
+    let text = "Preserve CSV quoting or normalize it?";
+    let native = |suffix: &str| {
+        let mut doc = Document::new(
+            "transcript",
+            "worker_transcript",
+            "native:worker",
+            &format!("{text}{suffix}"),
+        );
+        doc.native_records = vec![NativeRecord {
+            start_byte: 0,
+            end_byte: text.len(),
+            context: json!({"record_type":"agentMessage","record_id":"native-question-1"}),
+        }];
+        doc
+    };
+    let mut request = request();
+    request.intent = json!({"goal":"Build CSV formatter."});
+    request.documents = vec![ledger.clone(), native("")];
+    let mut report = report();
+    let mut raw = serde_json::to_value(report.decision_units.take().unwrap()).unwrap();
+    raw["version"] = json!(7);
+    raw["requirements"][0]["blocker"] = json!("user_decision");
+    raw["requirements"][0]["worker_question"] = json!(1);
+    raw["requirements"][0]["judgment"]["question"] = json!(text);
+    raw["requirements"][0]["citations"] = json!([
+        {"source":"ledger","digest":ledger.digest,"quote":ledger.text},
+        {"source":"transcript","digest":request.documents[1].digest,"quote":text}
+    ]);
+    report.decision_units = Some(serde_json::from_value(raw.clone()).unwrap());
+    let assessment = json!({"needs_user":["format"]});
+    let saved = questions::store(&root, &request, &report, &assessment).unwrap();
+    assert_eq!(saved[0]["question_origin"], "worker");
+    assert_eq!(saved[0]["question"], text);
+    assert_eq!(
+        saved[0]["worker_question_source"]["native_records"][0]["record_id"],
+        "native-question-1"
+    );
+    request.id = "review-next".into();
+    request.documents[1] = native("\nReadiness work continued.");
+    raw["requirements"][0]["citations"][1]["digest"] = json!(request.documents[1].digest);
+    raw["requirements"][0]["judgment"]["options"] =
+        json!(["Keep original quoting", "Use canonical quoting"]);
+    report.decision_units = Some(serde_json::from_value(raw).unwrap());
+    assert!(
+        questions::store(&root, &request, &report, &assessment)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(questions::pending(&root).unwrap().len(), 1);
+    std::fs::remove_dir_all(root).unwrap();
+}
