@@ -17,6 +17,9 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
         .map(|c| verify_quote(c, documents))
         .collect::<Result<Vec<_>, _>>()?;
     let indices = thinking(&r.judgment)?;
+    if let Some(a) = &r.applicability {
+        applicability::validate(a, &citations)?;
+    }
     if indices.is_empty() || indices.iter().any(|i| citations.get(*i).is_none()) {
         return Err("REVIEW_REQUIREMENT_CITATION stage=decision_units".into());
     }

@@ -4,7 +4,9 @@ use crate::review_evidence::{Citation, Document};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+mod applicability;
 mod evaluation;
+pub use applicability::Applicability;
 mod literal;
 pub use literal::Literal;
 pub mod schema;
@@ -32,6 +34,8 @@ pub struct Requirement {
     pub citations: Vec<Citation>,
     pub components: Vec<Component>,
     pub checks: Vec<CheckReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applicability: Option<Applicability>,
     pub judgment: Thinking,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
