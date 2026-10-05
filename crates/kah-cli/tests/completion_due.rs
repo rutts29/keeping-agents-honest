@@ -14,7 +14,7 @@ fn request() -> Request {
         trigger: json!({"events":[
             {"kind":"user_gate","source":"host_cli","at_ms":1},
             {"kind":"native_git_tag","source":"controller Git metadata","tags":["refs/tags/csv-1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]},
-            {"kind":"native_phase_claim","source":{"native_assistant_text":"CSV phase complete."},"judgment":{"backend":"jev"},"uncertain":false}
+            {"kind":"native_phase_claim","source":{"native_assistant_text":"CSV phase complete."},"judgment":{"backend":"jev","answers":{"phase_claim":{"type":"noul","noul":0.99}}},"uncertain":false}
         ]}),
         documents: vec![],
         created_ms: 0,
@@ -45,6 +45,17 @@ fn midturn_and_uncertain_claims_do_not_become_unconditional_completion_events() 
     let mut r = request();
     r.trigger = json!({"events":[{"kind":"native_phase_claim","judgment":{"backend":"jev"},"uncertain":true}]});
     completion_due::add(&mut r).unwrap();
-    let value: serde_json::Value = serde_json::from_str(&r.documents[0].text).unwrap();
-    assert_eq!(value["receipts"][0]["requires_claim_verification"], true);
+    // Reviewer correction: candidate routing is not a confirmed completion fact.
+    assert!(r.documents.is_empty());
+}
+
+#[test]
+fn an_unconfirmed_point_76_phase_claim_remains_semantic_not_literal_due() {
+    let mut r = request();
+    r.trigger = json!({"events":[{"kind":"native_phase_claim","source":{"native_assistant_text":"CSV parser phase ready."},"judgment":{"backend":"jev","answers":{"phase_claim":{"type":"noul","noul":0.76}}},"uncertain":true}]});
+    completion_due::add(&mut r).unwrap();
+    assert!(
+        r.documents.is_empty(),
+        "a .76 interpretation is not a controller fact"
+    );
 }

@@ -19,9 +19,7 @@ pub fn add(request: &mut Request) -> Result<()> {
             Some("native_git_tag") if event["source"] == "controller Git metadata" => {
                 Kind::NativeGitTag
             }
-            Some("native_phase_claim") if event["judgment"]["backend"] == "jev" => {
-                Kind::NativePhaseClaim
-            }
+            Some("native_phase_claim") if confirmed_phase_claim(event) => Kind::NativePhaseClaim,
             _ => continue,
         };
         let id = format!("event-{:x}", Sha256::digest(serde_json::to_vec(event)?));
@@ -40,6 +38,16 @@ pub fn add(request: &mut Request) -> Result<()> {
         request.documents.push(Document::new("completion-due","controller_completion_due","kah:controller-phase-events",&serde_json::to_string_pretty(&json!({"worker":request.worker,"request":request.id,"head":request.head,"receipts":receipts}))?));
     }
     Ok(())
+}
+fn confirmed_phase_claim(event: &serde_json::Value) -> bool {
+    // The installed claim screen uses Noul, which has no separate confidence.
+    // Its existing .90 probability gate must confirm the actual assertion;
+    // backend identity alone cannot turn an interpretation into a known fact.
+    event["judgment"]["backend"] == "jev"
+        && event["uncertain"] != true
+        && event["judgment"]["answers"]["phase_claim"]["noul"]
+            .as_f64()
+            .is_some_and(|p| p >= kah_observer::judge::questions::STEERING_PROBABILITY)
 }
 /// A report cannot smuggle an older genuine receipt into a new decision.
 pub fn bind(request: &Request, report: &kah_observer::review_evidence::Report) -> Result<()> {
