@@ -144,3 +144,59 @@ fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn explicit_checkpoint_precedes_rechecks_without_discarding_or_reordering_the_rest() {
+    let worker = format!("priority-checkpoint-unit-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    for (purpose, id) in [
+        (Purpose::Steering, "steering-first"),
+        (Purpose::Drift, "drift-second"),
+        (Purpose::Checkpoint, "gate-third"),
+        (Purpose::Steering, "steering-last"),
+    ] {
+        queue::enqueue(&worker, purpose, "turn", json!({"id":id})).unwrap();
+    }
+    let jobs = queue::entries(&worker).unwrap();
+    assert_eq!(jobs.len(), 4);
+    assert_eq!(jobs[0].1.purpose, Purpose::Checkpoint);
+    assert_eq!(jobs[1].1.trigger["id"], "steering-first");
+    assert_eq!(jobs[2].1.trigger["id"], "drift-second");
+    assert_eq!(jobs[3].1.trigger["id"], "steering-last");
+    let (next, paths) = queue::batch(&jobs).unwrap();
+    assert_eq!(next.trigger["id"], "gate-third");
+    assert_eq!(paths.len(), 1);
+    std::fs::remove_file(&paths[0]).unwrap();
+    let remaining = queue::entries(&worker).unwrap();
+    assert_eq!(remaining.len(), 3);
+    assert_eq!(remaining[0].1.trigger["id"], "steering-first");
+    let directory = store.directory.clone();
+    drop(store);
+    std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn checkpoint_events_transfer_before_rechecks_and_status_exposes_the_order() {
+    use kah_cli::observer_review::{control, events};
+    let worker = format!("checkpoint-transfer-unit-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    queue::enqueue(&worker, Purpose::Steering, "turn", json!({"id":"routine"})).unwrap();
+    let directory = store.directory.join("checkpoint-events");
+    kah_core::run_store::ensure_private_directory(&directory).unwrap();
+    kah_cli::unattended_report::save(&directory, "claim.json", &json!({"kind":"tag"})).unwrap();
+    assert!(events::pending(&worker).unwrap());
+    events::transfer(&worker).unwrap();
+    events::transfer(&worker).unwrap();
+    assert!(!events::pending(&worker).unwrap());
+    let jobs = queue::entries(&worker).unwrap();
+    assert_eq!(jobs.len(), 2);
+    assert_eq!(jobs[0].1.trigger["events"][0]["kind"], "tag");
+    assert_eq!(jobs[1].1.trigger["id"], "routine");
+    let status = control::status(&worker).unwrap();
+    assert_eq!(status["queued"][0]["purpose"], "checkpoint");
+    assert_eq!(status["queued"][1]["purpose"], "steering");
+    assert_eq!(status["checkpoint_events_pending"], false);
+    let root = store.directory.parent().unwrap().to_path_buf();
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}

@@ -36,13 +36,17 @@ pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
         .collect::<std::io::Result<Vec<_>>>()?;
     paths.sort();
     paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
-    paths
+    let mut jobs = paths
         .into_iter()
         .map(|path| {
-            let value = super::state::read(&path)?.ok_or("REVIEW_QUEUE_MISSING stage=queue")?;
+            let value: Wake =
+                super::state::read(&path)?.ok_or("REVIEW_QUEUE_MISSING stage=queue")?;
             Ok((path, value))
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    // Stable priority: checkpoints first, original FIFO within each group.
+    jobs.sort_by_key(|(_, job)| job.purpose != Purpose::Checkpoint);
+    Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {
     if let Some(state) = Store::read(worker)?
@@ -53,6 +57,7 @@ pub fn drain(worker: &str) -> Result<Value> {
         }
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
+    super::events::transfer(worker)?;
     let mut jobs = entries(worker)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
@@ -130,11 +135,10 @@ pub fn kick(worker: &str) -> Result<()> {
         super::hook::spawn("__review-retry", worker)?;
         return Ok(());
     }
-    if !entries(worker)?.is_empty() {
-        super::hook::spawn("__review-wake", worker)?;
-    }
     if super::events::pending(worker)? {
         super::hook::spawn("__checkpoint-worker", worker)?;
+    } else if !entries(worker)?.is_empty() {
+        super::hook::spawn("__review-wake", worker)?;
     }
     Ok(())
 }

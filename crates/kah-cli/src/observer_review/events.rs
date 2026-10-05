@@ -20,20 +20,34 @@ pub fn enqueue(worker: &str, event: Value) -> Result<()> {
 }
 pub fn pending(worker: &str) -> Result<bool> {
     let directory = Store::directory(worker)?.join("checkpoint-events");
-    Ok(directory.exists() && fs::read_dir(directory)?.next().is_some())
+    if !directory.exists() {
+        return Ok(false);
+    }
+    for entry in fs::read_dir(directory)? {
+        if entry?.path().extension().is_some_and(|e| e == "json") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 pub fn run(worker: &str) -> Result<()> {
-    if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
-        return Ok(());
-    }
+    transfer(worker)?;
+    super::queue::drain(worker)?;
+    Ok(())
+}
+/// Transfer before choosing a queued review, including when another is active.
+/// The separate lock prevents concurrent wakes from transferring a batch twice.
+pub fn transfer(worker: &str) -> Result<()> {
     let directory = Store::directory(worker)?.join("checkpoint-events");
     if !directory.exists() {
         return Ok(());
     }
+    let _transfer = Store::delivery_at(&directory, true)?;
     let mut paths = fs::read_dir(&directory)?
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     paths.sort();
+    paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
     if paths.is_empty() {
         return Ok(());
     }
@@ -54,7 +68,6 @@ pub fn run(worker: &str) -> Result<()> {
     for path in paths {
         fs::remove_file(path)?;
     }
-    super::queue::drain(worker)?;
     Ok(())
 }
 pub fn cli(args: &[String]) -> Result<()> {
