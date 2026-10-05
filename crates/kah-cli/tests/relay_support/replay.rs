@@ -41,7 +41,12 @@ pub fn run(root: &Path) -> Value {
         } else {
             observer = Some(native.clone());
         }
-        outcomes.push(json!({"case":case.name,"provenance":case.provenance,"observerSession":native,"result":outcome}));
+        let entry = json!({"case":case.name,"provenance":case.provenance,"observerSession":native,"result":outcome});
+        let path = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+            .join(format!("replay-{}.json", case.name));
+        assert!(!path.exists(), "never overwrite a prior replay outcome");
+        fs::write(path, serde_json::to_vec_pretty(&entry).unwrap()).unwrap();
+        outcomes.push(entry);
     }
     drop(panes);
     drop(cleanup);
@@ -67,7 +72,7 @@ fn review_case(home: &Path, worker: &str, case: &cases::Case, panes: &mut Panes)
         // The complete digest inventory belongs to gate audit evidence below,
         // not to the behavioral decision. The brain still reads every whole
         // source record and its complete chronological evaluation scope.
-        trigger: json!({"historical_replay":{"source":case.provenance["source"],"interval_start":case.provenance["intervalStart"],"interval_end":case.provenance["intervalEnd"],"counterfactual":case.provenance["counterfactual"]},"subject":"Recorded builder actions; the disposable transport worker is not the evaluation subject."}),
+        trigger: json!({"historical_replay":{"source":case.provenance["source"],"interval_start":case.provenance["intervalStart"],"interval_end":case.provenance["intervalEnd"],"counterfactual":case.provenance["counterfactual"]},"subject":"Recorded builder actions; the disposable transport worker is not the evaluation subject.","proportion_review_required":case.name=="auth-actual"}),
         documents: case.documents.clone(),
         created_ms: kah_observer::session::now_ms(),
     };
@@ -98,7 +103,23 @@ fn review_case(home: &Path, worker: &str, case: &cases::Case, panes: &mut Panes)
     }
     let reviewed = super::review::wait_review(worker, &pane, "codex");
     assert_eq!(reviewed.latest.as_ref().unwrap()["request"], request.id);
-    reviewed.latest.unwrap()
+    read_result(worker, case, reviewed.latest.unwrap())
+}
+fn read_result(worker: &str, case: &cases::Case, latest: Value) -> Value {
+    let result: Value = kah_cli::observer_review::source_store::read(
+        &Reviews::directory(worker)
+            .unwrap()
+            .join("results")
+            .join(format!("{}.json", latest["request"].as_str().unwrap())),
+    )
+    .unwrap();
+    if case.name == "auth-actual" {
+        assert!(
+            result["report"]["decision_units"]["proportion"].is_object(),
+            "auth replay needs the thinker's cost estimates and Jev proportion decision"
+        );
+    }
+    result
 }
 fn idle_store(worker: &str, panes: &mut Panes) -> Reviews {
     loop {
