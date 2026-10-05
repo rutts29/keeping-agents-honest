@@ -54,7 +54,7 @@ pub fn probe_script() -> &'static str {
     r#"set -eu
 checkpoint_probe=$(mktemp -d)
 trap 'rm -rf "$checkpoint_probe"' EXIT
-git -c core.hooksPath=/dev/null -c core.fsmonitor=false clone --no-hardlinks --no-checkout . "$checkpoint_probe/checkout" >&2
+git -c safe.directory="$PWD" -c safe.directory="$PWD/.git" -c core.hooksPath=/dev/null -c core.fsmonitor=false clone --no-hardlinks --no-checkout . "$checkpoint_probe/checkout" >&2
 git -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$checkpoint_probe/checkout" checkout --detach "$1" >&2
 node - "$checkpoint_probe/checkout" "$1" <<'JS'
 const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto'),p=process.argv[2],sha=process.argv[3];
