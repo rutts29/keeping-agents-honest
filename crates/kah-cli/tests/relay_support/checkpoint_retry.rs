@@ -41,6 +41,7 @@ fn recoverable(error: &str) -> bool {
         "REVIEW_CHECKPOINT_SCOPE_MISSING",
         "REVIEW_CHECKPOINT_EVIDENCE_MISSING",
         "REVIEW_SUBMISSION_UNCONFIRMED",
+        "CONTEXT_",
     ]
     .iter()
     .any(|code| error.starts_with(code))
@@ -56,6 +57,7 @@ fn late_native_binding_does_not_abort_a_review_that_is_already_working() {
         "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection; request retained"
     ));
     assert!(!recoverable("REVIEW_SESSION_MISMATCH stage=hook"));
+    assert!(recoverable("CONTEXT_UNKNOWN_ITEM stage=context_selection"));
 }
 
 #[test]

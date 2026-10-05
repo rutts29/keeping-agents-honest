@@ -299,6 +299,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
                 || s.starts_with("REVIEW_BLOCKER_")
                 || s.starts_with("REVIEW_WORKER_QUESTION_")
                 || s.starts_with("REVIEW_COMPLETION_RECEIPT_")
+                || s.starts_with("CONTEXT_")
         })
     }) {
         return Ok(());
