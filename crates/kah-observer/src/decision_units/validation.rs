@@ -26,6 +26,13 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     for receipt in &r.checks {
         check(receipt, &citations)?;
     }
+    if let Thinking::AtomicFact {
+        fact,
+        evidence_citations,
+    } = &r.judgment
+    {
+        fact.validate(&r.checks, evidence_citations)?;
+    }
     if let Thinking::NeedsUser { ledger_review, .. } = &r.judgment {
         nonempty(&ledger_review.reasoning)?;
         if ledger_review.citations.is_empty()
@@ -44,6 +51,9 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
 }
 fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
     let indices = match judgment {
+        Thinking::AtomicFact {
+            evidence_citations, ..
+        } => evidence_citations,
         Thinking::Fact {
             condition,
             evidence_citations,

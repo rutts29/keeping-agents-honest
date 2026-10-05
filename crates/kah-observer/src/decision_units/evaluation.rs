@@ -3,7 +3,7 @@
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {
@@ -12,6 +12,10 @@ pub fn questions(units: &ReviewUnits) -> Questions {
             serde_json::to_string(&requirement.id).unwrap()
         );
         let (instruction, options) = match &requirement.judgment {
+            Thinking::AtomicFact { fact, .. } => (
+                fact.question(&reference, &requirement.checks),
+                literal::OPTIONS,
+            ),
             Thinking::Fact { .. } => (
                 format!(
                     "For named requirement {reference}, do its verified cited observations establish the literal condition in judgment.condition?"
@@ -89,8 +93,11 @@ pub fn assess(units: &ReviewUnits, judgment: &Judgment) -> Outcome {
     for r in &units.requirements {
         let key = format!("requirement.{}", r.id);
         match &r.judgment {
-            Thinking::Fact { .. } if confirmed(judgment, &key, "yes") => (),
-            Thinking::Fact { .. } if confirmed(judgment, &key, "no") => {
+            Thinking::Fact { .. } | Thinking::AtomicFact { .. }
+                if confirmed(judgment, &key, "yes") => {}
+            Thinking::Fact { .. } | Thinking::AtomicFact { .. }
+                if confirmed(judgment, &key, "no") =>
+            {
                 outcome.violations.push(r.id.clone())
             }
             Thinking::Semantic { decision, .. } if confirmed(judgment, &key, "supported") => {

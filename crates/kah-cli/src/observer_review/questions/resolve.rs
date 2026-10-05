@@ -29,7 +29,7 @@ pub fn resolve(
             continue;
         };
         let choice = match unit.judgment {
-            Thinking::Fact { .. } => "yes",
+            Thinking::Fact { .. } | Thinking::AtomicFact { .. } => "yes",
             Thinking::Semantic { .. } => "supported",
             Thinking::NeedsUser { .. } => continue,
         };

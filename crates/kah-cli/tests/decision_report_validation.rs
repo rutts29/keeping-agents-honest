@@ -41,3 +41,27 @@ fn native_submission_verifies_every_protected_item_before_acknowledging_units() 
             .is_some()
     );
 }
+
+#[test]
+fn new_native_reports_reject_free_form_compound_facts_but_keep_old_reports_readable() {
+    use kah_cli::observer_review::workspace;
+    let request = Request {
+        id: "compound".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "t".into(),
+        head: None,
+        intent: json!({}),
+        trigger: json!({}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    let report: Report = serde_json::from_value(json!({"request_id":"compound","findings":[],"decision_units":{"requirements":[{"id":"integration","name":"Integration","dimension":"integration","authority_items":["goal"],"citations":[],"components":[],"checks":[],"judgment":{"kind":"fact","condition":"Composition is correct, HEAD is tagged, and three tests pass.","evidence_citations":[0]}}],"proportion":null}})).unwrap();
+    assert!(
+        workspace::require_units(&request, &report)
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_ATOMIC_FACT_REQUIRED")
+    );
+    assert_eq!(report.decision_units.unwrap().requirements.len(), 1);
+}

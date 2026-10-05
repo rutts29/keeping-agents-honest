@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 mod evaluation;
+mod literal;
+pub use literal::Literal;
 pub mod schema;
 mod validation;
 pub use evaluation::{Outcome, VERSION, assess, confirmed, questions};
@@ -66,6 +68,12 @@ pub struct CheckReceipt {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Thinking {
+    AtomicFact {
+        fact: Literal,
+        evidence_citations: Vec<usize>,
+    },
+    /// Historical v4 records remain readable, but native submissions reject
+    /// free-form predicates: their conjunction cannot be validated mechanically.
     Fact {
         condition: String,
         evidence_citations: Vec<usize>,
