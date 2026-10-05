@@ -57,12 +57,19 @@ fn case(home: &Path, root: &Path, provider: &str) -> Value {
     let project = claude
         .as_ref()
         .map_or(codex.project.as_path(), |f| f.project());
+    let task = if std::env::var_os("KAH_GATE_QUESTION_FOLLOWUP").is_some() {
+        format!(
+            "{TASK} Ask the policy question in your normal assistant reply and wait for my reply; do not open an interactive AskUserQuestion selector. This fixture proves exact assistant-question relay, not tool-dialog relay."
+        )
+    } else {
+        TASK.into()
+    };
     let pane = if let Some(fixture) = &claude {
-        start_claude_prompt(home, fixture, root, TASK)
+        start_claude_prompt(home, fixture, root, &task)
     } else {
         let mut command = launch.command(false);
         command
-            .args(["--no-alt-screen", TASK])
+            .args(["--no-alt-screen", &task])
             .env_remove("CODEX_THREAD_ID");
         Pane::start(&command).unwrap()
     };
