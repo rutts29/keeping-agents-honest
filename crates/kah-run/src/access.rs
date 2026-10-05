@@ -34,7 +34,9 @@ fn owned(root: &Path, entries: &str, operator: u32, directories_only: bool) -> R
     command
         .arg("-P")
         .arg(root)
-        .args(["-uid", &operator.to_string()]);
+        // Native plugin caches remove lock files during traversal. GNU find
+        // tolerates only that readdir/stat race, not access or ACL failures.
+        .args(["-ignore_readdir_race", "-uid", &operator.to_string()]);
     if directories_only {
         command.args(["-type", "d"]);
     }
