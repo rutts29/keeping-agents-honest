@@ -34,8 +34,11 @@ fn handle(input: &Value) -> Result<Value, String> {
         return Ok(json!({}));
     };
     let session = binding.session.as_str();
-    if let Some(output) = early(&binding, input)? {
-        return Ok(output);
+    let notice = early(&binding, input)?;
+    if let Some(output) = &notice
+        && !is_observation_notice(input, output)
+    {
+        return Ok(output.clone());
     }
     let name = input["hook_event_name"].as_str().unwrap_or("");
     let kind = event_kind(name, input["source"].as_str())?;
@@ -46,7 +49,10 @@ fn handle(input: &Value) -> Result<Value, String> {
         kind,
         turn,
     )?;
-    observe_event(&binding, input, event, name, turn)
+    Ok(crate::in_turn::merge(
+        observe_event(&binding, input, event, name, turn)?,
+        notice.unwrap_or(json!({})),
+    ))
 }
 
 fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
@@ -96,6 +102,24 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     }
     crate::in_turn_worker::pending(binding, input)
 }
+
+pub(crate) fn is_notice(output: &Value) -> bool {
+    output
+        .as_object()
+        .is_some_and(|v| v.len() == 1 && v.contains_key("systemMessage"))
+}
+pub(crate) fn is_observation_notice(input: &Value, output: &Value) -> bool {
+    is_notice(output)
+        && matches!(
+            input["hook_event_name"].as_str(),
+            Some("SessionStart" | "UserPromptSubmit" | "Stop")
+        )
+}
+
+#[cfg(test)]
+#[path = "../tests/observer_unit/notice.rs"]
+mod notice_tests;
+
 fn observe_event(
     binding: &Binding,
     input: &Value,

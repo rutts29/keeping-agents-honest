@@ -46,9 +46,15 @@ pub fn handle(input: &Value) -> Result<Value, String> {
     crate::native_binding::claude(input, &binding.project)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     crate::observer_hook::initialize(&base, &binding)?;
+    let mut notice = None;
     let outcome = match early(input, &binding) {
-        Ok(Some(output)) => return Ok(output),
-        Ok(None) => observe(input, &binding),
+        Ok(Some(output)) if !crate::observer_hook::is_observation_notice(input, &output) => {
+            return Ok(output);
+        }
+        Ok(output) => {
+            notice = output;
+            observe(input, &binding)
+        }
         Err(error) => Err(error),
     };
     match outcome {
@@ -72,7 +78,7 @@ pub fn handle(input: &Value) -> Result<Value, String> {
             {
                 eprintln!("{error}");
             }
-            Ok(output)
+            Ok(crate::in_turn::merge(output, notice.unwrap_or(json!({}))))
         }
         Err(error) => {
             let mut store = Store::open(&base, &binding.session, Duration::from_secs(2))?;
