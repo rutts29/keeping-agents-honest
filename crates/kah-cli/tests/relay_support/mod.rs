@@ -5,6 +5,7 @@ mod checkpoint_retry;
 mod checkpoint_turn;
 mod checkpoint_v5_heldout;
 mod checkpoint_v6_heldout;
+mod checkpoint_v7_heldout;
 mod checkpoints;
 mod hosted_search;
 mod linked_steer;
