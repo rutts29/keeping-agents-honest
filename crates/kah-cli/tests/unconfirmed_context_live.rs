@@ -53,9 +53,10 @@ fn unconfirmed_context_is_visible_without_user_review() {
     let result = hook.wait_with_output().unwrap();
     assert!(result.status.success());
     let output: Value = serde_json::from_slice(&result.stdout).unwrap();
+    retain_hook_output(&output);
     let context = output["hookSpecificOutput"]["additionalContext"]
         .as_str()
-        .unwrap();
+        .unwrap_or_else(|| panic!("native context missing: {output}"));
     assert!(context.contains("seeded-unconfirmed") && context.contains("UNCONFIRMED_BETA"));
     assert!(!context.contains("Fixture context; retrieve originals"));
     assert!(context.contains("\"review_required\":true"));
@@ -70,6 +71,14 @@ fn unconfirmed_context_is_visible_without_user_review() {
     assert_eq!(fs::read(home.join(".codex/config.toml")).unwrap(), before);
     let directory = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
     fs::write(directory.join("unconfirmed-context.json"),serde_json::to_string_pretty(&json!({"passed":true,"uncertaintySeeded":true,"compactionSummarySeeded":true,"productionHookRenderedExactUnconfirmedItem":true,"nativeContextInjection":true,"nativeAgentObserved":observed,"userReviewActions":0,"globalConfigUnchanged":true,"classificationNotTestedByThisJourney":true})).unwrap()).unwrap();
+}
+fn retain_hook_output(output: &Value) {
+    let directory = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
+    fs::write(
+        directory.join("unconfirmed-hook-output.json"),
+        serde_json::to_vec_pretty(output).unwrap(),
+    )
+    .unwrap();
 }
 fn seed_unconfirmed(session: &str) -> kah_observer::session::State {
     let base = RunStore::default_state_root().unwrap();
