@@ -19,6 +19,12 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     let indices = thinking(&r.judgment)?;
     super::blocker::validate(r, &citations)?;
     if let Some(a) = &r.applicability {
+        if let Some(fact) = &a.controller_due {
+            if !a.due || a.unconditional {
+                return Err("REVIEW_COMPLETION_RECEIPT_TIMING stage=decision_units: receipt is for this event's phase completion requirements".into());
+            }
+            fact.verify(r, documents)?;
+        }
         applicability::validate(a, &citations)?;
     }
     if indices.is_empty() || indices.iter().any(|i| citations.get(*i).is_none()) {

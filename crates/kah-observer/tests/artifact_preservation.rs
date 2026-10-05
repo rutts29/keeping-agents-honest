@@ -1,10 +1,9 @@
 use kah_observer::{
     decision_units::{self, ReviewUnits, artifact::Receipt},
-    judge::{Answer, Judgment, Metrics},
+    judge::{Judgment, Metrics},
     review_evidence::Document,
 };
 use serde_json::json;
-use std::collections::BTreeMap;
 
 fn fixture(changed: bool) -> (ReviewUnits, Document) {
     let receipt = Receipt {
@@ -29,16 +28,9 @@ fn fixture(changed: bool) -> (ReviewUnits, Document) {
 }
 fn judgment() -> Judgment {
     Judgment {
-        backend: "jev".into(),
-        model: "jev-latest".into(),
-        answers: BTreeMap::from([(
-            "applicability.test-bytes".into(),
-            Answer::Choice {
-                choice: "supported".into(),
-                confidence: 0.95,
-                probabilities: BTreeMap::from([("supported".into(), 0.95)]),
-            },
-        )]),
+        backend: "not_requested".into(),
+        model: "none".into(),
+        answers: Default::default(),
         metrics: Metrics::default(),
         fallback_reason: None,
     }
@@ -49,10 +41,9 @@ fn code_compares_exact_digests_without_asking_jev_to_infer_equality() {
         let (units, doc) = fixture(changed);
         units.verify(&[doc], &["goal".into()]).unwrap();
         let questions = decision_units::questions(&units);
-        assert_eq!(
-            questions.keys().collect::<Vec<_>>(),
-            vec!["applicability.test-bytes"]
-        );
+        // Reviewer-approved v7 rule: unconditional prohibitions always apply.
+        // Both timing and exact blob equality are known code facts here.
+        assert!(questions.is_empty());
         assert_eq!(decision_units::assess(&units, &judgment()).passed, !changed);
     }
 }

@@ -75,3 +75,13 @@ fn an_old_report_without_applicability_cannot_authorize_a_new_violation() {
     assert!(result.violations.is_empty());
     assert_eq!(result.needs_thinker, ["receipt"]);
 }
+
+#[test]
+fn unconditional_prohibitions_always_apply_without_an_inferred_due_score() {
+    let u = units(true, true);
+    assert!(!decision_units::questions(&u).contains_key("applicability.receipt"));
+    assert_eq!(
+        decision_units::assess(&u, &judgment("unclear")).violations,
+        ["receipt"]
+    );
+}

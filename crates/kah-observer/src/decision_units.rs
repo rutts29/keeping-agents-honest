@@ -9,6 +9,7 @@ pub mod artifact;
 mod blocker;
 mod evaluation;
 pub use applicability::Applicability;
+pub mod completion;
 mod literal;
 pub use literal::Literal;
 pub mod schema;
@@ -154,6 +155,15 @@ impl ReviewUnits {
     pub fn version(&self) -> u32 {
         if let Some(version) = self.version {
             return version;
+        }
+        if self.requirements.iter().any(|r| {
+            r.blocker.is_some()
+                || r.worker_question.is_some()
+                || r.applicability
+                    .as_ref()
+                    .is_some_and(|a| a.controller_due.is_some())
+        }) {
+            return 7;
         }
         if self.requirements.iter().any(|r| {
             r.applicability.is_some()

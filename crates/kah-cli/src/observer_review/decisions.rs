@@ -22,6 +22,7 @@ pub fn active_items(intent: &Value) -> Vec<String> {
     items
 }
 pub fn verify(request: &Request, report: &Report) -> Result<Option<Value>> {
+    super::completion_due::bind(request, report)?;
     report
         .verify_units(&request.documents, &active_items(&request.intent))
         .map_err(Into::into)
@@ -70,7 +71,14 @@ pub fn evaluate(
     } else {
         super::preparation::evaluate(home, request, &input, &questions)?
     };
-    let archive = capture(home, request, &judgment, &prepared, &questions)?;
+    let archive = capture(
+        home,
+        request,
+        &judgment,
+        &prepared,
+        &questions,
+        units.version(),
+    )?;
     if let Some(assessment) = super::checkpoint_claim::assessment(&judgment)? {
         return Ok((judgment, prepared, assessment));
     }
@@ -87,6 +95,7 @@ fn capture(
     judgment: &kah_observer::judge::Judgment,
     input: &Value,
     questions: &kah_observer::judge::Questions,
+    version: u32,
 ) -> Result<Option<std::path::PathBuf>> {
     if questions.is_empty() {
         return Ok(None);
@@ -99,11 +108,7 @@ fn capture(
         "named_decision",
         &captured,
         &Ok(judgment.clone()),
-        if questions.keys().any(|k| k.starts_with("applicability.")) {
-            kah_observer::decision_units::VERSION
-        } else {
-            5
-        },
+        version,
     )?))
 }
 

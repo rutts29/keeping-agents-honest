@@ -3,11 +3,12 @@
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {
         applicability::question(requirement, &mut questions);
+        blocker::question(requirement, &mut questions);
         let reference = format!(
             "decision.requirements[{}]",
             serde_json::to_string(&requirement.id).unwrap()
@@ -127,7 +128,12 @@ fn requirement(r: &Requirement, judgment: &Judgment, outcome: &mut Outcome) {
         return;
     }
     if let Some(a) = &r.applicability {
-        if !confirmed(judgment, &format!("applicability.{}", r.id), "supported") {
+        let due = a.controller_due.as_ref();
+        if due.is_some_and(|d| !d.confirmed(judgment))
+            || due.is_none()
+                && !a.unconditional
+                && !confirmed(judgment, &format!("applicability.{}", r.id), "supported")
+        {
             outcome.needs_thinker.push(r.id.clone());
             return;
         }
@@ -141,6 +147,12 @@ fn requirement(r: &Requirement, judgment: &Judgment, outcome: &mut Outcome) {
         return;
     }
     let key = format!("requirement.{}", r.id);
+    if r.blocker == Some(Blocker::FutureImplementation)
+        && !confirmed(judgment, &format!("blocker.{}", r.id), "supported")
+    {
+        outcome.needs_thinker.push(r.id.clone());
+        return;
+    }
     match &r.judgment {
         Thinking::ArtifactPreservation { fact, .. } => {
             if !fact.equal() {

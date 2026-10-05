@@ -11,6 +11,8 @@ pub struct Applicability {
     pub unconditional: bool,
     pub reasoning: String,
     pub evidence_citations: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controller_due: Option<super::completion::DueAtEvent>,
 }
 pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), String> {
     if a.unconditional && !a.due {
@@ -28,7 +30,12 @@ pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), Str
         && !a.evidence_citations.iter().any(|i| {
             matches!(
                 citations[*i]["kind"].as_str(),
-                Some("worker_transcript" | "controller_event" | "controller_facts")
+                Some(
+                    "worker_transcript"
+                        | "controller_event"
+                        | "controller_facts"
+                        | "controller_completion_due"
+                )
             )
         })
     {
@@ -37,7 +44,12 @@ pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), Str
     Ok(())
 }
 pub(super) fn question(r: &Requirement, questions: &mut Questions) {
-    if r.applicability.is_none() || matches!(r.judgment, super::Thinking::NeedsUser { .. }) {
+    if r.applicability.is_none()
+        || r.applicability
+            .as_ref()
+            .is_some_and(|a| a.unconditional || a.controller_due.is_some())
+        || matches!(r.judgment, super::Thinking::NeedsUser { .. })
+    {
         return;
     }
     let reference = format!("decision.requirements[{}].applicability", json!(r.id));
@@ -51,7 +63,8 @@ pub(super) fn schema() -> Value {
         &["due", "unconditional", "reasoning", "evidence_citations"],
         json!({
             "due":{"type":"boolean"},"unconditional":{"type":"boolean"},
-            "reasoning":{"type":"string"},"evidence_citations":{"$ref":"#/$defs/indices"}
+            "reasoning":{"type":"string"},"evidence_citations":{"$ref":"#/$defs/indices"},
+            "controller_due":{"anyOf":[super::completion::schema(),{"type":"null"}]}
         }),
     )
 }

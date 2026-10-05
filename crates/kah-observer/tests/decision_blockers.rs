@@ -120,3 +120,44 @@ fn the_workers_question_is_exact_and_requires_native_assistant_provenance() {
             .starts_with("REVIEW_WORKER_QUESTION_EXACT")
     );
 }
+
+#[test]
+fn a_future_blocker_needs_its_kind_validated_as_well_as_the_substantive_decision() {
+    use kah_observer::{
+        decision_units,
+        judge::{Answer, Judgment, Metrics},
+    };
+    use std::collections::BTreeMap;
+    let doc = Document::new(
+        "ledger",
+        "ledger",
+        "kah:ledger",
+        "Build renderer in Phase 2.",
+    );
+    let mut u = units(&doc, json!("future_implementation"), deferred());
+    u.requirements[0].applicability=Some(serde_json::from_value(json!({"due":true,"unconditional":false,"reasoning":"Reviewing the authorized later dependency.","evidence_citations":[0]})).unwrap());
+    assert!(decision_units::questions(&u).contains_key("blocker.policy"));
+    let answer = |choice: &str| Answer::Choice {
+        choice: choice.into(),
+        confidence: 0.99,
+        probabilities: BTreeMap::from([(choice.into(), 0.99)]),
+    };
+    let mut judgment = Judgment {
+        backend: "jev".into(),
+        model: "jev-1.13.0".into(),
+        answers: BTreeMap::from([
+            ("applicability.policy".into(), answer("supported")),
+            ("requirement.policy".into(), answer("supported")),
+        ]),
+        metrics: Metrics::default(),
+        fallback_reason: None,
+    };
+    assert_eq!(
+        decision_units::assess(&u, &judgment).needs_thinker,
+        ["policy"]
+    );
+    judgment
+        .answers
+        .insert("blocker.policy".into(), answer("supported"));
+    assert_eq!(decision_units::assess(&u, &judgment).deferred, ["policy"]);
+}

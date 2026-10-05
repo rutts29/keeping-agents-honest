@@ -47,7 +47,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         kah_observer::session::now_ms(),
         std::process::id()
     );
-    Ok(Request {
+    let mut request = Request {
         id,
         worker: state.worker.session.clone(),
         purpose,
@@ -57,7 +57,9 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         trigger,
         documents,
         created_ms: kah_observer::session::now_ms(),
-    })
+    };
+    super::completion_due::add(&mut request)?;
+    Ok(request)
 }
 fn add_questions(state: &State, documents: &mut Vec<Document>) -> Result<()> {
     let questions =
