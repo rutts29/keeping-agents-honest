@@ -43,7 +43,7 @@ pub(super) fn verify(registration: &Value) {
         ),
         (
             "crates/kah-cli/src/observer_review/workspace/v7.rs",
-            include_str!("../../src/observer_review/workspace/v7.rs"),
+            include_str!("../../src/observer_review/workspace/contract.rs"),
         ),
         (
             "crates/kah-cli/src/observer_review/workspace/instructions.rs",

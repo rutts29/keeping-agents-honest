@@ -4,7 +4,7 @@ pub fn schema() -> Value {
     let mut value = object(
         &["version", "requirements"],
         json!({
-            "version":{"const":7},
+            "version":{"const":8},
             "requirements":{"type":"array","minItems":1,"items":requirement()},
             "proportion":{"anyOf":[{"type":"null"},proportion()]},
             "steering":{"anyOf":[{"type":"null"},crate::steering_proposal::schema()]}
@@ -33,6 +33,7 @@ fn requirement() -> Value {
             "authority_items":{"type":"array","minItems":1,"items":{"type":"string"}},
             "blocker":{"enum":[null,"future_implementation","user_decision"]},
             "worker_question":{"type":["integer","null"],"minimum":0},
+            "existing_question_id":{"type":["string","null"]},
             "deferral_id":{"type":["string","null"]},
             "citations":citations(),
             "components":{"type":"array","items":object(&["name","role"],json!({"name":{"type":"string"},"role":{"enum":["implementation","test","supporting"]}}))},

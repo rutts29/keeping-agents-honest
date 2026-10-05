@@ -8,7 +8,7 @@ pub(super) fn verified(request: &Request, report: &Report) -> Result<Option<Valu
         .as_ref()
         .is_some_and(|u| u.requirements.iter().any(|r| r.worker_question.is_some()))
     {
-        return super::super::decisions::verify(request, report);
+        return super::super::decisions::verify_evidence(request, report);
     }
     Ok(None)
 }

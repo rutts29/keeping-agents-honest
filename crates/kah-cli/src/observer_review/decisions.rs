@@ -23,6 +23,12 @@ pub fn active_items(intent: &Value) -> Vec<String> {
     items
 }
 pub fn verify(request: &Request, report: &Report) -> Result<Option<Value>> {
+    if let Some(units) = &report.decision_units {
+        super::questions::validate(request, units)?;
+    }
+    verify_evidence(request, report)
+}
+pub fn verify_evidence(request: &Request, report: &Report) -> Result<Option<Value>> {
     super::completion_due::bind(request, report)?;
     report
         .verify_units(&request.documents, &active_items(&request.intent))

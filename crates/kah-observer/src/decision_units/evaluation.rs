@@ -1,9 +1,9 @@
-//! Per-unit literal checks and typed validation share one complete decision
-//! state. Unresolved understanding asks the user; only confirmed violations fail.
+//! Per-unit receipt checks and independent typed decisions compose in code.
+//! Unresolved understanding asks the user; only confirmed violations fail.
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {

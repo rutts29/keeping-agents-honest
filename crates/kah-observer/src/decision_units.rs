@@ -41,6 +41,8 @@ pub struct Requirement {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker_question: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_question_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deferral_id: Option<String>,
     pub citations: Vec<Citation>,
     pub components: Vec<Component>,

@@ -19,7 +19,7 @@ fn request() -> Request {
     }
 }
 fn raw() -> Value {
-    json!({"request_id":"review-current","findings":[],"decision_units":{"version":7,"requirements":[{
+    json!({"request_id":"review-current","findings":[],"decision_units":{"version":8,"requirements":[{
         "id":"csv","name":"CSV phase integration","dimension":"integration","authority_items":["goal"],"blocker":null,"citations":[],"components":[],"checks":[],
         "applicability":{"due":true,"unconditional":false,"phase_completion":true,"reasoning":"This phase is at a gate.","evidence_citations":[0]},
         "judgment":{"kind":"semantic","decision":"satisfied","reasoning":"The CSV pipeline ran.","evidence_citations":[0]}
@@ -60,10 +60,12 @@ fn a_current_phase_completion_requirement_must_use_the_supplied_controller_recei
 fn native_contract_explains_typed_blockers_exact_questions_and_literal_timing() {
     for purpose in [Purpose::Drift, Purpose::Checkpoint, Purpose::Steering] {
         let s = workspace::decision_instructions(&purpose);
-        assert!(s.contains("version=7"));
+        assert!(s.contains("version=8"));
         assert!(s.contains("future_implementation"));
         assert!(s.contains("worker_question"));
         assert!(s.contains("phase_completion"));
         assert!(s.contains("controller_due"));
+        assert!(s.contains("existing_question_id"));
+        assert!(s.contains("own checked source manifest"));
     }
 }
