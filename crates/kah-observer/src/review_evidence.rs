@@ -155,7 +155,11 @@ pub(crate) fn verify_quote(citation: &Citation, documents: &[Document]) -> Resul
     let document = documents
         .iter()
         .find(|d| d.id == citation.source)
-        .ok_or("REVIEW_SOURCE_UNKNOWN stage=evidence")?;
+        .ok_or_else(|| {
+            let aliases=documents.iter().filter(|d|d.uri==citation.source)
+                .map(|d|d.id.as_str()).collect::<Vec<_>>();
+            format!("REVIEW_SOURCE_UNKNOWN stage=evidence: citation.source={} is not a document id. Use manifest document ids, not URIs or paths. Matching URI document ids: {}",json!(citation.source),json!(aliases))
+        })?;
     let digest = format!("sha256:{:x}", Sha256::digest(document.text.as_bytes()));
     if citation.digest != document.digest || digest != document.digest {
         return Err("REVIEW_SOURCE_CHANGED stage=evidence".into());

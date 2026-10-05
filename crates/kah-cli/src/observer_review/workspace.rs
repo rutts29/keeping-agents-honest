@@ -51,7 +51,12 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         &serde_json::to_value(request)?,
     )?;
     let input = state.observer.workspace.join("inputs").join(&request.id);
-    fs::create_dir(&input)?;
+    fs::create_dir_all(&input)?;
+    if !fs::symlink_metadata(&input)?.is_dir() {
+        return Err(
+            "REVIEW_INPUT_TYPE stage=publish: request input must be a real directory".into(),
+        );
+    }
     super::source_store::text(
         &store.directory,
         &input.join("intent.json"),

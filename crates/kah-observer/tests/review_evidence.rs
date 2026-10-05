@@ -46,6 +46,22 @@ fn stale_digests_and_model_probabilities_are_not_evidence() {
 }
 
 #[test]
+fn a_uri_citation_names_the_real_manifest_id_without_accepting_an_alias() {
+    let document = Document::new(
+        "plan-0",
+        "plan",
+        "PLAN.md",
+        "Keep the supplied tests unchanged.",
+    );
+    let value = json!({"request_id":"r","findings":[{"topic":"intent","claim":"Preservation","citations":[{"source":"PLAN.md","digest":document.digest,"quote":document.text}]}]});
+    let report: Report = serde_json::from_value(value).unwrap();
+    let error = report.verify("r", &[document]).unwrap_err();
+    assert!(error.starts_with("REVIEW_SOURCE_UNKNOWN stage=evidence"));
+    assert!(error.contains("plan-0"));
+    assert!(error.contains("document ids, not URIs"));
+}
+
+#[test]
 fn duplicate_quotes_need_an_existing_occurrence_and_empty_reports_fail() {
     let document = Document::new(
         "transcript",

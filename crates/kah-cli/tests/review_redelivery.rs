@@ -91,6 +91,9 @@ fn redelivery_refreshes_old_helper_and_schema_without_changing_request_sources()
     let prompt =
         kah_cli::observer_review::redelivery::prompt(&home, &store, &state, &request, &request.id)
             .unwrap();
+    // Real native-lifecycle-1 failure: redelivery republishes an existing input.
+    kah_cli::observer_review::redelivery::prompt(&home, &store, &state, &request, &request.id)
+        .unwrap();
     assert!(prompt.contains("applicability first"));
     assert_ne!(
         fs::read(state.observer.workspace.join("bin/kah")).unwrap(),
