@@ -13,6 +13,8 @@ pub struct Applicability {
     pub evidence_citations: Vec<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controller_due: Option<super::completion::DueAtEvent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_completion: Option<bool>,
 }
 pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), String> {
     if a.unconditional && !a.due {
@@ -60,9 +62,16 @@ pub(super) fn question(r: &Requirement, questions: &mut Questions) {
 }
 pub(super) fn schema() -> Value {
     object(
-        &["due", "unconditional", "reasoning", "evidence_citations"],
+        &[
+            "due",
+            "unconditional",
+            "phase_completion",
+            "reasoning",
+            "evidence_citations",
+        ],
         json!({
             "due":{"type":"boolean"},"unconditional":{"type":"boolean"},
+            "phase_completion":{"type":"boolean"},
             "reasoning":{"type":"string"},"evidence_citations":{"$ref":"#/$defs/indices"},
             "controller_due":{"anyOf":[super::completion::schema(),{"type":"null"}]}
         }),

@@ -14,7 +14,7 @@ mod literal;
 pub use literal::Literal;
 pub mod schema;
 mod validation;
-pub use evaluation::{Outcome, VERSION, assess, confirmed, questions};
+pub use evaluation::{Outcome, VERSION, assess, assess_with_phase_due, confirmed, questions};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

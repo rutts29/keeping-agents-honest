@@ -295,6 +295,10 @@ pub fn retry_pending(worker: &str) -> Result<()> {
                 || s.starts_with("REVIEW_CHECKPOINT_EVIDENCE_MISSING")
                 || s.starts_with("REVIEW_CHECKPOINT_SCOPE_MISSING")
                 || s.starts_with("REVIEW_APPLICABILITY_")
+                || s.starts_with("REVIEW_PROTOCOL_")
+                || s.starts_with("REVIEW_BLOCKER_")
+                || s.starts_with("REVIEW_WORKER_QUESTION_")
+                || s.starts_with("REVIEW_COMPLETION_RECEIPT_")
         })
     }) {
         return Ok(());

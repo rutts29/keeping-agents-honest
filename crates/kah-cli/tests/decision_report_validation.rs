@@ -84,12 +84,14 @@ fn native_report_cannot_omit_due_at_event_validation() {
         "id":"receipt","name":"Post-commit check","dimension":"drift","authority_items":["goal"],"citations":[],"components":[],"checks":[],
         "judgment":{"kind":"semantic","decision":"violated","reasoning":"No receipt yet.","evidence_citations":[0]}
     }]}});
+    // Reviewer-approved v7 contract still requires applicability on mid-turn work.
+    value["decision_units"]["version"] = json!(7);
     assert!(
         workspace::require_units(&request, &serde_json::from_value(value.clone()).unwrap())
             .unwrap_err()
             .to_string()
             .starts_with("REVIEW_APPLICABILITY_REQUIRED")
     );
-    value["decision_units"]["requirements"][0]["applicability"] = json!({"due":false,"unconditional":false,"reasoning":"No completion claim yet.","evidence_citations":[0]});
+    value["decision_units"]["requirements"][0]["applicability"] = json!({"due":false,"unconditional":false,"phase_completion":false,"reasoning":"No completion claim yet.","evidence_citations":[0]});
     assert!(workspace::require_units(&request, &serde_json::from_value(value).unwrap()).is_ok());
 }

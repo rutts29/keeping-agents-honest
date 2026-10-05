@@ -59,3 +59,25 @@ fn an_unconfirmed_point_76_phase_claim_remains_semantic_not_literal_due() {
         "a .76 interpretation is not a controller fact"
     );
 }
+
+#[test]
+fn persistent_claim_verification_confirms_timing_only_at_the_existing_probability_gate() {
+    use kah_observer::judge::{Answer, Judgment, Metrics};
+    let mut r = request();
+    r.trigger = json!({"events":[{"kind":"native_phase_claim","uncertain":true}]});
+    let mut j = Judgment {
+        backend: "jev".into(),
+        model: "jev-1.13.0".into(),
+        answers: Default::default(),
+        metrics: Metrics::default(),
+        fallback_reason: None,
+    };
+    j.answers
+        .insert("claim_made".into(), Answer::Noul { noul: 0.76 });
+    assert!(!completion_due::reviewed_phase(&r, &j));
+    j.answers
+        .insert("claim_made".into(), Answer::Noul { noul: 0.99 });
+    assert!(completion_due::reviewed_phase(&r, &j));
+    r.purpose = Purpose::Drift;
+    assert!(!completion_due::reviewed_phase(&r, &j));
+}

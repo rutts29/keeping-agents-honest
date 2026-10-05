@@ -49,6 +49,13 @@ fn confirmed_phase_claim(event: &serde_json::Value) -> bool {
             .as_f64()
             .is_some_and(|p| p >= kah_observer::judge::questions::STEERING_PROBABILITY)
 }
+/// The full review can confirm a candidate that the initial screen could not.
+pub fn reviewed_phase(request: &Request, judgment: &kah_observer::judge::Judgment) -> bool {
+    request.purpose == Purpose::Checkpoint
+        && super::checkpoint_claim::doubtful(request)
+        && judgment.backend == "jev"
+        && matches!(judgment.answers.get("claim_made"),Some(kah_observer::judge::Answer::Noul{noul}) if *noul>=kah_observer::judge::questions::STEERING_PROBABILITY)
+}
 /// A report cannot smuggle an older genuine receipt into a new decision.
 pub fn bind(request: &Request, report: &kah_observer::review_evidence::Report) -> Result<()> {
     for r in report

@@ -119,7 +119,8 @@ pub fn assessment(
     deferrals: Vec<Value>,
 ) -> Value {
     use kah_observer::decision_units::{self, SemanticDecision, Thinking};
-    let outcome = decision_units::assess(units, judgment);
+    let phase_due = super::completion_due::reviewed_phase(request, judgment);
+    let outcome = decision_units::assess_with_phase_due(units, judgment, phase_due);
     let mut open = Vec::new();
     for item in deferrals {
         let closed = units.requirements.iter().any(|r| {
@@ -136,12 +137,8 @@ pub fn assessment(
                     &format!("requirement.{}", r.id),
                     "supported",
                 )
-                && r.applicability.as_ref().is_some_and(|a| a.due)
-                && decision_units::confirmed(
-                    judgment,
-                    &format!("applicability.{}", r.id),
-                    "supported",
-                )
+                && !outcome.needs_thinker.contains(&r.id)
+                && !outcome.not_due.contains(&r.id)
         });
         if !closed {
             open.push(item);
@@ -162,5 +159,5 @@ pub fn assessment(
         super::state::Purpose::Steering => "steering",
         _ => "decision",
     };
-    serde_json::json!({"state":format!("{purpose}_{state}"),"passed":if state=="passed" {Some(true)}else if state=="failed" {Some(false)}else{None},"violations":outcome.violations,"needs_user":outcome.needs_user,"needs_thinker":outcome.needs_thinker,"not_due":outcome.not_due,"unproven":outcome.violations.iter().chain(&outcome.needs_user).chain(&outcome.needs_thinker).collect::<Vec<_>>(),"deferrals":open,"out_of_proportion":outcome.out_of_proportion,"checkpoint_question_set":units.version()})
+    serde_json::json!({"state":format!("{purpose}_{state}"),"passed":if state=="passed" {Some(true)}else if state=="failed" {Some(false)}else{None},"violations":outcome.violations,"needs_user":outcome.needs_user,"needs_thinker":outcome.needs_thinker,"not_due":outcome.not_due,"unproven":outcome.violations.iter().chain(&outcome.needs_user).chain(&outcome.needs_thinker).collect::<Vec<_>>(),"deferrals":open,"out_of_proportion":outcome.out_of_proportion,"checkpoint_question_set":units.version(),"controller_phase_due":if phase_due{Some(serde_json::json!({"worker":request.worker,"request":request.id,"head":request.head,"source":"persistent_verified_claim","judgment_key":"claim_made"}))}else{None}})
 }

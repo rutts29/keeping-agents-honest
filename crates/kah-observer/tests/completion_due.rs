@@ -81,3 +81,25 @@ fn a_candidate_claim_still_needs_actual_claim_confirmation_before_literal_due_ap
         .insert("claim_made".into(), Answer::Noul { noul: 0.99 });
     assert_eq!(decision_units::assess(&u, &j).violations, ["integration"]);
 }
+
+#[test]
+fn persistent_confirmed_phase_timing_applies_only_to_its_completion_requirements() {
+    let d = doc("controller_completion_due");
+    let mut u = units(&d, receipt());
+    let app = u.requirements[0].applicability.as_mut().unwrap();
+    app.controller_due = None;
+    app.phase_completion = Some(true);
+    app.due = false;
+    assert_eq!(
+        decision_units::assess_with_phase_due(&u, &judgment(), true).violations,
+        ["integration"]
+    );
+    u.requirements[0]
+        .applicability
+        .as_mut()
+        .unwrap()
+        .phase_completion = Some(false);
+    let result = decision_units::assess_with_phase_due(&u, &judgment(), true);
+    assert!(result.violations.is_empty());
+    assert_eq!(result.needs_thinker, ["integration"]);
+}

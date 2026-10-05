@@ -89,6 +89,11 @@ pub fn confirmed(judgment: &Judgment, key: &str, choice: &str) -> bool {
         && probabilities.get(choice).is_some_and(|p|*p>=thresholds::COMPLETE_PROBABILITY))
 }
 pub fn assess(units: &ReviewUnits, judgment: &Judgment) -> Outcome {
+    assess_with_phase_due(units, judgment, false)
+}
+/// Caller-supplied controller fact after the persistent review confirms a
+/// candidate phase assertion. It changes timing only, not substantive scores.
+pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due: bool) -> Outcome {
     let mut outcome = Outcome {
         passed: false,
         violations: vec![],
@@ -99,7 +104,7 @@ pub fn assess(units: &ReviewUnits, judgment: &Judgment) -> Outcome {
         out_of_proportion: false,
     };
     for r in &units.requirements {
-        requirement(r, judgment, &mut outcome);
+        requirement(r, judgment, &mut outcome, phase_due);
     }
     if units.proportion.is_some() {
         outcome.out_of_proportion = confirmed(judgment, "proportion", "disproportionate");
@@ -122,22 +127,24 @@ pub fn assess(units: &ReviewUnits, judgment: &Judgment) -> Outcome {
         && outcome.needs_thinker.is_empty();
     outcome
 }
-fn requirement(r: &Requirement, judgment: &Judgment, outcome: &mut Outcome) {
+fn requirement(r: &Requirement, judgment: &Judgment, outcome: &mut Outcome, phase_due: bool) {
     if matches!(r.judgment, Thinking::NeedsUser { .. }) {
         outcome.needs_user.push(r.id.clone());
         return;
     }
     if let Some(a) = &r.applicability {
         let due = a.controller_due.as_ref();
-        if due.is_some_and(|d| !d.confirmed(judgment))
-            || due.is_none()
-                && !a.unconditional
-                && !confirmed(judgment, &format!("applicability.{}", r.id), "supported")
+        let verified_phase = phase_due && a.phase_completion == Some(true);
+        if !verified_phase
+            && (due.is_some_and(|d| !d.confirmed(judgment))
+                || due.is_none()
+                    && !a.unconditional
+                    && !confirmed(judgment, &format!("applicability.{}", r.id), "supported"))
         {
             outcome.needs_thinker.push(r.id.clone());
             return;
         }
-        if !a.due {
+        if !verified_phase && !a.due {
             outcome.not_due.push(r.id.clone());
             return;
         }
