@@ -10,6 +10,7 @@ use std::{
     path::Path,
 };
 mod instructions;
+mod preflight;
 pub use instructions::{decision_instructions, require_units, schema};
 
 pub fn prepare(home: &Path, state: &State) -> Result<()> {
@@ -178,9 +179,9 @@ pub fn submit(args: &[String]) -> Result<()> {
     }
     let bytes = fs::read(&args[5])?;
     let report:Report=serde_json::from_slice(&bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no probability or unknown fields")?;
-    report.verify(&request.id, &request.documents)?;
+    let findings = report.verify(&request.id, &request.documents)?;
     require_units(&request, &report)?;
-    super::decisions::verify(&request, &report)?;
+    preflight::validate(&request, &report, findings)?;
     super::steering::verify_proposal(&request, &report)?;
     super::reminder::validate_report(&report, &request)?;
     let directory = Path::new(&args[3])
