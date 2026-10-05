@@ -179,9 +179,12 @@ fn broken(worker: &str, provider: &str, project: &Path, panes: &mut Panes, first
 }
 
 fn save_probe(provider: &str, probe: &Value) {
+    let name = std::env::var("KAH_GATE_CHECKPOINT_FOLLOWUP").map_or_else(
+        |_| format!("tagged-commit-probe-{provider}.json"),
+        |label| format!("tagged-commit-probe-{provider}-{label}.json"),
+    );
     fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
-            .join(format!("tagged-commit-probe-{provider}.json")),
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(name),
         serde_json::to_vec_pretty(probe).unwrap(),
     )
     .unwrap();
