@@ -8,6 +8,7 @@ mod checkpoint_v6_heldout;
 mod checkpoints;
 mod hosted_search;
 mod linked_steer;
+mod queue_order;
 mod replay;
 mod review;
 mod review_drift;
@@ -46,6 +47,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_QUEUE_ORDER").is_some() {
+        return Some(queue_order::run);
+    }
     if std::env::var_os("KAH_GATE_AMBIGUITY").is_some() {
         return Some(ambiguity::run);
     }

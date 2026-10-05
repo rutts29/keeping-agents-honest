@@ -179,7 +179,7 @@ fn review(worker: &str, panes: &mut Panes, turn: &str, trigger: Value) -> Value 
         std::thread::sleep(Duration::from_millis(200));
     }
 }
-fn read_result(worker: &str, request: &str) -> Value {
+pub(super) fn read_result(worker: &str, request: &str) -> Value {
     kah_cli::observer_review::source_store::read(
         &Reviews::directory(worker)
             .unwrap()
@@ -188,7 +188,7 @@ fn read_result(worker: &str, request: &str) -> Value {
     )
     .unwrap()
 }
-fn retain(home: &Path, label: &str, value: &Value) {
+pub(super) fn retain(home: &Path, label: &str, value: &Value) {
     let mut private = value.clone();
     crate::privacy::scrub(&mut private);
     let bytes = serde_json::to_vec_pretty(&private).unwrap();
