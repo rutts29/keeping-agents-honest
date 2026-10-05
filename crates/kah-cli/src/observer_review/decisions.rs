@@ -4,6 +4,7 @@ use crate::Result;
 use kah_observer::review_evidence::Report;
 use serde_json::Value;
 mod coverage;
+mod scoped;
 mod steering;
 pub use coverage::checkpoint as checkpoint_coverage;
 
@@ -34,7 +35,7 @@ pub fn evaluate(
     report: &Report,
     actions: &[Value],
 ) -> Result<(kah_observer::judge::Judgment, Value, Value)> {
-    use kah_observer::{decision_units, judge};
+    use kah_observer::decision_units;
     let units = report.decision_units.as_ref().ok_or("REVIEW_UNITS_MISSING stage=decision: return named factual or reasoned semantic requirements")?;
     let verified = verify(request, report)?.ok_or("REVIEW_UNITS_MISSING stage=decision")?;
     let deferrals = super::deferrals::collect(request, actions)?;
@@ -57,6 +58,29 @@ pub fn evaluate(
     if super::preparation::pending(&request.worker, &request.id)? {
         super::preparation::accept(&request.worker, &request.id)?;
     }
+    let (judgment, prepared, archive) = if units.version() == 8 {
+        scoped::evaluate(home, request, &input, &questions)?
+    } else {
+        legacy(home, request, &input, &questions, units.version())?
+    };
+    if let Some(assessment) = super::checkpoint_claim::assessment(&judgment)? {
+        return Ok((judgment, prepared, assessment));
+    }
+    checkpoint_coverage(request, units, &deferrals)?;
+    let mut assessment = assessment(request, units, &judgment, deferrals);
+    steering::apply(request, units, &judgment, &mut assessment)?;
+    assessment["private_replay"] = archive;
+    assessment["jev_called"] = (!questions.is_empty()).into();
+    Ok((judgment, prepared, assessment))
+}
+fn legacy(
+    home: &std::path::Path,
+    request: &Request,
+    input: &Value,
+    questions: &kah_observer::judge::Questions,
+    version: u32,
+) -> Result<(kah_observer::judge::Judgment, Value, Value)> {
+    use kah_observer::judge;
     let (judgment, prepared) = if questions.is_empty() {
         (
             judge::Judgment {
@@ -66,30 +90,15 @@ pub fn evaluate(
                 metrics: Default::default(),
                 fallback_reason: None,
             },
-            input,
+            input.clone(),
         )
     } else {
-        super::preparation::evaluate(home, request, &input, &questions)?
+        super::preparation::evaluate(home, request, input, questions)?
     };
-    let archive = capture(
-        home,
-        request,
-        &judgment,
-        &prepared,
-        &questions,
-        units.version(),
-    )?;
-    if let Some(assessment) = super::checkpoint_claim::assessment(&judgment)? {
-        return Ok((judgment, prepared, assessment));
-    }
-    checkpoint_coverage(request, units, &deferrals)?;
-    let mut assessment = assessment(request, units, &judgment, deferrals);
-    steering::apply(request, units, &judgment, &mut assessment)?;
-    assessment["private_replay"] = serde_json::to_value(archive)?;
-    assessment["jev_called"] = (!questions.is_empty()).into();
-    Ok((judgment, prepared, assessment))
+    let archive = capture(home, request, &judgment, &prepared, questions, version)?;
+    Ok((judgment, prepared, serde_json::to_value(archive)?))
 }
-fn capture(
+pub(super) fn capture(
     home: &std::path::Path,
     request: &Request,
     judgment: &kah_observer::judge::Judgment,

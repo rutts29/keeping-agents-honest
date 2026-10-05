@@ -10,6 +10,7 @@ mod blocker;
 mod evaluation;
 pub use applicability::Applicability;
 pub mod completion;
+pub mod context;
 mod literal;
 mod literal_receipt;
 pub use literal::Literal;
