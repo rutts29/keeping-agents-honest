@@ -4,6 +4,9 @@ use super::*;
 use sha2::{Digest, Sha256};
 
 pub(super) fn record(provider: &str, stage: &str, result: &Value) {
+    if super::checkpoints::v8_enabled() {
+        return super::checkpoint_v8_heldout::record(provider, stage, result);
+    }
     if super::checkpoints::v7_enabled() {
         return super::checkpoint_v7_heldout::record(provider, stage, result);
     }

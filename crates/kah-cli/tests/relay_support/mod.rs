@@ -7,6 +7,7 @@ mod checkpoint_turn;
 mod checkpoint_v5_heldout;
 mod checkpoint_v6_heldout;
 mod checkpoint_v7_heldout;
+mod checkpoint_v8_heldout;
 mod checkpoints;
 mod hosted_search;
 mod linked_steer;
@@ -53,7 +54,9 @@ fn special_run() -> Option<fn(&Path) -> Value> {
         return Some(queue_order::run);
     }
     if std::env::var_os("KAH_GATE_AMBIGUITY").is_some() {
-        if std::env::var_os("KAH_GATE_CHECKPOINT_V7").is_some() {
+        if std::env::var_os("KAH_GATE_CHECKPOINT_V7").is_some()
+            || std::env::var_os("KAH_GATE_CHECKPOINT_V8").is_some()
+        {
             return Some(ambiguity_v7::run);
         }
         return Some(ambiguity::run);

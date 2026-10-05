@@ -7,11 +7,17 @@ const CONTINUE: &str = "While my CSV policy decision is pending, do the independ
 const COURIER: &str = "You are a disposable question courier. For each kah question reply QUESTION_RECEIVED and wait. Do not answer, choose policy, write files or use tools.";
 
 pub fn run(root: &Path) -> Value {
-    let registration = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase-5o-v7/cases-frozen.json"
-    ))
-    .unwrap();
-    super::checkpoint_v7_heldout::verify(&registration);
+    let registration = if super::checkpoints::v8_enabled() {
+        super::checkpoint_v8_heldout::registration()
+    } else {
+        serde_json::from_str(include_str!(
+            "../../../../docs/gates/evidence/phase-5o-v7/cases-frozen.json"
+        ))
+        .unwrap()
+    };
+    if !super::checkpoints::v8_enabled() {
+        super::checkpoint_v7_heldout::verify(&registration);
+    }
     assert!(
         std::env::var("HERDR_SOCKET_PATH")
             .unwrap()
@@ -117,7 +123,11 @@ fn journey(home: &Path, worker: &str, provider: &str, project: &Path, panes: &mu
     let after = Reviews::read(worker).unwrap().unwrap();
     let probe = verify_formatter(project);
     let result = json!({"passed":remaining.is_empty()&&probe["success"]==true,"worker":worker,"question":question,"initial":first,"resolvedReview":second,"remainingQuestions":remaining,"independentWorkPassed":true,"formatterProbe":probe,"sameObserverSession":after.observer.session==observer.session,"sameObserverPane":after.observer.pane==observer.pane});
-    super::ambiguity::retain(home, &format!("v7-{provider}-question-final"), &result);
+    super::ambiguity::retain(
+        home,
+        &format!("v{}-{provider}-question-final", protocol()),
+        &result,
+    );
     assert!(
         remaining.is_empty(),
         "explicit authority did not resolve question"
@@ -139,10 +149,17 @@ fn named_question(
     let pending = questions::pending(&directory).unwrap();
     super::ambiguity::retain(
         home,
-        &format!("v7-{provider}-question-initial"),
+        &format!("v{}-{provider}-question-initial", protocol()),
         &json!({"result":first,"questions":pending,"worker":worker}),
     );
-    assert_eq!(first["verified_question_set"], 7);
+    assert_eq!(
+        first["verified_question_set"],
+        if super::checkpoints::v8_enabled() {
+            8
+        } else {
+            7
+        }
+    );
     assert_eq!(pending.len(), 1, "expected one named CSV policy question");
     assert_eq!(pending[0]["question_origin"], "worker");
     assert!(!pending[0]["worker_question_source"].is_null());
@@ -161,6 +178,14 @@ fn named_question(
     )));
     super::ambiguity::prove_delivery(&question, &panes.0[0]);
     question
+}
+
+fn protocol() -> u32 {
+    if super::checkpoints::v8_enabled() {
+        8
+    } else {
+        7
+    }
 }
 
 fn answer(home: &Path, worker: &str, provider: &str, panes: &Panes, question: &Value) {
