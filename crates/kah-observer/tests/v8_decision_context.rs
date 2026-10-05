@@ -43,3 +43,24 @@ fn an_invalid_manifest_or_missing_authority_never_drops_content_silently() {
     assert!(context::decision(&input, "requirement.r").is_err());
     assert!(context::decision(&input, "requirement.unknown").is_err());
 }
+
+#[test]
+fn claim_detection_keeps_the_thinkers_verified_native_quote_manifest() {
+    let input = json!({"intent":{"goal":"Complete readiness, then ask the user."},
+        "event":{"head":null,"trigger":{"events":[{"kind":"native_phase_claim"}]},
+        "actions":[{"evidence":{"topic":"claim","claim":"The worker asserts readiness done.",
+            "citations":[{"source":"transcript","digest":"sha256:actual",
+                "quote":"Readiness is complete. Which CSV policy do you want?",
+                "native_records":[{"record_type":"agentMessage","record_id":"final"}]}]}},
+            {"evidence":{"topic":"integration","claim":"Unrelated composition failure."}}]}});
+    let state = context::decision(&input, "claim_made").unwrap();
+    assert_eq!(
+        state["claim_evidence"][0]["citations"][0]["quote"],
+        "Readiness is complete. Which CSV policy do you want?"
+    );
+    assert_eq!(
+        state["claim_evidence"][0]["citations"][0]["native_records"][0]["record_id"],
+        "final"
+    );
+    assert!(!state.to_string().contains("Unrelated composition failure."));
+}

@@ -130,7 +130,10 @@ fn authority(input: &Value, ids: &Value) -> Result<Value, String> {
 fn special(input: &Value, key: &str) -> Result<Value, String> {
     let mut state = match key {
         "claim_made" => Ok(json!({"event":{"head":input["event"]["head"],
-            "trigger":input["event"]["trigger"]}})),
+            "trigger":input["event"]["trigger"]},
+            "claim_evidence":input["event"]["actions"].as_array().into_iter().flatten()
+                .filter(|action| action["evidence"]["topic"] == "claim")
+                .map(|action| action["evidence"].clone()).collect::<Vec<_>>()})),
         "proportion" => Ok(json!({"intent":{"goal":input["intent"]["goal"]},
             "decision":{"proportion":input["decision"]["proportion"]}})),
         "steering.proposal" => {
