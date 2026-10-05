@@ -1,5 +1,6 @@
 use kah_cli::{Arguments, run_pane::Pane};
 mod ambiguity;
+mod ambiguity_v7;
 mod checkpoint_heldout;
 mod checkpoint_retry;
 mod checkpoint_turn;
@@ -52,6 +53,9 @@ fn special_run() -> Option<fn(&Path) -> Value> {
         return Some(queue_order::run);
     }
     if std::env::var_os("KAH_GATE_AMBIGUITY").is_some() {
+        if std::env::var_os("KAH_GATE_CHECKPOINT_V7").is_some() {
+            return Some(ambiguity_v7::run);
+        }
         return Some(ambiguity::run);
     }
     if std::env::var_os("KAH_GATE_HOSTED_SEARCH").is_some() {

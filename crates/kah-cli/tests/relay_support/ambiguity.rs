@@ -122,7 +122,7 @@ fn journey(home: &Path, worker: &str, project: &Path, panes: &mut Panes) -> Valu
     json!({"passed":true,"worker":worker,"questionId":question["id"],"independentWorkPassed":true,"sameObserverSession":true,"sameObserverPane":true,"observerSession":observer.session})
 }
 
-fn prove_delivery(question: &Value, pane: &Pane) {
+pub(super) fn prove_delivery(question: &Value, pane: &Pane) {
     let reviewer = ready(pane, "codex");
     let endpoint = kah_cli::relay_store::endpoint(&reviewer).unwrap();
     let message = questions::message(question).unwrap();
@@ -149,7 +149,7 @@ fn independent_work(worker: &str, project: &Path, pane: &Pane) {
     );
 }
 
-fn review(worker: &str, panes: &mut Panes, turn: &str, trigger: Value) -> Value {
+pub(super) fn review(worker: &str, panes: &mut Panes, turn: &str, trigger: Value) -> Value {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let state = Reviews::read(worker).unwrap().unwrap_or_else(|| {
         kah_cli::observer_review::state::State::new(
@@ -175,7 +175,7 @@ fn review(worker: &str, panes: &mut Panes, turn: &str, trigger: Value) -> Value 
             if !panes.0.iter().any(|p| p.id == pane.id) {
                 panes.0.push(pane.clone());
             }
-            super::review::wait_review(worker, &pane, "codex");
+            super::review::wait_review(worker, &pane, &state.worker.provider);
         }
         kah_cli::observer_review::queue::drain(worker).unwrap();
         std::thread::sleep(Duration::from_millis(200));
