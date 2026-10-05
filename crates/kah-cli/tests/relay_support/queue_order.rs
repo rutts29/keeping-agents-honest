@@ -113,16 +113,55 @@ fn journey(
     drop(store);
     let next = next_request(worker, &pending.id, &existing, panes);
     let checkpoint_result = super::ambiguity::wait_result(worker, &next.id, panes);
+    let explicit = explicit_request(worker, panes);
+    let explicit_result = super::ambiguity::wait_result(worker, &explicit.id, panes);
     let first_result = super::ambiguity::read_result(worker, &pending.id);
     let actual = Reviews::read(worker).unwrap().unwrap();
     let same_session = first_result["observer_session"] == checkpoint_result["observer_session"]
         && first_result["observer_session"].is_string();
-    let result = json!({"passed":next.purpose==Purpose::Checkpoint&&same_session&&preserved(worker),"worker":worker,"firstPending":pending,"firstResult":first_result,"nextRequest":next,"checkpointResult":checkpoint_result,"statusBeforeRelease":status,"sameObserverSession":same_session,"sameObserverPane":actual.observer.pane==state.observer.pane,"queuedRoutineTriggersPreserved":preserved(worker),"protocol":"Real CLI kah gate, real tentative relayed input, native review in progress; checkpoint review priority is independent of its alignment verdict."});
+    let result = json!({"passed":next.purpose==Purpose::Checkpoint&&same_session&&preserved(worker),"worker":worker,"firstPending":pending,"firstResult":first_result,"nextRequest":next,"checkpointResult":checkpoint_result,"explicitGateRequest":explicit,"explicitGateResult":explicit_result,"statusBeforeRelease":status,"sameObserverSession":same_session,"sameObserverPane":actual.observer.pane==state.observer.pane,"queuedRoutineTriggersPreserved":preserved(worker),"protocol":"Real CLI kah gate, real tentative relayed input, native review in progress; checkpoint review priority is independent of its alignment verdict."});
     super::ambiguity::retain(home, "queue-next-native-review", &result);
     assert_eq!(next.purpose, Purpose::Checkpoint);
     assert!(same_session);
     assert!(preserved(worker));
     json!({"passed":true,"worker":worker,"nextPurpose":next.purpose,"checkpointRequest":next.id,"checkpointAssessment":checkpoint_result["assessment"],"observerSession":actual.observer.session,"sameObserverSession":true,"sameObserverPane":true,"queuedRoutineTriggersPreserved":true})
+}
+
+fn explicit_request(worker: &str, panes: &mut Panes) -> Request {
+    let root = Reviews::directory(worker).unwrap();
+    loop {
+        let mut requests = fs::read_dir(root.join("requests"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|e| e == "json"))
+            .map(|p| {
+                kah_cli::observer_review::state::read::<Request>(&p)
+                    .unwrap()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        requests.sort_by_key(|r| r.created_ms);
+        if let Some(explicit) = requests.iter().find(|r| {
+            r.trigger["events"]
+                .as_array()
+                .is_some_and(|events| events.iter().any(|e| e["kind"] == "user_gate"))
+        }) {
+            assert!(
+                !requests.iter().any(|r| r.purpose == Purpose::Steering
+                    && matches!(r.turn.as_str(), "routine-json-one" | "routine-json-two")
+                    && r.created_ms < explicit.created_ms),
+                "routine review ran before the actual user gate"
+            );
+            return explicit.clone();
+        }
+        queue::drain(worker).unwrap();
+        if let Some(state) = Reviews::read(worker).unwrap()
+            && let Some(pending) = state.pending
+        {
+            super::ambiguity::wait_result(worker, &pending.id, panes);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 fn active_review(worker: &str, panes: &mut Panes) {
