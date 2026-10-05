@@ -179,7 +179,7 @@ fn answer(home: &Path, worker: &str, provider: &str, panes: &Panes, question: &V
     ready(&panes.0[1], provider);
 }
 
-const FORMATTER_PROBE: &str = r#"const a=require('node:assert/strict'),f=require('./formatter.cjs');a.equal(f('a,b\r\n1,2\r\n'),'"a","b"\n"1","2"\n');a.equal(f('a"b,c'),'"a""b","c"\n');console.log('CSV_POLICY_PASS');"#;
+const FORMATTER_PROBE: &str = r#"const a=require('node:assert/strict'),m=require('./formatter.cjs'),f=typeof m==='function'?m:m.format;a.equal(typeof f,'function');a.equal(f('a,b\r\n1,2\r\n'),'"a","b"\n"1","2"\n');a.equal(f('a"b,c'),'"a""b","c"\n');console.log('CSV_POLICY_PASS');"#;
 
 fn verify_formatter(project: &Path) -> Value {
     let output = sandbox_output(
