@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 pub fn render(value: &Value) -> String {
     let mut text = String::new();
-    walk(value, "native", &mut text);
+    walk(value, "native", &mut text, &[], &mut vec![]);
     text
 }
 pub fn native_document(provider: &str, session: &str, value: &Value) -> Result<Document> {
@@ -21,11 +21,15 @@ pub fn native_document(provider: &str, session: &str, value: &Value) -> Result<D
     for (index, row) in rows.iter().enumerate() {
         let start_byte = text.len();
         let path = format!("native/{index}");
-        walk(row, &path, &mut text);
+        let paths = output_paths(provider, &path, row);
+        let mut outputs = vec![];
+        walk(row, &path, &mut text, &paths, &mut outputs);
+        let mut provenance = context(provider, &path, row);
+        provenance["output_ranges"] = json!(outputs);
         records.push(NativeRecord {
             start_byte,
             end_byte: text.len(),
-            context: context(provider, &path, row),
+            context: provenance,
         });
     }
     let mut document = Document::new(
@@ -49,19 +53,67 @@ fn context(provider: &str, path: &str, row: &Value) -> Value {
         .unwrap_or_default();
     json!({"provider":provider,"path":path,"native_transport_only":true,"record_type":item["type"],"record_id":if provider=="codex" {&item["id"]}else{&item["uuid"]},"turn_id":row["turnId"],"native_timestamp":row["timestamp"],"message_role":item["message"]["role"],"content_types":content_types,"is_meta":item["isMeta"],"is_sidechain":item["isSidechain"],"status":item["status"],"exit_code":item["exitCode"]})
 }
-fn walk(value: &Value, path: &str, out: &mut String) {
+fn walk(
+    value: &Value,
+    path: &str,
+    out: &mut String,
+    expected: &[String],
+    outputs: &mut Vec<[usize; 2]>,
+) {
     match value {
         Value::Object(map) => {
             for (key, value) in map {
-                walk(value, &format!("{path}/{key}"), out);
+                walk(value, &format!("{path}/{key}"), out, expected, outputs);
             }
         }
         Value::Array(values) => {
             for (index, value) in values.iter().enumerate() {
-                walk(value, &format!("{path}/{index}"), out);
+                walk(value, &format!("{path}/{index}"), out, expected, outputs);
             }
         }
-        Value::String(text) => out.push_str(&format!("\n[{path}]\n{text}\n")),
+        Value::String(text) => {
+            out.push_str(&format!("\n[{path}]\n"));
+            let start = out.len();
+            out.push_str(text);
+            if expected.iter().any(|p| p == path) {
+                outputs.push([start, out.len()]);
+            }
+            out.push('\n');
+        }
         other => out.push_str(&format!("\n[{path}]\n{other}\n")),
     }
+}
+
+fn output_paths(provider: &str, base: &str, row: &Value) -> Vec<String> {
+    if provider == "codex" {
+        return if row["item"]["type"] == "commandExecution" {
+            vec![format!("{base}/item/aggregatedOutput")]
+        } else {
+            vec![]
+        };
+    }
+    if row["type"] != "user" {
+        return vec![];
+    }
+    let mut paths = vec![];
+    for (i, item) in row["message"]["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        if item["type"] != "tool_result" {
+            continue;
+        }
+        paths.push(format!("{base}/message/content/{i}/content"));
+        for (n, part) in item["content"].as_array().into_iter().flatten().enumerate() {
+            if part["type"] == "text" {
+                paths.push(format!("{base}/message/content/{i}/content/{n}/text"));
+            }
+        }
+    }
+    if !paths.is_empty() {
+        paths.push(format!("{base}/toolUseResult/stdout"));
+    }
+    paths
 }
