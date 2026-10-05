@@ -37,7 +37,7 @@ pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), Str
     Ok(())
 }
 pub(super) fn question(r: &Requirement, questions: &mut Questions) {
-    if r.applicability.is_none() {
+    if r.applicability.is_none() || matches!(r.judgment, super::Thinking::NeedsUser { .. }) {
         return;
     }
     let reference = format!("decision.requirements[{}].applicability", json!(r.id));

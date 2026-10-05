@@ -50,6 +50,16 @@ pub fn evaluate(
     .binding;
     let saved: Option<Job> = super::state::read(&job_path(&request.worker, &request.id)?)?;
     if let Some(job) = saved {
+        if !matches_decision(&job, input, questions)? {
+            archive_changed(request)?;
+            stage(
+                request,
+                input,
+                questions,
+                "The report/decision changed. Select whole relevant items for the current state and questions; the prior selection and judgment are archived, not reused.",
+            )?;
+            return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
+        }
         return retry(home, request, &binding, &job);
     }
     let calibration = calibration(&request.worker)?;
@@ -71,6 +81,48 @@ pub fn evaluate(
         }
         Err(error) => Err(error.into()),
     }
+}
+pub fn matches_decision(job: &Job, input: &Value, questions: &Questions) -> Result<bool> {
+    Ok(job.state == *input
+        && serde_json::to_value(&job.questions)? == serde_json::to_value(questions)?)
+}
+fn archive_changed(request: &Request) -> Result<()> {
+    let directory = Store::directory(&request.worker)?;
+    let history = directory
+        .join("preparation-history")
+        .join(crate::relay_store::nonce());
+    kah_core::run_store::ensure_private_directory(&history)?;
+    let state =
+        Store::read(&request.worker)?.ok_or("PREPARATION_STATE stage=context_preparation")?;
+    let mut paths = vec![];
+    for prefix in [
+        "preparation",
+        "prepared",
+        "selection",
+        "preparation-woken",
+        "preparation-retry",
+    ] {
+        paths.push(directory.join(format!("{prefix}-{}.json", request.id)));
+    }
+    paths.push(
+        state
+            .observer
+            .workspace
+            .join("outbox")
+            .join(format!("selected-{}.json", request.id)),
+    );
+    for path in paths {
+        if path.exists() {
+            fs::rename(
+                &path,
+                history.join(
+                    path.file_name()
+                        .ok_or("PREPARATION_HISTORY_PATH stage=context_preparation")?,
+                ),
+            )?;
+        }
+    }
+    Ok(())
 }
 fn selection_path(worker: &str, decision: &str) -> Result<PathBuf> {
     Ok(Store::directory(worker)?.join(format!("selection-{decision}.json")))

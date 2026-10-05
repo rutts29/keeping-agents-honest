@@ -32,6 +32,7 @@ pub fn resolve(
             Thinking::Fact { .. } | Thinking::AtomicFact { .. } => "yes",
             Thinking::Semantic { .. } => "supported",
             Thinking::NeedsUser { .. } => continue,
+            Thinking::ArtifactPreservation { .. } => continue,
         };
         if !confirmed(judgment, &format!("requirement.{}", unit.id), choice) {
             continue;

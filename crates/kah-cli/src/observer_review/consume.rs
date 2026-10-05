@@ -100,8 +100,8 @@ pub fn needs_reminder(assessment: &Value, judgment: &judge::Judgment) -> bool {
             && kah_observer::decision_units::confirmed(judgment, "steering.proposal", "supported")
 }
 pub fn question_version(request: &super::state::Request, report: &Report) -> u32 {
-    if report.decision_units.is_some() {
-        kah_observer::decision_units::VERSION
+    if let Some(units) = &report.decision_units {
+        units.version()
     } else {
         match request.purpose {
             Purpose::Checkpoint => kah_observer::checkpoint::VERSION,

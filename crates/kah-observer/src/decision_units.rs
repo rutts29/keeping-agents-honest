@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 mod applicability;
+pub mod artifact;
 mod evaluation;
 pub use applicability::Applicability;
 mod literal;
@@ -72,6 +73,10 @@ pub struct CheckReceipt {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Thinking {
+    ArtifactPreservation {
+        fact: artifact::ArtifactFact,
+        evidence_citations: Vec<usize>,
+    },
     AtomicFact {
         fact: Literal,
         evidence_citations: Vec<usize>,
@@ -132,6 +137,14 @@ pub struct Proportion {
     pub citations: Vec<Citation>,
 }
 impl ReviewUnits {
+    /// Recorded legacy reports retain their actual question generation.
+    pub fn version(&self) -> u32 {
+        if self.requirements.iter().any(|r| r.applicability.is_some()) {
+            VERSION
+        } else {
+            5
+        }
+    }
     /// Reindex complete verified units by name without removing any content.
     pub fn named_state(verified: &Value) -> Result<Value, String> {
         let requirements = verified["requirements"]

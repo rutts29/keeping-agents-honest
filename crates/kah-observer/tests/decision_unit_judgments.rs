@@ -6,20 +6,30 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 fn units(kind: serde_json::Value) -> ReviewUnits {
-    serde_json::from_value(json!({"requirements":[{"id":"current-contract","name":"Current contract","dimension":"intent","authority_items":["goal"],"citations":[],"components":[],"checks":[],"judgment":kind}],"proportion":null})).unwrap()
+    serde_json::from_value(json!({"requirements":[{"id":"current-contract","name":"Current contract","dimension":"intent","authority_items":["goal"],"citations":[],"components":[],"checks":[],"applicability":{"due":true,"unconditional":false,"reasoning":"The obligation is due at this event.","evidence_citations":[0]},"judgment":kind}],"proportion":null})).unwrap()
 }
 fn judgment(key: &str, choice: &str, p: f64, confidence: f64) -> Judgment {
     Judgment {
         backend: "jev".into(),
         model: "jev-latest".into(),
-        answers: BTreeMap::from([(
-            key.into(),
-            Answer::Choice {
-                choice: choice.into(),
-                confidence,
-                probabilities: BTreeMap::from([(choice.into(), p)]),
-            },
-        )]),
+        answers: BTreeMap::from([
+            (
+                key.into(),
+                Answer::Choice {
+                    choice: choice.into(),
+                    confidence,
+                    probabilities: BTreeMap::from([(choice.into(), p)]),
+                },
+            ),
+            (
+                "applicability.current-contract".into(),
+                Answer::Choice {
+                    choice: "supported".into(),
+                    confidence: 0.95,
+                    probabilities: BTreeMap::from([("supported".into(), 0.95)]),
+                },
+            ),
+        ]),
         metrics: Metrics::default(),
         fallback_reason: None,
     }

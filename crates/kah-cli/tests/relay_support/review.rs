@@ -203,6 +203,7 @@ pub(super) fn wait_review(
     provider: &str,
 ) -> kah_cli::observer_review::state::State {
     let mut consent = false;
+    let mut retried_gap = None;
     loop {
         let state = Reviews::read(id).unwrap().unwrap();
         if state.pending.is_none() {
@@ -217,9 +218,7 @@ pub(super) fn wait_review(
             crate::native_controller_support::native_consent(&pane.id, provider);
             consent = true;
         }
-        let gap = fs::read_to_string(Reviews::directory(id).unwrap().join("gap.json"))
-            .unwrap_or_default();
-        assert!(gap.is_empty(), "review gap: {gap}; screen {screen}");
+        super::checkpoint_retry::gap(id, &mut retried_gap);
         std::thread::sleep(Duration::from_millis(250));
     }
 }

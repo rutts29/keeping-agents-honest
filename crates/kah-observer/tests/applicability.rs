@@ -65,3 +65,13 @@ fn an_unconditional_prohibition_cannot_be_declared_not_due() {
             .starts_with("REVIEW_APPLICABILITY_UNCONDITIONAL")
     );
 }
+
+#[test]
+fn an_old_report_without_applicability_cannot_authorize_a_new_violation() {
+    let mut old = units(true, false);
+    old.requirements[0].applicability = None;
+    assert_eq!(old.version(), 5);
+    let result = decision_units::assess(&old, &judgment("supported"));
+    assert!(result.violations.is_empty());
+    assert_eq!(result.needs_thinker, ["receipt"]);
+}

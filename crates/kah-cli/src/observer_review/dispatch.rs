@@ -19,6 +19,9 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
     if !config.enabled {
         return Ok(None);
     }
+    if let Some(notice) = super::artifacts::start_status(binding, input)? {
+        return Ok(Some(notice));
+    }
     if matches!(
         input["hook_event_name"].as_str(),
         Some("PostToolUse" | "Stop" | "UserPromptSubmit")

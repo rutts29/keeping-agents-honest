@@ -22,6 +22,7 @@ fn units(facts: Vec<Value>) -> (ReviewUnits, Document) {
         "id":format!("receipt-{i}"),"name":format!("Receipt property {i}"),"dimension":"integration","authority_items":["goal"],
         "citations":[{"source":doc.id,"digest":doc.digest,"quote":doc.text}],"components":[],
         "checks":[{"name":"parser","command_citation":0,"result_citation":0,"sha_citation":0,"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+        "applicability":{"due":true,"unconditional":false,"reasoning":"These native receipts are due now.","evidence_citations":[0]},
         "judgment":{"kind":"atomic_fact","fact":fact,"evidence_citations":[0]}
     })).collect::<Vec<_>>();
     (
@@ -39,8 +40,8 @@ fn each_receipt_property_has_a_literal_question_and_all_are_required() {
     ]);
     units.verify(&[doc], &["goal".into()]).unwrap();
     let questions = decision_units::questions(&units);
-    assert_eq!(questions.len(), 3);
-    let answers = (0..3)
+    assert_eq!(questions.len(), 6);
+    let mut answers: BTreeMap<String, Answer> = (0..3)
         .map(|i| {
             (
                 format!("requirement.receipt-{i}"),
@@ -52,6 +53,16 @@ fn each_receipt_property_has_a_literal_question_and_all_are_required() {
             )
         })
         .collect();
+    for i in 0..3 {
+        answers.insert(
+            format!("applicability.receipt-{i}"),
+            Answer::Choice {
+                choice: "supported".into(),
+                confidence: 0.95,
+                probabilities: BTreeMap::from([("supported".into(), 0.95)]),
+            },
+        );
+    }
     let mut judgment = Judgment {
         backend: "jev".into(),
         model: "jev-latest".into(),

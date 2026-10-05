@@ -99,7 +99,11 @@ fn capture(
         "named_decision",
         &captured,
         &Ok(judgment.clone()),
-        kah_observer::decision_units::VERSION,
+        if questions.keys().any(|k| k.starts_with("applicability.")) {
+            kah_observer::decision_units::VERSION
+        } else {
+            5
+        },
     )?))
 }
 
@@ -127,6 +131,12 @@ pub fn assessment(
                     &format!("requirement.{}", r.id),
                     "supported",
                 )
+                && r.applicability.as_ref().is_some_and(|a| a.due)
+                && decision_units::confirmed(
+                    judgment,
+                    &format!("applicability.{}", r.id),
+                    "supported",
+                )
         });
         if !closed {
             open.push(item);
@@ -147,5 +157,5 @@ pub fn assessment(
         super::state::Purpose::Steering => "steering",
         _ => "decision",
     };
-    serde_json::json!({"state":format!("{purpose}_{state}"),"passed":if state=="passed" {Some(true)}else if state=="failed" {Some(false)}else{None},"violations":outcome.violations,"needs_user":outcome.needs_user,"needs_thinker":outcome.needs_thinker,"unproven":outcome.violations.iter().chain(&outcome.needs_user).chain(&outcome.needs_thinker).collect::<Vec<_>>(),"deferrals":open,"out_of_proportion":outcome.out_of_proportion,"checkpoint_question_set":decision_units::VERSION})
+    serde_json::json!({"state":format!("{purpose}_{state}"),"passed":if state=="passed" {Some(true)}else if state=="failed" {Some(false)}else{None},"violations":outcome.violations,"needs_user":outcome.needs_user,"needs_thinker":outcome.needs_thinker,"not_due":outcome.not_due,"unproven":outcome.violations.iter().chain(&outcome.needs_user).chain(&outcome.needs_thinker).collect::<Vec<_>>(),"deferrals":open,"out_of_proportion":outcome.out_of_proportion,"checkpoint_question_set":units.version()})
 }

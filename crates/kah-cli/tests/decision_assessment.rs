@@ -23,20 +23,31 @@ fn request() -> Request {
     }
 }
 fn units(kind: Value) -> ReviewUnits {
-    serde_json::from_value(json!({"requirements":[{"id":"integration","name":"Integration","dimension":"integration","authority_items":["goal"],"deferral_id":"d","citations":[],"components":[],"checks":[],"judgment":kind}],"proportion":null})).unwrap()
+    // Applicability is validated independently.
+    serde_json::from_value(json!({"requirements":[{"id":"integration","name":"Integration","dimension":"integration","authority_items":["goal"],"deferral_id":"d","citations":[],"components":[],"checks":[],"applicability":{"due":true,"unconditional":false,"reasoning":"This dependency closure is due at this checkpoint.","evidence_citations":[0]},"judgment":kind}],"proportion":null})).unwrap()
 }
 fn judgment(choice: &str) -> Judgment {
     Judgment {
         backend: "jev".into(),
         model: "jev-latest".into(),
-        answers: BTreeMap::from([(
-            "requirement.integration".into(),
-            Answer::Choice {
-                choice: choice.into(),
-                confidence: 0.95,
-                probabilities: BTreeMap::from([(choice.into(), 0.95)]),
-            },
-        )]),
+        answers: BTreeMap::from([
+            (
+                "requirement.integration".into(),
+                Answer::Choice {
+                    choice: choice.into(),
+                    confidence: 0.95,
+                    probabilities: BTreeMap::from([(choice.into(), 0.95)]),
+                },
+            ),
+            (
+                "applicability.integration".into(),
+                Answer::Choice {
+                    choice: "supported".into(),
+                    confidence: 0.95,
+                    probabilities: BTreeMap::from([("supported".into(), 0.95)]),
+                },
+            ),
+        ]),
         metrics: Metrics::default(),
         fallback_reason: None,
     }

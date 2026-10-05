@@ -65,3 +65,31 @@ fn new_native_reports_reject_free_form_compound_facts_but_keep_old_reports_reada
     );
     assert_eq!(report.decision_units.unwrap().requirements.len(), 1);
 }
+
+#[test]
+fn native_report_cannot_omit_due_at_event_validation() {
+    use kah_cli::observer_review::workspace;
+    let request = Request {
+        id: "timing".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Drift,
+        turn: "t".into(),
+        head: None,
+        intent: json!({}),
+        trigger: json!({}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    let mut value = json!({"request_id":"timing","findings":[],"decision_units":{"requirements":[{
+        "id":"receipt","name":"Post-commit check","dimension":"drift","authority_items":["goal"],"citations":[],"components":[],"checks":[],
+        "judgment":{"kind":"semantic","decision":"violated","reasoning":"No receipt yet.","evidence_citations":[0]}
+    }]}});
+    assert!(
+        workspace::require_units(&request, &serde_json::from_value(value.clone()).unwrap())
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_APPLICABILITY_REQUIRED")
+    );
+    value["decision_units"]["requirements"][0]["applicability"] = json!({"due":false,"unconditional":false,"reasoning":"No completion claim yet.","evidence_citations":[0]});
+    assert!(workspace::require_units(&request, &serde_json::from_value(value).unwrap()).is_ok());
+}

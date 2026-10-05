@@ -33,7 +33,7 @@ fn requirement() -> Value {
             "citations":citations(),
             "components":{"type":"array","items":object(&["name","role"],json!({"name":{"type":"string"},"role":{"enum":["implementation","test","supporting"]}}))},
             "checks":{"type":"array","items":object(&["name","command_citation","result_citation","sha_citation","sha"],json!({"name":{"type":"string"},"command_citation":{"type":"integer","minimum":0},"result_citation":{"type":"integer","minimum":0},"sha_citation":{"type":"integer","minimum":0},"sha":{"type":"string"}}))},
-            "applicability":super::applicability::schema(),
+            "applicability":{"anyOf":[super::applicability::schema(),{"type":"null"}]},
             "judgment":thinking::schema()
         }),
     )

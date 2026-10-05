@@ -26,6 +26,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     )];
     documents.push(history(&home, state)?);
     let mut project = project_context(&home, state)?;
+    super::artifacts::documents(&state.worker.session, &project, &mut documents)?;
     let mut trigger = trigger;
     if purpose == Purpose::Steering {
         let input = serde_json::from_value(trigger["uncertain_user_input"].clone())?;
@@ -260,6 +261,11 @@ pub fn project_cli() -> Result<()> {
     let root = std::env::current_dir()?;
     let head = git(&root, &["rev-parse", "--verify", "HEAD"])?;
     let committed = committed_snapshot(&root, head.as_deref())?;
+    let artifact_blobs = if let Some(head) = head.as_deref() {
+        super::artifact_collect::committed(&root, head.trim())?
+    } else {
+        Default::default()
+    };
     let diff = git(
         &root,
         &["diff", "--no-ext-diff", "--no-textconv", "--binary"],
@@ -299,7 +305,7 @@ pub fn project_cli() -> Result<()> {
     }
     println!(
         "{}",
-        json!({"head":head.map(|h|h.trim().to_owned()),"committed_snapshot":committed,"diff":format!("{}\n{}",diff.unwrap_or_default(),staged.unwrap_or_default()),"status":status,"tags":tags,"plans":plans,"full_context_not_truncated":true})
+        json!({"head":head.map(|h|h.trim().to_owned()),"committed_snapshot":committed,"artifact_blobs":artifact_blobs,"diff":format!("{}\n{}",diff.unwrap_or_default(),staged.unwrap_or_default()),"status":status,"tags":tags,"plans":plans,"full_context_not_truncated":true})
     );
     Ok(())
 }

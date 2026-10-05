@@ -1,4 +1,7 @@
 //! One event-driven, full native evidence observer per worker session.
+mod artifact_collect;
+mod artifact_git;
+pub mod artifacts;
 pub mod capture;
 pub mod consume;
 pub mod control;
@@ -52,6 +55,9 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     }
     if args == ["__review-project-context"] {
         return Some(capture::project_cli());
+    }
+    if args == ["__review-artifact-baseline"] {
+        return Some(artifact_collect::cli());
     }
     if args.get(..2) == Some(&["observe".into(), "report".into()]) {
         return Some(workspace::submit(args));

@@ -29,6 +29,9 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     for receipt in &r.checks {
         check(receipt, &citations)?;
     }
+    if let Thinking::ArtifactPreservation { fact, .. } = &r.judgment {
+        fact.verify(r, documents)?;
+    }
     if let Thinking::AtomicFact {
         fact,
         evidence_citations,
@@ -54,6 +57,9 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
 }
 fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
     let indices = match judgment {
+        Thinking::ArtifactPreservation {
+            evidence_citations, ..
+        } => evidence_citations,
         Thinking::AtomicFact {
             evidence_citations, ..
         } => evidence_citations,
