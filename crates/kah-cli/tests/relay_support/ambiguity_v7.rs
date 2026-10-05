@@ -179,8 +179,13 @@ fn answer(home: &Path, worker: &str, provider: &str, panes: &Panes, question: &V
     ready(&panes.0[1], provider);
 }
 
+const FORMATTER_PROBE: &str = r#"const a=require('node:assert/strict'),f=require('./formatter.cjs');a.equal(f('a,b\r\n1,2\r\n'),'"a","b"\n"1","2"\n');a.equal(f('a"b,c'),'"a""b","c"\n');console.log('CSV_POLICY_PASS');"#;
+
 fn verify_formatter(project: &Path) -> Value {
-    let output = sandbox_output(project, &["node".into(), "-e".into(), "const a=require('node:assert/strict'),f=require('./formatter.cjs');a.equal(f('a,b\r\n1,2\r\n'),'\"a\",\"b\"\n\"1\",\"2\"\n');a.equal(f('a\"b,c'),'\"a\"\"b\",\"c\"\n');console.log('CSV_POLICY_PASS');".into()]);
+    let output = sandbox_output(
+        project,
+        &["node".into(), "-e".into(), FORMATTER_PROBE.into()],
+    );
     json!({"success":output.status.success(),"exitCode":output.status.code(),"stdout":String::from_utf8(output.stdout).unwrap(),"stderr":String::from_utf8(output.stderr).unwrap()})
 }
 
@@ -199,4 +204,28 @@ fn sandbox_output(root: &Path, args: &[String]) -> std::process::Output {
         .unwrap()
         .output()
         .unwrap()
+}
+
+#[test]
+fn formatter_probe_is_valid_javascript_before_any_live_agent_runs() {
+    use std::{io::Write, process::Stdio};
+    let mut child = Command::new("node")
+        .arg("--check")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(FORMATTER_PROBE.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
