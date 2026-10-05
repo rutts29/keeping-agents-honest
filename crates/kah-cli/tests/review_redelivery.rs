@@ -187,3 +187,17 @@ fn repeated_failures_are_visible_without_limiting_or_dropping_attempts() {
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+#[test]
+fn actual_warm_idle_timeout_retains_the_review_without_hiding_other_herdr_errors() {
+    use kah_cli::observer_review::delivery::idle_wait;
+    let real = "RUN_HERDR_COMMAND stage=pane: agent wait: {\"error\":{\"code\":\"timeout\",\"message\":\"timed out waiting for agent status\"},\"id\":\"cli:agent:wait\"}\n";
+    assert!(
+        idle_wait(Err(real.into()))
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery:")
+    );
+    let other =
+        "RUN_HERDR_COMMAND stage=pane: agent wait: {\"error\":{\"code\":\"agent_not_found\"}}";
+    assert_eq!(idle_wait(Err(other.into())).unwrap_err().to_string(), other);
+}

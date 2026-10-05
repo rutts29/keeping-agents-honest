@@ -71,12 +71,7 @@ fn journey(
     source: &kah_observer::intake::Input,
     panes: &mut Panes,
 ) -> Value {
-    if Reviews::read(worker)
-        .unwrap()
-        .is_none_or(|s| s.pending.is_none())
-    {
-        runtime::wake(worker, Purpose::Drift, "queue-inflight", json!({"event":"Review actual JSON formatter progress and its tentative user policy question."})).unwrap();
-    }
+    active_review(worker, panes);
     let store = Reviews::open_wait(worker).unwrap();
     let state = store.load().unwrap().unwrap();
     let pending = state
@@ -129,6 +124,28 @@ fn journey(
     assert_eq!(actual.observer.session, state.observer.session);
     assert!(preserved(worker));
     json!({"passed":true,"worker":worker,"nextPurpose":next.purpose,"checkpointRequest":next.id,"checkpointAssessment":checkpoint_result["assessment"],"observerSession":actual.observer.session,"sameObserverSession":true,"sameObserverPane":true,"queuedRoutineTriggersPreserved":true})
+}
+
+fn active_review(worker: &str, panes: &mut Panes) {
+    loop {
+        let state = Reviews::read(worker).unwrap();
+        if let Some(state) = state
+            && let Some(pending) = state.pending
+        {
+            if pending.purpose != Purpose::Checkpoint {
+                return;
+            }
+            let pane = Pane {
+                id: state.observer.pane.unwrap(),
+            };
+            if !panes.0.iter().any(|p| p.id == pane.id) {
+                panes.0.push(pane.clone());
+            }
+            super::review::wait_review(worker, &pane, "codex");
+        } else {
+            runtime::wake(worker, Purpose::Drift, "queue-inflight", json!({"event":"Review actual JSON formatter progress and its tentative user policy question."})).unwrap();
+        }
+    }
 }
 
 fn next_request(worker: &str, first: &str, existing: &[PathBuf], panes: &mut Panes) -> Request {

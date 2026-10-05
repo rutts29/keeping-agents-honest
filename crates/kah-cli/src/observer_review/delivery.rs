@@ -24,7 +24,7 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         .as_ref()
         .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
     let marker = format!("kah review request {} ", request.id);
-    crate::run_pane::invoke_at(
+    idle_wait(crate::run_pane::invoke_at(
         &[
             "agent",
             "wait",
@@ -37,7 +37,7 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
             "15000",
         ],
         Some(socket),
-    )?;
+    ))?;
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
     if !matches!(
         view["result"]["pane"]["agent_status"].as_str(),
@@ -71,6 +71,21 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
     }
     diagnostic(state, &marker, &text)?;
     Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; inspect private review/delivery-gap.json".into())
+}
+/// The short readiness handshake may expire while the previous native turn
+/// is still closing. It does not end the review or discard its request.
+pub fn idle_wait(result: Result<std::process::Output>) -> Result<std::process::Output> {
+    result.map_err(|error| {
+        let text = error.to_string();
+        let timeout = text.strip_prefix("RUN_HERDR_COMMAND stage=pane: agent wait: ")
+            .and_then(|body| serde_json::from_str::<Value>(body.trim()).ok())
+            .is_some_and(|body| body["error"]["code"] == "timeout");
+        if timeout {
+            format!("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native observer is not idle yet; request retained; {text}").into()
+        } else {
+            error
+        }
+    })
 }
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
 /// record prove it; an idle client with no receipt gets the same original wake.
