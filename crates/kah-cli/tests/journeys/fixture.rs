@@ -14,6 +14,7 @@ pub(super) struct Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
+        jobs::cleanup(&self.project, &self.sessions);
         for id in &self.sessions {
             cleanup_observer(&self.project, id);
             let _ = Command::new("/home/example/.local/bin/codex")
@@ -51,6 +52,9 @@ impl Drop for Fixture {
         let _ = fs::remove_file(&self.stderr);
     }
 }
+
+#[path = "fixture_jobs.rs"]
+mod jobs;
 
 pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixture) {
     let nonce = SystemTime::now()
