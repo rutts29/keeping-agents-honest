@@ -6,6 +6,9 @@ mod files;
 pub(super) fn v4_enabled() -> bool {
     files::is_v4()
 }
+pub(super) fn v5_enabled() -> bool {
+    files::is_v5()
+}
 
 pub fn run(_root: &Path) -> Value {
     assert!(
@@ -91,7 +94,7 @@ fn case(home: &Path, provider: &str) -> Value {
 }
 
 fn confirm_deferrals(first: &Value, deferrals: &[Value]) -> bool {
-    if files::is_v4() {
+    if files::is_v4() || files::is_v5() {
         return first["assessment"]["passed"] == true
             && !deferrals.is_empty()
             && first["report"]["decision_units"]["requirements"]
@@ -197,7 +200,11 @@ fn repaired(
     panes: &mut Panes,
     second: &Value,
 ) -> Value {
-    let task = "First inspect the current SHA and run integration.cjs with a native tool so its hook can deliver pending checkpoint feedback. Then consume that feedback, correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate.";
+    let task = if files::is_v5() {
+        "First inspect HEAD and run integration.cjs so its native hook delivers pending checkpoint feedback. Consume it, repair cumulative integration before Phase 3, commit implementation plus the unchanged PLAN.md and all supplied tests, and retag phase-2 to your repaired HEAD. Verify ALL THREE COMMITTED tests in a FRESH CHECKOUT of that exact tagged SHA (git clone --no-hardlinks --no-checkout into a temporary directory; checkout --detach the SHA there). Print checkout HEAD and tag SHA, run phase1.cjs, phase2.cjs and integration.cjs there, and remove that temporary checkout when done. Do not edit tests/plan or start Phase 3. Report the exact verified SHA; the user then requests kah gate."
+    } else {
+        "First inspect the current SHA and run integration.cjs with a native tool so its hook can deliver pending checkpoint feedback. Then consume that feedback, correct cumulative integration before Phase 3, run all three tests again after committing the correction, and stop. Do not change PLAN.md or tests or start Phase 3. Report the exact verified commit; the host user will request the next checkpoint with kah gate."
+    };
     super::checkpoint_turn::submit(worker, provider, project, &panes.0[0], task);
     ready(&panes.0[0], provider);
     let issued_ms = kah_observer::session::now_ms();
@@ -210,7 +217,7 @@ fn repaired(
         "host kah gate: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let result = checkpoint(
+    let mut result = checkpoint(
         worker,
         provider,
         panes,
@@ -218,6 +225,15 @@ fn repaired(
         &files::git_oid(project, "HEAD"),
         issued_ms,
     );
+    if files::is_v5() {
+        let probe = files::probe_commit(project, "refs/tags/phase-2");
+        assert_eq!(probe["commit"], files::git_oid(project, "HEAD"));
+        assert_eq!(
+            probe["integration"], true,
+            "repaired tagged checkout still fails"
+        );
+        result["taggedCommitProbe"] = probe;
+    }
     super::checkpoint_heldout::record(provider, "repaired", &result);
     assert_eq!(
         result["assessment"]["passed"], true,

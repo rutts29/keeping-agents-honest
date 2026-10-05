@@ -2,6 +2,7 @@ use kah_cli::{Arguments, run_pane::Pane};
 mod checkpoint_heldout;
 mod checkpoint_retry;
 mod checkpoint_turn;
+mod checkpoint_v5_heldout;
 mod checkpoints;
 mod hosted_search;
 mod linked_steer;
