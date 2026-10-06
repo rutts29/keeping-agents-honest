@@ -252,7 +252,26 @@ fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
         .append(true)
         .mode(0o600)
         .open(Store::directory(worker)?.join(format!("job-{command}.log")))?;
-    Command::new(env::current_exe()?)
+    // Installation can replace our executable while this host watcher remains
+    // alive. /proc/self/exe then names a deleted inode, not a launchable path.
+    let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=spawn")?);
+    let installed = home.join(".local/bin/kah");
+    let program = if installed.is_file() {
+        installed
+    } else {
+        // A disposable home may run kah directly without installation. Only
+        // a still-present kah binary is valid, never a library's test runner.
+        let current = env::current_exe()?;
+        if current.file_name().is_none_or(|name| name != "kah") || !current.is_file() {
+            return Err(format!(
+                "REVIEW_PROGRAM_MISSING stage=spawn: {}",
+                installed.display()
+            )
+            .into());
+        }
+        current
+    };
+    Command::new(program)
         .args([command, worker])
         .stdin(stdin)
         .stdout(Stdio::null())

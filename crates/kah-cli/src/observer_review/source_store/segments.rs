@@ -35,7 +35,7 @@ pub(super) fn store(root: &Path, bytes: &[u8], digest: &str) -> Result<()> {
 }
 
 pub(super) fn recover(path: &Path, digest: &str) -> Result<Vec<u8>> {
-    let stored = fs::read(path)?;
+    let stored = super::read_bytes(path)?;
     if format!("{:x}", Sha256::digest(&stored)) == digest {
         return Ok(stored); // Older, unsegmented sources remain readable.
     }
@@ -49,7 +49,8 @@ pub(super) fn recover(path: &Path, digest: &str) -> Result<Vec<u8>> {
         if id.len() != 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("REVIEW_SOURCE_ID stage=source_segments".into());
         }
-        let block = fs::read(path.parent().unwrap().join(format!("block-{id}")))?;
+        let block_path = path.parent().unwrap().join(format!("block-{id}"));
+        let block = super::read_bytes(&block_path)?;
         if format!("{:x}", Sha256::digest(&block)) != id {
             return Err("REVIEW_SOURCE_DIGEST stage=source_segments".into());
         }

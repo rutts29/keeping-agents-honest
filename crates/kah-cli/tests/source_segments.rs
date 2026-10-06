@@ -3,6 +3,36 @@ use serde_json::{Value, json};
 use std::fs;
 
 #[test]
+fn a_missing_segment_names_the_exact_file_and_preserves_the_manifest() {
+    let root = std::env::temp_dir().join(format!("kah-missing-segment-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    source_store::initialize(&root, &root.join("workspace")).unwrap();
+    source_store::text(
+        &root,
+        &root.join("transcript.txt"),
+        &"complete record\n".repeat(9000),
+    )
+    .unwrap();
+    let reference: Value =
+        serde_json::from_slice(&fs::read(root.join("transcript.txt")).unwrap()).unwrap();
+    let manifest_path = root
+        .join("sources")
+        .join(reference["$kah_source"].as_str().unwrap());
+    let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    let missing = root
+        .join("sources")
+        .join(format!("block-{}", manifest["blocks"][0].as_str().unwrap()));
+    fs::remove_file(&missing).unwrap();
+    let error = source_store::load_text(&root.join("transcript.txt"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.starts_with("REVIEW_SOURCE_IO stage=source_store"));
+    assert!(error.contains(missing.to_str().unwrap()));
+    assert!(manifest_path.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn growing_sources_share_segments_and_keep_exact_prefixes() {
     let temp = std::env::temp_dir().join(format!("kah-segments-{}", std::process::id()));
     fs::create_dir(&temp).unwrap();

@@ -1,5 +1,6 @@
 //! No-progress observation, never a deadline on an active native/model review.
 use serde::{Deserialize, Serialize};
+mod failure;
 mod monitor;
 pub use monitor::{notice, processing, run, start, watch};
 

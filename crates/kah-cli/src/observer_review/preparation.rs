@@ -26,7 +26,9 @@ fn job_path(worker: &str, decision: &str) -> Result<PathBuf> {
     Ok(Store::directory(worker)?.join(format!("preparation-{decision}.json")))
 }
 pub fn pending(worker: &str, decision: &str) -> Result<bool> {
-    Ok(job_path(worker, decision)?.exists())
+    let root = Store::directory(worker)?;
+    Ok(job_path(worker, decision)?.exists()
+        && !root.join(format!("prepared-{decision}.json")).exists())
 }
 pub fn active_decision(worker: &str, review: &str) -> Result<String> {
     let active: Option<Value> =

@@ -59,11 +59,20 @@ pub fn run(worker: &str) -> Result<()> {
 }
 pub fn watch(worker: &str) -> Result<()> {
     loop {
-        run(worker)?;
+        if let Err(error) = run(worker) {
+            if error.to_string().starts_with("REVIEW_PAUSED") {
+                return Ok(());
+            }
+            super::failure::record(worker, error.as_ref())?;
+        } else {
+            super::failure::recovered(worker)?;
+        }
         // Keep the cheap host watcher across review handoffs; otherwise a
         // publish/delivery crash while the worker is idle loses its watcher.
-        if Store::read(worker)?.is_none_or(|s| s.stopped) {
-            return Ok(());
+        match Store::read(worker) {
+            Ok(state) if state.as_ref().is_none_or(|s| s.stopped) => return Ok(()),
+            Err(error) => super::failure::record(worker, error.as_ref())?,
+            _ => (),
         }
         // Filesystem sampling, no model polling or extra native turns.
         std::thread::sleep(std::time::Duration::from_secs(15));

@@ -1,0 +1,33 @@
+use super::*;
+
+#[test]
+fn a_failed_sample_is_retained_and_visible_without_requiring_readable_review_state() {
+    let worker = format!("watch-error-{}", std::process::id());
+    let root = Store::directory(&worker).unwrap();
+    kah_core::run_store::ensure_private_directory(&root).unwrap();
+    std::fs::write(root.join("state.json"), b"invalid state").unwrap();
+    let error = "REVIEW_SOURCE_IO stage=source_store: /missing/block-abc: No such file";
+    record(&worker, &error).unwrap();
+    let saved: Value = state::read(&root.join("liveness/watch-error.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved["error"], error);
+    assert_eq!(saved["submitted"], false);
+    let notice: Value = state::read(&root.join("liveness/notice.json"))
+        .unwrap()
+        .unwrap();
+    assert!(
+        notice["text"]
+            .as_str()
+            .unwrap()
+            .contains("/missing/block-abc")
+    );
+    assert!(root.join("state.json").exists());
+    recovered(&worker).unwrap();
+    let recovery: Value = state::read(&root.join("liveness/watch-error.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(recovery["error"], error);
+    assert!(recovery["recovered_ms"].is_u64());
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}

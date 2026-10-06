@@ -131,7 +131,7 @@ fn actual_held_review_lock_cannot_hide_stall_notice_or_pending_request() {
         "unavailable reviewer delivery remains durable"
     );
     drop(held);
-    std::fs::remove_dir_all(Store::directory(&worker).unwrap().parent().unwrap()).unwrap();
+    cleanup_jobs(&worker);
 }
 
 #[test]
@@ -187,7 +187,23 @@ fn processing_marker_protects_real_progress_then_publish_crash_is_visible() {
             .unwrap()
             .contains("recovered")
     );
-    std::fs::remove_dir_all(Store::directory(&worker).unwrap().parent().unwrap()).unwrap();
+    cleanup_jobs(&worker);
+}
+
+fn cleanup_jobs(worker: &str) {
+    let root = kah_cli::observer_review::state::Store::directory(worker).unwrap();
+    // Detached jobs now execute real kah, rather than accidentally starting the
+    // test runner. Their inherited OS lock proves they exited before deletion.
+    let path = root.join("job-__review-retry.lock");
+    if path.exists() {
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        lock.lock().unwrap();
+    }
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
 
 fn setup(worker: &str) -> kah_cli::observer_review::state::State {
