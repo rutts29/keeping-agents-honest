@@ -41,6 +41,10 @@ pub fn run(worker: &str) -> Result<()> {
     if !progress.stalled {
         return Ok(());
     }
+    if sample.native_active {
+        // Advisory only. A human decides whether to interrupt a Working pane.
+        return notify(&state, &progress);
+    }
     let error = format!(
         "REVIEW_OBSERVER_STALLED stage=liveness: request {}: {}",
         pending.id, sample.cause
@@ -52,6 +56,47 @@ pub fn run(worker: &str) -> Result<()> {
     )?;
     notify(&state, &progress)?;
     super::super::hook::spawn("__review-retry", worker)
+}
+pub fn watch(worker: &str) -> Result<()> {
+    loop {
+        run(worker)?;
+        if Store::read(worker)?.is_none_or(|s| s.pending.is_none() || s.stopped) {
+            return Ok(());
+        }
+        // Filesystem sampling, no model polling or extra native turns.
+        std::thread::sleep(std::time::Duration::from_secs(15));
+    }
+}
+pub fn start(worker: &str) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let root = Store::directory(worker)?;
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(root.join("job-liveness-watch.lock"))?;
+    match lock.try_lock() {
+        Ok(()) => (),
+        Err(fs::TryLockError::WouldBlock) => return Ok(()),
+        Err(e) => return Err(e.into()),
+    }
+    let log = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(root.join("job-liveness-watch.log"))?;
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=liveness")?);
+    Command::new(home.join(".local/bin/kah"))
+        .args(["__review-liveness-watch", worker])
+        .stdin(Stdio::from(lock))
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(log))
+        .process_group(0)
+        .spawn()?;
+    Ok(())
 }
 
 fn sample(state: &State) -> Result<Sample> {
@@ -142,10 +187,18 @@ pub fn processing(worker: &str, request: &str) -> Result<Processing> {
     Ok(Processing(root.join(filename)))
 }
 fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
-    let state = if p.stalled { "stalled" } else { "recovered" };
+    let state = if p.stalled && p.sample.native_active {
+        "possibly_hung"
+    } else if p.stalled {
+        "stalled"
+    } else {
+        "recovered"
+    };
     let text = format!(
-        "kah observer {state}: worker {worker}, request {}: {}",
-        p.sample.request, p.sample.cause
+        "kah observer {state}: worker {worker}, request {}: {}; last native record time {:?}. A Working pane is never automatically interrupted.",
+        p.sample.request,
+        p.sample.cause,
+        p.sample.transcript_version.map(|(_, time)| time)
     );
     crate::unattended_report::save(
         root,
@@ -188,9 +241,22 @@ fn notify(state: &State, p: &Progress) -> Result<()> {
     }) {
         return Ok(());
     }
+    let label = if p.sample.native_active {
+        "possibly-hung"
+    } else {
+        "stalled"
+    };
+    let action = if p.sample.native_active {
+        "Native Working has no new records; human decision required, no automatic interruption or prompt."
+    } else {
+        "Pending review retained; visible redelivery attempted."
+    };
     let text = format!(
-        "[kah-builder] [kah-observer-stalled] worker={} request={} {}. Pending review retained; visible redelivery attempted.",
-        state.worker.session, p.sample.request, p.sample.cause
+        "[kah-builder] [kah-observer-{label}] worker={} request={} {}; last native record time {:?}. {action}",
+        state.worker.session,
+        p.sample.request,
+        p.sample.cause,
+        p.sample.transcript_version.map(|(_, time)| time)
     );
     let sent = state
         .worker

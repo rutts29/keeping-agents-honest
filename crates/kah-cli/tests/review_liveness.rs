@@ -43,11 +43,32 @@ fn progressing_native_or_controller_work_is_never_expired_and_recovery_is_record
         let mut active = sample(3_600_000);
         active.native_active = native;
         active.controller_active = !native;
+        if native {
+            active.transcript_version = Some((100, active.now_ms));
+        }
         let recovered = transition(Some(&stalled), &active);
         assert!(!recovered.stalled);
         assert!(recovered.changed);
         assert!(!transition(Some(&recovered), &active).stalled);
     }
+}
+
+#[test]
+fn working_without_new_records_becomes_a_human_notice_and_growth_recovers_it() {
+    let mut active = sample(0);
+    active.native_active = true;
+    active.transcript_version = Some((100, 0));
+    let first = transition(None, &active);
+    active.now_ms = 300_000;
+    let hung = transition(Some(&first), &active);
+    assert!(hung.stalled && hung.changed);
+    assert!(
+        hung.sample.native_active,
+        "Working hang only notifies; no auto-interrupt"
+    );
+    active.now_ms += 1000;
+    active.transcript_version = Some((200, active.now_ms));
+    assert!(!transition(Some(&hung), &active).stalled);
 }
 
 #[test]

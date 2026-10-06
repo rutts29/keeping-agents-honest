@@ -24,26 +24,19 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         .as_ref()
         .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
     let marker = format!("kah review request {} ", request.id);
-    idle_wait(crate::run_pane::invoke_at(
-        &[
-            "agent",
-            "wait",
-            pane,
-            "--until",
-            "idle",
-            "--until",
-            "done",
-            "--timeout",
-            "15000",
-        ],
-        Some(socket),
-    ))?;
+    if !wait_idle(state, socket, pane)? {
+        return Ok(());
+    }
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
     if !matches!(
         view["result"]["pane"]["agent_status"].as_str(),
         Some("idle" | "done")
     ) {
-        return Err("REVIEW_NOT_IDLE stage=delivery".into());
+        return if accepted(state)? {
+            Ok(())
+        } else {
+            Err("REVIEW_NOT_IDLE stage=delivery".into())
+        };
     }
     safe_keyboard(&screen(state)?)?;
     let path = state
@@ -72,6 +65,23 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
     diagnostic(state, &marker, &text)?;
     Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; inspect private review/delivery-gap.json".into())
 }
+fn wait_idle(state: &State, socket: &std::path::Path, pane: &str) -> Result<bool> {
+    let waited = crate::run_pane::invoke_at(
+        &[
+            "agent",
+            "wait",
+            pane,
+            "--until",
+            "idle",
+            "--until",
+            "done",
+            "--timeout",
+            "15000",
+        ],
+        Some(socket),
+    );
+    readiness(waited, accepted(state)?)
+}
 /// The short readiness handshake may expire while the previous native turn
 /// is still closing. It does not end the review or discard its request.
 pub fn idle_wait(result: Result<std::process::Output>) -> Result<std::process::Output> {
@@ -88,6 +98,34 @@ pub fn wait_timeout(text: &str) -> bool {
     text.strip_prefix("RUN_HERDR_COMMAND stage=pane: agent wait: ")
         .and_then(|body| serde_json::from_str::<Value>(body.trim()).ok())
         .is_some_and(|body| body["error"]["code"] == "timeout")
+}
+/// A native user receipt is delivery proof even when Herdr's idle handshake
+/// times out. Never manufacture a CLI success response or count that as failure.
+pub fn readiness(result: Result<std::process::Output>, confirmed: bool) -> Result<bool> {
+    if confirmed && result.as_ref().is_err_and(|e| wait_timeout(&e.to_string())) {
+        return Ok(false);
+    }
+    idle_wait(result).map(|_| true)
+}
+pub fn accepted(state: &State) -> Result<bool> {
+    let current = Store::read(&state.worker.session)?.unwrap_or_else(|| state.clone());
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    let Some(path) = &current.observer.transcript else {
+        return Ok(false);
+    };
+    let decision = super::preparation::active_decision(&current.worker.session, &pending.id)?;
+    let marker = format!("kah review request {decision} ");
+    let Ok(file) = File::open(path) else {
+        return Ok(false);
+    };
+    receipt(
+        BufReader::new(file),
+        &current.worker.provider,
+        current.observer.session.as_deref().unwrap_or(""),
+        &marker,
+    )
 }
 pub fn in_progress(state: &State) -> Result<bool> {
     let Some(pending) = &state.pending else {

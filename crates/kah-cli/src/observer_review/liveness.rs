@@ -1,7 +1,7 @@
 //! No-progress observation, never a deadline on an active native/model review.
 use serde::{Deserialize, Serialize};
 mod monitor;
-pub use monitor::{notice, processing, run};
+pub use monitor::{notice, processing, run, start, watch};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sample {
@@ -27,7 +27,7 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
         p.sample.transcript_version != sample.transcript_version
             || p.sample.report_version != sample.report_version
     });
-    let active = sample.native_active || sample.controller_active || grew;
+    let active = sample.controller_active || grew;
     let last_progress_ms = if active {
         sample.now_ms
     } else {
@@ -35,9 +35,18 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
     };
     // Reuse the native delivery readiness observation interval. This causes a
     // notice/retry ONLY with no activity; it never cancels or fails a review.
-    let stalled =
-        same.is_some() && !active && sample.now_ms.saturating_sub(last_progress_ms) >= 15_000;
-    let changed = stalled != same.is_some_and(|p| p.stalled);
+    // Working alone may mean a hung native request. Five minutes of record
+    // silence only notifies a human; this is never a review deadline.
+    let observation_ms = if sample.native_active {
+        300_000
+    } else {
+        15_000
+    };
+    let stalled = same.is_some()
+        && !active
+        && sample.now_ms.saturating_sub(last_progress_ms) >= observation_ms;
+    let changed = stalled != same.is_some_and(|p| p.stalled)
+        || stalled && same.is_some_and(|p| p.sample.native_active != sample.native_active);
     Progress {
         sample: sample.clone(),
         last_progress_ms,

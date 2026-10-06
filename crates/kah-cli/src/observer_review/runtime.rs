@@ -84,6 +84,7 @@ pub fn submit_snapshot(
     }
     store.save(&state)?;
     drop(store); // SessionStart must be able to bind before pane run returns.
+    super::liveness::start(worker)?;
     deliver(home, &state, &prompt, existing)?;
     super::lifecycle::start(worker)?;
     if !existing {
@@ -273,63 +274,8 @@ pub fn resume(worker: &str) -> Result<()> {
     startup_notice(&state)
 }
 
-pub fn retry_pending(worker: &str) -> Result<()> {
-    require_active(worker)?;
-    let store = Store::open_wait(worker)?;
-    let Some(state) = store.load()? else {
-        return Ok(());
-    };
-    let Some(pending) = &state.pending else {
-        return Ok(());
-    };
-    let gap_path = store.directory.join("gap.json");
-    if super::delivery::in_progress(&state).unwrap_or(false) {
-        if gap_path.exists() {
-            std::fs::remove_file(&gap_path)?;
-        }
-        super::redelivery::completed(&store, &pending.id)?;
-        return Ok(());
-    }
-    let gap: Option<Value> = super::state::read(&gap_path)?;
-    if !gap.as_ref().is_some_and(|g| {
-        g["error"]
-            .as_str()
-            .is_some_and(super::redelivery::retryable)
-    }) {
-        return Ok(());
-    }
-    let request = workspace::request(&store, &pending.id)?;
-    let _processing = super::liveness::processing(worker, &pending.id)?;
-    let decision = super::preparation::active_decision(worker, &pending.id)?;
-    transport(&state)?;
-    let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);
-    let mut prompt = super::redelivery::prompt(&home, &store, &state, &request, &decision)?;
-    prompt.push_str(&format!("\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",gap.as_ref().unwrap()["error"]));
-    let number = super::redelivery::begin(
-        &store,
-        &request.id,
-        gap.as_ref().unwrap()["error"]
-            .as_str()
-            .unwrap_or("missing evidence report"),
-    )?;
-    drop(store);
-    super::redelivery::notify(&state)?;
-    let delivery = deliver(&home, &state, &prompt, true);
-    let store = Store::open_wait(worker)?;
-    super::redelivery::outcome(
-        &store,
-        &request.id,
-        number,
-        delivery.as_ref().err().map(ToString::to_string),
-    )?;
-    drop(store);
-    super::redelivery::notify(&state)?;
-    delivery?;
-    if super::state::read::<Value>(&gap_path)? == gap {
-        std::fs::remove_file(gap_path)?;
-    }
-    Ok(())
-}
+mod retry;
+pub use retry::retry_pending;
 
 fn startup_notice(state: &State) -> Result<()> {
     let (socket, _) = transport(state)?;

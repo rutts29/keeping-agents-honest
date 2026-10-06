@@ -118,7 +118,7 @@ fn automatic_recovery(
 fn observe(worker: &str) {
     let binary = PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/bin/kah");
     let result = Command::new(binary)
-        .args(["__review-liveness", worker])
+        .args(["__review-liveness-sample", worker])
         .output()
         .unwrap();
     assert!(

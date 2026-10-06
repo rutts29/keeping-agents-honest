@@ -255,3 +255,38 @@ fn an_undeliverable_reviewer_notice_is_durable_and_named() {
     );
     fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn accepted_native_receipt_confirms_both_not_idle_and_agent_wait_timeouts() {
+    let error = "RUN_HERDR_COMMAND stage=pane: agent wait: {\"error\":{\"code\":\"timeout\",\"message\":\"timed out waiting for agent status\"},\"id\":\"cli:agent:wait\"}";
+    for _ in 0..2 {
+        assert!(!kah_cli::observer_review::delivery::readiness(Err(error.into()), true).unwrap());
+    }
+    assert!(
+        kah_cli::observer_review::delivery::readiness(Err(error.into()), false)
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_SUBMISSION_UNCONFIRMED")
+    );
+}
+
+#[test]
+fn late_native_confirmation_clears_failure_notice_before_reviewer_delivery() {
+    use kah_cli::observer_review::{redelivery, state::Store};
+    let worker = format!("late-confirmation-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    for _ in 0..2 {
+        redelivery::begin(
+            &store,
+            "review-accepted",
+            "REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: observer not idle yet",
+        )
+        .unwrap();
+    }
+    assert!(store.directory.join("redelivery-notice.json").exists());
+    redelivery::completed(&store, "review-accepted").unwrap();
+    assert!(redelivery::take(&store).unwrap().is_none());
+    let root = store.directory.clone();
+    drop(store);
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}

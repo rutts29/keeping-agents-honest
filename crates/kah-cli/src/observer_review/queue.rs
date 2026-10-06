@@ -132,7 +132,7 @@ pub fn kick(worker: &str) -> Result<()> {
         super::hook::spawn("__review-questions", worker)?;
     }
     if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
-        super::hook::spawn("__review-liveness", worker)?;
+        super::liveness::start(worker)?;
         super::hook::spawn("__review-retry", worker)?;
         return Ok(());
     }

@@ -97,6 +97,10 @@ pub fn completed(store: &Store, request: &str) -> Result<()> {
         record["completed_ms"] = kah_observer::session::now_ms().into();
         crate::unattended_report::save(&store.directory, "redelivery.json", &log)?;
     }
+    let notice = store.directory.join("redelivery-notice.json");
+    if super::state::read::<Value>(&notice)?.is_some_and(|v| v["request"] == request) {
+        std::fs::remove_file(notice)?;
+    }
     Ok(())
 }
 fn load(store: &Store) -> Result<Value> {
