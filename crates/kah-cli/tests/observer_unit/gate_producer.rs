@@ -214,3 +214,104 @@ fn a_semantic_requirement_cannot_be_marked_verified_by_relabeling_it_as_a_fact()
         .is_err()
     );
 }
+
+#[test]
+fn all_verified_round_commits_passing_checkpoint_clears_pending_and_creates_no_question() {
+    use crate::observer_review::{
+        checkpoint, consume, questions,
+        state::{Pending, State},
+    };
+    let (root, store, request, path) = completed_fixture();
+    let assessment = json!({"state":"checkpoint_passed","passed":true,"violations":[],"needs_user":[],"needs_thinker":[],"unproven":[]});
+    let result =
+        json!({"request":request.id,"head":request.head,"report":report(),"assessment":assessment});
+    kah_core::run_store::ensure_private_directory(&root.join("results")).unwrap();
+    source_store::save(&root.join("results"), "review-final.json", &result).unwrap();
+    assert!(finish(&root, &request, &report(), &assessment).unwrap());
+    let complete = completed(&root, &request).unwrap().unwrap();
+    assert_eq!(complete.round().stage, Stage::Complete);
+    assert_eq!(complete.round().checks.as_ref().unwrap().verified.len(), 2);
+    assert!(complete.risks().is_empty());
+    assert!(
+        super::super::store(
+            &root,
+            &request,
+            &report(),
+            &assessment,
+            &proof(),
+            &json!({})
+        )
+        .unwrap()
+        .is_none()
+    );
+    let mut state:State=serde_json::from_value(json!({"worker":{"provider":"codex","session":"worker","project":root,"pane":null,"socket":null},
+        "observer":{"session":null,"pane":null,"name":"fixture","workspace":root,"model":"gpt-6.1-sol","effort":"low","transcript":null},
+        "pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    state.pending = Some(Pending::from(&request));
+    consume::commit_result(&store, &mut state, &request, result, None).unwrap();
+    let saved = store.load().unwrap().unwrap();
+    assert!(saved.pending.is_none());
+    assert_eq!(checkpoint::covers(&saved, &"a".repeat(40), 1), Some(true));
+    assert!(questions::pending(&root).unwrap().is_empty());
+    let status: Value = source_store::read(&path.join("finished.json")).unwrap();
+    assert_eq!(status["status"], "completed");
+    // Recover a crash after saving the round but before its visible status.
+    fs::remove_file(path.join("finished.json")).unwrap();
+    assert!(finish(&root, &request, &report(), &assessment).unwrap());
+    let recovered: Value = source_store::read(&path.join("finished.json")).unwrap();
+    assert_eq!(recovered["status"], "completed");
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn completed_fixture() -> (std::path::PathBuf, Store, Request, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!("kah-complete-followup-{}", std::process::id()));
+    let store = Store::delivery_at(&root, true).unwrap();
+    kah_core::run_store::ensure_private_directory(&root.join("requests")).unwrap();
+    let request = Request {
+        id: "review-final".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: Some("a".repeat(40)),
+        intent: json!({"revision":1}),
+        trigger: json!({"verification_followup":{"stage":"checks_complete"}}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    source_store::save(
+        &root.join("requests"),
+        "review-final.json",
+        &serde_json::to_value(&request).unwrap(),
+    )
+    .unwrap();
+    let round = start(&root, &request).unwrap();
+    advance(
+        &root,
+        &round.binding,
+        Step::Evidence(vec![pointer("source")]),
+    )
+    .unwrap();
+    advance(
+        &root,
+        &round.binding,
+        Step::Builder(BuilderReceipt {
+            request: pointer(&round.builder_receipt()),
+            response: BuilderOutcome::Evidence {
+                response: pointer("response"),
+            },
+        }),
+    )
+    .unwrap();
+    let path = directory(&root, &round);
+    kah_core::run_store::ensure_private_directory(&path).unwrap();
+    source_store::save(&path, "job.json", &serde_json::to_value(job()).unwrap()).unwrap();
+    source_store::save(
+        &path,
+        "checks.json",
+        &serde_json::to_value(proof()).unwrap(),
+    )
+    .unwrap();
+
+    (root, store, request, path)
+}

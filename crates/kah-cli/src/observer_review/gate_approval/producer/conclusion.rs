@@ -13,6 +13,7 @@ pub(crate) fn finish(
     }
     let round = start(root, request)?;
     if round.stage == Stage::Complete {
+        complete_record(root, &round, &request.id)?;
         return Ok(true);
     }
     let directory = directory(root, &round);
@@ -37,7 +38,7 @@ pub(crate) fn finish(
     let result: Value = source_store::read(&result_path)?;
     let decision = pointer(&format!("{}-decision", round.id), &result_path, &result)?;
     let (verified, risks) = items(&round, &job, report, assessment, &receipt, &decision)?;
-    advance(
+    let round = advance(
         root,
         &round.binding,
         Step::Checks(CheckReceipt {
@@ -47,8 +48,25 @@ pub(crate) fn finish(
             verified,
         }),
     )?;
+    complete_record(root, &round, &request.id)?;
     Ok(true)
 }
+fn complete_record(root: &Path, round: &VerificationRound, request: &str) -> Result<()> {
+    let checks = round
+        .checks
+        .as_ref()
+        .ok_or("REVIEW_FOLLOWUP_RECEIPTS stage=verification")?;
+    source_store::save(
+        &directory(root, round),
+        "finished.json",
+        &json!({
+            "status":"completed","request":request,
+            "verified":checks.verified.iter().map(|item|&item.requirement_id).collect::<Vec<_>>(),
+            "remaining_risks":checks.risks.iter().map(|item|&item.requirement_id).collect::<Vec<_>>()
+        }),
+    )
+}
+
 fn items(
     round: &VerificationRound,
     job: &Job,

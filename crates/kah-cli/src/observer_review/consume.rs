@@ -67,20 +67,10 @@ pub fn run(worker: &str) -> Result<()> {
     persist_evidence(
         &store, &request, &report, &result, &input, &judgment, version,
     )?;
-    if request.purpose == Purpose::Checkpoint {
-        super::checkpoint::record(&store, &mut state, &request, &result)?;
-    }
     if needs_reminder(&assessment, &judgment) {
         super::reminder::save(&store, &request, &report)?;
     }
-    state.latest = Some(result);
-    super::redelivery::completed(&store, &request.id)?;
-    state.pending = None;
-    state.last_verified_turn = Some(request.turn.clone());
-    if let Ok(tokens) = tokens {
-        state.native_tokens = tokens;
-    }
-    store.save(&state)?;
+    commit_result(&store, &mut state, &request, result, tokens.ok())?;
     if request.purpose == Purpose::Checkpoint {
         super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
     }
@@ -336,4 +326,26 @@ fn record(
     source.usage.elapsed_ms += judgment.metrics.elapsed_ms;
     primary.save(&source)?;
     Ok(())
+}
+
+/// Persist the same terminal transition used by native consumption. A passed
+/// final review clears its pending lease; no risk question is manufactured.
+pub(super) fn commit_result(
+    store: &Store,
+    state: &mut State,
+    request: &super::state::Request,
+    result: Value,
+    tokens: Option<u64>,
+) -> Result<()> {
+    if request.purpose == Purpose::Checkpoint {
+        super::checkpoint::record(store, state, request, &result)?;
+    }
+    state.latest = Some(result);
+    super::redelivery::completed(store, &request.id)?;
+    state.pending = None;
+    state.last_verified_turn = Some(request.turn.clone());
+    if let Some(tokens) = tokens {
+        state.native_tokens = tokens;
+    }
+    store.save(state)
 }
