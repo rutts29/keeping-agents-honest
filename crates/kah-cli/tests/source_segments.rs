@@ -106,3 +106,24 @@ fn request_and_covered_trigger_payloads_are_losslessly_referenced() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn migration_retains_original_if_a_shared_block_is_corrupt() {
+    use sha2::{Digest, Sha256};
+    let root =
+        std::env::temp_dir().join(format!("kah-segment-block-corrupt-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    let original = vec![b'x'; 100000];
+    let digest = format!("{:x}", Sha256::digest(&original));
+    let block_digest = format!("{:x}", Sha256::digest(&original[..65536]));
+    let path = root.join(&digest);
+    fs::write(&path, &original).unwrap();
+    fs::write(
+        root.join(format!("block-{block_digest}")),
+        b"corrupt block retained",
+    )
+    .unwrap();
+    assert!(source_store::segment_sources(&root).is_err());
+    assert_eq!(fs::read(&path).unwrap(), original);
+    fs::remove_dir_all(root).unwrap();
+}

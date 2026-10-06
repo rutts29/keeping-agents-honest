@@ -89,7 +89,14 @@ pub(super) fn migrate(root: &Path) -> Result<usize> {
             }
             super::write_once(&root.join(block.file_name()), &fs::read(block.path())?)?;
         }
-        fs::rename(staging.join(name.as_ref()), &path)?;
+        let replacement = root.join(format!("replacement-{}.tmp", crate::relay_store::nonce()));
+        super::write_once(&replacement, &fs::read(staging.join(name.as_ref()))?)?;
+        // Reused destination blocks also need verification. Checking staging
+        // alone would miss a corrupt block already present in the shared store.
+        if recover(&replacement, &name)? != bytes {
+            return Err("REVIEW_SOURCE_ROUNDTRIP stage=source_segments".into());
+        }
+        fs::rename(replacement, &path)?;
         fs::File::open(root)?.sync_all()?;
         fs::remove_dir_all(staging)?;
         migrated += 1;
