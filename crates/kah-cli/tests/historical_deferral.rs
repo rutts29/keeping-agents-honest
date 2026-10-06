@@ -21,6 +21,14 @@ fn original_ledger_anchor_survives_current_ledger_replacement_without_redefiniti
     source_store::save(
         &root.join("requests"),
         "review-original.json",
+        &json!({"documents":[Document::new("ledger", "ledger", "kah:ledger", "Whole original requirement.\nEarlier context.\n")]}),
+    )
+    .unwrap();
+    // Real incident: introduction id remains fixed, but the verified digest
+    // was refreshed in a later review. CAS retains that exact whole source.
+    source_store::save(
+        &root.join("requests"),
+        "review-later.json",
         &json!({"documents":[original]}),
     )
     .unwrap();

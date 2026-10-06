@@ -113,6 +113,23 @@ fn original_document(
     digest: &str,
     uri: &str,
 ) -> Result<Document> {
+    // Deferral updates preserve their introduction id while their verified
+    // source digest may come from a later review. The text itself is stored
+    // losslessly at its digest; retrieve that exact source, not a newer ledger.
+    if let Some(id) = digest.strip_prefix("sha256:") {
+        let value = source_store::expand(
+            serde_json::json!({"$kah_source":id,"encoding":"utf8"}),
+            &root.join("sources"),
+        )?;
+        let text = value
+            .as_str()
+            .ok_or("REVIEW_DEFERRAL_HISTORY stage=context: source text missing")?;
+        let document = Document::new(source, "historical_deferral_anchor", uri, text);
+        if document.digest != digest {
+            return Err("REVIEW_SOURCE_DIGEST stage=deferral_history".into());
+        }
+        return Ok(document);
+    }
     if !request.starts_with("review-")
         || !request
             .bytes()
