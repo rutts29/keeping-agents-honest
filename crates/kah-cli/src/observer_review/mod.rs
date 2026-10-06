@@ -12,6 +12,7 @@ pub mod dispatch;
 pub mod hook;
 pub mod hook_queue;
 pub mod launch;
+pub mod liveness;
 pub mod preparation;
 mod prepared_result;
 pub mod questions;
@@ -87,6 +88,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__checkpoint-tags" => tags::run(&args[1]),
         "__review-resume" => runtime::resume(&args[1]),
         "__review-retry" => runtime::retry_pending(&args[1]),
+        "__review-liveness" => liveness::run(&args[1]),
         "__review-recover" => recovery::run(&args[1]).map(|value| println!("{value}")),
         "__review-questions" => questions::deliver(&args[1]),
         "__review-rethink" => uncertainty::resume(&args[1]),

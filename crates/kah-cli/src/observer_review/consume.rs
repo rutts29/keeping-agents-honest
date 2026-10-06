@@ -34,6 +34,7 @@ pub fn run(worker: &str) -> Result<()> {
     let Some(pending) = state.pending.clone() else {
         return Ok(());
     };
+    let _processing = super::liveness::processing(worker, &pending.id)?;
     if super::preparation::pending(worker, &pending.id)? && super::runtime::helper_changed(&state)?
     {
         drop(store);

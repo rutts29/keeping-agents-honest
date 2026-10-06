@@ -1,0 +1,180 @@
+use kah_cli::observer_review::liveness::{Progress, Sample, transition};
+
+fn sample(now: u64) -> Sample {
+    Sample {
+        request: "pending".into(),
+        now_ms: now,
+        started_ms: 0,
+        native_active: false,
+        controller_active: false,
+        transcript_version: None,
+        report_version: None,
+        cause: "idle pane".into(),
+    }
+}
+
+#[test]
+fn idle_hung_publish_crash_and_stuck_lock_become_stalls_without_a_review_deadline() {
+    for cause in [
+        "idle pane",
+        "hung pane without native activity",
+        "published but not delivered",
+        "review lock busy",
+    ] {
+        let mut observation = sample(0);
+        observation.cause = cause.into();
+        let initial = transition(None, &observation);
+        observation.now_ms = 15_000;
+        let stalled = transition(Some(&initial), &observation);
+        assert!(stalled.stalled, "{cause}");
+        assert!(stalled.changed);
+        assert!(
+            !transition(Some(&stalled), &observation).changed,
+            "same stall must not spam"
+        );
+    }
+}
+
+#[test]
+fn progressing_native_or_controller_work_is_never_expired_and_recovery_is_recorded() {
+    let initial = transition(None, &sample(0));
+    let stalled = transition(Some(&initial), &sample(15_000));
+    for native in [true, false] {
+        let mut active = sample(3_600_000);
+        active.native_active = native;
+        active.controller_active = !native;
+        let recovered = transition(Some(&stalled), &active);
+        assert!(!recovered.stalled);
+        assert!(recovered.changed);
+        assert!(!transition(Some(&recovered), &active).stalled);
+    }
+}
+
+#[test]
+fn native_transcript_or_report_growth_resets_only_the_no_progress_observation() {
+    let mut observation = sample(0);
+    let initial: Progress = transition(None, &observation);
+    observation.now_ms = 30_000;
+    observation.report_version = Some((40, 30_000));
+    let growing = transition(Some(&initial), &observation);
+    assert!(!growing.stalled);
+    observation.now_ms = 40_000;
+    assert!(!transition(Some(&growing), &observation).stalled);
+    observation.now_ms = 45_000;
+    assert!(transition(Some(&growing), &observation).stalled);
+}
+
+#[test]
+fn actual_held_review_lock_cannot_hide_stall_notice_or_pending_request() {
+    use kah_cli::observer_review::{liveness, state::Store};
+    let worker = format!("liveness-lock-{}", std::process::id());
+    let state = setup(&worker);
+    let held = Store::open(&worker).unwrap();
+    held.save(&state).unwrap();
+    liveness::run(&worker).unwrap();
+    let root = held.directory.join("liveness");
+    let progress: Progress =
+        serde_json::from_slice(&std::fs::read(root.join("progress.json")).unwrap()).unwrap();
+    assert!(progress.stalled);
+    assert_eq!(progress.sample.cause, "review lock busy");
+    let notice = liveness::notice(&worker).unwrap().unwrap();
+    assert!(
+        notice["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("review-stall")
+    );
+    assert_eq!(
+        Store::read(&worker).unwrap().unwrap().pending.unwrap().id,
+        "review-stall"
+    );
+    assert!(
+        root.join("reviewer.json").exists(),
+        "unavailable reviewer delivery remains durable"
+    );
+    drop(held);
+    std::fs::remove_dir_all(Store::directory(&worker).unwrap().parent().unwrap()).unwrap();
+}
+
+#[test]
+fn processing_marker_protects_real_progress_then_publish_crash_is_visible() {
+    use kah_cli::observer_review::{liveness, state::Store};
+    let worker = format!("liveness-processing-{}", std::process::id());
+    let mut state = setup(&worker);
+    let store = Store::open(&worker).unwrap();
+    store.save(&state).unwrap();
+    drop(store);
+    let processing = liveness::processing(&worker, "review-stall").unwrap();
+    liveness::run(&worker).unwrap();
+    assert!(liveness::notice(&worker).unwrap().is_none());
+    drop(processing);
+    let path = Store::directory(&worker)
+        .unwrap()
+        .join("liveness/progress.json");
+    let mut prior: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    prior.last_progress_ms = 0;
+    std::fs::write(&path, serde_json::to_vec(&prior).unwrap()).unwrap();
+    liveness::run(&worker).unwrap();
+    assert!(
+        liveness::notice(&worker).unwrap().unwrap()["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("stalled")
+    );
+    state.pending = None;
+    let store = Store::open(&worker).unwrap();
+    store.save(&state).unwrap();
+    drop(store);
+    liveness::run(&worker).unwrap();
+    assert!(
+        liveness::notice(&worker).unwrap().unwrap()["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("recovered")
+    );
+    std::fs::remove_dir_all(Store::directory(&worker).unwrap().parent().unwrap()).unwrap();
+}
+
+fn setup(worker: &str) -> kah_cli::observer_review::state::State {
+    use kah_cli::{
+        observer_review::state::{Pending, Purpose, State},
+        relay_store::Endpoint,
+    };
+    use kah_observer::session;
+    let base = kah_core::run_store::RunStore::default_state_root().unwrap();
+    let home = base.join(worker);
+    let binding = session::Binding {
+        session: worker.into(),
+        project: home.clone(),
+        codex_home: home.join("codex"),
+        native: "/nonexistent/native".into(),
+        model: "gpt-6.1-sol".into(),
+        effort: "low".into(),
+        timeout_secs: 90,
+        judge: Default::default(),
+        jev_model: "jev-latest".into(),
+    };
+    let mut primary = session::Store::open(&base, worker, std::time::Duration::ZERO).unwrap();
+    primary.save(&session::State::new(binding)).unwrap();
+    drop(primary);
+    let mut state = State::new(
+        Endpoint {
+            provider: "codex".into(),
+            session: worker.into(),
+            project: home.clone(),
+            pane: None,
+            socket: None,
+        },
+        &home,
+    )
+    .unwrap();
+    state.pending = Some(Pending {
+        id: "review-stall".into(),
+        purpose: Purpose::Drift,
+        turn: "turn".into(),
+        head: None,
+        created_ms: 0,
+        native_tokens_before: None,
+    });
+    state
+}
