@@ -1,4 +1,4 @@
-//! Native execution records prove the fixture's tier/model/effort, not argv alone.
+//! Native turn context proves model/effort; layered config proves requested tier.
 use super::*;
 
 pub fn record(home: &Path, provider: &str, id: &str, courier: &Pane) -> Value {
@@ -29,7 +29,9 @@ pub fn record(home: &Path, provider: &str, id: &str, courier: &Pane) -> Value {
 }
 fn settings(home: &Path, role: &str, project: &Path, session: &str) -> Value {
     // Official installed source first: openai/codex rust-v0.160.0,
-    // protocol/src/protocol.rs ThreadSettingsAppliedEvent/ThreadSettingsSnapshot;
+    // core/session/mod.rs InitialHistory::New defers the initial turn context;
+    // protocol/src/protocol.rs TurnContextItem carries model/effort, not tier.
+    // Fresh sessions need not emit ThreadSettingsApplied.
     // app-server-protocol/src/protocol/v2/thread_data.rs Thread.path.
     let directory = Reviews::directory(session).unwrap();
     let mut history =
@@ -44,24 +46,27 @@ fn settings(home: &Path, role: &str, project: &Path, session: &str) -> Value {
             json!({"threadId":session,"includeTurns":false}),
         )
         .unwrap();
+    let config = client
+        .request("config/read", json!({"includeLayers":false}))
+        .unwrap();
+    assert_eq!(
+        config["config"]["service_tier"], "default",
+        "fast requested OFF for {role}"
+    );
     let path = PathBuf::from(thread["thread"]["path"].as_str().unwrap());
     let rows = fs::read_to_string(&path)
         .unwrap()
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter(|row| {
-            row["type"] == "event_msg" && row["payload"]["type"] == "thread_settings_applied"
-        })
-        .map(|row| row["payload"]["thread_settings"].clone())
+        .filter(|row| row["type"] == "turn_context")
+        .map(|row| row["payload"].clone())
         .collect::<Vec<_>>();
     assert!(!rows.is_empty(), "native settings absent for {role}");
     for row in &rows {
         assert_eq!(row["model"], "gpt-6.1-sol", "{role}");
-        assert_eq!(row["reasoning_effort"], "low", "{role}");
-        assert_eq!(
-            row["service_tier"], "default",
-            "fast must be OFF for {role}"
-        );
+        assert_eq!(row["effort"], "low", "{role}");
     }
-    json!({"role":role,"session":session,"path":path,"settings":rows})
+    json!({"role":role,"session":session,"path":path,"nativeTurnContexts":rows,
+        "modelEffortSource":"native rollout turn_context",
+        "requestedTier":{"value":"default","source":"native config/read layered configuration; fixture sets service_tier default; no execution-tier claim"}})
 }
