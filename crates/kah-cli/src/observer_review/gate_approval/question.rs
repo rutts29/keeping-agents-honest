@@ -69,8 +69,14 @@ fn draft(
         .collect::<Vec<_>>();
     let head = request.head.as_deref().unwrap();
     let proof = &followup.round().checks.as_ref().unwrap().proof;
+    let names = followup
+        .risks()
+        .iter()
+        .map(|risk| risk.unverified.as_str())
+        .collect::<Vec<_>>()
+        .join("; ");
     let summary = format!(
-        "Accept gate {name} on {head} with these named unverified items, or send back for evidence?"
+        "Accept gate {name} on {head} with these named unverified items: {names}, or send it back for more evidence?"
     );
     let identity = json!([
         request.worker,
@@ -86,7 +92,7 @@ fn draft(
         "name":name,"request":request.id,"head":head,"intent_revision":request.intent["revision"],"summary":summary,
         "question":summary,"options":["Accept named unverified risks","Send back for evidence"],"status":"pending","delivery":"queued",
         "question_origin":"observer","at_ms":kah_observer::session::now_ms(),"thinker_items":items,"jev":judgment,"proof":proof,
-        "assessment":assessment,"followup":followup.round(),"unverified_risks":followup.risks(),"record":root.join("results").join(format!("{}.json",request.id)),
+        "assessment":assessment,"followup":followup.round(),"unverified_risks":followup.risks(),"record":root.join("questions").join(format!("{id}.json")),"review_record":root.join("results").join(format!("{}.json",request.id)),
         "scope":"Only this checkpoint waits; unrelated authorized work continues",
         "authority_at_question":super::super::decisions::active_items(&request.intent),"goal_at_question":request.intent["goal"]});
     crate::privacy::scrub(&mut value);
@@ -106,24 +112,26 @@ pub fn message(question: &Value) -> Result<String> {
                 .collect::<Vec<_>>()
                 .join("; ");
             format!(
-                "Unverified ({}): {}\nTried: {tried}\nRisk if accepted: {}",
-                risk["requirement_id"].as_str().unwrap_or(""),
+                "{} (reference: {})\nTried: {tried}\nRisk if accepted: {}",
                 risk["unverified"].as_str().unwrap_or(""),
+                risk["requirement_id"].as_str().unwrap_or(""),
                 risk["acceptance_risk"].as_str().unwrap_or("")
             )
         })
         .collect::<Vec<_>>()
         .join("\n\n");
     Ok(format!(
-        "{}\n{risks}\n[kah-builder] [kah-question] {} worker={}\nThinker's conclusions/reasoning/sources: {}\nJev answers: {}\nExact delivery receipts: {}\nFull record: {}\nOnly this checkpoint waits; unrelated authorized work continues. An explicit approve answer accepts the named unverified risks; reject sends back for evidence. Relay the user decision with: kah steer SESSION TEXT --question {} --answer approve|reject. Delegate text cannot approve.",
+        "{}\n{risks}\n[kah-builder] [kah-question] {} worker={}\nFull record for {}: {}\nOnly this checkpoint waits; unrelated authorized work continues. An explicit approve answer accepts the named unverified risks; reject sends back for evidence. Relay the user decision with: kah steer SESSION TEXT --question {} --answer approve|reject. Delegate text cannot approve.",
         question["summary"]
             .as_str()
             .unwrap_or("Gate decision required"),
-        question["id"],
+        question["id"]
+            .as_str()
+            .ok_or("REVIEW_QUESTION_ID stage=approval")?,
         question["worker"],
-        serde_json::to_string(&question["thinker_items"])?,
-        serde_json::to_string(&question["jev"])?,
-        serde_json::to_string(&question["proof"])?,
+        question["id"]
+            .as_str()
+            .ok_or("REVIEW_QUESTION_ID stage=approval")?,
         question["record"],
         question["id"]
             .as_str()

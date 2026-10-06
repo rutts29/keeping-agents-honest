@@ -1,10 +1,51 @@
 //! Worker Git metadata is untrusted. Execute it only inside the sandbox and
 //! transfer objects through a bundle into a separate, controller-owned repo.
-use super::{Worktree, io_error, run, text};
+use super::{Worktree, command, io_error, run, text};
 use kah_sandbox::Executor;
 use std::{fs, os::unix::fs::OpenOptionsExt, path::Path, process::Command};
 
 impl Worktree {
+    /// Start from an object-only bundle, without reading source configuration
+    /// on the host. Uses the same fsck/expected-SHA import as run delivery.
+    pub fn from_bundle(
+        source: &Path,
+        directory: &Path,
+        bundle: &Path,
+        expected: &str,
+        id: &str,
+    ) -> Result<Self, String> {
+        validate_commit(expected)?;
+        if !id.starts_with("run-")
+            || id.len() > 80
+            || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        {
+            return Err("RUN_ID stage=worktree".into());
+        }
+        fs::create_dir(directory).map_err(io_error)?;
+        let directory = directory.canonicalize().map_err(io_error)?;
+        let git_dir = directory.join("repo.git");
+        let path = directory.join("worktree");
+        run(command()
+            .args(["init", "--quiet", "--template=", "--separate-git-dir"])
+            .arg(&git_dir)
+            .arg(&path))?;
+        let tree = Self {
+            path,
+            admin: git_dir.clone(),
+            git_dir,
+            base_commit: expected.into(),
+            source: source.canonicalize().map_err(io_error)?,
+            branch: format!("kah/{id}"),
+        };
+        run(tree.git().args([
+            "symbolic-ref",
+            "HEAD",
+            &format!("refs/heads/{}", tree.branch),
+        ]))?;
+        tree.import_bundle(bundle, expected)?;
+        Ok(tree)
+    }
+
     pub fn sandbox_state(&self, executor: &Executor) -> Result<(String, bool), String> {
         let head = text(run(self.sandbox_git(executor)?.args([
             "rev-parse",

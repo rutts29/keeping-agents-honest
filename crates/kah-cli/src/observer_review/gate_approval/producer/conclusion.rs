@@ -1,0 +1,197 @@
+//! Checked host results determine which items leave the uncertainty set.
+use super::*;
+use sha2::{Digest, Sha256};
+
+pub(crate) fn finish(
+    root: &Path,
+    request: &Request,
+    report: &Report,
+    assessment: &Value,
+) -> Result<bool> {
+    if request.trigger["verification_followup"]["stage"] != "checks_complete" {
+        return Ok(false);
+    }
+    let round = start(root, request)?;
+    if round.stage == Stage::Complete {
+        return Ok(true);
+    }
+    let directory = directory(root, &round);
+    let job: Job = source_store::read(&directory.join("job.json"))?;
+    let proof: DeliveryProof = source_store::read(&directory.join("checks.json"))?;
+    if !proof.passes(&round.binding.head) || assessment["passed"] == false {
+        // Failed checks/confirmed violations stay blocking; no risk admission.
+        return Ok(true);
+    }
+    if !assessment["needs_user"]
+        .as_array()
+        .is_some_and(Vec::is_empty)
+    {
+        return Ok(true);
+    }
+    let receipt = pointer(
+        &round.checks_receipt(),
+        &directory.join("checks.json"),
+        &serde_json::to_value(&proof)?,
+    )?;
+    let result_path = root.join("results").join(format!("{}.json", request.id));
+    let result: Value = source_store::read(&result_path)?;
+    let decision = pointer(&format!("{}-decision", round.id), &result_path, &result)?;
+    let (verified, risks) = items(&round, &job, report, assessment, &receipt, &decision)?;
+    advance(
+        root,
+        &round.binding,
+        Step::Checks(CheckReceipt {
+            receipt,
+            proof,
+            risks,
+            verified,
+        }),
+    )?;
+    Ok(true)
+}
+fn items(
+    round: &VerificationRound,
+    job: &Job,
+    report: &Report,
+    assessment: &Value,
+    receipt: &EvidencePointer,
+    decision: &EvidencePointer,
+) -> Result<(Vec<VerifiedRequirement>, Vec<UnverifiedRisk>)> {
+    let units = report
+        .decision_units
+        .as_ref()
+        .ok_or("REVIEW_FOLLOWUP_UNITS stage=verification")?;
+    let unresolved = assessment["needs_thinker"]
+        .as_array()
+        .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?;
+    let mut verified = vec![];
+    let mut risks = vec![];
+    for id in job.assessment["needs_thinker"]
+        .as_array()
+        .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?
+    {
+        let id = id
+            .as_str()
+            .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?;
+        let requirement = units
+            .requirements
+            .iter()
+            .find(|r| r.id == id)
+            .ok_or("REVIEW_FOLLOWUP_REQUIREMENT_MISSING stage=verification")?;
+        let original = job
+            .report
+            .decision_units
+            .as_ref()
+            .and_then(|units| units.requirements.iter().find(|r| r.id == id))
+            .ok_or("REVIEW_FOLLOWUP_REQUIREMENT_MISSING stage=verification")?;
+        if original.dimension != requirement.dimension
+            || std::mem::discriminant(&original.judgment)
+                != std::mem::discriminant(&requirement.judgment)
+            || original
+                .authority_items
+                .iter()
+                .any(|item| !requirement.authority_items.contains(item))
+        {
+            return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification: preserve semantic/factual kind and linked authority".into());
+        }
+        if !unresolved.iter().any(|value| value == id) {
+            if !positive_requirement(requirement)
+                || assessment["not_due"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|value| value == id))
+            {
+                return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification".into());
+            }
+            verified.push(VerifiedRequirement {
+                requirement_id: id.into(),
+                evidence: round.evidence.clone().unwrap(),
+                decision_receipt: decision.clone(),
+            });
+        } else {
+            let explanation = report.verification_risks.as_ref().and_then(|items|items.iter().find(|item|item.requirement_id==id))
+                .ok_or("REVIEW_FOLLOWUP_RISK_MISSING stage=verification: explain what could not be verified and what acceptance risks; never ask for status confirmation")?;
+            risks.push(risk(round, id, explanation, receipt));
+        }
+    }
+    Ok((verified, risks))
+}
+fn positive_requirement(requirement: &kah_observer::decision_units::Requirement) -> bool {
+    match &requirement.judgment {
+        Thinking::Semantic {
+            decision: SemanticDecision::Satisfied,
+            ..
+        }
+        | Thinking::AtomicFact { .. } => true,
+        Thinking::ArtifactPreservation { fact, .. } => fact.equal(),
+        _ => false,
+    }
+}
+fn risk(
+    round: &VerificationRound,
+    id: &str,
+    explanation: &kah_observer::review_evidence::VerificationRisk,
+    receipt: &EvidencePointer,
+) -> UnverifiedRisk {
+    UnverifiedRisk {
+        requirement_id: id.into(),
+        unverified: explanation.unverified.clone(),
+        acceptance_risk: explanation.acceptance_risk.clone(),
+        evidence: round.evidence.clone().unwrap(),
+        tried: vec![
+            Attempt {
+                what: "Read the existing source and check receipts with the persistent observer."
+                    .into(),
+                receipt: round.evidence.as_ref().unwrap()[0].receipt.clone(),
+            },
+            Attempt {
+                what: match &round.builder.as_ref().unwrap().response {
+                    BuilderOutcome::Evidence { .. } => {
+                        "Asked the worker once for specific evidence and read its native reply."
+                            .into()
+                    }
+                    BuilderOutcome::Unavailable { reason } => format!(
+                        "Asked the worker once; delivery could not provide a reply: {reason}"
+                    ),
+                },
+                receipt: round.builder_receipt(),
+            },
+            Attempt {
+                what: format!(
+                    "Reran the recorded checks in fresh gVisor checkouts of {}.",
+                    round.binding.head
+                ),
+                receipt: receipt.receipt.clone(),
+            },
+        ],
+    }
+}
+fn pointer(receipt: &str, record: &Path, value: &Value) -> Result<EvidencePointer> {
+    Ok(EvidencePointer {
+        receipt: receipt.into(),
+        record: record.display().to_string(),
+        digest: format!("sha256:{:x}", Sha256::digest(serde_json::to_vec(value)?)),
+    })
+}
+
+pub(crate) fn guard(root: &Path, request: &Request, assessment: &mut Value) -> Result<()> {
+    if request.trigger["verification_followup"]["stage"] != "checks_complete" {
+        return Ok(());
+    }
+    let round = start(root, request)?;
+    let proof: DeliveryProof = source_store::read(&directory(root, &round).join("checks.json"))?;
+    if !proof.passes(&round.binding.head) {
+        assessment["passed"] = false.into();
+        assessment["state"] = "checkpoint_failed".into();
+        let violations = assessment["violations"]
+            .as_array_mut()
+            .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?;
+        if !violations.iter().any(|id| id == "exact_sha_tests") {
+            violations.push("exact_sha_tests".into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/observer_unit/gate_producer.rs"]
+mod tests;

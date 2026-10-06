@@ -19,6 +19,13 @@ pub fn retain_rethink(root: &Path, request: &Request, assessment: &Value) -> Res
     {
         return Ok(());
     }
+    // Apply the one-round verification condition:
+    // a rethought checkpoint proceeds through verification, not another ask.
+    if request.purpose == super::super::state::Purpose::Checkpoint
+        && request.trigger["reconsideration"].is_object()
+    {
+        return Ok(());
+    }
     let directory = root.join("rethink");
     kah_core::run_store::ensure_private_directory(&directory)?;
     kah_core::run_store::ensure_private_directory(&root.join("sources"))?;

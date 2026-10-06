@@ -70,6 +70,7 @@ fn original_ledger_anchor_survives_current_ledger_replacement_without_redefiniti
 
 fn verified(request: &Request, citation: Citation) -> Vec<serde_json::Value> {
     let report = Report {
+        verification_risks: None,
         request_id: request.id.clone(),
         findings: vec![Finding {
             topic: Topic::Deferral,

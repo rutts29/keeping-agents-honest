@@ -10,6 +10,7 @@ pub mod completion_inputs;
 pub mod completion_replay;
 pub mod completion_review;
 pub mod dispatch;
+mod exact_verification;
 pub mod herdr;
 pub mod in_turn;
 pub mod in_turn_worker;

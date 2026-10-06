@@ -18,6 +18,12 @@ mod evidence;
 pub use evidence::captured;
 mod receiver;
 pub use receiver::{apply_answers, enqueue_answer, pending_answers};
+mod checks;
+mod producer;
+pub(super) use producer::{
+    begin as begin_followup, finish as finish_followup, guard as guard_followup,
+};
+pub use producer::{pending as pending_followups, run as run_followups};
 pub mod followup;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

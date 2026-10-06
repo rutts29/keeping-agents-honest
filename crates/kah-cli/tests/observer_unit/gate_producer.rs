@@ -1,0 +1,216 @@
+use super::*;
+fn proof() -> DeliveryProof {
+    serde_json::from_value(json!({"head":"a".repeat(40),"fresh_checkout":true,
+        "tests":[{"command":"check","commit":"a".repeat(40),"exit_code":0,"success":true}],
+        "artifacts":[{"path":"PLAN.md","baseline_blob":"b".repeat(40),"delivered_blob":"b".repeat(40),"delivered_sha":"a".repeat(40)}]})).unwrap()
+}
+fn report() -> Report {
+    serde_json::from_value(json!({"request_id":"review-final","findings":[],"decision_units":{"version":8,"requirements":[
+        {"id":"intent","name":"Intent","dimension":"intent","authority_items":["goal"],"citations":[],"components":[],"checks":[],"judgment":{"kind":"semantic","decision":"satisfied","reasoning":"Evidence supports intent.","evidence_citations":[0]}},
+        {"id":"integration","name":"Integration","dimension":"integration","authority_items":["goal"],"citations":[],"components":[],"checks":[],"judgment":{"kind":"semantic","decision":"satisfied","reasoning":"Evidence supports integration.","evidence_citations":[0]}}
+    ]},"verification_risks":[{"requirement_id":"intent","unverified":"Intent interpretation still lacks independent confirmation.","acceptance_risk":"Acceptance may advance despite an unmet detail."}]})).unwrap()
+}
+fn pointer(receipt: &str) -> EvidencePointer {
+    EvidencePointer {
+        receipt: receipt.into(),
+        record: format!("private:{receipt}"),
+        digest: "d".repeat(64),
+    }
+}
+fn round() -> VerificationRound {
+    VerificationRound {
+        id: "followup-123456789abcdef0123456789abcdef0".into(),
+        binding: Binding {
+            worker: "worker".into(),
+            review: "review-first".into(),
+            head: "a".repeat(40),
+            intent_revision: 1,
+        },
+        stage: Stage::Checks,
+        claimed: true,
+        evidence: Some(vec![pointer("source")]),
+        checks: None,
+        builder: Some(BuilderReceipt {
+            request: pointer("builder"),
+            response: BuilderOutcome::Evidence {
+                response: pointer("reply"),
+            },
+        }),
+    }
+}
+fn job() -> Job {
+    Job {
+        request: "review-rethought".into(),
+        proof: proof(),
+        assessment: json!({"needs_thinker":["intent","integration"]}),
+        report: report(),
+    }
+}
+#[test]
+fn verified_items_leave_risk_set_with_their_decision_receipts() {
+    let (verified, risks) = items(
+        &round(),
+        &job(),
+        &report(),
+        &json!({"needs_thinker":["intent"]}),
+        &pointer("checks"),
+        &pointer("decision"),
+    )
+    .unwrap();
+    assert_eq!(verified.len(), 1);
+    assert_eq!(verified[0].requirement_id, "integration");
+    assert_eq!(verified[0].decision_receipt.receipt, "decision");
+    assert_eq!(risks.len(), 1);
+    assert_eq!(risks[0].requirement_id, "intent");
+}
+#[test]
+fn all_verified_items_need_no_user_risk_question() {
+    let (verified, risks) = items(
+        &round(),
+        &job(),
+        &report(),
+        &json!({"needs_thinker":[]}),
+        &pointer("checks"),
+        &pointer("decision"),
+    )
+    .unwrap();
+    assert_eq!(verified.len(), 2);
+    assert!(risks.is_empty());
+}
+#[test]
+fn renamed_or_not_due_items_cannot_disappear_as_verified() {
+    let mut changed = report();
+    changed.decision_units.as_mut().unwrap().requirements.pop();
+    assert!(
+        items(
+            &round(),
+            &job(),
+            &changed,
+            &json!({"needs_thinker":[]}),
+            &pointer("checks"),
+            &pointer("decision")
+        )
+        .is_err()
+    );
+    assert!(
+        items(
+            &round(),
+            &job(),
+            &report(),
+            &json!({"needs_thinker":[],"not_due":["integration"]}),
+            &pointer("checks"),
+            &pointer("decision")
+        )
+        .is_err()
+    );
+}
+#[test]
+fn unknown_remaining_risk_cannot_be_omitted_from_question() {
+    let mut changed = report();
+    changed.verification_risks = None;
+    assert!(
+        items(
+            &round(),
+            &job(),
+            &changed,
+            &json!({"needs_thinker":["intent"]}),
+            &pointer("checks"),
+            &pointer("decision")
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn failed_controller_followup_checks_block_even_when_the_thinker_reports_pass() {
+    let root = std::env::temp_dir().join(format!("kah-followup-guard-{}", std::process::id()));
+    kah_core::run_store::ensure_private_directory(&root.join("sources")).unwrap();
+    kah_core::run_store::ensure_private_directory(&root.join("requests")).unwrap();
+    let request = Request {
+        id: "review-final".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: Some("a".repeat(40)),
+        intent: json!({"revision":1}),
+        trigger: json!({"verification_followup":{"stage":"checks_complete"}}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    source_store::save(
+        &root.join("requests"),
+        "review-final.json",
+        &serde_json::to_value(&request).unwrap(),
+    )
+    .unwrap();
+    let saved = start(&root, &request).unwrap();
+    let path = directory(&root, &saved);
+    kah_core::run_store::ensure_private_directory(&path).unwrap();
+    let mut failed = proof();
+    failed.tests[0].exit_code = Some(1);
+    failed.tests[0].success = false;
+    source_store::save(
+        &path,
+        "checks.json",
+        &serde_json::to_value(&failed).unwrap(),
+    )
+    .unwrap();
+    let mut assessment = json!({"passed":true,"violations":[]});
+    guard(&root, &request, &mut assessment).unwrap();
+    assert_eq!(assessment["passed"], false);
+    assert_eq!(assessment["violations"], json!(["exact_sha_tests"]));
+    guard(&root, &request, &mut assessment).unwrap();
+    assert_eq!(assessment["violations"], json!(["exact_sha_tests"]));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn once_only_followup_queue_receipt_survives_transfer_without_duplicate_review() {
+    let root = std::env::temp_dir().join(format!("kah-followup-queue-{}", std::process::id()));
+    kah_core::run_store::ensure_private_directory(&root.join("sources")).unwrap();
+    let wake = super::super::super::super::queue::Wake {
+        purpose: Purpose::Checkpoint,
+        turn: "t".into(),
+        trigger: json!({"proof":"whole proof"}),
+    };
+    assert!(
+        super::super::super::super::queue::enqueue_once_at(&root, "followup-checks", &wake)
+            .unwrap()
+    );
+    let entries = fs::read_dir(root.join("queued"))
+        .unwrap()
+        .collect::<Vec<_>>();
+    assert_eq!(entries.len(), 1);
+    let path = entries[0].as_ref().unwrap().path();
+    kah_core::run_store::ensure_private_directory(&root.join("covered-triggers")).unwrap();
+    fs::rename(
+        &path,
+        root.join("covered-triggers")
+            .join(path.file_name().unwrap()),
+    )
+    .unwrap();
+    assert!(
+        !super::super::super::super::queue::enqueue_once_at(&root, "followup-checks", &wake)
+            .unwrap()
+    );
+    assert!(fs::read_dir(root.join("queued")).unwrap().next().is_none());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_semantic_requirement_cannot_be_marked_verified_by_relabeling_it_as_a_fact() {
+    let mut changed = serde_json::to_value(report()).unwrap();
+    changed["decision_units"]["requirements"][0]["judgment"] = json!({"kind":"atomic_fact","fact":{"property":"exit_status","check":0,"expected":0},"evidence_citations":[0]});
+    let changed: Report = serde_json::from_value(changed).unwrap();
+    assert!(
+        items(
+            &round(),
+            &job(),
+            &changed,
+            &json!({"needs_thinker":[]}),
+            &pointer("checks"),
+            &pointer("decision")
+        )
+        .is_err()
+    );
+}

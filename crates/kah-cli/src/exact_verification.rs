@@ -1,0 +1,67 @@
+//! Observer follow-ups reuse the run's fresh-checkout and gVisor verifier.
+use crate::{Result, native_child::stop_executors};
+use kah_run::{access, verification, worktree::Worktree};
+use kah_sandbox::{Domain, LaunchOptions, Project};
+use std::{path::Path, time::Duration};
+
+pub fn execute(
+    home: &Path,
+    candidate: &Worktree,
+    commit: &str,
+    options: LaunchOptions,
+    script: &str,
+    log: &Path,
+    interrupted: impl FnMut() -> std::result::Result<bool, String>,
+) -> Result<(verification::Receipt, bool)> {
+    let tree = candidate.verification_snapshot(
+        &candidate
+            .path
+            .parent()
+            .unwrap()
+            .join(format!("verify-{}", crate::relay_store::nonce())),
+        commit,
+    )?;
+    let result = run(home, &tree, commit, options, script, log, interrupted);
+    let cleanup = stop_executors(&tree.path);
+    let changed = tree
+        .head()
+        .and_then(|head| tree.dirty().map(|dirty| head != commit || dirty));
+    let removed = tree.remove_verification();
+    cleanup?;
+    removed?;
+    Ok((result?, changed?))
+}
+fn run(
+    home: &Path,
+    tree: &Worktree,
+    commit: &str,
+    options: LaunchOptions,
+    script: &str,
+    log: &Path,
+    interrupted: impl FnMut() -> std::result::Result<bool, String>,
+) -> Result<verification::Receipt> {
+    let uid = access::service_uid()?;
+    access::traverse(tree.path.parent().unwrap(), uid)?;
+    access::share_tree(&tree.path, uid, true)?;
+    let project = Project {
+        domain: Domain::Research,
+        root: tree.path.clone(),
+        relative_cwd: Default::default(),
+        needs_creation: false,
+    };
+    let executor = crate::native_setup::executor(home, &project, options, Some(&tree.git_dir))?
+        .with_read_only_mounts(&[
+            (tree.git_dir.clone(), tree.git_dir.clone()),
+            (tree.path.join(".git"), tree.path.join(".git")),
+        ])?;
+    // Preserve the existing unattended test deadline; this is not a review
+    // deadline. Review progress/liveness remains independent of test execution.
+    Ok(verification::execute_checked(
+        &executor,
+        script,
+        commit,
+        Duration::from_secs(120),
+        log,
+        interrupted,
+    )?)
+}

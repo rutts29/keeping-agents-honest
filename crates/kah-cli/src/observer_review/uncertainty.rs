@@ -47,6 +47,8 @@ pub fn record(
     assessment: &Value,
     judgment: &kah_observer::judge::Judgment,
 ) -> Result<()> {
+    let followup_finished =
+        super::gate_approval::finish_followup(&store.directory, request, report, assessment)?;
     super::questions::resolve(&store.directory, request, report, judgment)?;
     super::questions::store(&store.directory, request, report, assessment)?;
     if let Some(proof) = super::gate_approval::captured(request)?
@@ -66,7 +68,11 @@ pub fn record(
         )?;
         return Ok(());
     }
-    retain_rethink(&store.directory, request, assessment)?;
+    if !followup_finished
+        && !super::gate_approval::begin_followup(store, request, report, assessment)?
+    {
+        retain_rethink(&store.directory, request, assessment)?;
+    }
     if let Some(mut text) = notice(request, report, assessment) {
         text.push_str(&format!(
             " Full record: {}",

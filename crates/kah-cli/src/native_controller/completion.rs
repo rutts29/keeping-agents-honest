@@ -1,6 +1,6 @@
 use super::*;
 use kah_core::unattended::CompletionEvidence;
-use kah_run::{access, verification};
+use kah_run::verification;
 use serde_json::json;
 
 impl Run<'_> {
@@ -273,56 +273,29 @@ impl Run<'_> {
         commit: &str,
         sequence: u64,
     ) -> Result<(verification::Receipt, bool)> {
-        let tree = candidate.verification_snapshot(
-            &candidate
-                .path
-                .parent()
-                .unwrap()
-                .join(format!("verify-{}", session::now_ms())),
-            commit,
-        )?;
-        let uid = kah_run::access::service_uid()?;
-        access::traverse(candidate.path.parent().unwrap(), uid)?;
-        access::share_tree(&tree.path, uid, true)?;
-        let project = Project {
-            domain: Domain::Research,
-            root: tree.path.clone(),
-            relative_cwd: Default::default(),
-            needs_creation: false,
-        };
-        let executor = crate::native_setup::executor(
-            self.home,
-            &project,
-            LaunchOptions {
-                online: self.online,
-                yolo: false,
-            },
-            Some(&tree.git_dir),
-        )?
-        .with_read_only_mounts(&[
-            (tree.git_dir.clone(), tree.git_dir.clone()),
-            (tree.path.join(".git"), tree.path.join(".git")),
-        ])?;
+        let home = self.home;
+        let online = self.online;
         let script = self.settings.test.clone();
         let log = self
             .directory
             .join(format!("verification-{}.log", session::now_ms()));
-        let result = verification::execute_checked(
-            &executor,
-            &script,
+        crate::exact_verification::execute(
+            home,
+            candidate,
             commit,
-            Duration::from_secs(120),
+            LaunchOptions {
+                online,
+                yolo: false,
+            },
+            &script,
             &log,
             || {
                 self.verification_interrupted(sequence)
                     .map_err(|e| e.to_string())
             },
-        );
-        stop_executors(&tree.path)?;
-        let changed = tree.head()? != commit || tree.dirty()?;
-        tree.remove_verification()?;
-        Ok((result?, changed))
+        )
     }
+
     fn verification_interrupted(&mut self, sequence: u64) -> Result<bool> {
         let elapsed = self.clock.elapsed().as_millis().min(u64::MAX as u128) as u64;
         self.clock = Instant::now();

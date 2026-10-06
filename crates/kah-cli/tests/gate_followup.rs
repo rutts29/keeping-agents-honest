@@ -90,7 +90,7 @@ fn proof() -> gate_approval::DeliveryProof {
         "artifacts":[{"path":"PLAN.md","baseline_blob":"b".repeat(40),"delivered_blob":"b".repeat(40),"delivered_sha":"a".repeat(40)}]})).unwrap()
 }
 fn checks(round: &VerificationRound) -> CheckReceipt {
-    CheckReceipt { receipt:pointer(&round.checks_receipt()), proof:proof(), risks:vec![UnverifiedRisk {
+    CheckReceipt { verified:vec![], receipt:pointer(&round.checks_receipt()), proof:proof(), risks:vec![UnverifiedRisk {
         requirement_id:"integration".into(), unverified:"Cumulative behavior across providers could not be confirmed.".into(),
         tried:vec![Attempt { what:"Read existing receipts, asked builder for integration evidence, reran same-SHA checks.".into(), receipt:round.checks_receipt() }],
         acceptance_risk:"Accepting may advance with an unproven provider interaction.".into(), evidence:vec![pointer("existing"),pointer("builder-answer")],
@@ -205,7 +205,10 @@ fn complete_positive_round_admits_one_plain_risk_decision() {
     assert_eq!(q["id"], repeat["id"]);
     let text = gate_approval::message(&q).unwrap();
     assert!(text.contains("Accept gate"));
-    assert!(text.contains("send back for evidence"));
+    assert!(text.contains("or send it back for more evidence?"));
+    assert!(!text.contains("Jev answers:"));
+    assert!(!text.contains("Thinker\'s conclusions/reasoning/sources:"));
+    assert!(text.contains("Full record for question-"));
     assert!(text.contains("Cumulative behavior across providers could not be confirmed."));
     assert!(text.contains("reran same-SHA checks"));
     assert!(text.contains("Accepting may advance with an unproven provider interaction."));

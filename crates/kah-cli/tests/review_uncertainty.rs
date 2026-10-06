@@ -74,3 +74,23 @@ fn reconsideration_survives_until_an_event_and_keeps_its_original_decision() {
     assert!(uncertainty::rethink(&root).unwrap().is_some());
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn a_rethought_checkpoint_keeps_uncertainty_visible_without_another_reask() {
+    // Allow one follow-up verification round.
+    let root = std::env::temp_dir().join(format!("kah-no-reask-{}", std::process::id()));
+    let request = Request {
+        id: "review-followup".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "t".into(),
+        head: Some("a".repeat(40)),
+        intent: json!({}),
+        trigger: json!({"reconsideration":{"request":"review-first"}}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    uncertainty::retain_rethink(&root, &request, &json!({"needs_thinker":["intent"]})).unwrap();
+    assert!(uncertainty::rethink(&root).unwrap().is_none());
+    assert!(!root.exists());
+}

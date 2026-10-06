@@ -121,8 +121,14 @@ fn eligible_gate_creates_one_bound_question_with_plain_summary_and_all_evidence(
     let text = kah_cli::observer_review::questions::message(&pending[0]).unwrap();
     assert!(text.starts_with("Accept gate "));
     assert!(text.contains("Risk if accepted:"));
-    assert!(text.contains("send back for evidence"));
-    assert!(text.contains("unclear") && text.contains("node integration.cjs"));
+    assert!(text.contains("or send it back for more evidence?"));
+    assert!(pending[0]["jev"].to_string().contains("unclear"));
+    assert!(
+        pending[0]["proof"]
+            .to_string()
+            .contains("node integration.cjs")
+    );
+    assert!(!text.contains("unclear") && !text.contains("node integration.cjs"));
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -343,6 +349,7 @@ fn fixture(label: &str) -> std::path::PathBuf {
         &root,
         &round.binding,
         Step::Checks(CheckReceipt {
+            verified: vec![],
             receipt: pointer(&round.checks_receipt()),
             proof: proof(),
             risks: vec![UnverifiedRisk {

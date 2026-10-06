@@ -159,7 +159,7 @@ fn add_previous(state: &State, documents: &mut Vec<Document>) -> Result<()> {
     Ok(())
 }
 
-fn history(home: &Path, state: &State) -> Result<Document> {
+pub(super) fn history(home: &Path, state: &State) -> Result<Document> {
     let directory = super::state::Store::directory(&state.worker.session)?;
     let mut history = History::open(
         home,
@@ -168,7 +168,14 @@ fn history(home: &Path, state: &State) -> Result<Document> {
         &state.worker.project,
         &state.worker.session,
     )?;
-    let mut value = match &mut history {
+    history_document(&mut history, &state.worker.provider, &state.worker.session)
+}
+pub(super) fn history_document(
+    history: &mut History,
+    provider: &str,
+    worker: &str,
+) -> Result<Document> {
+    let mut value = match history {
         History::Codex {
             client, session, ..
         } => json!(kah_codex::source::full_history(client, session)?),
@@ -183,7 +190,7 @@ fn history(home: &Path, state: &State) -> Result<Document> {
         }
     };
     crate::privacy::scrub(&mut value);
-    native_document(&state.worker.provider, &state.worker.session, &value)
+    native_document(provider, worker, &value)
 }
 
 pub(crate) fn project_context(home: &Path, state: &State) -> Result<Value> {

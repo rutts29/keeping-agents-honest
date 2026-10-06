@@ -125,6 +125,9 @@ pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
     Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
 }
 pub fn kick(worker: &str) -> Result<()> {
+    if super::gate_approval::pending_followups(worker)? {
+        super::hook::spawn("__gate-followup", worker)?;
+    }
     if super::gate_approval::pending_answers(worker)? {
         super::hook::spawn("__gate-answers", worker)?;
     }
@@ -145,4 +148,26 @@ pub fn kick(worker: &str) -> Result<()> {
         super::hook::spawn("__review-wake", worker)?;
     }
     Ok(())
+}
+
+/// External operations already ran; keep one immutable review hand-off across
+/// a crash before or after transfer to covered-triggers.
+pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Result<bool> {
+    use sha2::{Digest, Sha256};
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    let name = format!("receipt-{:x}.json", Sha256::digest(receipt.as_bytes()));
+    let value = serde_json::to_value(wake)?;
+    for directory in ["queued", "covered-triggers"] {
+        let path = root.join(directory).join(&name);
+        if let Some(saved) = super::state::read::<Value>(&path)? {
+            if saved != value {
+                return Err("REVIEW_QUEUE_RECEIPT_CHANGED stage=queue".into());
+            }
+            return Ok(false);
+        }
+    }
+    let directory = root.join("queued");
+    kah_core::run_store::ensure_private_directory(&directory)?;
+    super::source_store::save(&directory, &name, &value)?;
+    Ok(true)
 }

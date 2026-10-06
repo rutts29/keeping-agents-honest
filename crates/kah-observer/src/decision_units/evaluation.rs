@@ -1,5 +1,6 @@
 //! Per-unit receipt checks and independent typed decisions compose in code.
-//! Unresolved understanding asks the user; only confirmed violations fail.
+//! Unresolved user decisions ask the user; status uncertainty stays evidence.
+//! Only confirmed violations fail.
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 

@@ -60,6 +60,7 @@ fn inputs(worker: &str) -> (Request, Report, Judgment) {
         created_ms: 0,
     };
     let report = Report {
+        verification_risks: None,
         request_id: request.id.clone(),
         findings: vec![Finding {
             topic: Topic::Claim,

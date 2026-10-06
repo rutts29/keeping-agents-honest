@@ -103,10 +103,19 @@ pub struct UnverifiedRisk {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct VerifiedRequirement {
+    pub requirement_id: String,
+    pub evidence: Vec<EvidencePointer>,
+    pub decision_receipt: EvidencePointer,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CheckReceipt {
     pub receipt: EvidencePointer,
     pub proof: DeliveryProof,
     pub risks: Vec<UnverifiedRisk>,
+    #[serde(default)]
+    pub verified: Vec<VerifiedRequirement>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "stage", content = "receipt", rename_all = "snake_case")]
@@ -303,6 +312,14 @@ fn valid_risks(round: &VerificationRound) -> bool {
         pointers.push(response)
     }
     pointers.push(&checks.receipt);
+    if !checks.verified.iter().all(|item| {
+        !item.requirement_id.is_empty()
+            && !item.evidence.is_empty()
+            && item.decision_receipt.valid()
+            && item.evidence.iter().all(|p| pointers.contains(&p))
+    }) {
+        return false;
+    }
     checks.risks.iter().all(|r| {
         !r.requirement_id.trim().is_empty()
             && !r.unverified.trim().is_empty()
