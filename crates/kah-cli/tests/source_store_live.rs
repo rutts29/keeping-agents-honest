@@ -19,10 +19,11 @@ fn migrate_real_observer_sources_without_losing_evidence() {
     assert_eq!(receipt["digestsVerified"], true);
     assert_eq!(receipt["fullSourcesRecoverable"], true);
     assert!(receipt["recordsMigrated"].as_u64().unwrap() > 0);
+    assert!(receipt["sourcesSegmented"].as_u64().unwrap() > 0);
     let retained = Store::read(&worker).unwrap().unwrap();
     assert_eq!(retained.observer.session, state.observer.session);
     assert_eq!(retained.observer.pane, state.observer.pane);
-    let evidence = json!({"beforeDu":before,"afterDu":after,"migration":receipt,"sameObserverSession":state.observer.session,"samePane":state.observer.pane,"contentCapsAdded":false,"sourceAliases":"hardlinks, not copies","everyReplacementVerifiedBeforeRename":true,"passed":true});
+    let evidence = json!({"beforeDu":before,"afterDu":after,"migration":receipt,"sameObserverSession":state.observer.session,"samePane":state.observer.pane,"contentCapsAdded":false,"sourceAliases":"shared immutable segments with exact end offsets and full-source digests","everyReplacementVerifiedBeforeRename":true,"passed":true});
     println!("{}", serde_json::to_string_pretty(&evidence).unwrap());
     fs::write(
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())

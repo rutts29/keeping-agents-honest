@@ -44,7 +44,7 @@ fn preparation_and_archive_recover_whole_sources_from_one_copy() {
     )
     .unwrap();
     assert_eq!(
-        fs::read_to_string(input.join("transcript.txt")).unwrap(),
+        source_store::load_text(&input.join("transcript.txt")).unwrap(),
         "the whole repeated transcript"
     );
     // Existing corrupt content fails closed before any record replacement.
@@ -85,8 +85,8 @@ fn queued_preparation_and_latest_judgment_reference_nested_sources_too() {
     let q: Value = serde_json::from_slice(&fs::read(root.join("queued.json")).unwrap()).unwrap();
     let l: Value = serde_json::from_slice(&fs::read(root.join("latest.json")).unwrap()).unwrap();
     assert_eq!(
-        q["trigger"]["preparation"]["state"],
-        l["latest"]["jev_state"]
+        source_store::expand(q, &root.join("sources")).unwrap()["trigger"]["preparation"]["state"],
+        source_store::expand(l, &root.join("sources")).unwrap()["latest"]["jev_state"]
     );
     assert_eq!(
         source_store::read::<Value>(&root.join("queued.json")).unwrap(),

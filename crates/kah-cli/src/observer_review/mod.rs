@@ -63,14 +63,8 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     if args == ["__review-artifact-baseline"] {
         return Some(artifact_collect::cli());
     }
-    if args.get(..2) == Some(&["observe".into(), "report".into()]) {
-        return Some(workspace::submit(args));
-    }
-    if args.get(..2) == Some(&["observe".into(), "select".into()]) {
-        return Some(preparation::submit(args));
-    }
-    if args.len() == 3 && args[..2] == ["observe", "migrate-sources"] {
-        return Some(source_store::migrate(&args[2]).map(|v| println!("{v}")));
+    if args.first().is_some_and(|arg| arg == "observe") {
+        return observe_route(args);
     }
     if args.len() != 2 {
         return None;
@@ -110,3 +104,17 @@ pub mod lifecycle;
 pub mod pause;
 pub mod steering;
 mod steering_conflict;
+
+fn observe_route(args: &[String]) -> Option<crate::Result<()>> {
+    match args.get(1).map(String::as_str) {
+        Some("report") => Some(workspace::submit(args)),
+        Some("select") => Some(preparation::submit(args)),
+        Some("read-source") if args.len() == 3 => {
+            Some(source_store::print_text(std::path::Path::new(&args[2])))
+        }
+        Some("migrate-sources") if args.len() == 3 => {
+            Some(source_store::migrate(&args[2]).map(|v| println!("{v}")))
+        }
+        _ => None,
+    }
+}

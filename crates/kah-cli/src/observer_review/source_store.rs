@@ -5,9 +5,11 @@ use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::Write,
-    os::unix::fs::OpenOptionsExt,
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
+
+mod segments;
 
 fn directory(path: &Path) -> Result<PathBuf> {
     path.ancestors()
@@ -17,34 +19,37 @@ fn directory(path: &Path) -> Result<PathBuf> {
 }
 fn reference(root: &Path, bytes: &[u8], encoding: &str) -> Result<Value> {
     let digest = format!("{:x}", Sha256::digest(bytes));
-    let target = root.join(&digest);
-    if !target.exists() {
-        let temporary = root.join(format!("{}.tmp", crate::relay_store::nonce()));
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temporary)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        match fs::hard_link(&temporary, &target) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e.into()),
-        }
-        fs::remove_file(temporary)?;
-        fs::File::open(root)?.sync_all()?;
+    if !root.join(&digest).exists() {
+        segments::store(root, bytes, &digest)?;
     }
-    verify(&target, &digest)?;
+    verify(&root.join(&digest), &digest)?;
     Ok(json!({"$kah_source":digest,"encoding":encoding}))
 }
-fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
-    let bytes = fs::read(path)?;
-    if format!("{:x}", Sha256::digest(&bytes)) != digest {
-        return Err("REVIEW_SOURCE_DIGEST stage=source_store".into());
+fn write_once(target: &Path, bytes: &[u8]) -> Result<()> {
+    if target.exists() {
+        return Ok(());
     }
-    Ok(bytes)
+    let temporary = target.with_extension(format!("{}.tmp", crate::relay_store::nonce()));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    match fs::hard_link(&temporary, target) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.into()),
+    }
+    fs::remove_file(temporary)?;
+    fs::File::open(target.parent().unwrap())?.sync_all()?;
+    Ok(())
 }
+fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
+    segments::recover(path, digest)
+}
+
 fn strings(value: &Value, root: &Path) -> Result<Value> {
     if value.get("$kah_source").is_some() {
         return Ok(value.clone());
@@ -101,7 +106,15 @@ fn compact(value: &Value, root: &Path) -> Result<Value> {
     let mut result = value.clone();
     if let Some(object) = result.as_object_mut() {
         for (key, source) in object.iter_mut() {
-            if ["state", "original", "prepared_state", "jev_state"].contains(&key.as_str()) {
+            if [
+                "state",
+                "original",
+                "prepared_state",
+                "jev_state",
+                "trigger",
+            ]
+            .contains(&key.as_str())
+            {
                 if source.get("$kah_source").is_some() {
                     continue;
                 }
@@ -113,11 +126,9 @@ fn compact(value: &Value, root: &Path) -> Result<Value> {
         }
         if let Some(documents) = object.get_mut("documents").and_then(Value::as_array_mut) {
             for document in documents {
-                if let Some(text) = document
-                    .get_mut("text")
-                    .and_then(|v| v.as_str().map(str::to_owned))
-                {
-                    document["text"] = reference(root, text.as_bytes(), "utf8")?;
+                if document.get("$kah_source").is_none() {
+                    let encoded = strings(document, root)?;
+                    *document = reference(root, &serde_json::to_vec(&encoded)?, "json")?;
                 }
             }
         }
@@ -161,13 +172,45 @@ pub fn initialize(private: &Path, workspace: &Path) -> Result<()> {
 pub fn text(private: &Path, target: &Path, text: &str) -> Result<()> {
     let root = private.join("sources");
     let source = reference(&root, text.as_bytes(), "utf8")?;
-    let digest = source["$kah_source"].as_str().unwrap();
-    let temporary = target.with_extension(format!("{}.tmp", crate::relay_store::nonce()));
-    fs::hard_link(root.join(digest), &temporary)?;
-    fs::rename(temporary, target)?;
-    fs::File::open(target.parent().unwrap())?.sync_all()?;
+    crate::unattended_report::save(
+        target.parent().unwrap(),
+        target.file_name().unwrap().to_str().unwrap(),
+        &source,
+    )
+}
+pub fn load_text(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)?;
+    if let Ok(value) = serde_json::from_slice::<Value>(&bytes)
+        && value.get("$kah_source").is_some()
+    {
+        let root = directory(path)?;
+        return expand(value, &root)?
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "REVIEW_SOURCE_ENCODING stage=source_text".into());
+    }
+    Ok(String::from_utf8(bytes)?)
+}
+pub fn print_text(path: &Path) -> Result<()> {
+    let bytes = fs::read(path)?;
+    let output = match serde_json::from_slice::<Value>(&bytes) {
+        Ok(value) => {
+            let value = expand(value, &directory(path)?)?;
+            match value.as_str() {
+                Some(text) => text.to_owned(),
+                None => serde_json::to_string_pretty(&value)?,
+            }
+        }
+        Err(_) => String::from_utf8(bytes)?,
+    };
+    std::io::stdout().write_all(output.as_bytes())?;
     Ok(())
 }
+/// Losslessly migrates digest-verified snapshots to shared storage blocks.
+pub fn segment_sources(root: &Path) -> Result<usize> {
+    segments::migrate(root)
+}
+
 pub fn share(private: &Path, workspace: &Path) -> Result<()> {
     let public = workspace.join("sources");
     for entry in fs::read_dir(private.join("sources"))? {
@@ -176,6 +219,11 @@ pub fn share(private: &Path, workspace: &Path) -> Result<()> {
             continue;
         }
         let target = public.join(entry.file_name());
+        if target.exists() && fs::metadata(&target)?.ino() != fs::metadata(entry.path())?.ino() {
+            let temporary = target.with_extension(format!("{}.tmp", crate::relay_store::nonce()));
+            fs::hard_link(entry.path(), &temporary)?;
+            fs::rename(temporary, &target)?;
+        }
         if !target.exists() {
             fs::hard_link(entry.path(), target)?;
         }
@@ -197,7 +245,7 @@ pub fn migrate(worker: &str) -> Result<Value> {
     let mut migrated = 0;
     for path in paths {
         if path.extension().is_some_and(|e| e == "txt") {
-            let full = fs::read_to_string(&path)?;
+            let full = load_text(&path)?;
             text(&store.directory, &path, &full)?;
             migrated += 1;
             continue;
@@ -220,6 +268,7 @@ pub fn migrate(worker: &str) -> Result<Value> {
             migrated += 1;
         }
     }
+    let segmented = segment_sources(&store.directory.join("sources"))?;
     share(&store.directory, &state.observer.workspace)?;
     kah_run::access::share_tree(
         &state.observer.workspace.join("inputs"),
@@ -227,7 +276,7 @@ pub fn migrate(worker: &str) -> Result<Value> {
         false,
     )?;
     Ok(
-        json!({"worker":worker,"recordsMigrated":migrated,"digestsVerified":true,"fullSourcesRecoverable":true}),
+        json!({"worker":worker,"recordsMigrated":migrated,"sourcesSegmented":segmented,"digestsVerified":true,"fullSourcesRecoverable":true}),
     )
 }
 fn collect(root: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
