@@ -1,5 +1,37 @@
 use kah_cli::observer_review::source_store;
 use serde_json::{Value, json};
+
+#[test]
+fn a_delivery_lock_source_directory_cannot_hide_parent_cas_references() {
+    use kah_cli::observer_review::state::Store;
+    let root = std::env::temp_dir().join(format!("kah-cas-namespace-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    source_store::initialize(&root, &root.join("workspace")).unwrap();
+    let original = json!({"trigger":{"candidate":"Whole native message: work remains unproven."}});
+    source_store::save(&root, "request.json", &original).unwrap();
+    let stored: Value =
+        serde_json::from_slice(&fs::read(root.join("request.json")).unwrap()).unwrap();
+    let questions = root.join("questions");
+    let _lock = Store::delivery_at(&questions, false).unwrap();
+    assert!(questions.join("sources").is_dir());
+    let question = json!({"candidate_trigger":stored["trigger"]});
+    // Existing encoded records keep their CAS references, as in the real
+    // operator-parked question; this tests reading, not re-encoding a value.
+    kah_cli::unattended_report::save(&questions, "question.json", &question).unwrap();
+    let recovered: Value = source_store::read(&questions.join("question.json")).unwrap();
+    assert_eq!(recovered["candidate_trigger"], original["trigger"]);
+    let digest = stored["trigger"]["$kah_source"].as_str().unwrap();
+    fs::write(
+        questions.join("sources").join(digest),
+        b"corrupt nearest source",
+    )
+    .unwrap();
+    assert!(
+        source_store::read::<Value>(&questions.join("question.json")).is_err(),
+        "a corrupt present source must fail, never hide behind another copy"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
 use std::{fs, os::unix::fs::MetadataExt};
 
 #[test]

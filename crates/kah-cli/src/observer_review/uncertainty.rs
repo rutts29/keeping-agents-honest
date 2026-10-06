@@ -7,6 +7,12 @@ mod rethink;
 pub use rethink::{resume, retain_rethink, rethink, schedule};
 
 pub fn notice(request: &Request, report: &Report, assessment: &Value) -> Option<String> {
+    if assessment["state"] == "checkpoint_unconfirmed_observation" {
+        return Some(format!(
+            "kah observer retains an unconfirmed status observation for {}. Status interpretation stays with the observer: inspect existing evidence, ask the builder for evidence, then propose or run objective checks. This is not a user decision or a gate verdict; unrelated work and observation continue.",
+            request.id
+        ));
+    }
     let ids = assessment["needs_user"]
         .as_array()
         .into_iter()

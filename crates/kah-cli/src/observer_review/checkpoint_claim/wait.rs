@@ -1,4 +1,4 @@
-//! User/reviewer no-loop rule: one thinker reconsideration, then one question.
+//! Status uncertainty is observer work, never a user decision.
 use super::*;
 use crate::{
     Result,
@@ -26,6 +26,12 @@ pub fn waiting(worker: &str, request: &str) -> Result<bool> {
     let root = Store::directory(worker)?;
     let parked: Option<Value> =
         crate::observer_review::state::read(&root.join("parked").join(format!("{request}.json")))?;
+    if parked
+        .as_ref()
+        .is_some_and(|p| p["unconfirmed_observation"] == true)
+    {
+        return Ok(true);
+    }
     let Some(id) = parked.as_ref().and_then(|p| p["question"].as_str()) else {
         return Ok(false);
     };
@@ -68,37 +74,37 @@ pub fn record_uncertainty(
         source_store::save(&history, &name, &record)?;
         return Ok(None);
     }
-    if !rethink && previous.as_ref().is_none_or(|p| p["question"].is_null()) {
+    if !rethink && previous.as_ref().is_none_or(|p| p["observation"].is_null()) {
         return Ok(None);
     }
-    let question = question(request, report, judgment);
-    let directory = root.join("questions");
+    let observation = observation(request, report, judgment);
+    let directory = root.join("claim-observations");
     kah_core::run_store::ensure_private_directory(&directory)?;
     let _lock = Store::delivery_at(&directory, true)?;
-    let qname = format!("{}.json", question["id"].as_str().unwrap());
+    let qname = format!("{}.json", observation["id"].as_str().unwrap());
     if !directory.join(&qname).exists() {
-        source_store::save(&directory, &qname, &question)?;
+        source_store::save(&directory, &qname, &observation)?;
     }
     let mut record = record;
-    record["question"] = question["id"].clone();
+    record["observation"] = observation["id"].clone();
     source_store::save(&history, &name, &record)?;
     kah_core::run_store::ensure_private_directory(&root.join("parked"))?;
     source_store::save(
         &root.join("parked"),
         &name,
         &json!({
-        "request":request.id,"question":question["id"],"reason":"claim uncertainty after thinker reconsideration"}),
+        "request":request.id,"observation":observation["id"],"unconfirmed_observation":true,"reason":"status uncertainty remains observer-owned"}),
     )?;
     Ok(Some(
-        json!({"state":"checkpoint_needs_user","passed":null,"violations":[],
-        "needs_user":["phase-claim-review"],"needs_thinker":[],"unproven":["phase-claim-review"],
-        "question":question["id"],"automatic_reasks_stopped":true}),
+        json!({"state":"checkpoint_unconfirmed_observation","passed":null,"violations":[],
+        "needs_user":[],"needs_thinker":[],"unproven":["phase-claim-review"],
+        "observation":observation["id"],"automatic_reasks_stopped":true}),
     ))
 }
 
-fn question(request: &Request, report: &Report, judgment: &Judgment) -> Value {
+fn observation(request: &Request, report: &Report, judgment: &Judgment) -> Value {
     let id = format!(
-        "question-{:x}",
+        "observation-{:x}",
         Sha256::digest(format!("{}:{}:claim_made", request.worker, request.id))
     );
     let claims = report
@@ -106,15 +112,12 @@ fn question(request: &Request, report: &Report, judgment: &Judgment) -> Value {
         .iter()
         .filter(|f| matches!(f.topic, kah_observer::review_evidence::Topic::Claim))
         .collect::<Vec<_>>();
-    json!({"id":id,"kind":"checkpoint_claim","worker":request.worker,"requirement":"phase-claim-review",
-        "name":"Whether the native message asserted phase completion","request":request.id,"head":request.head,
-        "intent_revision":request.intent["revision"],"reason":"Claim uncertainty persisted after one thinker reconsideration",
-        "summary":"The thinker supplied candidate assertion evidence; Jev remained unsure after reconsideration. Automatic re-asks for this request stop.",
-        "question":"Did the candidate builder message assert phase completion, or was it ordinary progress? Does existing user authority already resolve this?",
-        "options":["Completion asserted","Ordinary progress","Existing decision resolves it"],
+    json!({"id":id,"kind":"claim_observation","worker":request.worker,"requirement":"phase-claim-review",
+        "name":"Unconfirmed native completion assertion","request":request.id,"head":request.head,
+        "intent_revision":request.intent["revision"],"status":"unconfirmed","user_decision":false,
+        "summary":"Status interpretation remains observer-owned after reconsideration; no user question and no gate verdict.",
+        "next_steps":["Read existing repo/tags/STATUS/receipts and message evidence","Ask builder through delegate kah send for specific evidence, never authority","Run or propose an objective exact-SHA or targeted check","Retain any unresolved observation visibly and keep observing"],
         "claim_findings":claims,"judgment":judgment,"candidate_trigger":request.trigger,
-        "ledger_review":{"reasoning":"Check the cited native message and existing decisions; no new authority is inferred."},
-        "authority_at_question":crate::observer_review::decisions::active_items(&request.intent),
-        "goal_at_question":request.intent["goal"],"status":"pending","delivery":"queued","question_origin":"controller",
-        "scope":"Only this decision waits; unrelated reviews continue","at_ms":kah_observer::session::now_ms()})
+        "scope":"This observation does not occupy the review slot; unrelated reviews continue",
+        "at_ms":kah_observer::session::now_ms()})
 }

@@ -47,7 +47,19 @@ fn write_once(target: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
-    segments::recover(path, digest)
+    // Nested delivery locks can create an empty sources directory. References
+    // still identify immutable content in the containing review/workspace.
+    // A present source must verify; never hide corruption using another copy.
+    let resolved = if path.exists() {
+        path.to_owned()
+    } else {
+        path.ancestors()
+            .skip(1)
+            .map(|parent| parent.join("sources").join(digest))
+            .find(|candidate| candidate.is_file())
+            .unwrap_or_else(|| path.to_owned())
+    };
+    segments::recover(&resolved, digest)
 }
 fn read_bytes(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|e| {

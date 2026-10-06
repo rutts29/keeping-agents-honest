@@ -9,7 +9,7 @@ use kah_observer::{
 use serde_json::json;
 
 #[test]
-fn one_rethink_then_one_named_question_parks_only_the_uncertain_request() {
+fn one_rethink_then_visible_observation_never_asks_user_for_status() {
     let worker = format!("claim-wait-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
     let (request, report, judgment) = inputs(&worker);
@@ -34,20 +34,16 @@ fn one_rethink_then_one_named_question_parks_only_the_uncertain_request() {
         .unwrap()
         .unwrap();
     assert!(assessment["passed"].is_null());
-    assert_eq!(assessment["state"], "checkpoint_needs_user");
+    assert_eq!(assessment["state"], "checkpoint_unconfirmed_observation");
     assert!(checkpoint_claim::waiting(&worker, &request.id).unwrap());
     assert!(!checkpoint_claim::waiting(&worker, "review-unrelated").unwrap());
     checkpoint_claim::record_uncertainty(&request, &report, &judgment)
         .unwrap()
         .unwrap();
     let pending = questions::pending(&store.directory).unwrap();
-    assert_eq!(pending.len(), 1);
-    assert_eq!(pending[0]["goal_at_question"], request.intent["goal"]);
-    assert!(
-        questions::message(&pending[0])
-            .unwrap()
-            .contains("Work remains active and unproven.")
-    );
+    assert_eq!(pending.len(), 0, "status is not a user decision");
+    assert!(assessment["needs_user"].as_array().unwrap().is_empty());
+    assert!(store.directory.join("claim-observations").is_dir());
     std::fs::remove_dir_all(store.directory.parent().unwrap()).unwrap();
 }
 
