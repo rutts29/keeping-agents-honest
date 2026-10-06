@@ -186,6 +186,7 @@ fn role(row: &Value, text: &str) -> SourceRole {
     if [
         "[kah-reviewer]",
         "[kah-builder]",
+        "[kah-observer]",
         "[kah-relay]",
         "[kah-user]",
     ]

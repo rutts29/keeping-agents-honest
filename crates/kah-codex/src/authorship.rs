@@ -11,6 +11,7 @@ pub fn classify(text: &str, delivered_by_agent: bool) -> SourceRole {
         || [
             "[kah-reviewer]",
             "[kah-builder]",
+            "[kah-observer]",
             "[kah-relay]",
             "[kah-user]",
         ]

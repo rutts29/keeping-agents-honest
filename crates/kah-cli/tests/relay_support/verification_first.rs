@@ -25,8 +25,12 @@ pub fn run(root: &Path) -> Value {
     let (launch, mut fixture) = crate::fixture::prepare(&home, "research", false);
     let mut command = launch.command(false);
     command
-        .args(["--no-alt-screen", COURIER])
+        .args(["-c", "service_tier=\"default\"", "--no-alt-screen", COURIER])
         .env_remove("CODEX_THREAD_ID");
+    let courier_args = command
+        .get_args()
+        .map(|v| v.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
     let panes = Panes(vec![Pane::start(&command).unwrap()]);
     fixture.sessions.push(ready(&panes.0[0], "codex"));
     assert!(
@@ -60,7 +64,8 @@ pub fn run(root: &Path) -> Value {
     )
     .unwrap();
     let mut observed = wait(root, &home, id, &provider, &panes.0[0]);
-    observed["nativeSettings"] = native_settings::record(&home, &provider, id, &panes.0[0]);
+    observed["nativeSettings"] =
+        native_settings::record(&home, &provider, id, &panes.0[0], &courier_args);
     for (path, bytes) in before {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }

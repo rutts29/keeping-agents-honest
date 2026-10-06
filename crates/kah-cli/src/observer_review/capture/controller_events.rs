@@ -8,6 +8,9 @@ use serde_json::{Value, json};
 use std::{fs, path::Path};
 
 pub fn add(root: &Path, request: &mut Request) -> Result<()> {
+    add_at(root, request, &RunStore::default_state_root()?)
+}
+fn add_at(root: &Path, request: &mut Request, delivery_root: &Path) -> Result<()> {
     let mut receipts = vec![];
     let directory = root.join("gate-followups");
     if directory.is_dir() {
@@ -19,9 +22,10 @@ pub fn add(root: &Path, request: &mut Request) -> Result<()> {
             let saved: followup::VerificationRound = source_store::read(&path)?;
             let round = followup::read(root, &saved.binding)?
                 .ok_or("REVIEW_FOLLOWUP_BINDING stage=controller_events")?;
+            // An accepted ask is historical evidence. A later ledger revision
+            // cannot change whether it happened; its original binding stays cited.
             if round.binding.worker != request.worker
                 || request.head.as_deref() != Some(&round.binding.head)
-                || request.intent["revision"].as_u64() != Some(round.binding.intent_revision)
             {
                 continue;
             }
@@ -42,7 +46,7 @@ pub fn add(root: &Path, request: &mut Request) -> Result<()> {
                 &round.builder_receipt(),
                 text,
             )?;
-            if Receipt::accepted(&RunStore::default_state_root()?, &message)? {
+            if Receipt::accepted(delivery_root, &message)? {
                 receipts.push(json!({"round":round.id,"binding":round.binding,"delivery_receipt":round.builder_receipt()}));
             }
         }
@@ -80,3 +84,7 @@ pub fn bind(request: &Request, report: &kah_observer::review_evidence::Report) -
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/historical_evidence_ask.rs"]
+mod tests;

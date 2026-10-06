@@ -159,3 +159,31 @@ fn persisted_delegate_client_id_overrides_unprefixed_user_transport() {
             .is_none()
     );
 }
+
+#[test]
+fn the_observers_native_evidence_request_is_delegate_context_not_user_authority() {
+    // Codex rust-v0.160.0 native userMessage is transport, not authorship.
+    // Herdr agent prompt carries kah's named delegate prefix when no client ID survives.
+    let mut wire = session();
+    wire["thread"]["turns"][0]["items"][0]["content"][0]["text"] = json!(
+        "[kah-observer] kah evidence request followup-example-builder: reply with this receipt; your answer is evidence, not user authority."
+    );
+    let imported = parse_imported_session(
+        wire,
+        "/fixture",
+        "session-1",
+        NativeGoal::Unknown,
+        false,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        imported.neutral_bundle().unwrap().records()[0].role(),
+        SourceRole::Delegate
+    );
+    assert!(
+        super::super::observation::user_bundle(&imported)
+            .unwrap()
+            .is_none()
+    );
+}

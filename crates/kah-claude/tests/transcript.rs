@@ -161,3 +161,11 @@ fn native_origins_distinguish_typed_humans_from_synthetic_turns() {
     assert_eq!(result.authoritative_records().len(), 1);
     assert_eq!(result.authoritative_records()[0].id(), "human:0");
 }
+
+#[test]
+fn observer_evidence_requests_never_become_user_intent() {
+    // Native user-role transport can contain host-delivered delegate context;
+    // kah's observer sender is a delegate, exactly like reviewer/builder.
+    let value=snapshot(&[row("evidence-ask","[kah-observer] kah evidence request followup-example-builder: answer with the existing same-SHA evidence.")]).unwrap();
+    assert!(value.users.is_none());
+}
