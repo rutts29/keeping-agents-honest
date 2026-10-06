@@ -185,18 +185,27 @@ pub fn submit(args: &[String]) -> Result<()> {
         return Err("REVIEW_REQUEST_ID stage=report".into());
     }
     let bytes = fs::read(&args[5])?;
-    let report:Report=serde_json::from_slice(&bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no probability or unknown fields")?;
-    let findings = report.verify(&request.id, &request.documents)?;
-    require_units(&request, &report)?;
-    preflight::validate(&request, &report, findings)?;
-    super::steering::verify_proposal(&request, &report)?;
-    super::reminder::validate_report(&report, &request)?;
     let directory = Path::new(&args[3])
         .parent()
         .and_then(Path::parent)
         .and_then(Path::parent)
         .ok_or("REVIEW_REPORT_PATH stage=report")?
         .join("outbox");
+    let report = match validate_report_bytes(&request, &bytes) {
+        Ok(report) => report,
+        Err(error) => {
+            if let Err(record_error) = super::liveness::rejection::record(
+                &directory,
+                &request,
+                Path::new(&args[5]),
+                &bytes,
+                error.as_ref(),
+            ) {
+                eprintln!("REVIEW_REJECTION_RECORD stage=report: {record_error}");
+            }
+            return Err(error);
+        }
+    };
     publish_output(
         &directory,
         &format!("submitted-{}.json", request.id),
@@ -207,6 +216,16 @@ pub fn submit(args: &[String]) -> Result<()> {
         json!({"request":request.id,"status":"evidence_submitted","decision":"Jev pending"})
     );
     Ok(())
+}
+
+pub(crate) fn validate_report_bytes(request: &Request, bytes: &[u8]) -> Result<Report> {
+    let report:Report=serde_json::from_slice(bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no probability or unknown fields")?;
+    let findings = report.verify(&request.id, &request.documents)?;
+    require_units(request, &report)?;
+    preflight::validate(request, &report, findings)?;
+    super::steering::verify_proposal(request, &report)?;
+    super::reminder::validate_report(&report, request)?;
+    Ok(report)
 }
 
 /// Shared sandbox output uses the established default ACL and a writable mask;

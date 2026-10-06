@@ -63,6 +63,9 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     if args == ["__review-artifact-baseline"] {
         return Some(artifact_collect::cli());
     }
+    if args.len() == 2 && args[0] == "__review-history-repair" {
+        return Some(capture::historical::repair(&args[1]).map(|value| println!("{value}")));
+    }
     if args.first().is_some_and(|arg| arg == "observe") {
         return observe_route(args);
     }

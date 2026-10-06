@@ -27,16 +27,23 @@ pub fn run(worker: &str) -> Result<()> {
     };
     let sample = sample(&state)?;
     let prior: Option<Progress> = super::super::state::read(&root.join("progress.json"))?;
-    if prior
-        .as_ref()
-        .is_some_and(|p| p.stalled && p.sample.request != sample.request)
-    {
+    if prior.as_ref().is_some_and(|p| {
+        (p.stalled || validation_blocked(&p.sample)) && p.sample.request != sample.request
+    }) {
         recovered(&root, worker)?;
     }
     let progress = transition(prior.as_ref(), &sample);
     crate::unattended_report::save(&root, "progress.json", &serde_json::to_value(&progress)?)?;
     if progress.changed {
         event(&root, worker, &progress)?;
+    }
+    if validation_blocked(&sample) {
+        crate::unattended_report::save(
+            &Store::directory(worker)?,
+            "gap.json",
+            &json!({"error":sample.cause.strip_prefix("VALIDATION BLOCKED: "),"status":"validation_blocked","at_ms":sample.now_ms}),
+        )?;
+        return notify(&state, &progress);
     }
     if !progress.stalled {
         return Ok(());
@@ -126,12 +133,16 @@ fn sample(state: &State) -> Result<Sample> {
     // or re-prompted while a later request waits for that pane.
     let native_active = pane_working(state).unwrap_or(false);
     let controller_active = processing_active(&root, &pending.id)?;
-    let cause = if Store::open(&state.worker.session).is_err() {
-        "review lock busy"
+    let outbox = state.observer.workspace.join("outbox");
+    let rejected = super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?;
+    let cause = if let Some(reason) = rejected {
+        reason
+    } else if Store::open(&state.worker.session).is_err() {
+        "review lock busy".into()
     } else if state.observer.pane.is_none() {
-        "observer pane absent"
+        "observer pane absent".into()
     } else {
-        "no current-request native activity or report growth"
+        "no current-request native activity or report growth".into()
     };
     Ok(Sample {
         request: pending.id.clone(),
@@ -140,8 +151,8 @@ fn sample(state: &State) -> Result<Sample> {
         native_active,
         controller_active,
         transcript_version: state.observer.transcript.as_deref().and_then(version),
-        report_version: version(&report),
-        cause: cause.into(),
+        report_version: report_version(&outbox, &pending.id, &report),
+        cause,
     })
 }
 fn pane_working(state: &State) -> Result<bool> {
@@ -162,6 +173,18 @@ fn version(path: &Path) -> Option<(u64, u64)> {
             .ok()?
             .as_millis() as u64,
     ))
+}
+fn report_version(outbox: &Path, request: &str, submitted: &Path) -> Option<(u64, u64)> {
+    [
+        submitted.to_path_buf(),
+        outbox.join(format!("{request}.json")),
+        outbox.join(format!("rejected-{request}.json")),
+    ]
+    .iter()
+    .filter_map(|path| version(path))
+    .reduce(|(size, time), (next_size, next_time)| {
+        (size.saturating_add(next_size), time.max(next_time))
+    })
 }
 fn active(path: &Path, request: &str) -> Result<bool> {
     let marker: Option<Value> = super::super::state::read(path)?;
@@ -209,7 +232,9 @@ pub fn processing(worker: &str, request: &str) -> Result<Processing> {
     Ok(Processing(root.join(filename)))
 }
 fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
-    let state = if p.stalled && p.sample.native_active {
+    let state = if validation_blocked(&p.sample) {
+        "validation_blocked"
+    } else if p.stalled && p.sample.native_active {
         "possibly_hung"
     } else if p.stalled {
         "stalled"
@@ -243,11 +268,12 @@ fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
 }
 fn recovered(root: &Path, worker: &str) -> Result<()> {
     if let Some(mut p) = super::super::state::read::<Progress>(&root.join("progress.json"))?
-        && p.stalled
+        && (p.stalled || validation_blocked(&p.sample))
     {
         p.stalled = false;
         p.changed = true;
         p.sample.now_ms = kah_observer::session::now_ms();
+        p.sample.cause = "review request completed".into();
         event(root, worker, &p)?;
         crate::unattended_report::save(root, "progress.json", &serde_json::to_value(p)?)?;
     }
@@ -258,17 +284,22 @@ fn notify(state: &State, p: &Progress) -> Result<()> {
     let prior: Option<Value> = super::super::state::read(&root.join("reviewer.json"))?;
     if prior.as_ref().is_some_and(|v| {
         v["request"] == p.sample.request
-            && v["last_progress_ms"] == p.last_progress_ms
+            && v["cause"] == p.sample.cause
+            && (validation_blocked(&p.sample) || v["last_progress_ms"] == p.last_progress_ms)
             && v["submitted"] == true
     }) {
         return Ok(());
     }
-    let label = if p.sample.native_active {
+    let label = if validation_blocked(&p.sample) {
+        "validation-blocked"
+    } else if p.sample.native_active {
         "possibly-hung"
     } else {
         "stalled"
     };
-    let action = if p.sample.native_active {
+    let action = if validation_blocked(&p.sample) {
+        "The exact failed report still fails host validation; pending review retained for correction."
+    } else if p.sample.native_active {
         "Native Working has no new records; human decision required, no automatic interruption or prompt."
     } else {
         "Pending review retained; visible redelivery attempted."
@@ -291,7 +322,7 @@ fn notify(state: &State, p: &Progress) -> Result<()> {
     crate::unattended_report::save(
         &root,
         "reviewer.json",
-        &json!({"request":p.sample.request,"last_progress_ms":p.last_progress_ms,
+        &json!({"request":p.sample.request,"cause":p.sample.cause,"last_progress_ms":p.last_progress_ms,
         "submitted":sent.is_ok(),"error":sent.err().map(|e|e.to_string())}),
     )?;
     Ok(())

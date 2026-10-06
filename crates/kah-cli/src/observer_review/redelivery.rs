@@ -28,6 +28,7 @@ pub fn retryable(error: &str) -> bool {
             "REVIEW_COMPLETION_RECEIPT_",
             "CONTEXT_",
             "REVIEW_OBSERVER_STALLED",
+            "REVIEW_CONTEXT_UPDATED",
         ]
         .iter()
         .any(|prefix| error.starts_with(prefix))
