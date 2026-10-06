@@ -80,12 +80,6 @@ fn a_prior_validation_cannot_authorize_a_different_socket_or_session() {
             "different-native-session",
             true,
         ),
-        (
-            "unvalidated",
-            "/private/herdr.sock",
-            "same-native-session",
-            false,
-        ),
     ] {
         let (worker, workspace) = scenario(suffix, socket, session, validated);
         assert!(
@@ -152,7 +146,7 @@ fn validated_stop_for_a_completed_request_cannot_fault_the_resumed_request() {
 }
 
 #[test]
-fn retired_pane_cannot_supply_a_stop_for_the_current_request() {
+fn validated_current_request_hook_is_accepted_without_replacing_live_transport() {
     use kah_cli::observer_review::state::{Pending, Purpose};
     let (worker, workspace) = scenario(
         "current-stop",
@@ -177,15 +171,67 @@ fn retired_pane_cannot_supply_a_stop_for_the_current_request() {
     event["context"] = json!({"request":"review-new","preparation":false});
     kah_cli::unattended_report::save(path.parent().unwrap(), "old-end.json", &event).unwrap();
     drop(store);
+    hook_queue::run(&worker).unwrap();
+    assert_eq!(
+        Store::read(&worker).unwrap().unwrap().pending.unwrap().id,
+        "review-new"
+    );
+    cleanup(&worker, workspace);
+}
+
+#[test]
+fn every_validated_hook_type_is_accepted_after_same_session_pane_change() {
+    for kind in [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "Stop",
+        "SessionEnd",
+    ] {
+        let (worker, workspace) =
+            scenario(kind, "/private/herdr.sock", "same-native-session", true);
+        let root = Store::directory(&worker).unwrap();
+        let path = root.join("hook-events/old-end.json");
+        let mut event: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        event["input"]["hook_event_name"] = kind.into();
+        kah_cli::unattended_report::save(path.parent().unwrap(), "old-end.json", &event).unwrap();
+        hook_queue::run(&worker).unwrap();
+        let current = Store::read(&worker).unwrap().unwrap();
+        assert_eq!(current.observer.pane.as_deref(), Some("new-pane"), "{kind}");
+        assert_eq!(current.observer.pid, Some(1234), "{kind}");
+        assert!(!current.stopped, "{kind}");
+        assert_eq!(
+            fs::read_dir(root.join("retired-hook-events"))
+                .unwrap()
+                .count(),
+            1,
+            "{kind}"
+        );
+        assert!(!path.exists(), "{kind}");
+        cleanup(&worker, workspace);
+    }
+}
+
+#[test]
+fn matching_native_session_cannot_cross_a_worker_workspace() {
+    let (worker, workspace) = scenario(
+        "wrong-workspace",
+        "/private/herdr.sock",
+        "same-native-session",
+        true,
+    );
+    let root = Store::directory(&worker).unwrap();
+    let path = root.join("hook-events/old-end.json");
+    let mut event: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    event["input"]["cwd"] = std::env::temp_dir().to_string_lossy().into_owned().into();
+    kah_cli::unattended_report::save(path.parent().unwrap(), "old-end.json", &event).unwrap();
     assert!(
         hook_queue::run(&worker)
             .unwrap_err()
             .to_string()
             .starts_with("REVIEW_HOOK_SCOPE")
-    );
-    assert_eq!(
-        Store::read(&worker).unwrap().unwrap().pending.unwrap().id,
-        "review-new"
     );
     cleanup(&worker, workspace);
 }

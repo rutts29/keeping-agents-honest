@@ -28,9 +28,7 @@ impl Event {
         }
     }
     pub(super) fn retired_for(&self, state: &super::state::State) -> bool {
-        self.validated_pane.is_some()
-            && self.validated_pane == self.pane
-            && self.pane != state.observer.pane
+        self.pane != state.observer.pane
             && self.socket == state.worker.socket
             && state
                 .observer

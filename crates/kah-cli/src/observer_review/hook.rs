@@ -38,7 +38,7 @@ fn receive(worker: &str) -> Result<()> {
         super::control::native_parent(&state.worker.provider),
     );
     validate(&state, &event)?;
-    event.validated_pane = state.observer.pane.clone();
+    event.validated_pane = event.pane.clone();
     event.context = super::request_context::capture(&state, &event.input)?;
     match apply(worker, &event) {
         Err(e) if e.to_string().starts_with("REVIEW_BUSY") => {
@@ -56,17 +56,8 @@ pub(super) fn apply_wait(worker: &str, event: &super::hook_queue::Event) -> Resu
 fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> Result<()> {
     let input = &event.input;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
-    if event.retired_for(&state)
-        && (event.input["hook_event_name"] == "SessionEnd"
-            || stale(worker, &state, event.context.as_ref())?)
-    {
-        let retained = store.directory.join("retired-hook-events");
-        kah_core::run_store::ensure_private_directory(&retained)?;
-        return crate::unattended_report::save(
-            &retained,
-            &format!("{}.json", crate::relay_store::nonce()),
-            &serde_json::to_value(event)?,
-        );
+    if event.retired_for(&state) {
+        return retain_transport_event(worker, event, store, &state);
     }
     validate(&state, event)?;
     let events = store.directory.join("hook-observations.jsonl");
@@ -116,6 +107,29 @@ fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> 
     }
     handle_event(worker, &state, kind)
 }
+fn retain_transport_event(
+    worker: &str,
+    event: &super::hook_queue::Event,
+    store: Store,
+    state: &State,
+) -> Result<()> {
+    let retained = store.directory.join("retired-hook-events");
+    kah_core::run_store::ensure_private_directory(&retained)?;
+    crate::unattended_report::save(
+        &retained,
+        &format!("{}.json", crate::relay_store::nonce()),
+        &serde_json::to_value(event)?,
+    )?;
+    drop(store);
+    // Session identity outlives its pane. Preserve current PID/lifetime and
+    // consume any ready current-request evidence, independent of hook type.
+    if state.pending.is_some() {
+        handle_event(worker, state, "PostToolUse")
+    } else {
+        Ok(())
+    }
+}
+
 fn stale(
     worker: &str,
     state: &State,
@@ -202,7 +216,12 @@ fn validate(state: &State, event: &super::hook_queue::Event) -> Result<()> {
     if !input["cwd"]
         .as_str()
         .is_some_and(|p| super::control::contains_workspace(&state.observer.workspace, p))
-        || event.pane.as_deref() != state.observer.pane.as_deref()
+        || (event.pane.as_deref() != state.observer.pane.as_deref()
+            && !state
+                .observer
+                .session
+                .as_deref()
+                .is_some_and(|session| input["session_id"].as_str() == Some(session)))
         || event.socket != state.worker.socket
     {
         return Err("REVIEW_HOOK_SCOPE stage=hook".into());
