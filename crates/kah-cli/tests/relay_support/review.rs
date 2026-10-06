@@ -181,7 +181,7 @@ fn await_submission(
     result
 }
 fn lifecycle(home: &Path, id: &str, provider: &str, panes: &mut Panes) -> Value {
-    let before = Reviews::read(id).unwrap().unwrap();
+    let before = quiescent(id, provider);
     kah_cli::observer_review::control::focus(id).unwrap();
     assert_eq!(
         Pane {
@@ -213,6 +213,33 @@ fn lifecycle(home: &Path, id: &str, provider: &str, panes: &mut Panes) -> Value 
         "resume created an unsolicited observer turn"
     );
     confirm_resume(id, provider, panes, &before)
+}
+fn quiescent(id: &str, provider: &str) -> kah_cli::observer_review::state::State {
+    loop {
+        kah_cli::observer_review::queue::kick(id).unwrap();
+        kah_cli::observer_review::uncertainty::schedule(id).unwrap();
+        let store = Reviews::open_wait(id).unwrap();
+        let state = store.load().unwrap().unwrap();
+        if state.pending.is_none()
+            && kah_cli::observer_review::queue::entries(id)
+                .unwrap()
+                .is_empty()
+            && kah_cli::observer_review::uncertainty::rethink(&store.directory)
+                .unwrap()
+                .is_none()
+            && !kah_cli::observer_review::events::pending(id).unwrap()
+        {
+            return state;
+        }
+        drop(store);
+        if let Some(pane) = state.observer.pane
+            && state.pending.is_some()
+        {
+            wait_review(id, &Pane { id: pane }, provider);
+        } else {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
 }
 fn confirm_resume(
     id: &str,
@@ -253,8 +280,6 @@ fn resume_command(home: &Path, project: &Path, provider: &str, id: &str) -> Comm
         }
         .into(),
         id.into(),
-        "--".into(),
-        "For this reply, say OK and use no tools.".into(),
     ])
     .unwrap();
     if provider == "claude" {
