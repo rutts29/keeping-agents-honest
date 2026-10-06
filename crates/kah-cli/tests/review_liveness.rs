@@ -233,3 +233,19 @@ fn setup(worker: &str) -> kah_cli::observer_review::state::State {
     });
     state
 }
+
+#[test]
+fn delayed_observation_uses_record_write_time_instead_of_renewing_silence() {
+    let mut observation = sample(0);
+    observation.native_active = true;
+    observation.transcript_version = Some((10, 0));
+    let first = transition(None, &observation);
+    observation.now_ms = 1_200_000;
+    observation.transcript_version = Some((20, 1000));
+    let quiet = transition(Some(&first), &observation);
+    assert_eq!(quiet.last_progress_ms, 1000);
+    assert!(
+        quiet.stalled,
+        "late watcher observes old records, not fresh progress"
+    );
+}

@@ -27,9 +27,19 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
         p.sample.transcript_version != sample.transcript_version
             || p.sample.report_version != sample.report_version
     });
-    let active = sample.controller_active || grew;
-    let last_progress_ms = if active {
+    let last_progress_ms = if sample.controller_active {
         sample.now_ms
+    } else if grew {
+        // A watcher resuming after a gap must use when those records were
+        // written, not pretend that observing old growth is fresh activity.
+        let written = sample
+            .transcript_version
+            .map(|(_, time)| time)
+            .unwrap_or(0)
+            .max(sample.report_version.map(|(_, time)| time).unwrap_or(0));
+        written
+            .max(same.unwrap().last_progress_ms)
+            .min(sample.now_ms)
     } else {
         same.map(|p| p.last_progress_ms).unwrap_or(sample.now_ms)
     };
@@ -43,7 +53,7 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
         15_000
     };
     let stalled = same.is_some()
-        && !active
+        && !sample.controller_active
         && sample.now_ms.saturating_sub(last_progress_ms) >= observation_ms;
     let changed = stalled != same.is_some_and(|p| p.stalled)
         || stalled && same.is_some_and(|p| p.sample.native_active != sample.native_active);
