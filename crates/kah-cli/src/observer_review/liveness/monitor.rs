@@ -139,8 +139,11 @@ fn sample(state: &State) -> Result<Sample> {
     let controller_active = processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
     let outbox = state.observer.workspace.join("outbox");
     let rejected = super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?;
+    let host_error = host_failure(&root)?;
     let cause = if let Some(reason) = rejected {
         reason
+    } else if let Some(error) = host_error {
+        format!("VALIDATION BLOCKED: {error}")
     } else if Store::open(&state.worker.session).is_err() {
         "review lock busy".into()
     } else if state.observer.pane.is_none() {
@@ -158,6 +161,12 @@ fn sample(state: &State) -> Result<Sample> {
         report_version: report_version(&outbox, &pending.id, &report),
         cause,
     })
+}
+fn host_failure(root: &Path) -> Result<Option<String>> {
+    let gap: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
+    Ok(gap
+        .and_then(|g| g["error"].as_str().map(str::to_owned))
+        .filter(|error| !super::super::redelivery::retryable(error)))
 }
 fn pane_working(state: &State) -> Result<bool> {
     let (socket, _) = super::super::runtime::transport(state)?;

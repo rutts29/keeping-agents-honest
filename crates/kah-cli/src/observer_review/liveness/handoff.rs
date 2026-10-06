@@ -33,8 +33,7 @@ pub(crate) fn awaiting_host(state: &State) -> Result<bool> {
 }
 fn correction_required(error: &str) -> bool {
     // Delivery noise and a late missing-report event cannot undo an ACK.
-    super::super::redelivery::retryable(error)
-        && !super::super::delivery::wait_timeout(error)
+    !super::super::delivery::wait_timeout(error)
         && ![
             "REVIEW_OBSERVER_STALLED",
             "REVIEW_SUBMISSION_UNCONFIRMED",
@@ -44,3 +43,7 @@ fn correction_required(error: &str) -> bool {
         .iter()
         .any(|prefix| error.starts_with(prefix))
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/ack_handoff.rs"]
+mod tests;
