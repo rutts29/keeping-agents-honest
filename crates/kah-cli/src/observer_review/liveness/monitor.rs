@@ -60,7 +60,9 @@ pub fn run(worker: &str) -> Result<()> {
 pub fn watch(worker: &str) -> Result<()> {
     loop {
         run(worker)?;
-        if Store::read(worker)?.is_none_or(|s| s.pending.is_none() || s.stopped) {
+        // Keep the cheap host watcher across review handoffs; otherwise a
+        // publish/delivery crash while the worker is idle loses its watcher.
+        if Store::read(worker)?.is_none_or(|s| s.stopped) {
             return Ok(());
         }
         // Filesystem sampling, no model polling or extra native turns.
@@ -110,7 +112,10 @@ fn sample(state: &State) -> Result<Sample> {
         .workspace
         .join("outbox")
         .join(format!("submitted-{}.json", pending.id));
-    let native_active = super::super::delivery::in_progress(state).unwrap_or(false);
+    // Working can belong to the previous review's closing native turn. It is
+    // not record progress, but still must never be automatically interrupted
+    // or re-prompted while a later request waits for that pane.
+    let native_active = pane_working(state).unwrap_or(false);
     let controller_active = processing_active(&root, &pending.id)?;
     let cause = if Store::open(&state.worker.session).is_err() {
         "review lock busy"
@@ -129,6 +134,14 @@ fn sample(state: &State) -> Result<Sample> {
         report_version: version(&report),
         cause: cause.into(),
     })
+}
+fn pane_working(state: &State) -> Result<bool> {
+    let (socket, _) = super::super::runtime::transport(state)?;
+    let Some(pane) = state.observer.pane.as_deref() else {
+        return Ok(false);
+    };
+    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
+    Ok(view["result"]["pane"]["agent_status"] == "working")
 }
 fn version(path: &Path) -> Option<(u64, u64)> {
     let meta = fs::metadata(path).ok()?;
