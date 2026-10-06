@@ -187,16 +187,30 @@ impl Store {
 }
 pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     use std::io::Read;
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(m) => m,
+    let mut file = match OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.into()),
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+            return Err("REVIEW_STATE_PRIVATE stage=review_state".into());
+        }
+        Err(e) => {
+            return Err(format!(
+                "REVIEW_STATE_OPEN stage=review_state: {}: {e}",
+                path.display()
+            )
+            .into());
+        }
     };
+    let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
         return Err("REVIEW_STATE_PRIVATE stage=review_state".into());
     }
     let mut bytes = vec![];
-    File::open(path)?.read_to_end(&mut bytes)?;
+    file.read_to_end(&mut bytes)?;
     let root = path
         .ancestors()
         .find(|p| p.join("sources").is_dir())
