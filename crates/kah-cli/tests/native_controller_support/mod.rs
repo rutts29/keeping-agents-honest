@@ -202,9 +202,16 @@ pub(crate) fn launch(
     verify: &str,
     options: &[&str],
 ) -> String {
-    let result = Command::new(home.join(".local/bin/kah"))
+    let mut command = Command::new(home.join(".local/bin/kah"));
+    if agent == "codex" {
+        // Native 0.160.0 service_tier default: fixture cost/parity, no global write.
+        command.args(["run", "-c", "service_tier=\"default\""]);
+    } else {
+        command.arg("run");
+    }
+    let result = command
         .args([
-            "run", "--agent", agent, "--model", model, "--effort", "low", "--test", verify, task,
+            "--agent", agent, "--model", model, "--effort", "low", "--test", verify, task,
         ])
         .args(options)
         .current_dir(project)

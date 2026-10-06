@@ -272,6 +272,9 @@ impl<'a> Run<'a> {
             jev_model: Some(self.settings.observer.jev_model.clone()),
             ..Default::default()
         };
+        for setting in &native.codex_config {
+            args.native.extend(["-c".into(), setting.clone()]);
+        }
         if native.session.is_none() {
             if let Some(model) = &record.model {
                 args.native.extend(["--model".into(), model.clone()]);

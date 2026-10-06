@@ -10,6 +10,7 @@ pub struct RunArguments {
     pub test: String,
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub codex_config: Vec<String>,
     pub observer_model: Option<String>,
     pub observer_effort: Option<String>,
     pub jev_model: Option<String>,
@@ -21,6 +22,10 @@ impl RunArguments {
         let mut result = Self::default();
         let mut args = input.into_iter();
         while let Some(arg) = args.next() {
+            if matches!(arg.as_str(), "-c" | "--config") {
+                result.codex_config.push(codex_setting(args.next())?);
+                continue;
+            }
             if arg == "--online" {
                 result.online = true;
                 continue;
@@ -62,13 +67,30 @@ impl RunArguments {
                 );
             }
         }
-        if result.task.trim().is_empty() || result.test.trim().is_empty() {
+        result.validate()?;
+        Ok(result)
+    }
+    fn validate(&self) -> Result<(), String> {
+        if self.task.trim().is_empty() || self.test.trim().is_empty() {
             return Err(
                 "RUN_TASK_AND_TEST_REQUIRED stage=arguments: kah run --test COMMAND TASK".into(),
             );
         }
-        Ok(result)
+        if self.agent.as_deref() == Some("claude") && !self.codex_config.is_empty() {
+            return Err("RUN_CONFIG_PROVIDER stage=arguments: -c is a native Codex option".into());
+        }
+        Ok(())
     }
+}
+fn codex_setting(value: Option<String>) -> Result<String, String> {
+    let value = value.ok_or("RUN_OPTION_VALUE stage=arguments")?;
+    if !matches!(
+        value.split_once('=').map(|(key, _)| key),
+        Some("service_tier" | "model_reasoning_effort")
+    ) {
+        return Err("NATIVE_CONFIG_POLICY stage=arguments: restricted runs accept only effort and service-tier overrides".into());
+    }
+    Ok(value)
 }
 fn number(value: &str) -> Result<u64, String> {
     value

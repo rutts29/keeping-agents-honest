@@ -69,9 +69,12 @@ impl Arguments {
                 "-c" | "--config" => {
                     let setting = next(&mut args, arg)?;
                     if domain != Domain::Mine
-                        && setting.split_once('=').map(|p| p.0) != Some("model_reasoning_effort")
+                        && !matches!(
+                            setting.split_once('=').map(|p| p.0),
+                            Some("model_reasoning_effort" | "service_tier")
+                        )
                     {
-                        return Err("NATIVE_CONFIG_POLICY stage=arguments: restricted domains accept only model/effort overrides".into());
+                        return Err("NATIVE_CONFIG_POLICY stage=arguments: restricted domains accept only effort and service-tier overrides".into());
                     }
                 }
                 "resume" | "fork" | "--all" | "--last" | "--no-alt-screen" | "--no-daemon"

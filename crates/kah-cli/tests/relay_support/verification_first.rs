@@ -5,6 +5,9 @@ use kah_cli::observer_review::{questions, state::Store as Reviews};
 use kah_core::unattended::RunStatus;
 use kah_run::store::Store as Runs;
 
+#[path = "verification_first_settings.rs"]
+mod native_settings;
+
 const TASK: &str = "Build a CommonJS numeric pipeline in this disposable worktree. normalize.cjs exports a function mapping finite numbers to Math.round(n*100)/100. serialize.cjs exports a function returning JSON.stringify of an array. pipeline.cjs exports a function composing normalize then serialize, in that order. Write verification.cjs with separate component and end-to-end assertions including [3.14159,0,-2.71828] becoming '[3.14,0,-2.72]', and write PLAN.md explaining the completed scope. Run verification.cjs. Commit code, tests and plan on this run branch, tag that same commit gate-pipeline-ready, and report. Preserve the existing guidance and .gitignore. Do not push or deploy. When the kah observer asks for evidence, answer once with its receipt marker and concrete existing check/source evidence on that same SHA; do not change files merely to answer.";
 const VERIFY: &str = "node verification.cjs && node -e \"const a=require('node:assert/strict'); const p=require('./pipeline.cjs'); a.equal(p([3.14159,0,-2.71828]),'[3.14,0,-2.72]'); a.equal(p([1.234,2.678]),'[1.23,2.68]'); console.log('INDEPENDENT_PIPELINE_PASS')\" && test -f PLAN.md";
 const COURIER: &str = "You are a disposable question courier. For every kah question or verification notice reply QUESTION_RECEIVED and wait. Never approve, reject, choose policy, write files or use tools.";
@@ -56,12 +59,12 @@ pub fn run(root: &Path) -> Value {
         json!({"run":id,"source":project.root,"agent":provider}).to_string(),
     )
     .unwrap();
-    let observed = wait(root, &home, id, &provider, &panes.0[0]);
+    let mut observed = wait(root, &home, id, &provider, &panes.0[0]);
+    observed["nativeSettings"] = native_settings::record(&home, &provider, id, &panes.0[0]);
     for (path, bytes) in before {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }
     drop(panes);
-    let mut observed = observed;
     observed["versions"] = versions(&home);
     observed
 }

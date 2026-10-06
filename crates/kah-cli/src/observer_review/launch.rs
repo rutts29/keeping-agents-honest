@@ -52,6 +52,11 @@ fn arguments(state: &State, prompt: &str) -> Result<Arguments> {
             "Bash".into(),
         ]);
     }
+    if state.worker.provider == "codex" {
+        for setting in run_config(state)? {
+            args.native.extend(["-c".into(), setting]);
+        }
+    }
     if let Some(session) = &state.observer.session {
         args.native.extend([
             if state.worker.provider == "claude" {
@@ -216,4 +221,33 @@ fn claude(home: &Path, state: &State, project: Project, args: Arguments) -> Resu
 }
 fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn run_config(state: &State) -> Result<Vec<String>> {
+    let Some(id) = state
+        .worker
+        .project
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|name| name.to_str())
+        .filter(|name| name.starts_with("run-"))
+    else {
+        return Ok(vec![]);
+    };
+    let root = kah_core::run_store::RunStore::default_state_root()?.join("runs");
+    let record = kah_run::store::Store::read(&root, id)?;
+    if record.worktree != state.worker.project {
+        return Err("REVIEW_RUN_SCOPE stage=launch".into());
+    }
+    Ok(record
+        .native
+        .map(|n| n.codex_config)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|setting| {
+            setting
+                .split_once('=')
+                .is_some_and(|(key, _)| key == "service_tier")
+        })
+        .collect())
 }

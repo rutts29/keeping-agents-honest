@@ -31,6 +31,8 @@ pub struct Native {
     #[serde(default)]
     pub online: bool,
     pub provider: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub codex_config: Vec<String>,
     pub session: Option<String>,
     pub pane: Option<String>,
     #[serde(default)]
@@ -56,6 +58,7 @@ impl Native {
             report_ready: Some(false),
             online: false,
             provider: provider.into(),
+            codex_config: vec![],
             session: None,
             pane: None,
             waiting: None,

@@ -31,14 +31,25 @@ pub fn retain_rethink(root: &Path, request: &Request, assessment: &Value) -> Res
     kah_core::run_store::ensure_private_directory(&root.join("sources"))?;
     let mut trigger = request.trigger.clone();
     trigger["reconsideration"] = json!({"request":request.id,"needs_thinker":assessment["needs_thinker"],"result":root.join("results").join(format!("{}.json",request.id))});
+    let wake = Wake {
+        purpose: request.purpose.clone(),
+        turn: request.turn.clone(),
+        trigger,
+    };
+    if request.purpose == super::super::state::Purpose::Checkpoint {
+        // The worker may be idle awaiting completion. The existing finish/kick
+        // hands this durable one-round receipt to the observer without a new tool.
+        super::super::queue::enqueue_once_at(
+            root,
+            &format!("checkpoint-rethink-{}", request.id),
+            &wake,
+        )?;
+        return Ok(());
+    }
     super::super::source_store::save(
         &directory,
         &format!("{}.json", request.id),
-        &serde_json::to_value(Wake {
-            purpose: request.purpose.clone(),
-            turn: request.turn.clone(),
-            trigger,
-        })?,
+        &serde_json::to_value(wake)?,
     )
 }
 fn entries(root: &Path) -> Result<Vec<PathBuf>> {
