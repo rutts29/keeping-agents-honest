@@ -130,6 +130,21 @@ pub fn record(
     state.checkpoint = Some(
         json!({"head":request.head,"intent_revision":request.intent["revision"],"request":request.id,"state":result["assessment"]["state"],"passed":result["assessment"]["passed"],"unproven":result["assessment"]["unproven"],"needs_user":result["assessment"]["needs_user"],"needs_thinker":result["assessment"]["needs_thinker"],"at_ms":kah_observer::session::now_ms()}),
     );
+    let approvals = super::questions::pending(&store.directory)?
+        .into_iter()
+        .filter(|q| {
+            q["kind"] == "checkpoint_approval"
+                && q["head"] == json!(request.head)
+                && q["intent_revision"] == request.intent["revision"]
+        })
+        .collect::<Vec<_>>();
+    if !approvals.is_empty() && result["assessment"]["passed"] != false {
+        let checkpoint = state.checkpoint.as_mut().unwrap();
+        checkpoint["state"] = "checkpoint_needs_user".into();
+        checkpoint["passed"] = Value::Null;
+        checkpoint["pending_questions"] =
+            json!(approvals.iter().map(|q| &q["id"]).collect::<Vec<_>>());
+    }
     if let Some(event) = request.trigger["events"]
         .as_array()
         .and_then(|events| events.iter().find(|e| e["kind"] == "run_completion"))

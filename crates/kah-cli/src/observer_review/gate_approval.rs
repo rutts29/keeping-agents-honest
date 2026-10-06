@@ -14,6 +14,8 @@ mod question;
 pub use question::{message, store};
 mod resolution;
 pub use resolution::resolve;
+mod evidence;
+pub use evidence::captured;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

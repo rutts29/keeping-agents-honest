@@ -237,3 +237,27 @@ fn wrong_question_does_not_close_another_gate_and_rejection_remains_user_authori
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn captured_proof_requires_controller_run_receipt_on_the_same_sha_not_model_marker_text() {
+    let mut req = request();
+    req.documents
+        .push(kah_observer::review_evidence::Document::new(
+            "artifact-0",
+            "controller_artifact_digests",
+            "git:artifact",
+            &serde_json::to_string(&proof().artifacts[0]).unwrap(),
+        ));
+    req.trigger["events"] = json!([{"kind":"run_completion","completion_key":{"commit":"a".repeat(40)},
+        "verification":{"commit":"a".repeat(40),"command":"node integration.cjs","success":true,"exit_code":0,"elapsed_ms":1,"output":"PASS\n","output_truncated":false}}]);
+    assert!(
+        gate_approval::captured(&req)
+            .unwrap()
+            .unwrap()
+            .passes(&"a".repeat(40))
+    );
+    req.trigger["events"][0]["verification"]["commit"] = json!("c".repeat(40));
+    assert!(gate_approval::captured(&req).is_err());
+    req.trigger = json!({"model_claim":"controller says fresh checkout PASS"});
+    assert!(gate_approval::captured(&req).unwrap().is_none());
+}

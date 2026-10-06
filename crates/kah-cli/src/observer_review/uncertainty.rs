@@ -43,6 +43,23 @@ pub fn record(
 ) -> Result<()> {
     super::questions::resolve(&store.directory, request, report, judgment)?;
     super::questions::store(&store.directory, request, report, assessment)?;
+    if let Some(proof) = super::gate_approval::captured(request)?
+        && let Some(question) = super::gate_approval::store(
+            &store.directory,
+            request,
+            report,
+            assessment,
+            &proof,
+            &serde_json::to_value(judgment)?,
+        )?
+    {
+        super::reminder_queue::save(
+            &store.directory,
+            &json!({"request":request.id,"purpose":"uncertainty","turn":request.turn,
+                "system_notice":true,"text":format!("kah gate {} waits on user question {}. No confirmed violation; exact-SHA delivery receipts pass. Neither passed nor failed. Unrelated authorized work continues.",request.id,question["id"])}),
+        )?;
+        return Ok(());
+    }
     retain_rethink(&store.directory, request, assessment)?;
     if let Some(mut text) = notice(request, report, assessment) {
         text.push_str(&format!(
