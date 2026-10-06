@@ -59,3 +59,68 @@ fn malformed_metadata_cannot_spoof_a_host_relay_or_escape_receipt_paths() {
     }
     assert!(Message::new("kah-reviewer", "r1", "").is_err());
 }
+
+#[test]
+fn explicit_gate_answer_survives_wire_and_verbatim_user_provenance() {
+    use kah_core::intent_history::{GateDecision, QuestionAnswer};
+    let mut message = Message::new(
+        "kah-reviewer",
+        "receipt-approve",
+        "Approve this gate; keep every existing constraint.",
+    )
+    .unwrap();
+    message.answer = Some(QuestionAnswer {
+        question: format!("question-{}", "a".repeat(64)),
+        decision: GateDecision::Approve,
+    });
+    let decoded = Message::parse(&message.wire()).unwrap().unwrap();
+    assert_eq!(decoded.answer, message.answer);
+    assert_eq!(decoded.text, message.text);
+    let quote = decoded.quote("worker", SourceProvider::Codex).unwrap();
+    assert_eq!(quote.source.question_answer, message.answer);
+    quote.source.validate().unwrap();
+    let mut delegate = quote.source;
+    delegate.role = SourceRole::Assistant;
+    assert!(
+        delegate.validate().is_err(),
+        "delegate text cannot grant gate approval"
+    );
+}
+
+#[test]
+fn gate_answer_requires_a_valid_named_question_and_explicit_choice() {
+    assert!(
+        Message::parse(
+            "[kah-user] relayer=kah-reviewer receipt=r question=other answer=approve\nApprove"
+        )
+        .is_err()
+    );
+    let id = format!("question-{}", "b".repeat(64));
+    assert!(
+        Message::parse(&format!(
+            "[kah-user] relayer=kah-reviewer receipt=r question={id} answer=maybe\nMaybe"
+        ))
+        .is_err()
+    );
+    assert!(
+        Message::parse(&format!(
+            "[kah-reviewer] question={id} answer=approve\nApprove"
+        ))
+        .unwrap()
+        .is_none()
+    );
+    let mut message = Message::new(
+        "kah-reviewer",
+        "r",
+        "Reject this gate, preserve all constraints.",
+    )
+    .unwrap();
+    message.supersedes = Some("older-receipt".into());
+    message.answer = Some(kah_core::intent_history::QuestionAnswer {
+        question: id,
+        decision: kah_core::intent_history::GateDecision::Reject,
+    });
+    let restored = Message::parse(&message.wire()).unwrap().unwrap();
+    assert_eq!(restored.supersedes, message.supersedes);
+    assert_eq!(restored.answer, message.answer);
+}

@@ -15,6 +15,24 @@ pub fn deliver_linked(
     receipt: &str,
     supersedes: Option<&str>,
 ) -> Result<Value> {
+    directive(session, text, receipt, supersedes, None)
+}
+pub fn answered(
+    session: &str,
+    text: &str,
+    receipt: &str,
+    answer: kah_core::intent_history::QuestionAnswer,
+) -> Result<Value> {
+    answer.validate()?;
+    directive(session, text, receipt, None, Some(answer))
+}
+fn directive(
+    session: &str,
+    text: &str,
+    receipt: &str,
+    supersedes: Option<&str>,
+    answer: Option<kah_core::intent_history::QuestionAnswer>,
+) -> Result<Value> {
     let endpoint = relay_store::endpoint(session)?;
     let pane = endpoint
         .pane
@@ -34,6 +52,7 @@ pub fn deliver_linked(
     }
     let relayer = relayer()?;
     let mut envelope = Message::new(&relayer, receipt, text)?;
+    envelope.answer = answer;
     if let Some(target) = supersedes {
         Message::new(&relayer, target, "validate receipt")?;
         envelope.supersedes = Some(target.into());

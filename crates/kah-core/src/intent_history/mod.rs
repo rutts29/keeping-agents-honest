@@ -8,11 +8,13 @@ mod events;
 mod evidence_changes;
 mod intent_changes;
 mod items;
+mod question_answer;
 mod sources;
 mod validation;
 pub use error::*;
 pub use events::*;
 pub use items::*;
+pub use question_answer::*;
 pub use sources::*;
 use validation::*;
 

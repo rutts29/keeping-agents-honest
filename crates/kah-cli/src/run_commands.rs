@@ -13,25 +13,7 @@ pub fn run(args: Vec<String>) -> Result<()> {
     let base = RunStore::default_state_root()?.join("runs");
     let id = args.get(1).ok_or("RUN_ID_REQUIRED stage=arguments")?;
     if args[0] == "steer" && !id.starts_with("run-") {
-        if args.len() < 3 || !(args.len() - 3).is_multiple_of(2) {
-            return Err(
-                "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID] [--supersedes RECEIPT]".into(),
-            );
-        }
-        let mut receipt = None;
-        let mut supersedes = None;
-        for pair in args[3..].chunks_exact(2) {
-            match pair[0].as_str() {
-                "--receipt" => receipt = Some(pair[1].as_str()),
-                "--supersedes" => supersedes = Some(pair[1].as_str()),
-                _ => return Err("SEND_ARGUMENTS stage=arguments".into()),
-            }
-        }
-        return if let Some(target) = supersedes {
-            crate::send_cli::linked_user(id, &args[2], receipt, target)
-        } else {
-            crate::send_cli::user(id, &args[2], receipt)
-        };
+        return steer(&args, id);
     }
     match args[0].as_str() {
         "steer" if args.len()==3=>{
@@ -93,4 +75,51 @@ fn logs(base: &std::path::Path, id: &str) -> Result<String> {
         return pane.logs(&native.provider, native.session.as_deref(), Some(&socket));
     }
     Ok(commands::logs(base, id)?)
+}
+fn steer(args: &[String], id: &str) -> Result<()> {
+    if args.len() < 3 || !(args.len() - 3).is_multiple_of(2) {
+        return Err(
+            "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID] [--supersedes RECEIPT | --question ID --answer approve|reject]".into(),
+            );
+    }
+    let mut receipt = None;
+    let mut supersedes = None;
+    let mut question = None;
+    let mut answer = None;
+    for pair in args[3..].chunks_exact(2) {
+        match pair[0].as_str() {
+            "--receipt" => receipt = Some(pair[1].as_str()),
+            "--supersedes" => supersedes = Some(pair[1].as_str()),
+            "--question" => question = Some(pair[1].as_str()),
+            "--answer" => answer = Some(pair[1].as_str()),
+            _ => return Err("SEND_ARGUMENTS stage=arguments".into()),
+        }
+    }
+    if question.is_some() || answer.is_some() {
+        if supersedes.is_some() {
+            return Err(
+                "STEER_ANSWER_LINK stage=arguments: use a question answer or supersedes link"
+                    .into(),
+            );
+        }
+        let directive = kah_core::intent_history::QuestionAnswer {
+            question: question
+                .ok_or("STEER_QUESTION_REQUIRED stage=arguments")?
+                .into(),
+            decision: kah_core::intent_history::GateDecision::parse(
+                answer.ok_or("STEER_ANSWER_REQUIRED stage=arguments")?,
+            )?,
+        };
+        let generated = crate::relay_store::nonce();
+        println!(
+            "{}",
+            crate::user_steer::answered(id, &args[2], receipt.unwrap_or(&generated), directive)?
+        );
+        return Ok(());
+    }
+    if let Some(target) = supersedes {
+        crate::send_cli::linked_user(id, &args[2], receipt, target)
+    } else {
+        crate::send_cli::user(id, &args[2], receipt)
+    }
 }

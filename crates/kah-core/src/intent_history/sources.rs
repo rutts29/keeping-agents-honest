@@ -104,6 +104,8 @@ pub struct SourceRef {
     pub relayer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes_receipt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_answer: Option<QuestionAnswer>,
 }
 
 impl fmt::Debug for SourceRef {
@@ -136,6 +138,7 @@ impl SourceRef {
             origin: None,
             relayer: None,
             supersedes_receipt: None,
+            question_answer: None,
         }
     }
 
@@ -147,6 +150,14 @@ impl SourceRef {
     }
 
     pub fn validate(&self) -> Result<(), HistoryError> {
+        if let Some(answer) = &self.question_answer {
+            answer.validate()?;
+            if self.role != SourceRole::User || self.origin != Some(SourceOrigin::Relayed) {
+                return Err(HistoryError::InvalidSourceRef {
+                    field: "question answer authority",
+                });
+            }
+        }
         if self.supersedes_receipt.as_ref().is_some_and(|r| {
             r.is_empty()
                 || self.role != SourceRole::User

@@ -1,7 +1,9 @@
 //! Host-asserted user steering. Unlike kah relay, this needs no original quote match.
 use crate::{inherited::Quote, session::Store};
 use kah_core::{
-    intent_history::{SourceOrigin, SourceProvider, SourceRef, SourceRole},
+    intent_history::{
+        GateDecision, QuestionAnswer, SourceOrigin, SourceProvider, SourceRef, SourceRole,
+    },
     session_bundle::BundleRecord,
 };
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,8 @@ pub struct Message {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<QuestionAnswer>,
 }
 impl Message {
     pub fn new(relayer: &str, receipt: &str, text: &str) -> Result<Self, String> {
@@ -37,16 +41,21 @@ impl Message {
             receipt: receipt.into(),
             text: text.into(),
             supersedes: None,
+            answer: None,
         })
     }
     pub fn wire(&self) -> String {
         format!(
-            "[kah-user] relayer={} receipt={}{}\n{}",
+            "[kah-user] relayer={} receipt={}{}{}\n{}",
             self.relayer,
             self.receipt,
             self.supersedes
                 .as_ref()
                 .map(|r| format!(" supersedes={r}"))
+                .unwrap_or_default(),
+            self.answer
+                .as_ref()
+                .map(|a| format!(" question={} answer={}", a.question, a.decision.as_str()))
                 .unwrap_or_default(),
             self.text
         )
@@ -62,10 +71,24 @@ impl Message {
             .strip_prefix("relayer=")
             .and_then(|s| s.split_once(" receipt="))
             .ok_or("STEER_RELAY_FRAME stage=relayed_user")?;
+        let (receipt, answer) = receipt
+            .split_once(" question=")
+            .map_or((receipt, None), |(r, a)| (r, Some(a)));
         let (receipt, supersedes) = receipt
             .split_once(" supersedes=")
             .map_or((receipt, None), |(r, s)| (r, Some(s)));
         let mut message = Self::new(relayer, receipt, body)?;
+        if let Some(answer) = answer {
+            let (question, decision) = answer
+                .split_once(" answer=")
+                .ok_or("STEER_ANSWER_FRAME stage=relayed_user")?;
+            let value = QuestionAnswer {
+                question: question.into(),
+                decision: GateDecision::parse(decision).map_err(|e| e.to_string())?,
+            };
+            value.validate().map_err(|e| e.to_string())?;
+            message.answer = Some(value);
+        }
         if let Some(target) = supersedes {
             Self::new(relayer, target, "validate receipt")?;
             message.supersedes = Some(target.into());
@@ -86,6 +109,7 @@ impl Message {
         source.origin = Some(SourceOrigin::Relayed);
         source.relayer = Some(self.relayer.clone());
         source.supersedes_receipt = self.supersedes.clone();
+        source.question_answer = self.answer.clone();
         Ok(Quote {
             receipt: self.receipt.clone(),
             source,
