@@ -42,6 +42,9 @@ pub fn run(root: &Path) -> Value {
             worker: id.clone(),
         };
         let mut result = wakes(&id, provider, &mut panes);
+        if std::env::var_os("KAH_GATE_REVIEW_LIVENESS").is_some() {
+            result["stallRecovery"] = super::review_liveness::run(&id, provider, &mut panes);
+        }
         result["lifecycle"] = lifecycle(&home, &id, provider, &mut panes);
         results.push(result);
         drop(panes);
@@ -71,6 +74,7 @@ fn wakes(id: &str, provider: &str, panes: &mut Panes) -> Value {
             json!({"fixture":"persistent pane handoff; not a catching proof","check":number}),
         )
         .unwrap();
+        let result = await_submission(id, provider, panes, result);
         let pane = Pane {
             id: result["pane"].as_str().unwrap().into(),
         };
@@ -114,6 +118,24 @@ fn wakes(id: &str, provider: &str, panes: &mut Panes) -> Value {
         wakes.push(result);
     }
     json!({"provider":provider,"observerSession":observer_id,"observerPane":observer_pane,"wakes":wakes})
+}
+fn await_submission(id: &str, provider: &str, panes: &mut Panes, mut result: Value) -> Value {
+    while result["status"] == "queued" {
+        if let Some(state) = Reviews::read(id).unwrap()
+            && state.pending.is_some()
+            && let Some(pane) = state.observer.pane
+        {
+            let pane = Pane { id: pane };
+            if !panes.0.iter().any(|p| p.id == pane.id) {
+                panes.0.push(pane.clone());
+            }
+            wait_review(id, &pane, provider);
+        } else {
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        result = kah_cli::observer_review::queue::drain(id).unwrap();
+    }
+    result
 }
 fn lifecycle(home: &Path, id: &str, provider: &str, panes: &mut Panes) -> Value {
     let before = Reviews::read(id).unwrap().unwrap();
