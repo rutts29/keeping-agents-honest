@@ -73,10 +73,27 @@ fn actual_held_review_lock_cannot_hide_stall_notice_or_pending_request() {
     held.save(&state).unwrap();
     liveness::run(&worker).unwrap();
     let root = held.directory.join("liveness");
+    assert!(
+        liveness::notice(&worker).unwrap().is_none(),
+        "first observation is a handoff baseline"
+    );
+    let path = root.join("progress.json");
+    let mut prior: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    prior.last_progress_ms = 0;
+    std::fs::write(&path, serde_json::to_vec(&prior).unwrap()).unwrap();
+    liveness::run(&worker).unwrap();
     let progress: Progress =
         serde_json::from_slice(&std::fs::read(root.join("progress.json")).unwrap()).unwrap();
     assert!(progress.stalled);
     assert_eq!(progress.sample.cause, "review lock busy");
+    let status = kah_cli::observer_review::control::status(&worker).unwrap();
+    assert_eq!(status["liveness"]["progress"]["stalled"], true);
+    assert!(
+        status["liveness"]["journal"]
+            .as_str()
+            .unwrap()
+            .ends_with("liveness/events.jsonl")
+    );
     let notice = liveness::notice(&worker).unwrap().unwrap();
     assert!(
         notice["systemMessage"]
@@ -97,6 +114,21 @@ fn actual_held_review_lock_cannot_hide_stall_notice_or_pending_request() {
 }
 
 #[test]
+fn previous_completes_next_queued_and_briefly_busy_lock_is_not_a_stall() {
+    let previous = transition(None, &sample(0));
+    let mut next = sample(3_600_000);
+    next.request = "next-review".into();
+    next.cause = "review lock busy".into();
+    let baseline = transition(Some(&previous), &next);
+    assert!(!baseline.stalled);
+    next.now_ms += 10_000;
+    assert!(!transition(Some(&baseline), &next).stalled);
+    next.native_active = true;
+    next.now_ms += 20_000;
+    assert!(!transition(Some(&baseline), &next).stalled);
+}
+
+#[test]
 fn processing_marker_protects_real_progress_then_publish_crash_is_visible() {
     use kah_cli::observer_review::{liveness, state::Store};
     let worker = format!("liveness-processing-{}", std::process::id());
@@ -105,6 +137,8 @@ fn processing_marker_protects_real_progress_then_publish_crash_is_visible() {
     store.save(&state).unwrap();
     drop(store);
     let processing = liveness::processing(&worker, "review-stall").unwrap();
+    let nested = liveness::processing(&worker, "review-stall").unwrap();
+    drop(nested);
     liveness::run(&worker).unwrap();
     assert!(liveness::notice(&worker).unwrap().is_none());
     drop(processing);

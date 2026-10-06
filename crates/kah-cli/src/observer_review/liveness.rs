@@ -31,16 +31,12 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
     let last_progress_ms = if active {
         sample.now_ms
     } else {
-        same.map(|p| p.last_progress_ms).unwrap_or_else(|| {
-            sample
-                .started_ms
-                .max(sample.transcript_version.map(|(_, t)| t).unwrap_or(0))
-                .max(sample.report_version.map(|(_, t)| t).unwrap_or(0))
-        })
+        same.map(|p| p.last_progress_ms).unwrap_or(sample.now_ms)
     };
     // Reuse the native delivery readiness observation interval. This causes a
     // notice/retry ONLY with no activity; it never cancels or fails a review.
-    let stalled = !active && sample.now_ms.saturating_sub(last_progress_ms) >= 15_000;
+    let stalled =
+        same.is_some() && !active && sample.now_ms.saturating_sub(last_progress_ms) >= 15_000;
     let changed = stalled != same.is_some_and(|p| p.stalled);
     Progress {
         sample: sample.clone(),

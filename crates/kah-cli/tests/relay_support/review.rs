@@ -74,7 +74,7 @@ fn wakes(id: &str, provider: &str, panes: &mut Panes) -> Value {
             json!({"fixture":"persistent pane handoff; not a catching proof","check":number}),
         )
         .unwrap();
-        let result = await_submission(id, provider, panes, result);
+        let result = await_submission(id, provider, panes, result, &format!("fixture-{number}"));
         let pane = Pane {
             id: result["pane"].as_str().unwrap().into(),
         };
@@ -119,7 +119,13 @@ fn wakes(id: &str, provider: &str, panes: &mut Panes) -> Value {
     }
     json!({"provider":provider,"observerSession":observer_id,"observerPane":observer_pane,"wakes":wakes})
 }
-fn await_submission(id: &str, provider: &str, panes: &mut Panes, mut result: Value) -> Value {
+fn await_submission(
+    id: &str,
+    provider: &str,
+    panes: &mut Panes,
+    mut result: Value,
+    turn: &str,
+) -> Value {
     while result["status"] == "queued" {
         if let Some(state) = Reviews::read(id).unwrap()
             && state.pending.is_some()
@@ -134,6 +140,22 @@ fn await_submission(id: &str, provider: &str, panes: &mut Panes, mut result: Val
             std::thread::sleep(Duration::from_millis(200));
         }
         result = kah_cli::observer_review::queue::drain(id).unwrap();
+    }
+    if result["status"] == "idle" {
+        // Native hooks may deliver AND complete the queued request before the
+        // fixture drains it. Verify that exact wake, rather than demanding a
+        // second submission or accepting an unrelated review.
+        let store = Reviews::open_wait(id).unwrap();
+        let state = store.load().unwrap().unwrap();
+        let latest = state.latest.as_ref().unwrap();
+        let request = kah_cli::observer_review::workspace::request(
+            &store,
+            latest["request"].as_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(request.turn, turn);
+        result =
+            json!({"status":"already_completed","pane":state.observer.pane,"request":request.id});
     }
     result
 }

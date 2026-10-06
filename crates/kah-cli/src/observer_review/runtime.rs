@@ -54,6 +54,7 @@ pub fn submit_snapshot(
     home: &Path,
 ) -> Result<Value> {
     require_active(&state.worker.session)?;
+    let _processing = super::liveness::processing(&request.worker, &request.id)?;
     if state.pending.is_some() || request.worker != state.worker.session {
         return Err("REVIEW_SNAPSHOT_BINDING stage=review".into());
     }
@@ -175,6 +176,7 @@ pub fn prepare_context(worker: &str) -> Result<()> {
     if sent.exists() && !updated {
         return Ok(());
     }
+    let _processing = super::liveness::processing(worker, &review)?;
     workspace::prepare(&home, &state)?;
     let prompt = super::preparation::prompt(worker)?;
     let existing = state.observer.pane.is_some();
@@ -297,6 +299,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     }
     let request = workspace::request(&store, &pending.id)?;
+    let _processing = super::liveness::processing(worker, &pending.id)?;
     let decision = super::preparation::active_decision(worker, &pending.id)?;
     transport(&state)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=retry")?);

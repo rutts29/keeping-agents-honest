@@ -27,6 +27,12 @@ pub fn run(worker: &str) -> Result<()> {
     };
     let sample = sample(&state)?;
     let prior: Option<Progress> = super::super::state::read(&root.join("progress.json"))?;
+    if prior
+        .as_ref()
+        .is_some_and(|p| p.stalled && p.sample.request != sample.request)
+    {
+        recovered(&root, worker)?;
+    }
     let progress = transition(prior.as_ref(), &sample);
     crate::unattended_report::save(&root, "progress.json", &serde_json::to_value(&progress)?)?;
     if progress.changed {
@@ -60,7 +66,7 @@ fn sample(state: &State) -> Result<Sample> {
         .join("outbox")
         .join(format!("submitted-{}.json", pending.id));
     let native_active = super::super::delivery::in_progress(state).unwrap_or(false);
-    let controller_active = active(&root.join("processing.json"), &pending.id)?;
+    let controller_active = processing_active(&root, &pending.id)?;
     let cause = if Store::open(&state.worker.session).is_err() {
         "review lock busy"
     } else if state.observer.pane.is_none() {
@@ -100,6 +106,22 @@ fn active(path: &Path, request: &str) -> Result<bool> {
                 .is_some_and(|stamp| m["stamp"] == stamp)
     }))
 }
+fn processing_active(root: &Path, request: &str) -> Result<bool> {
+    if active(&root.join("processing.json"), request)? {
+        return Ok(true);
+    }
+    let directory = root.join("processing");
+    if !directory.exists() {
+        return Ok(false);
+    }
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.extension().is_some_and(|e| e == "json") && active(&path, request)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
 pub struct Processing(PathBuf);
 impl Drop for Processing {
     fn drop(&mut self) {
@@ -107,15 +129,17 @@ impl Drop for Processing {
     }
 }
 pub fn processing(worker: &str, request: &str) -> Result<Processing> {
-    let root = Store::directory(worker)?;
+    let root = Store::directory(worker)?.join("processing");
+    kah_core::run_store::ensure_private_directory(&root)?;
+    let filename = format!("{}.json", crate::relay_store::nonce());
     let pid = std::process::id();
     crate::unattended_report::save(
         &root,
-        "processing.json",
+        &filename,
         &json!({"request":request,"pid":pid,
         "stamp":kah_observer::session::process_stamp(pid)}),
     )?;
-    Ok(Processing(root.join("processing.json")))
+    Ok(Processing(root.join(filename)))
 }
 fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
     let state = if p.stalled { "stalled" } else { "recovered" };

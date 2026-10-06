@@ -44,6 +44,7 @@ pub fn prepare(home: &Path, state: &State) -> Result<()> {
 }
 
 pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String> {
+    let _processing = super::liveness::processing(&request.worker, &request.id)?;
     let archive = store.directory.join("requests");
     ensure_private_directory(&archive)?;
     super::source_store::save(

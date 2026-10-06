@@ -118,6 +118,8 @@ pub fn focus(worker: &str) -> Result<()> {
 }
 pub fn status(worker: &str) -> Result<Value> {
     let gap: Option<Value> = state::read(&Store::directory(worker)?.join("gap.json"))?;
+    let liveness: Option<Value> =
+        state::read(&Store::directory(worker)?.join("liveness/progress.json"))?;
     let questions = super::questions::pending(&Store::directory(worker)?)?;
     let queued = super::queue::entries(worker)?
         .into_iter()
@@ -125,12 +127,15 @@ pub fn status(worker: &str) -> Result<Value> {
         .collect::<Vec<_>>();
     let checkpoint_events_pending = super::events::pending(worker)?;
     let mut value = Store::read(worker)?.map(|s|json!({"session":s.observer.session,"pane":s.observer.pane,"model":s.observer.model,"effort":s.observer.effort,"wakes":s.wakes,"pending":s.pending,"latest":s.latest,"deferrals":s.deferrals,"questions":questions,"gap":gap})).unwrap_or_else(||gap.map(|g|json!({"gap":g,"questions":questions})).unwrap_or_else(||if questions.is_empty(){Value::Null}else{json!({"questions":questions})}));
-    if !value.is_null() || !queued.is_empty() || checkpoint_events_pending {
+    if !value.is_null() || !queued.is_empty() || checkpoint_events_pending || liveness.is_some() {
         if value.is_null() {
             value = json!({});
         }
         value["queued"] = json!(queued);
         value["checkpoint_events_pending"] = json!(checkpoint_events_pending);
+        if let Some(progress) = liveness {
+            value["liveness"] = json!({"progress":progress,"journal":Store::directory(worker)?.join("liveness/events.jsonl")});
+        }
     }
     Ok(value)
 }
