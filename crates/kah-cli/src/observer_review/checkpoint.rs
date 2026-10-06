@@ -139,6 +139,11 @@ pub fn record(
                 && q["intent_revision"] == request.intent["revision"]
         })
         .collect::<Vec<_>>();
+    if let Some(question) = approvals.first() {
+        // The named decision owns this scope; a reply/claim review cannot
+        // replace its identity before the user answers it.
+        state.checkpoint.as_mut().unwrap()["request"] = question["request"].clone();
+    }
     if !approvals.is_empty() && result["assessment"]["passed"] != false {
         let checkpoint = state.checkpoint.as_mut().unwrap();
         checkpoint["state"] = "checkpoint_needs_user".into();

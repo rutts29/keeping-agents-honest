@@ -315,3 +315,41 @@ fn completed_fixture() -> (std::path::PathBuf, Store, Request, std::path::PathBu
 
     (root, store, request, path)
 }
+
+#[test]
+fn the_final_round_accounts_for_new_positive_uncertainty_without_a_second_ask() {
+    let mut final_report = report();
+    let mut added = final_report.decision_units.as_ref().unwrap().requirements[0].clone();
+    added.id = "evidence_response".into();
+    added.name = "Answer the evidence ask".into();
+    final_report
+        .decision_units
+        .as_mut()
+        .unwrap()
+        .requirements
+        .push(added);
+    let risk = final_report.verification_risks.as_ref().unwrap()[0].clone();
+    let mut added_risk = risk;
+    added_risk.requirement_id = "evidence_response".into();
+    final_report
+        .verification_risks
+        .as_mut()
+        .unwrap()
+        .push(added_risk);
+    let (verified, risks) = items(
+        &round(),
+        &job(),
+        &final_report,
+        &json!({"needs_thinker":["intent","evidence_response"]}),
+        &pointer("checks"),
+        &pointer("decision"),
+    )
+    .unwrap();
+    assert_eq!(verified.len(), 1);
+    assert_eq!(risks.len(), 2);
+    assert!(
+        risks
+            .iter()
+            .any(|r| r.requirement_id == "evidence_response")
+    );
+}

@@ -121,7 +121,7 @@ pub fn message(question: &Value) -> Result<String> {
         .collect::<Vec<_>>()
         .join("\n\n");
     Ok(format!(
-        "{}\n{risks}\n[kah-builder] [kah-question] {} worker={}\nFull record for {}: {}\nOnly this checkpoint waits; unrelated authorized work continues. An explicit approve answer accepts the named unverified risks; reject sends back for evidence. Relay the user decision with: kah steer SESSION TEXT --question {} --answer approve|reject. Delegate text cannot approve.",
+        "[kah-builder] {}\n{risks}\n[kah-question] {} worker={}\nFull record for {}: {}\nOnly this checkpoint waits; unrelated authorized work continues. An explicit approve answer accepts the named unverified risks; reject sends back for evidence. Relay the user decision with: kah steer SESSION TEXT --question {} --answer approve|reject. Delegate text cannot approve.",
         question["summary"]
             .as_str()
             .unwrap_or("Gate decision required"),

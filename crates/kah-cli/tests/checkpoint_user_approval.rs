@@ -119,7 +119,11 @@ fn eligible_gate_creates_one_bound_question_with_plain_summary_and_all_evidence(
     assert_eq!(pending[0]["head"], "a".repeat(40));
     assert_eq!(pending[0]["request"], "review-rethink");
     let text = kah_cli::observer_review::questions::message(&pending[0]).unwrap();
-    assert!(text.starts_with("Accept gate "));
+    assert!(text.starts_with("[kah-builder] Accept gate "));
+    assert_eq!(
+        kah_codex::authorship::classify(&text, false),
+        kah_core::intent_history::SourceRole::Delegate
+    );
     assert!(text.contains("Risk if accepted:"));
     assert!(text.contains("or send it back for more evidence?"));
     assert!(pending[0]["jev"].to_string().contains("unclear"));

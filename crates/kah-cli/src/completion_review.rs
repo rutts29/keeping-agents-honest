@@ -13,6 +13,17 @@ pub struct Key {
     pub command: String,
     pub online: bool,
 }
+impl Key {
+    /// Evidence-only replies change action freshness, not the delivered code.
+    /// SHA, user sequence, test policy and controller ownership still bind it.
+    pub fn same_delivery(&self, other: &Self) -> bool {
+        self.instance == other.instance
+            && self.commit == other.commit
+            && self.user_sequence == other.user_sequence
+            && self.command == other.command
+            && self.online == other.online
+    }
+}
 #[derive(Serialize, Deserialize)]
 pub struct Verified {
     pub key: Key,
@@ -35,7 +46,7 @@ pub fn verified(
 ) -> Result<Verified> {
     let path = directory.join("completion-verification.json");
     if let Some(saved) = crate::observer_review::state::read::<Verified>(&path)?
-        && saved.key == *key
+        && saved.key.same_delivery(key)
     {
         validate(key, &saved.receipt)?;
         return Ok(saved);

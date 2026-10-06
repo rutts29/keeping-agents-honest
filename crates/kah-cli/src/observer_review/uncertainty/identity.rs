@@ -34,7 +34,8 @@ pub fn fresh_followup(
         &super::super::decisions::active_items(&request.intent),
     )?;
     let evidence = evidence(units, &verified, &ids)?;
-    let identity = json!({"worker":request.worker,"head":request.head,"goal":request.intent["goal"],"items":request.intent["items"],"evidence":evidence});
+    let delivery_proof = super::super::gate_approval::captured(request)?;
+    let identity = json!({"worker":request.worker,"head":request.head,"goal":request.intent["goal"],"items":request.intent["items"],"evidence":evidence,"delivery_proof":delivery_proof});
     let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&identity)?));
     kah_core::run_store::ensure_private_directory(&root.join("sources"))?;
     let directory = root.join("followup-identities");

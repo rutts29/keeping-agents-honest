@@ -336,6 +336,13 @@ impl<'a> Run<'a> {
                 && matches!(pane["agent_status"].as_str(), Some("idle" | "done"))
                 && state.inflight.is_none()
             {
+                // Stop may precede the durable native completion marker. This
+                // existing idle controller loop re-kicks a waiting evidence
+                // round; no model polling, extra ask or review deadline.
+                if crate::observer_review::gate_approval::pending_followups(&state.binding.session)?
+                {
+                    crate::observer_review::queue::kick(&state.binding.session)?;
+                }
                 self.assess(&state)?;
             }
             if self.record()?.control.status() != RunStatus::Running {

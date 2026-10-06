@@ -209,6 +209,11 @@ fn failure(root: &Path, path: &Path, worker: &str, error: &str) -> Result<()> {
         });
     source_store::save(
         path,
+        "finished.json",
+        &json!({"status":"host_failed","error":error,"request":state.pending.as_ref().map(|p|&p.id)}),
+    )?;
+    source_store::save(
+        path,
         "failure.json",
         &json!({"error":error,"reviewer_submitted":delivery.is_ok(),"delivery_error":delivery.err().map(|e|e.to_string()),"at_ms":kah_observer::session::now_ms()}),
     )

@@ -37,7 +37,10 @@ pub(crate) fn finish(
     let result_path = root.join("results").join(format!("{}.json", request.id));
     let result: Value = source_store::read(&result_path)?;
     let decision = pointer(&format!("{}-decision", round.id), &result_path, &result)?;
-    let (verified, risks) = items(&round, &job, report, assessment, &receipt, &decision)?;
+    let (verified, risks) = super::super::super::failure::validation(
+        super::super::super::failure::Origin::ReportValidation,
+        || items(&round, &job, report, assessment, &receipt, &decision),
+    )?;
     let round = advance(
         root,
         &round.binding,
@@ -84,13 +87,17 @@ fn items(
         .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?;
     let mut verified = vec![];
     let mut risks = vec![];
-    for id in job.assessment["needs_thinker"]
+    let ids = job.assessment["needs_thinker"]
         .as_array()
         .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?
-    {
-        let id = id
-            .as_str()
-            .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")?;
+        .iter()
+        .chain(unresolved)
+        .map(|id| {
+            id.as_str()
+                .ok_or("REVIEW_FOLLOWUP_OUTCOME stage=verification")
+        })
+        .collect::<std::result::Result<BTreeSet<_>, _>>()?;
+    for id in ids {
         let requirement = units
             .requirements
             .iter()
@@ -100,16 +107,8 @@ fn items(
             .report
             .decision_units
             .as_ref()
-            .and_then(|units| units.requirements.iter().find(|r| r.id == id))
-            .ok_or("REVIEW_FOLLOWUP_REQUIREMENT_MISSING stage=verification")?;
-        if original.dimension != requirement.dimension
-            || std::mem::discriminant(&original.judgment)
-                != std::mem::discriminant(&requirement.judgment)
-            || original
-                .authority_items
-                .iter()
-                .any(|item| !requirement.authority_items.contains(item))
-        {
+            .and_then(|units| units.requirements.iter().find(|r| r.id == id));
+        if !preserves(original, requirement) || !positive_requirement(requirement) {
             return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification: preserve semantic/factual kind and linked authority".into());
         }
         if !unresolved.iter().any(|value| value == id) {
@@ -213,3 +212,18 @@ pub(crate) fn guard(root: &Path, request: &Request, assessment: &mut Value) -> R
 #[cfg(test)]
 #[path = "../../../../tests/observer_unit/gate_producer.rs"]
 mod tests;
+
+fn preserves(
+    original: Option<&kah_observer::decision_units::Requirement>,
+    current: &kah_observer::decision_units::Requirement,
+) -> bool {
+    original.is_none_or(|original| {
+        original.dimension == current.dimension
+            && std::mem::discriminant(&original.judgment)
+                == std::mem::discriminant(&current.judgment)
+            && original
+                .authority_items
+                .iter()
+                .all(|item| current.authority_items.contains(item))
+    })
+}

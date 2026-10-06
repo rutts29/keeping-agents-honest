@@ -24,7 +24,6 @@ pub fn request(
     if receipt.commit != key.commit || receipt.command != key.command {
         return Err("RUN_CHECKPOINT_VERIFICATION stage=completion: checkpoint receipt is for different completion inputs".into());
     }
-    let key_value = serde_json::to_value(key)?;
     let config = observer_review::control::config(worker)?
         .ok_or("RUN_CHECKPOINT_BINDING stage=completion")?;
     if !config.enabled {
@@ -37,7 +36,7 @@ pub fn request(
         if state
             .checkpoint
             .as_ref()
-            .is_some_and(|c| c["completion_key"] == key_value)
+            .is_some_and(|c| same_delivery(&c["completion_key"], key))
             && let Some(passed) = observer_review::checkpoint::covers(&state, &key.commit, revision)
         {
             return Ok(if passed {
@@ -51,7 +50,7 @@ pub fn request(
     let previous: Option<Value> = observer_review::state::read(&path)?;
     if !previous
         .as_ref()
-        .is_some_and(|p| p["key"] == key_value && p["revision"] == revision)
+        .is_some_and(|p| same_delivery(&p["key"], key) && p["revision"] == revision)
     {
         observer_review::events::enqueue(
             worker,
@@ -64,4 +63,8 @@ pub fn request(
         )?;
     }
     Ok(Status::Pending)
+}
+
+fn same_delivery(value: &Value, key: &Key) -> bool {
+    serde_json::from_value::<Key>(value.clone()).is_ok_and(|saved| saved.same_delivery(key))
 }

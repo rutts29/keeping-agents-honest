@@ -119,7 +119,7 @@ fn answer(home: &Path, worker: &str, question: &Value, courier: &Pane) -> Value 
     received(home, question, courier);
     delegate_cannot_approve(home, worker, question);
     let message = questions::message(question).unwrap();
-    assert!(message.starts_with("Accept gate "));
+    assert!(message.starts_with("[kah-builder] Accept gate "));
     assert!(message.contains("or send it back for more evidence?"));
     assert!(
         !message.contains("Jev answers:")

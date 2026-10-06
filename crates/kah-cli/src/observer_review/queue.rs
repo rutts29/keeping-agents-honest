@@ -31,10 +31,23 @@ pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     if !directory.exists() {
         return Ok(vec![]);
     }
-    let mut paths = fs::read_dir(directory)?
+    let paths = fs::read_dir(directory)?
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
-    paths.sort();
+    // Both nonce and receipt filenames carry immutable triggers. Filesystem
+    // publish timestamps provide their common chronology, independent of names.
+    let mut chronological = paths
+        .into_iter()
+        .map(|path| {
+            let time = fs::metadata(&path)?.modified()?;
+            Ok((time, path))
+        })
+        .collect::<std::io::Result<Vec<_>>>()?;
+    chronological.sort();
+    let mut paths = chronological
+        .into_iter()
+        .map(|(_, path)| path)
+        .collect::<Vec<_>>();
     paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
     let mut jobs = paths
         .into_iter()

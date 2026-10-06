@@ -97,7 +97,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         _ => return None,
     };
     Some(result.inspect_err(|e| {
-        let _ = hook::gap(&args[1], e);
+        let _ = hook::gap_error(&args[1], e.as_ref());
     }))
 }
 pub mod checkpoint;

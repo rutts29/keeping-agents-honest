@@ -1,8 +1,7 @@
 //! Bundle the live repository only in gVisor; host checks use fsck-imported
 //! objects and the same fresh-checkout verifier as unattended delivery.
 use super::*;
-use kah_sandbox::{Domain, LaunchOptions, Project};
-use std::{fs, os::unix::fs::OpenOptionsExt, process::Stdio};
+use kah_sandbox::LaunchOptions;
 
 pub(super) fn execute(
     root: &Path,
@@ -19,15 +18,7 @@ pub(super) fn execute(
         .join("gate-followups")
         .join(format!("{}-checks", round.id));
     kah_core::run_store::ensure_private_directory(&directory)?;
-    let bundle = directory.join("candidate.bundle");
-    capture_bundle(&home, state, &bundle)?;
-    let candidate = kah_run::worktree::Worktree::from_bundle(
-        &state.worker.project,
-        &directory.join("candidate"),
-        &bundle,
-        &round.binding.head,
-        &format!("run-verify-{}", &round.id[9..25]),
-    )?;
+    let candidate = trusted_candidate(state)?;
     let options = options(&state.worker.session)?;
     let mut proof = DeliveryProof {
         head: round.binding.head.clone(),
@@ -68,58 +59,26 @@ fn options(worker: &str) -> Result<LaunchOptions> {
         yolo: false,
     })
 }
-fn capture_bundle(home: &Path, state: &super::super::state::State, target: &Path) -> Result<()> {
-    let project = Project {
-        domain: Domain::Research,
-        root: state.worker.project.clone(),
-        relative_cwd: Default::default(),
-        needs_creation: false,
-    };
-    let git = super::super::capture::worktree_git(state)?;
-    let executor = crate::native_setup::executor(
-        home,
-        &project,
-        options(&state.worker.session)?,
-        git.as_deref(),
-    )?
-    .read_only_project();
-    let root = &project.root;
-    let args = vec![
-        "/usr/bin/env".into(),
-        "-i".into(),
-        "PATH=/usr/bin:/bin".into(),
-        "GIT_CONFIG_NOSYSTEM=1".into(),
-        "GIT_CONFIG_GLOBAL=/dev/null".into(),
-        "GIT_NO_REPLACE_OBJECTS=1".into(),
-        "GIT_TERMINAL_PROMPT=0".into(),
-        "/usr/bin/git".into(),
-        "-c".into(),
-        format!("safe.directory={}", root.display()),
-        "-c".into(),
-        "core.hooksPath=/dev/null".into(),
-        "-c".into(),
-        "core.fsmonitor=false".into(),
-        "bundle".into(),
-        "create".into(),
-        "-".into(),
-        "HEAD".into(),
-    ];
-    let file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(target)?;
-    let output = executor
-        .command(root, &args)?
-        .stdin(Stdio::null())
-        .stdout(file)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "REVIEW_FOLLOWUP_BUNDLE stage=verification: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
+fn trusted_candidate(state: &super::super::state::State) -> Result<kah_run::worktree::Worktree> {
+    let id = state
+        .worker
+        .project
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        .filter(|id| id.starts_with("run-"))
+        .ok_or("REVIEW_FOLLOWUP_CANDIDATE_SCOPE stage=verification")?;
+    let base = kah_core::run_store::RunStore::default_state_root()?.join("runs");
+    let record = kah_run::store::Store::read(&base, id)?;
+    if record.worktree != state.worker.project
+        || record.native.as_ref().and_then(|n| n.session.as_deref()) != Some(&state.worker.session)
+    {
+        return Err("REVIEW_FOLLOWUP_CANDIDATE_SCOPE stage=verification".into());
     }
-    Ok(())
+    // The first completion check already imported this agent-owned SHA through
+    // the fsck boundary. Fresh verification selects round.binding.head from
+    // that private object store, never whatever HEAD the worker now has.
+    Ok(kah_run::worktree::Worktree::load(
+        &kah_run::store::Store::path(&base, id)?.join("candidate.json"),
+    )?)
 }

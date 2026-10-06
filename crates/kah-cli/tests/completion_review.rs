@@ -40,17 +40,20 @@ fn waiting_for_review_reuses_tests_but_changed_completion_inputs_reverify() {
     let first = check(&original);
     assert_eq!(check(&original).id().unwrap(), first.id().unwrap());
     assert_eq!(calls.get(), 1);
-    let mut variants = vec![original.clone(); 6];
+    let mut reply = original.clone();
+    reply.action_digest = "new-native-evidence".into();
+    assert_eq!(check(&reply).id().unwrap(), first.id().unwrap());
+    assert_eq!(calls.get(), 1);
+    let mut variants = vec![original.clone(); 5];
     variants[0].instance = "resumed-controller".into();
     variants[1].commit = "commit-b".into();
     variants[2].user_sequence = 2;
-    variants[3].action_digest = "new-native-actions".into();
-    variants[4].command = "test other-suite".into();
-    variants[5].online = true;
+    variants[3].command = "test other-suite".into();
+    variants[4].online = true;
     for variant in variants {
         assert_ne!(check(&variant).id().unwrap(), first.id().unwrap());
     }
-    assert_eq!(calls.get(), 7);
+    assert_eq!(calls.get(), 6);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -66,4 +69,18 @@ fn a_verification_receipt_cannot_be_cached_under_another_commit() {
     assert!(error.to_string().starts_with("RUN_VERIFICATION_IDENTITY"));
     assert!(!root.join("completion-verification.json").exists());
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn evidence_reply_changes_action_freshness_without_changing_delivery_scope() {
+    let original = key();
+    let mut reply = original.clone();
+    reply.action_digest = "evidence-reply".into();
+    assert_ne!(original, reply);
+    assert!(original.same_delivery(&reply));
+    reply.commit = "new-commit".into();
+    assert!(!original.same_delivery(&reply));
+    reply.commit = original.commit.clone();
+    reply.user_sequence += 1;
+    assert!(!original.same_delivery(&reply));
 }

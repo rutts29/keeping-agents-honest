@@ -235,3 +235,37 @@ fn final_verification_review_precedes_routine_checkpoints_without_losing_any() {
     drop(store);
     std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn receipt_and_nonce_entries_follow_publish_chronology_not_filename_order() {
+    let worker = format!("queue-time-order-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    let wake = queue::Wake {
+        purpose: Purpose::Checkpoint,
+        turn: "earlier-rethink".into(),
+        trigger: json!({}),
+    };
+    queue::enqueue_once_at(&store.directory, "earlier-rethink", &wake).unwrap();
+    queue::enqueue(&worker, Purpose::Checkpoint, "later-claim", json!({})).unwrap();
+    for entry in std::fs::read_dir(store.directory.join("queued")).unwrap() {
+        let path = entry.unwrap().path();
+        let earlier = path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("receipt-");
+        let modified =
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(if earlier { 1 } else { 2 });
+        std::fs::File::open(path)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+    }
+    let jobs = queue::entries(&worker).unwrap();
+    assert_eq!(jobs[0].1.turn, "earlier-rethink");
+    assert_eq!(jobs[1].1.turn, "later-claim");
+    let directory = store.directory.clone();
+    drop(store);
+    std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}

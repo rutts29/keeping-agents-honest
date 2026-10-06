@@ -103,3 +103,17 @@ fn retained_loop_case_uses_whole_original_quotes_and_reopens_on_new_evidence() {
     assert!(uncertainty::fresh_followup(&root, &request, &report, &assessment).unwrap());
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn a_real_delivery_proof_reopens_a_prior_same_sha_observation() {
+    let root = std::env::temp_dir().join(format!("kah-proof-rethink-{}", std::process::id()));
+    let (request, report) = fixture();
+    let assessment = json!({"needs_thinker":["closure"]});
+    assert!(uncertainty::fresh_followup(&root, &request, &report, &assessment).unwrap());
+    let mut proven = request.clone();
+    proven.id = "review-delivery".into();
+    let head = proven.head.clone().unwrap();
+    proven.trigger = json!({"events":[{"kind":"run_completion","completion_key":{"commit":head},"verification":{"commit":head,"command":"check","success":true,"exit_code":0,"elapsed_ms":1,"output":"PASS","output_truncated":false}}]});
+    assert!(uncertainty::fresh_followup(&root, &proven, &report, &assessment).unwrap());
+    std::fs::remove_dir_all(root).unwrap();
+}
