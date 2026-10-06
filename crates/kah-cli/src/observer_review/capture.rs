@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+pub mod controller_events;
 pub mod historical;
 mod rendering;
 pub use rendering::{native_document, render};
@@ -60,6 +61,10 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         created_ms: kah_observer::session::now_ms(),
     };
     super::completion_due::add(&mut request)?;
+    controller_events::add(
+        &super::state::Store::directory(&request.worker)?,
+        &mut request,
+    )?;
     historical::add(
         &super::state::Store::directory(&request.worker)?,
         &mut request,

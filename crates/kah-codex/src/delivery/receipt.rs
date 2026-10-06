@@ -55,6 +55,35 @@ impl Receipt {
             _lock: lock,
         })
     }
+    /// Read a durable acknowledgement without creating or changing a receipt.
+    pub fn accepted(base: &Path, message: &Message) -> Result<bool, String> {
+        let id = format!(
+            "{:x}",
+            Sha256::digest(format!("{}\0{}", message.session, message.client_id).as_bytes())
+        );
+        let directory = base.join("delegate-deliveries").join(id);
+        match fs::symlink_metadata(&directory) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(io_error(e)),
+            Ok(meta) if !meta.is_dir() || meta.permissions().mode() & 0o077 != 0 => {
+                return Err("SEND_PRIVATE_STATE stage=delegate_channel".into());
+            }
+            _ => (),
+        }
+        let path = directory.join("receipt.json");
+        check(&path)?;
+        let bytes = match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(io_error(e)),
+        };
+        let value: Value = serde_json::from_slice(&bytes)
+            .map_err(|_| "SEND_RECEIPT_JSON stage=delegate_channel")?;
+        if value["payloadDigest"] != message.digest() {
+            return Err("SEND_RECEIPT_COLLISION stage=delegate_channel".into());
+        }
+        Ok(value["state"] == "accepted")
+    }
     pub fn save(&mut self, state: &str) -> Result<(), String> {
         let temporary = self.directory.join("receipt.tmp");
         let mut file = open_private(&temporary)?;

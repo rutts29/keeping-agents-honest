@@ -4,13 +4,20 @@
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 8;
+pub const VERSION: u32 = 9;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {
+        if requirement.applicability.as_ref().is_some_and(|a| {
+            a.controller_trigger
+                .as_ref()
+                .is_some_and(|t| !t.receipt.occurred)
+        }) {
+            continue;
+        }
         applicability::question(requirement, &mut questions);
         blocker::question(requirement, &mut questions);
-        if units.version() == 8 && matches!(requirement.judgment, Thinking::AtomicFact { .. }) {
+        if units.version() >= 8 && matches!(requirement.judgment, Thinking::AtomicFact { .. }) {
             continue;
         }
         let reference = format!(
@@ -117,7 +124,7 @@ pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due
         out_of_proportion: false,
     };
     for r in &units.requirements {
-        requirement(r, judgment, &mut outcome, phase_due, units.version() == 8);
+        requirement(r, judgment, &mut outcome, phase_due, units.version() >= 8);
     }
     if units.proportion.is_some() {
         outcome.out_of_proportion = confirmed(judgment, "proportion", "disproportionate");
@@ -157,6 +164,7 @@ fn requirement(
         if !verified_phase
             && (due.is_some_and(|d| !d.confirmed(judgment))
                 || due.is_none()
+                    && a.controller_trigger.is_none()
                     && !a.unconditional
                     && !confirmed(judgment, &format!("applicability.{}", r.id), "supported"))
         {

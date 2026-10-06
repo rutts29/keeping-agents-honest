@@ -11,6 +11,7 @@ mod evaluation;
 pub use applicability::Applicability;
 pub mod completion;
 pub mod context;
+pub mod controller_trigger;
 mod literal;
 mod literal_receipt;
 pub use literal::Literal;
@@ -202,7 +203,7 @@ impl ReviewUnits {
     pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
         if self
             .version
-            .is_some_and(|version| !matches!(version, 7 | 8))
+            .is_some_and(|version| !matches!(version, 7..=9))
         {
             return Err(
                 "REVIEW_PROTOCOL_VERSION stage=decision_units: unknown report protocol".into(),
@@ -216,10 +217,10 @@ impl ReviewUnits {
                 return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
             }
             let value = validation::requirement(requirement, documents)?;
-            if matches!(self.version, Some(7 | 8)) {
+            if matches!(self.version, Some(7..=9)) {
                 blocker::require_typed(requirement)?;
             }
-            if self.version == Some(8) {
+            if self.version.is_some_and(|v| v >= 8) {
                 literal_receipt::verify(
                     requirement,
                     value["citations"].as_array().unwrap(),

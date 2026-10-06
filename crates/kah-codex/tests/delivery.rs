@@ -101,3 +101,26 @@ fn lost_ack_never_blindly_resends_but_recovers_a_visible_receipt() {
     assert_eq!(rpc.writes, 1);
     std::fs::remove_dir_all(base).unwrap();
 }
+
+#[test]
+fn accepted_receipt_read_is_non_mutating_and_exact_payload_bound() {
+    use kah_codex::delivery::Receipt;
+    let (base, message, _) = fixture();
+    assert!(!Receipt::accepted(&base, &message).unwrap());
+    assert!(!base.exists());
+    let mut receipt = Receipt::open(&base, &message).unwrap();
+    receipt.save("pending").unwrap();
+    assert!(!Receipt::accepted(&base, &message).unwrap());
+    receipt.save("accepted").unwrap();
+    assert!(Receipt::accepted(&base, &message).unwrap());
+    let changed = Message::new("s", "reviewer", "r1", "different payload").unwrap();
+    assert!(
+        Receipt::accepted(&base, &changed)
+            .unwrap_err()
+            .starts_with("SEND_RECEIPT_COLLISION")
+    );
+    let foreign = Message::new("other", "reviewer", "r1", "Please review").unwrap();
+    assert!(!Receipt::accepted(&base, &foreign).unwrap());
+    drop(receipt);
+    std::fs::remove_dir_all(base).unwrap();
+}

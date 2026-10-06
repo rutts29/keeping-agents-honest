@@ -78,9 +78,17 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
             &document.text,
         )?;
     }
+    let mut report_schema = schema(&request.purpose);
+    if !request
+        .documents
+        .iter()
+        .any(|d| d.id == "controller-evidence")
+    {
+        report_schema["properties"]["decision_units"]["properties"]["version"] = json!({"const":8});
+    }
     fs::write(
         input.join("schema.json"),
-        serde_json::to_vec_pretty(&schema(&request.purpose))?,
+        serde_json::to_vec_pretty(&report_schema)?,
     )?;
     let manifest = json!({"request_id":request.id,"purpose":request.purpose,"worker":request.worker,"head":request.head,"trigger":request.trigger,"documents":request.documents.iter().map(|d|json!({"id":d.id,"kind":d.kind,"uri":d.uri,"digest":d.digest,"path":input.join(format!("{}.txt",d.id)),"bytes":d.text.len()})).collect::<Vec<_>>()});
     fs::write(

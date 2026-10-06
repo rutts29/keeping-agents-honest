@@ -30,6 +30,7 @@ pub fn verify(request: &Request, report: &Report) -> Result<Option<Value>> {
 }
 pub fn verify_evidence(request: &Request, report: &Report) -> Result<Option<Value>> {
     super::completion_due::bind(request, report)?;
+    super::capture::controller_events::bind(request, report)?;
     report
         .verify_units(&request.documents, &active_items(&request.intent))
         .map_err(Into::into)
@@ -64,7 +65,7 @@ pub fn evaluate(
     if super::preparation::pending(&request.worker, &request.id)? {
         super::preparation::accept(&request.worker, &request.id)?;
     }
-    let (judgment, prepared, archive) = if units.version() == 8 {
+    let (judgment, prepared, archive) = if units.version() >= 8 {
         scoped::evaluate(home, request, &input, &questions)?
     } else {
         legacy(home, request, &input, &questions, units.version())?

@@ -15,6 +15,8 @@ pub struct Applicability {
     pub controller_due: Option<super::completion::DueAtEvent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_completion: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controller_trigger: Option<super::controller_trigger::Trigger>,
 }
 pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), String> {
     if a.unconditional && !a.due {
@@ -47,9 +49,9 @@ pub(super) fn validate(a: &Applicability, citations: &[Value]) -> Result<(), Str
 }
 pub(super) fn question(r: &Requirement, questions: &mut Questions) {
     if r.applicability.is_none()
-        || r.applicability
-            .as_ref()
-            .is_some_and(|a| a.unconditional || a.controller_due.is_some())
+        || r.applicability.as_ref().is_some_and(|a| {
+            a.unconditional || a.controller_due.is_some() || a.controller_trigger.is_some()
+        })
         || matches!(r.judgment, super::Thinking::NeedsUser { .. })
     {
         return;
@@ -73,6 +75,7 @@ pub(super) fn schema() -> Value {
             "due":{"type":"boolean"},"unconditional":{"type":"boolean"},
             "phase_completion":{"type":"boolean"},
             "reasoning":{"type":"string"},"evidence_citations":{"$ref":"#/$defs/indices"},
+            "controller_trigger":{"anyOf":[super::controller_trigger::schema(),{"type":"null"}]},
             "controller_due":{"anyOf":[super::completion::schema(),{"type":"null"}]}
         }),
     )

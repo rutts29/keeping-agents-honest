@@ -25,6 +25,9 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
             }
             fact.verify(r, documents)?;
         }
+        if let Some(trigger) = &a.controller_trigger {
+            trigger.verify(r, documents)?;
+        }
         applicability::validate(a, &citations)?;
     }
     if indices.is_empty() || indices.iter().any(|i| citations.get(*i).is_none()) {

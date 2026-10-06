@@ -69,3 +69,42 @@ fn native_contract_explains_typed_blockers_exact_questions_and_literal_timing() 
         assert!(s.contains("own checked source manifest"));
     }
 }
+
+#[test]
+fn controller_event_requests_require_v9_and_retained_requests_stay_v8() {
+    let mut req = request();
+    let report: Report = serde_json::from_value(raw()).unwrap();
+    workspace::require_units(&req, &report).unwrap();
+    req.documents
+        .push(kah_observer::review_evidence::Document::new(
+            "controller-evidence",
+            "controller_event",
+            "kah:controller-evidence",
+            "{}",
+        ));
+    assert!(
+        workspace::require_units(&req, &report)
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_PROTOCOL_REQUIRED")
+    );
+    let mut value = raw();
+    value["decision_units"]["version"] = json!(9);
+    let report: Report = serde_json::from_value(value).unwrap();
+    workspace::require_units(&req, &report).unwrap();
+}
+
+#[test]
+fn a_trigger_cannot_reuse_a_genuine_receipt_from_another_request() {
+    let req = request();
+    let mut value = raw();
+    value["decision_units"]["version"] = json!(9);
+    value["decision_units"]["requirements"][0]["applicability"]["controller_trigger"] = json!({"receipt_citation":0,"receipt":{"worker":"worker","request":"review-other","head":null,"event":"observer_evidence_ask","occurred":true,"receipts":[]}});
+    let report: Report = serde_json::from_value(value).unwrap();
+    assert!(
+        kah_cli::observer_review::decisions::verify_evidence(&req, &report)
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_TRIGGER_BINDING")
+    );
+}
