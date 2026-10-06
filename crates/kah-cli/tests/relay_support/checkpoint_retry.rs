@@ -72,5 +72,14 @@ fn real_claude_uri_in_source_field_diagnostic_keeps_review_recoverable() {
     assert!(recoverable(
         "REVIEW_REQUIREMENT_COVERAGE stage=decision_units: active item goal has no named requirement"
     ));
+    for error in [
+        "REVIEW_REPORT_JSON stage=report",
+        "REVIEW_EVIDENCE_EMPTY stage=evidence",
+        "REVIEW_FINDING_EMPTY stage=evidence",
+        "REVIEW_QUOTE_MISSING stage=evidence",
+        "REVIEW_CHECK_PROVENANCE stage=decision_units",
+    ] {
+        assert!(recoverable(error), "{error}");
+    }
     assert!(!recoverable("REVIEW_SOURCE_DIGEST stage=source_store"));
 }
