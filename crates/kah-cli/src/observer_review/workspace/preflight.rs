@@ -5,6 +5,7 @@ use kah_observer::decision_units::Thinking;
 use serde_json::Value;
 
 pub(super) fn validate(request: &Request, report: &Report, findings: Vec<Value>) -> Result<()> {
+    super::super::checkpoint_claim::require_evidence(request, &findings)?;
     super::super::decisions::verify_evidence(request, report)?;
     let Some(units) = &report.decision_units else {
         return Ok(());

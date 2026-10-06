@@ -3,9 +3,13 @@ use crate::observer_review as review;
 pub fn retry_pending(worker: &str) -> Result<()> {
     require_active(worker)?;
     let store = Store::open_wait(worker)?;
-    let Some(state) = store.load()? else {
+    let Some(mut state) = store.load()? else {
         return Ok(());
     };
+    if review::checkpoint_claim::release_waiting(&store, &mut state)? {
+        drop(store);
+        return review::queue::kick(worker);
+    }
     let Some(pending) = &state.pending else {
         return Ok(());
     };
@@ -64,9 +68,32 @@ fn working(store: &Store, state: &State, request: &str, gap: &Path) -> Result<bo
     if !review::delivery::in_progress(state).unwrap_or(false) {
         return Ok(false);
     }
-    if gap.exists() {
-        std::fs::remove_file(gap)?;
-    }
+    clear_confirmed_delivery_gap(gap)?;
     review::redelivery::completed(store, request)?;
     Ok(true)
 }
+
+fn clear_confirmed_delivery_gap(path: &Path) -> Result<()> {
+    let gap: Option<Value> = review::state::read(path)?;
+    if gap
+        .as_ref()
+        .and_then(|g| g["error"].as_str())
+        .is_some_and(|error| {
+            review::delivery::wait_timeout(error)
+                || [
+                    "REVIEW_SUBMISSION_UNCONFIRMED",
+                    "REVIEW_NOT_IDLE",
+                    "REVIEW_OBSERVER_STALLED",
+                ]
+                .iter()
+                .any(|prefix| error.starts_with(prefix))
+        })
+    {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/retry_gap.rs"]
+mod tests;

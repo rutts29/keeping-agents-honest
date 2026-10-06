@@ -126,6 +126,9 @@ pub fn pending(root: &Path) -> Result<Vec<Value>> {
     Ok(questions)
 }
 pub fn message(question: &Value) -> Result<String> {
+    if question["kind"] == "checkpoint_claim" {
+        return super::checkpoint_claim::question_message(question);
+    }
     if question["kind"] == "checkpoint_approval" {
         return super::gate_approval::message(question);
     }

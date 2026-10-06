@@ -46,3 +46,32 @@ fn a_verified_non_claim_is_neutral_and_doubt_stays_pending() {
         .insert("claim_made".into(), Answer::Noul { noul: 0.99 });
     assert!(checkpoint_claim::assessment(&j).unwrap().is_none());
 }
+
+#[test]
+fn doubtful_claim_requires_thinker_selected_native_assistant_evidence() {
+    // Native source: openai/codex rust-v0.160.0, protocol/src/items.rs
+    // TurnItem::AgentMessage. Existing host rendering supplies provenance;
+    // marker-looking quote text is never the source of the record type.
+    use kah_cli::observer_review::{
+        checkpoint_claim,
+        state::{Purpose, Request},
+    };
+    use serde_json::json;
+    let request = Request {
+        id: "review-claim".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: None,
+        intent: json!({}),
+        trigger: json!({"events":[{"kind":"native_phase_claim","uncertain":true}]}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    let unrelated = json!({"topic":"intent","citations":[{"native_records":[{"message_role":"assistant","native_transport_only":true}]}]});
+    assert!(checkpoint_claim::require_evidence(&request, &[unrelated]).is_err());
+    let tool = json!({"topic":"claim","citations":[{"native_records":[{"message_role":"tool","native_transport_only":true}]}]});
+    assert!(checkpoint_claim::require_evidence(&request, &[tool]).is_err());
+    let claim = json!({"topic":"claim","citations":[{"native_records":[{"message_role":"assistant","native_transport_only":true}]}]});
+    checkpoint_claim::require_evidence(&request, &[claim]).unwrap();
+}

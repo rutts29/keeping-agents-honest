@@ -69,8 +69,22 @@ pub fn evaluate(
     } else {
         legacy(home, request, &input, &questions, units.version())?
     };
-    if let Some(assessment) = super::checkpoint_claim::assessment(&judgment)? {
-        return Ok((judgment, prepared, assessment));
+    match super::checkpoint_claim::assessment(&judgment) {
+        Ok(Some(assessment)) => return Ok((judgment, prepared, assessment)),
+        Err(error)
+            if error
+                .to_string()
+                .starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN") =>
+        {
+            if let Some(assessment) =
+                super::checkpoint_claim::record_uncertainty(request, report, &judgment)?
+            {
+                return Ok((judgment, prepared, assessment));
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+        _ => (),
     }
     checkpoint_coverage(request, units, &deferrals)?;
     let mut assessment = assessment(request, units, &judgment, deferrals);

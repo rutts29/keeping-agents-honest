@@ -18,6 +18,7 @@ pub fn retryable(error: &str) -> bool {
             "REVIEW_REQUIREMENT_DIMENSION",
             "REVIEW_DEFERRAL_",
             "REVIEW_PHASE_CLAIM_UNCERTAIN",
+            "REVIEW_PHASE_CLAIM_EVIDENCE_MISSING",
             "REVIEW_CHECKPOINT_EVIDENCE_MISSING",
             "REVIEW_CHECKPOINT_SCOPE_MISSING",
             "REVIEW_APPLICABILITY_",

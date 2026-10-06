@@ -121,6 +121,12 @@ pub(super) fn prompt(state: &State, request: &Request, input: &Path) -> Result<S
         .arg("--json")
         .arg(&output);
     let submission = crate::native_run::shell_command(&command)?;
+    let claim_note = if super::checkpoint_claim::doubtful(request) {
+        "The native completion claim is unconfirmed. Include a finding with topic=claim citing whole native assistant words that show what was said (completion or ordinary progress). Do not use user instructions or tool output as an assistant claim; Jev decides whether completion was asserted."
+    } else {
+        ""
+    };
+    let instructions = format!("{}\n{claim_note}", decision_instructions(&request.purpose));
     Ok(format!(
         "kah review request {} ({:?}). Read {}. Source files (including delta.txt and intent.json) are lossless descriptors: use bin/kah observe read-source PATH to read the complete original text, then read all relevant sources; nothing was truncated. Continue your existing observer conversation, including earlier findings. Extract evidence with exact quotes and document digests per schema.json. Choose each quote as a complete unit: whole sentences, a whole message or a whole tool result; never mid-word or mid-sentence. If its meaning depends on nearby text, include that text yourself with no fixed window. Jev receives your chosen spans with verified source pointers, not automatic full-document copies. Write your JSON report to {} using Write or an explicit here-document, with no bare stdin reads. Run this submission command in the foreground and require its evidence_submitted acknowledgement: {}. Always include a proposed reminder object with a concise instruction and decisive exact user quotes (id plus quote) selected from intent.json. Use id goal for the goal, or an exact item id. This proposal is not a decision; it is delivered only after Jev confirms it. Never dump the projection. For Claude the complete delivered string must fit its native 10000 UTF-16 units, including the controller label and full-record pointer; compose accordingly, never truncate. For checkpoint requests the integration finding must include checkpoint_scope with the current phase, a complete named components list, and authorization_citation indexing its verified user or plan authorization quote. Explicitly name absent components and the later phase in each deferral claim, with current source evidence for absence and why integration needs it. Supply evidence of every still-unwired requirement; code combines direct Jev answers about execution, absence, necessity and authorization. For checkpoint requests provide separate intent, integration and drift findings with CURRENT source evidence, not only claim/integration findings. In the intent finding explicitly identify the claimed phase and its authorized scope; distinguish completion of that phase from the whole future goal. In drift distinguish the stretch since the previous checkpoint from earlier failures already corrected. Every declared still-unwired future dependency belongs in a separate deferral finding with metadata, never only mentioned under integration. Cover every known open deferral, including current closure evidence. For each deferral finding include deferral with phase, requirement_citation and dependency_citation indexes into its citations. Cite the exact named dependency phase. Use a known open deferral id when revisiting it; leave id null for a new declaration. For a known deferral id, copy its original requirement URI and exact quote from intent.json open_deferrals into requirement_citation; do not substitute a broader span or a later-phase paragraph. Add current implementation/test/dependency quotes as separate citations. The original anchor is a historical declaration, not a claim that the old absence still holds. Never rename or move an existing deferral to a later phase. Do not report probabilities or an overall pass/fail verdict. Do not poll or start other work after submission.\n{}",
         request.id,
@@ -128,7 +134,7 @@ pub(super) fn prompt(state: &State, request: &Request, input: &Path) -> Result<S
         input.join("manifest.json").display(),
         output.display(),
         submission,
-        decision_instructions(&request.purpose)
+        instructions
     ))
 }
 
