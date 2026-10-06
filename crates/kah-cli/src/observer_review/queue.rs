@@ -44,8 +44,17 @@ pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
             Ok((path, value))
         })
         .collect::<Result<Vec<_>>>()?;
-    // Stable priority: checkpoints first, original FIFO within each group.
-    jobs.sort_by_key(|(_, job)| job.purpose != Purpose::Checkpoint);
+    // Finish the one admitted verification round before newer routine claims
+    // can manufacture more rechecks. Every trigger remains durably queued.
+    jobs.sort_by_key(|(_, job)| match job.purpose {
+        Purpose::Checkpoint
+            if job.trigger["verification_followup"]["stage"] == "checks_complete" =>
+        {
+            0
+        }
+        Purpose::Checkpoint => 1,
+        _ => 2,
+    });
     Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {

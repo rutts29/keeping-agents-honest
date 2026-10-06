@@ -1,5 +1,8 @@
 //! One private controller round; shared native/delegate text cannot create it.
 use super::*;
+#[path = "scope.rs"]
+mod scope;
+pub use scope::existing;
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -185,7 +188,9 @@ pub fn read(root: &Path, binding: &Binding) -> Result<Option<VerificationRound>>
 pub fn start(root: &Path, request: &Request) -> Result<VerificationRound> {
     let binding = origin(root, request)?;
     let _lock = super::super::state::Store::delivery_at(&directory(root), true)?;
-    if let Some(round) = read(root, &binding)? {
+    // Recheck under the existing private creation lock: another checkpoint
+    // may have reserved this worker/HEAD/revision while origin was resolved.
+    if let Some(round) = existing(root, request)? {
         return Ok(round);
     }
     let round = VerificationRound {
@@ -359,7 +364,9 @@ pub fn origin(root: &Path, request: &Request) -> Result<Binding> {
             return Err("REVIEW_FOLLOWUP_LINEAGE stage=followup: checkpoint scope changed or lineage cycles".into());
         }
         let Some(parent) = current.trigger["reconsideration"]["request"].as_str() else {
-            return Ok(binding);
+            return Ok(existing(root, request)?
+                .map(|r| r.binding)
+                .unwrap_or(binding));
         };
         current = archived(root, parent)?;
     }

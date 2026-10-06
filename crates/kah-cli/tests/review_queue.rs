@@ -200,3 +200,38 @@ fn checkpoint_events_transfer_before_rechecks_and_status_exposes_the_order() {
     drop(store);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn final_verification_review_precedes_routine_checkpoints_without_losing_any() {
+    let worker = format!("verification-final-priority-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    queue::enqueue(
+        &worker,
+        Purpose::Checkpoint,
+        "old",
+        json!({"events":[{"kind":"native_phase_claim"}]}),
+    )
+    .unwrap();
+    queue::enqueue(
+        &worker,
+        Purpose::Checkpoint,
+        "checks",
+        json!({"verification_followup":{"stage":"checks_complete","round":"one"}}),
+    )
+    .unwrap();
+    queue::enqueue(
+        &worker,
+        Purpose::Checkpoint,
+        "new",
+        json!({"events":[{"kind":"native_phase_claim"}]}),
+    )
+    .unwrap();
+    let jobs = queue::entries(&worker).unwrap();
+    assert_eq!(jobs.len(), 3);
+    assert_eq!(jobs[0].1.turn, "checks");
+    assert_eq!(jobs[1].1.turn, "old");
+    assert_eq!(jobs[2].1.turn, "new");
+    let directory = store.directory.clone();
+    drop(store);
+    std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}

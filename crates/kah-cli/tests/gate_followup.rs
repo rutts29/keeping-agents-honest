@@ -393,3 +393,39 @@ fn duplicated_uncertainty_ids_cannot_admit_an_unrelated_risk() {
         &done
     ));
 }
+
+#[test]
+fn awaiting_thinker_and_completed_rounds_are_reused_for_the_same_scope() {
+    let f = Fixture::new();
+    let first = start(&f.root, &f.request).unwrap();
+    advance(
+        &f.root,
+        &first.binding,
+        Step::Evidence(vec![pointer("existing")]),
+    )
+    .unwrap();
+    let awaiting = advance(&f.root, &first.binding, Step::Builder(builder(&first))).unwrap();
+    let path = f.root.join("gate-followups").join(&first.id);
+    kah_core::run_store::ensure_private_directory(&path).unwrap();
+    source_store::save(
+        &path,
+        "finished.json",
+        &json!({"status":"awaiting_thinker"}),
+    )
+    .unwrap();
+    let mut later = f.request.clone();
+    later.id = "review-later-claim".into();
+    f.archive(&later);
+    assert_eq!(start(&f.root, &later).unwrap().id, first.id);
+    assert_eq!(existing(&f.root, &later).unwrap().unwrap().id, first.id);
+    advance(&f.root, &first.binding, Step::Checks(checks(&awaiting))).unwrap();
+    assert_eq!(
+        existing(&f.root, &later).unwrap().unwrap().stage,
+        Stage::Complete
+    );
+    later.head = Some("b".repeat(40));
+    assert!(existing(&f.root, &later).unwrap().is_none());
+    later.head = f.request.head.clone();
+    later.intent["revision"] = json!(2);
+    assert!(existing(&f.root, &later).unwrap().is_none());
+}
