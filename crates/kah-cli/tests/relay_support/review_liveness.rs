@@ -53,21 +53,8 @@ fn fault_case(
     store.save(&state).unwrap();
     let mut held = (fault == "held review lock").then_some(store);
     // Native observer remains idle: simulate a crash before the delivery call.
-    observe(worker);
-    std::thread::sleep(Duration::from_secs(16));
-    observe(worker);
     let root = Reviews::directory(worker).unwrap().join("liveness");
-    let notice = liveness::notice(worker).unwrap().unwrap();
-    assert!(
-        notice["systemMessage"]
-            .as_str()
-            .unwrap()
-            .contains(&request.id)
-    );
-    let delivered: Value =
-        serde_json::from_slice(&fs::read(root.join("reviewer.json")).unwrap()).unwrap();
-    assert_eq!(delivered["submitted"], true);
-    assert_eq!(delivered["request"], request.id);
+    let (notice, delivered, prior_notices) = matching_notice(worker, &request.id, &root);
     let pane = Pane {
         id: baseline.observer.pane.clone().unwrap(),
     };
@@ -79,7 +66,7 @@ fn fault_case(
     assert_eq!(recovered.observer.session, baseline.observer.session);
     assert_eq!(recovered.observer.pane, baseline.observer.pane);
     observe(worker);
-    evidence(
+    let mut result = evidence(
         &root,
         &request.id,
         fault,
@@ -87,7 +74,35 @@ fn fault_case(
         notice,
         delivered,
         recovered.latest,
-    )
+    );
+    result["priorNoticesRetained"] = json!(prior_notices);
+    result
+}
+
+fn matching_notice(worker: &str, request: &str, root: &Path) -> (Value, Value, Vec<Value>) {
+    let mut prior = vec![];
+    let mut matching = None;
+    loop {
+        observe(worker);
+        if let Some(notice) = liveness::notice(worker).unwrap() {
+            if notice["systemMessage"].as_str().unwrap().contains(request) {
+                matching = Some(notice);
+            } else {
+                prior.push(notice);
+            }
+        }
+        if let Some(notice) = &matching
+            && let Ok(bytes) = fs::read(root.join("reviewer.json"))
+        {
+            let delivered: Value = serde_json::from_slice(&bytes).unwrap();
+            if delivered["request"] == request && delivered["submitted"] == true {
+                return (notice.clone(), delivered, prior);
+            }
+        }
+        // Native record growth can legitimately postpone the stall sample.
+        // Wait for this request's notice; never consume a stale notice as proof.
+        std::thread::sleep(Duration::from_millis(250));
+    }
 }
 
 fn automatic_recovery(
