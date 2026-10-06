@@ -69,5 +69,8 @@ fn real_claude_uri_in_source_field_diagnostic_keeps_review_recoverable() {
     let error = "REVIEW_SOURCE_UNKNOWN stage=evidence: citation.source=\"native:claude:00000000-0000-4000-8000-01a11278cba5\" is not a document id. Use manifest document ids, not URIs or paths. Matching URI document ids: [\"transcript\"]";
     assert!(recoverable(error));
     assert!(retry_outcome(Err(error.into())).is_ok());
+    assert!(recoverable(
+        "REVIEW_REQUIREMENT_COVERAGE stage=decision_units: active item goal has no named requirement"
+    ));
     assert!(!recoverable("REVIEW_SOURCE_DIGEST stage=source_store"));
 }
