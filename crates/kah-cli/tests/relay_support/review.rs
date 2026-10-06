@@ -73,13 +73,7 @@ fn wakes(id: &str, provider: &str, panes: &mut Panes) -> Value {
         .unwrap_or(3);
     assert!((1..=3).contains(&rounds));
     for number in 1..=rounds {
-        let result = runtime::wake(
-            id,
-            Purpose::Drift,
-            &format!("fixture-{number}"),
-            json!({"fixture":"persistent pane handoff; not a catching proof","check":number}),
-        )
-        .unwrap();
+        let result = round(id, number);
         let result = await_submission(id, provider, panes, result, &format!("fixture-{number}"));
         let pane = Pane {
             id: result["pane"].as_str().unwrap().into(),
@@ -124,6 +118,27 @@ fn wakes(id: &str, provider: &str, panes: &mut Panes) -> Value {
         wakes.push(result);
     }
     json!({"provider":provider,"observerSession":observer_id,"observerPane":observer_pane,"wakes":wakes})
+}
+fn round(id: &str, number: usize) -> Value {
+    retained(
+        runtime::wake(
+            id,
+            Purpose::Drift,
+            &format!("fixture-{number}"),
+            json!({"fixture":"persistent pane handoff; not a catching proof","check":number}),
+        ),
+        id,
+    )
+}
+fn retained(result: kah_cli::Result<Value>, worker: &str) -> Value {
+    match result {
+        Ok(value) => value,
+        Err(error) if kah_cli::observer_review::redelivery::retryable(&error.to_string()) => {
+            let state = Reviews::read(worker).unwrap().unwrap();
+            json!({"status":"retained_delivery_gap","pane":state.observer.pane,"request":state.pending.unwrap().id,"gap":error.to_string()})
+        }
+        Err(error) => panic!("{error}"),
+    }
 }
 fn await_submission(
     id: &str,
@@ -205,13 +220,15 @@ fn confirm_resume(
     panes: &mut Panes,
     before: &kah_cli::observer_review::state::State,
 ) -> Value {
-    let submitted = runtime::wake(
+    let submitted = retained(
+        runtime::wake(
+            id,
+            Purpose::Drift,
+            "fixture-after-resume",
+            json!({"fixture":"real wake after native resume"}),
+        ),
         id,
-        Purpose::Drift,
-        "fixture-after-resume",
-        json!({"fixture":"real wake after native resume"}),
-    )
-    .unwrap();
+    );
     let submitted = await_submission(id, provider, panes, submitted, "fixture-after-resume");
     let pane = Pane {
         id: submitted["pane"].as_str().unwrap().into(),
