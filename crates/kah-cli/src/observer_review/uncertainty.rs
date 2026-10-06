@@ -3,7 +3,9 @@ use super::state::{Request, Store};
 use crate::Result;
 use kah_observer::review_evidence::Report;
 use serde_json::{Value, json};
+mod identity;
 mod rethink;
+pub use identity::fresh_followup;
 pub use rethink::{resume, retain_rethink, rethink, schedule};
 
 pub fn notice(request: &Request, report: &Report, assessment: &Value) -> Option<String> {
@@ -68,12 +70,17 @@ pub fn record(
         )?;
         return Ok(());
     }
+    let fresh = followup_finished || fresh_followup(&store.directory, request, report, assessment)?;
     if !followup_finished
+        && fresh
         && !super::gate_approval::begin_followup(store, request, report, assessment)?
     {
         retain_rethink(&store.directory, request, assessment)?;
     }
     if let Some(mut text) = notice(request, report, assessment) {
+        if !fresh {
+            text.push_str(" The same SHA, unresolved items and checked evidence already received a follow-up; no new automatic review cycle is started. Waiting for changed authority, SHA or evidence.");
+        }
         text.push_str(&format!(
             " Full record: {}",
             store
