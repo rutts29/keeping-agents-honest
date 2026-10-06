@@ -33,20 +33,7 @@ fn retry_outcome(result: kah_cli::Result<()>) -> kah_cli::Result<()> {
 }
 
 fn recoverable(error: &str) -> bool {
-    [
-        "REVIEW_DEFERRAL_",
-        "REVIEW_REPORT_MISSING",
-        "REVIEW_PREPARATION_MISSING",
-        "REVIEW_PHASE_CLAIM_UNCERTAIN",
-        "REVIEW_CHECKPOINT_SCOPE_MISSING",
-        "REVIEW_CHECKPOINT_EVIDENCE_MISSING",
-        "REVIEW_QUESTION_REFERENCE",
-        "REVIEW_REQUIREMENT_DIMENSION",
-        "REVIEW_SUBMISSION_UNCONFIRMED",
-        "CONTEXT_",
-    ]
-    .iter()
-    .any(|code| error.starts_with(code))
+    kah_cli::observer_review::redelivery::retryable(error)
 }
 
 #[test]
@@ -66,4 +53,13 @@ fn late_native_binding_does_not_abort_a_review_that_is_already_working() {
 fn a_retained_retry_delivery_gap_does_not_kill_the_active_native_review() {
     assert!(retry_outcome(Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; inspect private review/delivery-gap.json".into())).is_ok());
     assert!(retry_outcome(Err("REVIEW_SESSION_MISMATCH stage=hook".into())).is_err());
+}
+
+#[test]
+fn fixture_uses_product_retry_policy_for_liveness_and_keeps_identity_errors_fatal() {
+    assert!(recoverable(
+        "REVIEW_OBSERVER_STALLED stage=liveness: no native activity"
+    ));
+    assert!(!recoverable("REVIEW_HOOK_SCOPE stage=hook"));
+    assert!(!recoverable("REVIEW_SESSION_MISMATCH stage=hook"));
 }
