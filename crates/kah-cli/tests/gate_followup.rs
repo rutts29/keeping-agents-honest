@@ -429,3 +429,28 @@ fn awaiting_thinker_and_completed_rounds_are_reused_for_the_same_scope() {
     later.intent["revision"] = json!(2);
     assert!(existing(&f.root, &later).unwrap().is_none());
 }
+
+#[test]
+fn stale_final_scope_is_retained_and_releases_the_review_slot() {
+    use kah_cli::observer_review::state::{Pending, State, Store};
+    let f = Fixture::new();
+    let round = f.finish();
+    let mut changed = f.request.clone();
+    changed.id = "review-stale-final".into();
+    changed.head = Some("c".repeat(40));
+    changed.trigger = json!({"verification_followup":{"round":round.id,"stage":"checks_complete"}});
+    let mut store = Store::delivery_at(&f.root.join("fixture-owner"), false).unwrap();
+    store.directory = f.root.clone();
+    let mut state:State=serde_json::from_value(json!({"worker":{"provider":"codex","session":"worker","project":f.root,"pane":null,"socket":null},"observer":{"session":null,"pane":null,"name":"fixture","workspace":f.root,"model":"gpt-6.1-sol","effort":"low","transcript":null},"pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    state.pending = Some(Pending::from(&changed));
+    store.save(&state).unwrap();
+    assert!(gate_approval::release_stale(&store, &mut state, &changed).unwrap());
+    assert!(state.pending.is_none());
+    assert!(
+        f.root
+            .join("obsolete-reviews")
+            .join(format!("{}.json", changed.id))
+            .is_file()
+    );
+    assert!(read(&f.root, &round.binding).unwrap().is_some());
+}

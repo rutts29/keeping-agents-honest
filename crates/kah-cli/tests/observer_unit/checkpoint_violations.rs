@@ -77,3 +77,34 @@ fn approval_cannot_close_another_review_on_the_same_sha_and_revision() {
     current["worker"] = "other-worker".into();
     assert!(same_checkpoint(&state, &current).is_err());
 }
+
+#[test]
+fn same_scope_recheck_preserves_the_pending_questions_checkpoint_identity() {
+    let root = std::env::temp_dir().join(format!(
+        "kah-pending-checkpoint-owner-{}",
+        std::process::id()
+    ));
+    let mut store = Store::delivery_at(&root, false).unwrap();
+    store.directory = root.join("state");
+    for path in [
+        store.directory.clone(),
+        store.directory.join("sources"),
+        store.directory.join("questions"),
+    ] {
+        kah_core::run_store::ensure_private_directory(&path).unwrap();
+    }
+    crate::observer_review::source_store::save(&store.directory.join("questions"),"question-one.json",&json!({"kind":"checkpoint_approval","status":"pending","worker":"worker","request":"review-original","head":"a".repeat(40),"intent_revision":1,"id":"question-one","delivery":"submitted"})).unwrap();
+    let mut state = state(&root);
+    let mut later = request();
+    later.id = "review-later-claim".into();
+    let result = json!({"assessment":{"state":"checkpoint_needs_thinker","passed":null,"needs_thinker":["integration"],"needs_user":[],"unproven":["integration"],"violations":[]}});
+    checkpoint::record(&store, &mut state, &later, &result).unwrap();
+    let question = json!({"worker":"worker","request":"review-original","head":"a".repeat(40),"intent_revision":1});
+    assert!(same_checkpoint(&state, &question).is_ok());
+    assert_eq!(
+        state.checkpoint.as_ref().unwrap()["request"],
+        "review-original"
+    );
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}

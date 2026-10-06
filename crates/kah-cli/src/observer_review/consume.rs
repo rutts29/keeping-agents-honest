@@ -57,6 +57,10 @@ pub fn run(worker: &str) -> Result<()> {
         return super::prepared_result::consume(worker);
     }
     let request = workspace::request(&store, &pending.id)?;
+    if super::gate_approval::release_stale(&store, &mut state, &request)? {
+        drop(store);
+        return super::queue::kick(worker);
+    }
     let (path, report, actions) = evidence(&state, &request)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
     let decision = decide(&home, &request, &actions, &report);

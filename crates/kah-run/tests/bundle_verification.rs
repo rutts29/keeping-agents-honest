@@ -45,6 +45,8 @@ fn exact_bundle_checkout_excludes_local_files_and_source_git_commands() {
         &source,
         &["bundle", "create", bundle.to_str().unwrap(), "HEAD"],
     );
+    advance_source(&source);
+    assert_ne!(git(&source, &["rev-parse", "HEAD"]), sha);
     fs::write(source.join("check.txt"), "not delivered").unwrap();
     fs::write(source.join("private.txt"), "not delivered").unwrap();
     // A bundle carries objects, never local executable configuration or hooks.
@@ -67,6 +69,10 @@ fn exact_bundle_checkout_excludes_local_files_and_source_git_commands() {
         .verification_snapshot(&root.join("candidate/verify"), &sha)
         .unwrap();
     assert_eq!(fresh.head().unwrap(), sha);
+    assert_eq!(
+        fs::read_to_string(fresh.path.join("check.txt")).unwrap(),
+        "committed"
+    );
     assert!(!source.join("HOST_ESCAPE").exists());
     fresh.remove_verification().unwrap();
     assert!(
@@ -81,4 +87,13 @@ fn exact_bundle_checkout_excludes_local_files_and_source_git_commands() {
     );
     assert!(candidate.path.exists());
     fs::remove_dir_all(root).unwrap();
+}
+
+fn advance_source(source: &Path) {
+    fs::write(source.join("check.txt"), "new agent commit").unwrap();
+    git(source, &["add", "check.txt"]);
+    git(
+        source,
+        &["commit", "--quiet", "-m", "later fixture agent commit"],
+    );
 }

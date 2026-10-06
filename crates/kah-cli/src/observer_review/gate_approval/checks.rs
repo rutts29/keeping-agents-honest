@@ -1,5 +1,4 @@
-//! Bundle the live repository only in gVisor; host checks use fsck-imported
-//! objects and the same fresh-checkout verifier as unattended delivery.
+//! Reuse fsck-imported private objects; select the round SHA in a fresh checkout.
 use super::*;
 use kah_sandbox::LaunchOptions;
 
@@ -44,7 +43,7 @@ pub(super) fn execute(
             output: receipt.output,
         });
     }
-    // Retain bundle, candidate and logs as exact evidence. Native model/tool
+    // Retain proof and logs as exact evidence. Native model/tool
     // processes never receive write access to these private controller files.
     super::super::source_store::save(&directory, "proof.json", &serde_json::to_value(&proof)?)?;
     Ok(proof)
