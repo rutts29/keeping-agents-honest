@@ -44,6 +44,12 @@ pub fn run(root: &Path) -> Value {
         let mut result = wakes(&id, provider, &mut panes);
         if std::env::var_os("KAH_GATE_REVIEW_LIVENESS").is_some() {
             result["stallRecovery"] = super::review_liveness::run(&id, provider, &mut panes);
+            fs::write(
+                PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+                    .join(format!("liveness-{provider}.json")),
+                serde_json::to_vec_pretty(&result["stallRecovery"]).unwrap(),
+            )
+            .unwrap();
         }
         result["lifecycle"] = lifecycle(&home, &id, provider, &mut panes);
         results.push(result);
@@ -206,6 +212,7 @@ fn confirm_resume(
         json!({"fixture":"real wake after native resume"}),
     )
     .unwrap();
+    let submitted = await_submission(id, provider, panes, submitted, "fixture-after-resume");
     let pane = Pane {
         id: submitted["pane"].as_str().unwrap().into(),
     };
