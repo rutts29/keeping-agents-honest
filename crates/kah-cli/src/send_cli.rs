@@ -8,6 +8,7 @@ use std::{
     path::PathBuf,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+mod herdr;
 pub fn run(args: &[String]) -> Result<()> {
     if args.len() < 3 || !(args.len() - 3).is_multiple_of(2) {
         return Err(
@@ -23,6 +24,9 @@ pub fn run(args: &[String]) -> Result<()> {
             "--receipt" => receipt = Some(pair[1].as_str()),
             _ => return Err("SEND_ARGUMENTS stage=arguments".into()),
         }
+    }
+    if sender == "kah-user" {
+        return Err("SEND_ARGUMENTS stage=delegate_channel: reserved user sender".into());
     }
     deliver(&args[1], &args[2], sender, receipt, false)
 }
@@ -81,14 +85,14 @@ fn deliver(
         .is_some_and(|e| e.provider == "claude" || overlay.is_none());
     let socket =
         overlay.unwrap_or_else(|| home.join(".codex/app-server-control/app-server-control.sock"));
-    if user && (!socket.exists() || embedded) {
-        println!("{}", crate::user_steer::deliver(session, text, receipt)?);
+    if (user || endpoint.is_some()) && (!socket.exists() || embedded) {
+        println!("{}", fallback(&message, text, receipt, user)?);
         return Ok(());
     }
     let mut client = match Control::connect_daemon(&socket, Duration::from_secs(20)) {
         Ok(client) => client,
-        Err(_) if user => {
-            println!("{}", crate::user_steer::deliver(session, text, receipt)?);
+        Err(_) if user || endpoint.is_some() => {
+            println!("{}", fallback(&message, text, receipt, user)?);
             return Ok(());
         }
         Err(error) => return Err(error.into()),
@@ -96,4 +100,11 @@ fn deliver(
     let result = delivery::send(&RunStore::default_state_root()?, &message, &mut client)?;
     println!("{result}");
     Ok(())
+}
+fn fallback(message: &Message, text: &str, receipt: &str, user: bool) -> Result<serde_json::Value> {
+    if user {
+        crate::user_steer::deliver(&message.session, text, receipt)
+    } else {
+        herdr::deliver(message)
+    }
 }
