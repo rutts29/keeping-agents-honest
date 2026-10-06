@@ -9,6 +9,7 @@ pub fn retryable(error: &str) -> bool {
     super::delivery::wait_timeout(error)
         || [
             "REVIEW_REPORT_MISSING",
+            "REVIEW_SOURCE_UNKNOWN",
             "REVIEW_PREPARATION_MISSING",
             "REVIEW_REMINDER_MISSING",
             "REVIEW_REMINDER_NATIVE_LIMIT",
