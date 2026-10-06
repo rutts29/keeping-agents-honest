@@ -20,6 +20,7 @@ mod review_trace;
 mod trace;
 mod uncertain_steer;
 mod user_steer;
+mod verification_first;
 use kah_core::run_store::RunStore;
 use kah_observer::session::Store;
 use serde_json::{Value, json};
@@ -51,6 +52,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_VERIFY_FIRST").is_some() {
+        return Some(verification_first::run);
+    }
     if std::env::var_os("KAH_GATE_QUEUE_ORDER").is_some() {
         return Some(queue_order::run);
     }

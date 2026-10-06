@@ -72,6 +72,12 @@ pub(super) fn verify_run_directory(path: &Path) -> Result<(), RunStoreError> {
 }
 
 pub(super) fn acquire_lock(run_path: &Path) -> Result<File, RunStoreError> {
+    acquire_lock_mode(run_path, false)
+}
+pub(super) fn acquire_lock_wait(run_path: &Path) -> Result<File, RunStoreError> {
+    acquire_lock_mode(run_path, true)
+}
+fn acquire_lock_mode(run_path: &Path, wait: bool) -> Result<File, RunStoreError> {
     let lock = run_path.join(LOCK_FILE);
     ensure_private_regular_or_missing(&lock)?;
     let mut options = OpenOptions::new();
@@ -85,6 +91,11 @@ pub(super) fn acquire_lock(run_path: &Path) -> Result<File, RunStoreError> {
     let file = options
         .open(&lock)
         .map_err(|error| io_error("open writer lock", &lock, error))?;
+    if wait {
+        file.lock()
+            .map_err(|error| io_error("acquire writer lock", &lock, error))?;
+        return Ok(file);
+    }
     match file.try_lock() {
         Ok(()) => Ok(file),
         Err(fs::TryLockError::WouldBlock) => Err(RunStoreError::Busy),

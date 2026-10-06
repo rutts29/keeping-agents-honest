@@ -17,7 +17,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=context")?);
     let source = Store::read(&RunStore::default_state_root()?, &state.worker.session)?
         .ok_or("REVIEW_WORKER_STATE stage=context")?;
-    let projection = engine::projection(&source)?;
+    let projection = engine::projection_wait(&source)?;
     let intent=projection.as_ref().map(|p|json!({"revision":p.revision,"goal":p.goal.text,"goal_source":p.goal.source_refs,"items":p.preserve.iter().chain(&p.frontier).chain(&p.validation).map(|i|json!({"id":i.id,"text":i.text,"source":i.introduced_by})).collect::<Vec<_>>(),"failures":source.failures,"completed_outcomes":[],"open_outcomes":[],"open_deferrals":state.deferrals})).unwrap_or(Value::Null);
     let mut documents = vec![Document::new(
         "ledger",

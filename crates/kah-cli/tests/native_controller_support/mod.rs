@@ -133,7 +133,7 @@ fn consent_result(
     }
     json!({"agent":agent,"version":version(home, agent),"fixtureModel":record.model,"fixtureEffort":record.effort,"consentNotificationBeforeFixtureAcceptance":true,"consentWaitCleared":true,"primaryTaskAcknowledged":true,"operatorStop":"stopped","globalConfigUnchanged":true,"passed":true})
 }
-fn version(home: &Path, agent: &str) -> String {
+pub(crate) fn version(home: &Path, agent: &str) -> String {
     let output = Command::new(home.join(".local/bin").join(agent))
         .arg("--version")
         .output()
@@ -141,13 +141,13 @@ fn version(home: &Path, agent: &str) -> String {
     assert!(output.status.success());
     String::from_utf8(output.stdout).unwrap().trim().into()
 }
-fn fixture_model(agent: &str) -> &'static str {
+pub(crate) fn fixture_model(agent: &str) -> &'static str {
     match agent {
         "claude" => "claude-sonnet-5-5",
         _ => "gpt-6.1-sol",
     }
 }
-fn fixture_project(home: &Path, name: &str, domain: Domain) -> Project {
+pub(crate) fn fixture_project(home: &Path, name: &str, domain: Domain) -> Project {
     let project = Project::select(&home.join("repos"), home, Some((domain, name))).unwrap();
     assert!(project.needs_creation);
     project.initialize().unwrap();
@@ -181,7 +181,7 @@ fn seed(project: &Path) {
         );
     }
 }
-fn global_settings(home: &Path) -> [(PathBuf, Vec<u8>); 2] {
+pub(crate) fn global_settings(home: &Path) -> [(PathBuf, Vec<u8>); 2] {
     [
         home.join(".claude/settings.json"),
         home.join(".codex/config.toml"),
@@ -193,7 +193,7 @@ fn pane_screen(pane: &str, session: Option<&str>, agent: &str) -> String {
         .logs(agent, session, None)
         .unwrap()
 }
-fn launch(
+pub(crate) fn launch(
     home: &Path,
     project: &Path,
     agent: &str,
@@ -267,7 +267,7 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
         std::thread::sleep(Duration::from_millis(300));
     }
 }
-fn observer_consent(record: &Record, accepted: &mut std::collections::BTreeSet<String>) {
+pub(crate) fn observer_consent(record: &Record, accepted: &mut std::collections::BTreeSet<String>) {
     use kah_cli::observer_review::state::Store as Reviews;
     let Some(session) = record.native.as_ref().and_then(|n| n.session.as_deref()) else {
         return;
@@ -308,7 +308,7 @@ fn observer_consent(record: &Record, accepted: &mut std::collections::BTreeSet<S
         accepted.insert(pane);
     }
 }
-fn accept_consent(id: &str, pane: &str, agent: &str) {
+pub(crate) fn accept_consent(id: &str, pane: &str, agent: &str) {
     let status = Command::new("kah").args(["status", id]).output().unwrap();
     assert!(String::from_utf8_lossy(&status.stdout).contains("Needs attention:"));
     native_consent(pane, agent);

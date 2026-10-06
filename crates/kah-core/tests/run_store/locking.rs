@@ -64,3 +64,30 @@ fn writer_lock_is_released_after_a_holder_process_is_killed() {
 
     fs::remove_dir_all(root).expect("remove isolated test directory");
 }
+
+#[test]
+fn detached_snapshot_reader_waits_for_writer_release_instead_of_losing_its_wake() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let (root, repository, held, _) = create_store("snapshot-wait");
+    let (started_tx, started_rx) = mpsc::channel();
+    let (result_tx, result_rx) = mpsc::channel();
+    let reader_root = root.clone();
+    let reader = thread::spawn(move || {
+        started_tx.send(()).unwrap();
+        let store = RunStore::open_wait(&reader_root, &repository, "run_01").unwrap();
+        result_tx
+            .send(store.recover().unwrap().projection.goal.text)
+            .unwrap();
+    });
+    started_rx.recv().unwrap();
+    // Test probe only: not a deadline imposed on a native review or writer.
+    assert!(result_rx.recv_timeout(Duration::from_millis(50)).is_err());
+    drop(held);
+    assert_eq!(
+        result_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+        "persist the run"
+    );
+    reader.join().unwrap();
+    fs::remove_dir_all(root).unwrap();
+}

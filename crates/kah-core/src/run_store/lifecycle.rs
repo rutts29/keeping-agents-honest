@@ -94,6 +94,21 @@ impl RunStore {
         Ok(store)
     }
 
+    /// Detached snapshot work waits for a legitimate writer, with no deadline.
+    /// Synchronous callers retain the nonblocking open API.
+    pub fn open_wait(
+        state_root: impl AsRef<Path>,
+        repository: impl AsRef<Path>,
+        run_id: impl AsRef<str>,
+    ) -> Result<Self, RunStoreError> {
+        let path = Self::path_for(state_root, repository, run_id)?;
+        verify_run_directory(&path)?;
+        let lock = acquire_lock_wait(&path)?;
+        let store = Self { path, _lock: lock };
+        store.recover()?;
+        Ok(store)
+    }
+
     /// Open a run using the current process's XDG state root.
     pub fn open_default(
         repository: impl AsRef<Path>,

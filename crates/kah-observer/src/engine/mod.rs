@@ -234,6 +234,18 @@ pub fn projection(state: &State) -> Result<Option<ActiveProjection>, String> {
     Ok(Some(projection))
 }
 
+/// Only detached review preparation may wait on the intent writer. Tool hooks
+/// keep the nonblocking projection above and their existing queue semantics.
+pub fn projection_wait(state: &State) -> Result<Option<ActiveProjection>, String> {
+    let Some(id) = &state.run_id else {
+        return Ok(None);
+    };
+    let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
+    let store =
+        RunStore::open_wait(&base, &state.binding.project, id).map_err(|e| e.to_string())?;
+    Ok(Some(store.recover().map_err(|e| e.to_string())?.projection))
+}
+
 fn read_source(binding: &Binding) -> Result<ObservationSnapshot, String> {
     let home = env::var_os("HOME")
         .map(PathBuf::from)
