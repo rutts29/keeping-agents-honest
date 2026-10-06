@@ -74,7 +74,8 @@ fn fault_case(
     // A blocked detached retry proceeds when the held lock is released.
     // Other cases use the same event-driven redelivery path.
     drop(held.take());
-    let recovered = super::review::wait_review(worker, &pane, provider);
+    let recovered = automatic_recovery(worker, &pane, provider);
+    assert_eq!(recovered.latest.as_ref().unwrap()["request"], request.id);
     assert_eq!(recovered.observer.session, baseline.observer.session);
     assert_eq!(recovered.observer.pane, baseline.observer.pane);
     observe(worker);
@@ -87,6 +88,31 @@ fn fault_case(
         delivered,
         recovered.latest,
     )
+}
+
+fn automatic_recovery(
+    worker: &str,
+    pane: &Pane,
+    provider: &str,
+) -> kah_cli::observer_review::state::State {
+    loop {
+        let state = Reviews::read(worker).unwrap().unwrap();
+        if state.pending.is_none() {
+            return state;
+        }
+        // Read the native pane to answer terminal queries. Do not manually
+        // re-prompt: this journey must prove the detached product retry.
+        pane.logs(provider, None, None).unwrap();
+        let path = Reviews::directory(worker).unwrap().join("gap.json");
+        if let Ok(bytes) = fs::read(path) {
+            let gap: Value = serde_json::from_slice(&bytes).unwrap();
+            assert!(
+                kah_cli::observer_review::redelivery::retryable(gap["error"].as_str().unwrap()),
+                "{gap}"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
 }
 
 fn observe(worker: &str) {

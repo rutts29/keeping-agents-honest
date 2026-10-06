@@ -37,3 +37,13 @@ fn claude_native_paste_receipts_skip_meta_and_sidechain_messages() {
         })
     );
 }
+
+#[test]
+fn current_preparation_turn_counts_as_progress_but_an_older_review_does_not() {
+    let context = kah_cli::observer_review::request_context::Context {
+        request: "review-current-v8-decision".into(),
+        preparation: true,
+    };
+    assert!(context.bound_to("review-current", "review-current-v8-decision"));
+    assert!(!context.bound_to("review-next", "review-next-v8-decision"));
+}

@@ -10,6 +10,11 @@ pub struct Context {
     pub request: String,
     pub preparation: bool,
 }
+impl Context {
+    pub fn bound_to(&self, review: &str, active_decision: &str) -> bool {
+        self.request == review || self.request == active_decision
+    }
+}
 pub fn capture(state: &State, input: &Value) -> Result<Option<Context>> {
     if !matches!(
         input["hook_event_name"].as_str(),

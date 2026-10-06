@@ -101,9 +101,10 @@ pub fn in_progress(state: &State) -> Result<bool> {
     if view["result"]["pane"]["agent_status"] != "working" {
         return Ok(false);
     }
+    let decision = super::preparation::active_decision(&state.worker.session, &pending.id)?;
     Ok(
         super::request_context::capture(state, &serde_json::json!({"hook_event_name":"Stop"}))?
-            .is_some_and(|context| context.request == pending.id),
+            .is_some_and(|context| context.bound_to(&pending.id, &decision)),
     )
 }
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
