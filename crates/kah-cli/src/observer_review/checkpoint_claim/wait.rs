@@ -54,21 +54,25 @@ pub fn record_uncertainty(
     let name = format!("{}.json", request.id);
     let previous: Option<Value> = crate::observer_review::state::read(&history.join(&name))?;
     let digest = kah_observer::context_selection::digest(&serde_json::to_value(report)?);
+    // Only an explicit claim-evidence rethink counts. Transport recovery and
+    // re-consuming its ACK cannot manufacture semantic reconsideration.
     let redelivery: Value = crate::observer_review::state::read(&root.join("redelivery.json"))?
         .unwrap_or_else(|| json!({}));
-    let submitted = redelivery["requests"][&request.id]["attempts"]
+    let semantic_reasks = redelivery["requests"][&request.id]["attempts"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|a| a["status"] == "submitted_waiting_for_report")
+        .filter(|a| {
+            a["status"] == "submitted_waiting_for_report"
+                && a["prior_error"]
+                    .as_str()
+                    .is_some_and(|e| e.starts_with("REVIEW_PHASE_CLAIM_UNCERTAIN"))
+        })
         .count();
-    let rethink = previous.as_ref().is_some_and(|p| {
-        p["report_digest"] != digest
-            || p["submitted_reasks"]
-                .as_u64()
-                .is_some_and(|n| submitted as u64 > n)
-    });
-    let record = json!({"request":request.id,"report_digest":digest,"submitted_reasks":submitted,
+    let rethink = previous
+        .as_ref()
+        .is_some_and(|p| p["semantic_reasks"].as_u64().unwrap_or(0) < semantic_reasks as u64);
+    let record = json!({"request":request.id,"report_digest":digest,"semantic_reasks":semantic_reasks,
         "judgment":judgment,"at_ms":kah_observer::session::now_ms(),"thinker_reconsidered":rethink});
     if previous.is_none() {
         source_store::save(&history, &name, &record)?;

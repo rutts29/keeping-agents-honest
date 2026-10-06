@@ -65,6 +65,11 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     Ok(())
 }
 fn working(store: &Store, state: &State, request: &str, gap: &Path) -> Result<bool> {
+    if review::liveness::awaiting_host(state)? {
+        clear_confirmed_delivery_gap(gap)?;
+        review::hook::spawn("__review-consume", &state.worker.session)?;
+        return Ok(true);
+    }
     if !review::delivery::in_progress(state).unwrap_or(false) {
         return Ok(false);
     }

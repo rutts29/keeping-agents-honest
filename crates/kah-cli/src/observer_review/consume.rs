@@ -29,6 +29,14 @@ pub fn read_report(path: &Path) -> Result<Vec<u8>> {
 }
 pub fn run(worker: &str) -> Result<()> {
     super::runtime::require_active(worker)?;
+    // Register before lock acquisition: waiting behind legitimate host work
+    // is a controller handoff, not an idle thinker needing another prompt.
+    let observed = Store::read(worker)?;
+    let _waiting = observed
+        .as_ref()
+        .and_then(|s| s.pending.as_ref())
+        .map(|p| super::liveness::processing(worker, &p.id))
+        .transpose()?;
     let store = Store::open_wait(worker)?;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=consume")?;
     if super::checkpoint_claim::release_waiting(&store, &mut state)? {

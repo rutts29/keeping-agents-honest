@@ -25,6 +25,10 @@ pub fn run(worker: &str) -> Result<()> {
     let Some(pending) = &state.pending else {
         return recovered(&root, worker);
     };
+    let acknowledged = super::awaiting_host(&state)?;
+    if acknowledged {
+        super::super::hook::spawn("__review-consume", worker)?;
+    }
     let sample = sample(&state)?;
     let prior: Option<Progress> = super::super::state::read(&root.join("progress.json"))?;
     if prior.as_ref().is_some_and(|p| {
@@ -132,7 +136,7 @@ fn sample(state: &State) -> Result<Sample> {
     // not record progress, but still must never be automatically interrupted
     // or re-prompted while a later request waits for that pane.
     let native_active = pane_working(state).unwrap_or(false);
-    let controller_active = processing_active(&root, &pending.id)?;
+    let controller_active = processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
     let outbox = state.observer.workspace.join("outbox");
     let rejected = super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?;
     let cause = if let Some(reason) = rejected {

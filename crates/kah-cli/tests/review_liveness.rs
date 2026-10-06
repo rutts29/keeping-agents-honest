@@ -194,14 +194,16 @@ fn cleanup_jobs(worker: &str) {
     let root = kah_cli::observer_review::state::Store::directory(worker).unwrap();
     // Detached jobs now execute real kah, rather than accidentally starting the
     // test runner. Their inherited OS lock proves they exited before deletion.
-    let path = root.join("job-__review-retry.lock");
-    if path.exists() {
-        let lock = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)
-            .unwrap();
-        lock.lock().unwrap();
+    for job in ["__review-retry", "__review-consume", "__review-hook-events"] {
+        let path = root.join(format!("job-{job}.lock"));
+        if path.exists() {
+            let lock = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+                .unwrap();
+            lock.lock().unwrap();
+        }
     }
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
@@ -264,4 +266,43 @@ fn delayed_observation_uses_record_write_time_instead_of_renewing_silence() {
         quiet.stalled,
         "late watcher observes old records, not fresh progress"
     );
+}
+
+#[test]
+fn acknowledged_report_handoff_never_stalls_or_redelivers_while_host_waits_for_lock() {
+    use kah_cli::observer_review::{liveness, state::Store};
+    let worker = format!("liveness-acked-{}", std::process::id());
+    let state = setup(&worker);
+    let held = Store::open(&worker).unwrap();
+    held.save(&state).unwrap();
+    std::fs::create_dir_all(state.observer.workspace.join("outbox")).unwrap();
+    std::fs::write(
+        state
+            .observer
+            .workspace
+            .join("outbox/submitted-review-stall.json"),
+        "{}",
+    )
+    .unwrap();
+    kah_cli::unattended_report::save(
+        &held.directory,
+        "report-ready.json",
+        &serde_json::json!({"request":"review-stall"}),
+    )
+    .unwrap();
+    liveness::run(&worker).unwrap();
+    let path = held.directory.join("liveness/progress.json");
+    let mut prior: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    prior.last_progress_ms = 0;
+    std::fs::write(&path, serde_json::to_vec(&prior).unwrap()).unwrap();
+    liveness::run(&worker).unwrap();
+    let after: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(
+        !after.stalled,
+        "ACK transfers responsibility to host consumption"
+    );
+    assert!(liveness::notice(&worker).unwrap().is_none());
+    assert!(!held.directory.join("redelivery.json").exists());
+    drop(held);
+    cleanup_jobs(&worker);
 }

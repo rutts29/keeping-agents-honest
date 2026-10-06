@@ -12,7 +12,7 @@ use serde_json::json;
 fn one_rethink_then_visible_observation_never_asks_user_for_status() {
     let worker = format!("claim-wait-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
-    let (request, report, judgment) = inputs(&worker);
+    let (request, mut report, judgment) = inputs(&worker);
     assert!(
         checkpoint_claim::record_uncertainty(&request, &report, &judgment)
             .unwrap()
@@ -30,6 +30,15 @@ fn one_rethink_then_visible_observation_never_asks_user_for_status() {
         &json!({"requests":{&request.id:{"attempts":[{"status":"submitted_waiting_for_report"}]}}}),
     )
     .unwrap();
+    assert!(
+        checkpoint_claim::record_uncertainty(&request, &report, &judgment)
+            .unwrap()
+            .is_none(),
+        "transport retry is not a thinker reconsideration"
+    );
+    kah_cli::unattended_report::save(&store.directory, "redelivery.json", &json!({"requests":{&request.id:{"attempts":[{"status":"submitted_waiting_for_report","prior_error":"REVIEW_PHASE_CLAIM_UNCERTAIN stage=checkpoint"}]}}})).unwrap();
+    report.findings[0].claim =
+        "Reconsidered: the native message still describes ongoing work.".into();
     let assessment = checkpoint_claim::record_uncertainty(&request, &report, &judgment)
         .unwrap()
         .unwrap();

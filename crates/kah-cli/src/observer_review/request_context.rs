@@ -3,7 +3,7 @@ use super::state::State;
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Context {
@@ -16,6 +16,9 @@ impl Context {
     }
 }
 pub fn capture(state: &State, input: &Value) -> Result<Option<Context>> {
+    capture_at(state, input, None)
+}
+pub fn capture_at(state: &State, input: &Value, end: Option<u64>) -> Result<Option<Context>> {
     if !matches!(
         input["hook_event_name"].as_str(),
         Some("PostToolUse" | "Stop")
@@ -27,7 +30,7 @@ pub fn capture(state: &State, input: &Value) -> Result<Option<Context>> {
     };
     let file = std::fs::File::open(path)?;
     read(
-        BufReader::new(file),
+        BufReader::new(file.take(end.unwrap_or(u64::MAX))),
         &state.worker.provider,
         input["turn_id"].as_str(),
     )

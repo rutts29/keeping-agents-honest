@@ -12,6 +12,9 @@ pub struct Event {
     pub socket: Option<std::path::PathBuf>,
     #[serde(default)]
     pub context: Option<super::request_context::Context>,
+    /// Native transcript prefix visible when the validated host hook arrived.
+    #[serde(default)]
+    pub transcript_end: Option<u64>,
     /// Set only after receive validates the host event's original binding.
     #[serde(default)]
     pub validated_pane: Option<String>,
@@ -24,6 +27,7 @@ impl Event {
             pane: std::env::var("HERDR_PANE_ID").ok(),
             socket: std::env::var_os("HERDR_SOCKET_PATH").map(Into::into),
             context: None,
+            transcript_end: None,
             validated_pane: None,
         }
     }
@@ -61,8 +65,13 @@ pub fn run(worker: &str) -> Result<()> {
             return Ok(());
         }
         for path in files {
-            let event: Event =
+            let mut event: Event =
                 super::state::read(&path)?.ok_or("REVIEW_HOOK_EVENT_MISSING stage=hook")?;
+            if event.context.is_none() {
+                let state = Store::read(worker)?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
+                event.context =
+                    super::request_context::capture_at(&state, &event.input, event.transcript_end)?;
+            }
             hook::apply_wait(worker, &event)?;
             fs::remove_file(path)?;
         }

@@ -39,16 +39,15 @@ fn receive(worker: &str) -> Result<()> {
     );
     validate(&state, &event)?;
     event.validated_pane = event.pane.clone();
-    event.context = super::request_context::capture(&state, &event.input)?;
-    match apply(worker, &event) {
-        Err(e) if e.to_string().starts_with("REVIEW_BUSY") => {
-            super::hook_queue::enqueue(worker, &event)
-        }
-        other => other,
-    }
-}
-pub(super) fn apply(worker: &str, event: &super::hook_queue::Event) -> Result<()> {
-    apply_store(worker, event, Store::open(worker)?)
+    event.transcript_end = state
+        .observer
+        .transcript
+        .as_ref()
+        .and_then(|path| fs::metadata(path).ok())
+        .map(|meta| meta.len());
+    // Native hooks have a short invocation timeout. Persist the validated
+    // payload first; transcript scans and host handoffs belong to the job.
+    super::hook_queue::enqueue(worker, &event)
 }
 pub(super) fn apply_wait(worker: &str, event: &super::hook_queue::Event) -> Result<()> {
     apply_store(worker, event, Store::open_wait(worker)?)

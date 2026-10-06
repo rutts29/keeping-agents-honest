@@ -51,13 +51,14 @@ fn an_idle_observer_hook_wakes_a_trigger_left_by_a_busy_store_race() {
         )
         .unwrap();
     assert!(child.wait().unwrap().success());
-    if !root.join("job-__review-wake.log").exists() {
-        std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
-        panic!("idle hook did not wake the durable queued trigger");
-    }
+    // The native invocation now persists and returns; dispatch is detached.
     while !root.join("gap.json").exists() {
         std::thread::yield_now();
     }
+    assert!(
+        root.join("job-__review-wake.log").exists(),
+        "idle hook must wake the queued trigger"
+    );
     assert_eq!(
         queue::entries(&worker).unwrap().len(),
         1,
