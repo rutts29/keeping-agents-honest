@@ -1,7 +1,6 @@
 //! Preserve private, scrubbed failure evidence before native fixture purge.
 use kah_cli::observer_review::state::{State, Store as Reviews};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
 pub fn archive(home: &Path, state: &State) -> kah_cli::Result<()> {
@@ -56,8 +55,8 @@ fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
             retain(&path, &target)?;
         } else if metadata.is_file() && source.file_name().is_some_and(|s| s == "sources") {
             let digest = entry.file_name().to_string_lossy().into_owned();
-            if digest.len() == 64 {
-                assert_eq!(format!("{:x}", Sha256::digest(fs::read(&path)?)), digest);
+            if digest.len() == 64 || digest.starts_with("block-") {
+                kah_cli::observer_review::source_store::verify_blob(&path)?;
                 fs::hard_link(&path, &target)?;
             }
         } else if metadata.is_file()

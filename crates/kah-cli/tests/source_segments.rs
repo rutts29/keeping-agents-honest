@@ -127,3 +127,33 @@ fn migration_retains_original_if_a_shared_block_is_corrupt() {
     assert_eq!(fs::read(&path).unwrap(), original);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn trace_archival_verifies_source_manifests_and_binary_blocks() {
+    let root = std::env::temp_dir().join(format!("kah-segment-archive-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    source_store::initialize(&root, &root.join("workspace")).unwrap();
+    source_store::save(
+        &root,
+        "request.json",
+        &json!({"documents":[{"text":"whole record 🦀\n".repeat(10000)}]}),
+    )
+    .unwrap();
+    let mut block = None;
+    for entry in fs::read_dir(root.join("sources")).unwrap() {
+        let entry = entry.unwrap();
+        source_store::verify_blob(&entry.path()).unwrap();
+        if entry.file_name().to_string_lossy().starts_with("block-") {
+            block = Some(entry.path());
+        }
+    }
+    let block = block.unwrap();
+    fs::write(&block, b"corrupt block retained").unwrap();
+    assert!(
+        source_store::verify_blob(&block)
+            .unwrap_err()
+            .to_string()
+            .contains("REVIEW_SOURCE_DIGEST")
+    );
+    fs::remove_dir_all(root).unwrap();
+}

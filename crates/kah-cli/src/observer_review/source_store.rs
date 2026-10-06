@@ -210,6 +210,25 @@ pub fn print_text(path: &Path) -> Result<()> {
 pub fn segment_sources(root: &Path) -> Result<usize> {
     segments::migrate(root)
 }
+/// Checks either a complete source or an individual binary storage block.
+pub fn verify_blob(path: &Path) -> Result<()> {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("REVIEW_SOURCE_ID stage=source_store")?;
+    let digest = name.strip_prefix("block-").unwrap_or(name);
+    if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("REVIEW_SOURCE_ID stage=source_store".into());
+    }
+    if name.starts_with("block-") {
+        if format!("{:x}", Sha256::digest(fs::read(path)?)) != digest {
+            return Err("REVIEW_SOURCE_DIGEST stage=source_store".into());
+        }
+    } else {
+        verify(path, digest)?;
+    }
+    Ok(())
+}
 
 pub fn share(private: &Path, workspace: &Path) -> Result<()> {
     let public = workspace.join("sources");
