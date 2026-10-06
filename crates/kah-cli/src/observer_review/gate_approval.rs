@@ -16,6 +16,9 @@ mod resolution;
 pub use resolution::resolve;
 mod evidence;
 pub use evidence::captured;
+mod receiver;
+pub use receiver::{apply_answers, enqueue_answer, pending_answers};
+pub mod followup;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -59,13 +62,45 @@ fn oid(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|c| c.is_ascii_hexdigit())
 }
 pub fn eligible(
+    _request: &Request,
+    _report: &Report,
+    _assessment: &Value,
+    _proof: &DeliveryProof,
+) -> bool {
+    // Native reports and trigger markers cannot admit a user risk decision.
+    false
+}
+pub fn eligible_after_followup(
+    request: &Request,
+    report: &Report,
+    assessment: &Value,
+    proof: &DeliveryProof,
+    followup: &followup::CompletedFollowup,
+) -> bool {
+    if !followup.matches(request)
+        || report.request_id != request.id
+        || !positive_uncertainty(request, report, assessment, proof)
+    {
+        return false;
+    }
+    let ids = assessment["needs_thinker"].as_array().unwrap();
+    let risks = followup.risks();
+    risks.len() == ids.len()
+        && ids
+            .iter()
+            .all(|id| risks.iter().filter(|r| id == &r.requirement_id).count() == 1)
+        && risks
+            .iter()
+            .all(|r| ids.iter().filter(|id| *id == &r.requirement_id).count() == 1)
+}
+fn positive_uncertainty(
     request: &Request,
     report: &Report,
     assessment: &Value,
     proof: &DeliveryProof,
 ) -> bool {
     if request.purpose != Purpose::Checkpoint
-        || !request.trigger["reconsideration"].is_object()
+        || assessment["state"] == "checkpoint_unconfirmed_observation"
         || assessment.get("passed") != Some(&Value::Null)
         || !assessment["violations"]
             .as_array()

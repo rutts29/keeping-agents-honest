@@ -125,6 +125,9 @@ pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
     Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
 }
 pub fn kick(worker: &str) -> Result<()> {
+    if super::gate_approval::pending_answers(worker)? {
+        super::hook::spawn("__gate-answers", worker)?;
+    }
     if super::questions::pending(&Store::directory(worker)?)?
         .iter()
         .any(|q| q["delivery"] != "submitted")

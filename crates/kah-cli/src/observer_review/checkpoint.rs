@@ -130,6 +130,7 @@ pub fn record(
     state.checkpoint = Some(
         json!({"head":request.head,"intent_revision":request.intent["revision"],"request":request.id,"state":result["assessment"]["state"],"passed":result["assessment"]["passed"],"unproven":result["assessment"]["unproven"],"needs_user":result["assessment"]["needs_user"],"needs_thinker":result["assessment"]["needs_thinker"],"at_ms":kah_observer::session::now_ms()}),
     );
+    state.checkpoint.as_mut().unwrap()["violations"] = result["assessment"]["violations"].clone();
     let approvals = super::questions::pending(&store.directory)?
         .into_iter()
         .filter(|q| {

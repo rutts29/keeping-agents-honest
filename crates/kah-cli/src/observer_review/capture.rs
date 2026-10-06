@@ -186,7 +186,7 @@ fn history(home: &Path, state: &State) -> Result<Document> {
     native_document(&state.worker.provider, &state.worker.session, &value)
 }
 
-fn project_context(home: &Path, state: &State) -> Result<Value> {
+pub(crate) fn project_context(home: &Path, state: &State) -> Result<Value> {
     let output = if state.worker.project.starts_with(home.join("repos/mine")) {
         // Mine already authorizes native host tools. Keep run worktrees and
         // restricted repositories behind the existing gVisor Git boundary.

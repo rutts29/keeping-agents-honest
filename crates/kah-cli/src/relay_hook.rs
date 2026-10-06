@@ -73,5 +73,13 @@ fn receive_user(binding: &Binding, prompt: &str) -> Result<bool> {
         &binding.session,
         endpoint.source_provider()?,
     )?;
+    if message.answer.is_some() {
+        let quote = message.quote(&binding.session, endpoint.source_provider()?)?;
+        crate::observer_review::gate_approval::enqueue_answer(
+            &binding.session,
+            &quote.source,
+            &quote.text,
+        )?;
+    }
     Ok(true)
 }

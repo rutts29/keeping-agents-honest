@@ -21,12 +21,6 @@ pub fn resolve(
     if question["kind"] != "checkpoint_approval" || question["worker"] != source.session_private() {
         return Err("REVIEW_GATE_QUESTION_SCOPE stage=approval".into());
     }
-    if question["status"] != "pending" {
-        if question["resolution"]["source"]["record"] == source.record {
-            return Ok(Some(question));
-        }
-        return Err("REVIEW_GATE_ANSWER_ALREADY_RESOLVED stage=approval".into());
-    }
     if question["head"] != head || question["intent_revision"] != revision {
         return Err("REVIEW_GATE_ANSWER_STALE stage=approval: HEAD or intent changed; answer retained as user input".into());
     }
@@ -39,6 +33,12 @@ pub fn resolve(
     let proof: DeliveryProof = serde_json::from_value(question["proof"].clone())?;
     if !proof.passes(head) {
         return Err("REVIEW_GATE_DELIVERY_UNPROVEN stage=approval".into());
+    }
+    if question["status"] != "pending" {
+        if question["resolution"]["source"]["record"] == source.record {
+            return Ok(Some(question));
+        }
+        return Err("REVIEW_GATE_ANSWER_ALREADY_RESOLVED stage=approval".into());
     }
     question["status"] = match answer.decision {
         GateDecision::Approve => "answered",

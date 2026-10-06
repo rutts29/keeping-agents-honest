@@ -33,12 +33,25 @@ fn assessment() -> serde_json::Value {
 }
 #[test]
 fn only_rethought_positive_uncertainty_with_exact_delivery_can_ask_for_approval() {
-    assert!(gate_approval::eligible(
+    // Reconsideration alone does not complete the verification round.
+    assert!(!gate_approval::eligible(
         &request(),
         &report(),
         &assessment(),
         &proof()
     ));
+    let root = fixture("eligibility");
+    let done = gate_approval::followup::completed(&root, &request())
+        .unwrap()
+        .unwrap();
+    assert!(gate_approval::eligible_after_followup(
+        &request(),
+        &report(),
+        &assessment(),
+        &proof(),
+        &done
+    ));
+    std::fs::remove_dir_all(root).unwrap();
     let mut req = request();
     req.trigger = json!({});
     assert!(!gate_approval::eligible(
@@ -83,14 +96,17 @@ fn only_rethought_positive_uncertainty_with_exact_delivery_can_ask_for_approval(
 
 #[test]
 fn eligible_gate_creates_one_bound_question_with_plain_summary_and_all_evidence() {
-    let root = std::env::temp_dir().join(format!("kah-gate-question-{}", std::process::id()));
+    let root = fixture("question");
     let first=gate_approval::store(&root,&request(),&report(),&assessment(),&proof(),&json!({"backend":"jev","answers":{"requirement.intent":{"choice":"unclear","confidence":0.8}}})).unwrap().unwrap();
     let mut later = request();
     later.id = "review-later".into();
+    archive(&root, &later);
+    let mut later_report = report();
+    later_report.request_id = later.id.clone();
     let again = gate_approval::store(
         &root,
         &later,
-        &report(),
+        &later_report,
         &assessment(),
         &proof(),
         &json!({}),
@@ -103,9 +119,9 @@ fn eligible_gate_creates_one_bound_question_with_plain_summary_and_all_evidence(
     assert_eq!(pending[0]["head"], "a".repeat(40));
     assert_eq!(pending[0]["request"], "review-rethink");
     let text = kah_cli::observer_review::questions::message(&pending[0]).unwrap();
-    assert!(text.starts_with("Gate "));
-    assert!(text.contains("no violations; tests pass in fresh checkout"));
-    assert!(text.contains("Approve or reject?"));
+    assert!(text.starts_with("Accept gate "));
+    assert!(text.contains("Risk if accepted:"));
+    assert!(text.contains("send back for evidence"));
     assert!(text.contains("unclear") && text.contains("node integration.cjs"));
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -113,7 +129,7 @@ fn eligible_gate_creates_one_bound_question_with_plain_summary_and_all_evidence(
 #[test]
 fn only_explicit_current_user_answer_closes_the_named_gate() {
     use kah_core::intent_history::SourceRole;
-    let root = std::env::temp_dir().join(format!("kah-gate-resolution-{}", std::process::id()));
+    let root = fixture("resolution");
     let q = gate_approval::store(
         &root,
         &request(),
@@ -193,7 +209,7 @@ fn user_answer(question: &str) -> kah_core::intent_history::SourceRef {
 #[test]
 fn wrong_question_does_not_close_another_gate_and_rejection_remains_user_authority() {
     use kah_core::intent_history::GateDecision;
-    let root = std::env::temp_dir().join(format!("kah-gate-rejection-{}", std::process::id()));
+    let root = fixture("rejection");
     let q = gate_approval::store(
         &root,
         &request(),
@@ -260,4 +276,88 @@ fn captured_proof_requires_controller_run_receipt_on_the_same_sha_not_model_mark
     assert!(gate_approval::captured(&req).is_err());
     req.trigger = json!({"model_claim":"controller says fresh checkout PASS"});
     assert!(gate_approval::captured(&req).unwrap().is_none());
+}
+
+#[test]
+fn replayed_receipt_cannot_approve_a_later_sha_after_original_resolution() {
+    let root = fixture("replay");
+    let q = gate_approval::store(
+        &root,
+        &request(),
+        &report(),
+        &assessment(),
+        &proof(),
+        &json!({}),
+    )
+    .unwrap()
+    .unwrap();
+    let answer = user_answer(q["id"].as_str().unwrap());
+    gate_approval::resolve(&root, &answer, "Approve", &"a".repeat(40), 1, &[]).unwrap();
+    assert!(gate_approval::resolve(&root, &answer, "Approve", &"c".repeat(40), 1, &[]).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+// Controller-only fixtures for the user-approved one verification round.
+fn archive(root: &std::path::Path, req: &Request) {
+    kah_cli::observer_review::source_store::save(
+        &root.join("requests"),
+        &format!("{}.json", req.id),
+        &serde_json::to_value(req).unwrap(),
+    )
+    .unwrap();
+}
+fn fixture(label: &str) -> std::path::PathBuf {
+    use gate_approval::followup::*;
+    let root = std::env::temp_dir().join(format!("kah-approval-{label}-{}", std::process::id()));
+    kah_core::run_store::ensure_private_directory(&root.join("sources")).unwrap();
+    kah_core::run_store::ensure_private_directory(&root.join("requests")).unwrap();
+    let mut first = request();
+    first.id = "review-first".into();
+    first.trigger = json!({});
+    archive(&root, &first);
+    archive(&root, &request());
+    let round = start(&root, &request()).unwrap();
+    let pointer = |receipt: &str| EvidencePointer {
+        receipt: receipt.into(),
+        record: format!("private:{receipt}"),
+        digest: "d".repeat(64),
+    };
+    advance(
+        &root,
+        &round.binding,
+        Step::Evidence(vec![pointer("existing")]),
+    )
+    .unwrap();
+    advance(
+        &root,
+        &round.binding,
+        Step::Builder(BuilderReceipt {
+            request: pointer(&round.builder_receipt()),
+            response: BuilderOutcome::Evidence {
+                response: pointer("builder-response"),
+            },
+        }),
+    )
+    .unwrap();
+    advance(
+        &root,
+        &round.binding,
+        Step::Checks(CheckReceipt {
+            receipt: pointer(&round.checks_receipt()),
+            proof: proof(),
+            risks: vec![UnverifiedRisk {
+                requirement_id: "intent".into(),
+                unverified: "Intent alignment remains unconfirmed despite passing checks.".into(),
+                tried: vec![Attempt {
+                    what: "Read receipts, requested builder evidence, reran exact-SHA checks."
+                        .into(),
+                    receipt: round.checks_receipt(),
+                }],
+                acceptance_risk: "Accepting could advance with an unmet intent detail.".into(),
+                evidence: vec![pointer("existing"), pointer("builder-response")],
+            }],
+        }),
+    )
+    .unwrap();
+    root
 }

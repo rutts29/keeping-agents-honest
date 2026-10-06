@@ -9,7 +9,10 @@ pub fn store(
     proof: &DeliveryProof,
     judgment: &Value,
 ) -> Result<Option<Value>> {
-    if !eligible(request, report, assessment, proof) {
+    let Some(followup) = followup::completed(root, request)? else {
+        return Ok(None);
+    };
+    if !eligible_after_followup(request, report, assessment, proof, &followup) {
         return Ok(None);
     }
     let directory = root.join("questions");
@@ -34,7 +37,7 @@ pub fn store(
             &existing,
         )?;
     }
-    let value = draft(root, request, report, assessment, proof, judgment)?;
+    let value = draft(root, request, report, assessment, judgment, &followup)?;
     super::super::source_store::save(
         &directory,
         &format!("{}.json", value["id"].as_str().unwrap()),
@@ -47,8 +50,8 @@ fn draft(
     request: &Request,
     report: &Report,
     assessment: &Value,
-    proof: &DeliveryProof,
     judgment: &Value,
+    followup: &followup::CompletedFollowup,
 ) -> Result<Value> {
     let name = report
         .findings
@@ -64,15 +67,10 @@ fn draft(
         .iter()
         .filter(|r| ids.iter().any(|id| id == &r.id))
         .collect::<Vec<_>>();
-    let names = items
-        .iter()
-        .map(|r| r.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
     let head = request.head.as_deref().unwrap();
+    let proof = &followup.round().checks.as_ref().unwrap().proof;
     let summary = format!(
-        "Gate {name} on {}: no violations; tests pass in fresh checkout; Jev couldn't confirm: {names}. Approve or reject?",
-        &head[..8]
+        "Accept gate {name} on {head} with these named unverified items, or send back for evidence?"
     );
     let identity = json!([
         request.worker,
@@ -86,17 +84,38 @@ fn draft(
     );
     let mut value = json!({"kind":"checkpoint_approval","id":id,"worker":request.worker,"requirement":"gate_approval",
         "name":name,"request":request.id,"head":head,"intent_revision":request.intent["revision"],"summary":summary,
-        "question":summary,"options":["Approve","Reject"],"status":"pending","delivery":"queued",
+        "question":summary,"options":["Accept named unverified risks","Send back for evidence"],"status":"pending","delivery":"queued",
         "question_origin":"observer","at_ms":kah_observer::session::now_ms(),"thinker_items":items,"jev":judgment,"proof":proof,
-        "assessment":assessment,"record":root.join("results").join(format!("{}.json",request.id)),
+        "assessment":assessment,"followup":followup.round(),"unverified_risks":followup.risks(),"record":root.join("results").join(format!("{}.json",request.id)),
         "scope":"Only this checkpoint waits; unrelated authorized work continues",
         "authority_at_question":super::super::decisions::active_items(&request.intent),"goal_at_question":request.intent["goal"]});
     crate::privacy::scrub(&mut value);
     Ok(value)
 }
 pub fn message(question: &Value) -> Result<String> {
+    let risks = question["unverified_risks"]
+        .as_array()
+        .ok_or("REVIEW_GATE_RISKS stage=approval")?
+        .iter()
+        .map(|risk| {
+            let tried = risk["tried"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|a| a["what"].as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
+            format!(
+                "Unverified ({}): {}\nTried: {tried}\nRisk if accepted: {}",
+                risk["requirement_id"].as_str().unwrap_or(""),
+                risk["unverified"].as_str().unwrap_or(""),
+                risk["acceptance_risk"].as_str().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
     Ok(format!(
-        "{}\n[kah-builder] [kah-question] {} worker={}\nThinker's conclusions/reasoning/sources: {}\nJev answers: {}\nExact delivery receipts: {}\nFull record: {}\nOnly this checkpoint waits; unrelated authorized work continues. Relay an explicit user answer with: kah steer SESSION TEXT --question {} --answer approve|reject. Delegate text cannot approve.",
+        "{}\n{risks}\n[kah-builder] [kah-question] {} worker={}\nThinker's conclusions/reasoning/sources: {}\nJev answers: {}\nExact delivery receipts: {}\nFull record: {}\nOnly this checkpoint waits; unrelated authorized work continues. An explicit approve answer accepts the named unverified risks; reject sends back for evidence. Relay the user decision with: kah steer SESSION TEXT --question {} --answer approve|reject. Delegate text cannot approve.",
         question["summary"]
             .as_str()
             .unwrap_or("Gate decision required"),
