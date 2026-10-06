@@ -106,3 +106,86 @@ fn a_prior_validation_cannot_authorize_a_different_socket_or_session() {
         cleanup(&worker, workspace);
     }
 }
+
+#[test]
+fn validated_stop_for_a_completed_request_cannot_fault_the_resumed_request() {
+    use kah_cli::observer_review::state::{Pending, Purpose};
+    let (worker, workspace) = scenario(
+        "old-stop",
+        "/private/herdr.sock",
+        "same-native-session",
+        true,
+    );
+    let store = Store::open(&worker).unwrap();
+    let mut state = store.load().unwrap().unwrap();
+    state.pending = Some(Pending {
+        id: "review-new".into(),
+        purpose: Purpose::Drift,
+        turn: "new".into(),
+        head: None,
+        created_ms: 0,
+        native_tokens_before: None,
+    });
+    store.save(&state).unwrap();
+    let event_path = store.directory.join("hook-events/old-end.json");
+    let mut event: Value = serde_json::from_slice(&fs::read(&event_path).unwrap()).unwrap();
+    event["input"]["hook_event_name"] = "Stop".into();
+    event["context"] = json!({"request":"review-old","preparation":false});
+    kah_cli::unattended_report::save(event_path.parent().unwrap(), "old-end.json", &event).unwrap();
+    drop(store);
+    hook_queue::run(&worker).unwrap();
+    let current = Store::read(&worker).unwrap().unwrap();
+    assert_eq!(current.pending.unwrap().id, "review-new");
+    assert_eq!(current.observer.pane.as_deref(), Some("new-pane"));
+    assert!(!Store::directory(&worker).unwrap().join("gap.json").exists());
+    assert_eq!(
+        fs::read_dir(
+            Store::directory(&worker)
+                .unwrap()
+                .join("retired-hook-events")
+        )
+        .unwrap()
+        .count(),
+        1
+    );
+    cleanup(&worker, workspace);
+}
+
+#[test]
+fn retired_pane_cannot_supply_a_stop_for_the_current_request() {
+    use kah_cli::observer_review::state::{Pending, Purpose};
+    let (worker, workspace) = scenario(
+        "current-stop",
+        "/private/herdr.sock",
+        "same-native-session",
+        true,
+    );
+    let store = Store::open(&worker).unwrap();
+    let mut state = store.load().unwrap().unwrap();
+    state.pending = Some(Pending {
+        id: "review-new".into(),
+        purpose: Purpose::Drift,
+        turn: "new".into(),
+        head: None,
+        created_ms: 0,
+        native_tokens_before: None,
+    });
+    store.save(&state).unwrap();
+    let path = store.directory.join("hook-events/old-end.json");
+    let mut event: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    event["input"]["hook_event_name"] = "Stop".into();
+    event["context"] = json!({"request":"review-new","preparation":false});
+    kah_cli::unattended_report::save(path.parent().unwrap(), "old-end.json", &event).unwrap();
+    drop(store);
+    assert!(
+        hook_queue::run(&worker)
+            .unwrap_err()
+            .to_string()
+            .starts_with("REVIEW_HOOK_SCOPE")
+    );
+    assert_eq!(
+        Store::read(&worker).unwrap().unwrap().pending.unwrap().id,
+        "review-new"
+    );
+    cleanup(&worker, workspace);
+}

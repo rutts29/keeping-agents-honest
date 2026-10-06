@@ -56,7 +56,10 @@ pub(super) fn apply_wait(worker: &str, event: &super::hook_queue::Event) -> Resu
 fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> Result<()> {
     let input = &event.input;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
-    if event.retired_for(&state) {
+    if event.retired_for(&state)
+        && (event.input["hook_event_name"] == "SessionEnd"
+            || stale(worker, &state, event.context.as_ref())?)
+    {
         let retained = store.directory.join("retired-hook-events");
         kah_core::run_store::ensure_private_directory(&retained)?;
         return crate::unattended_report::save(
