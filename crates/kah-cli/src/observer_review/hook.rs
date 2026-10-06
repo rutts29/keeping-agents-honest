@@ -20,7 +20,7 @@ pub fn run(worker: &str) {
     {
         eprintln!("kah observer evidence gap: {error}");
         if !error.to_string().starts_with("REVIEW_BUSY") {
-            let _ = gap(worker, &error);
+            let _ = gap_error(worker, error.as_ref());
         }
     }
     println!("{{}}");
@@ -159,11 +159,12 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             {
                 spawn("__review-consume", worker)?;
             } else if event == "Stop" {
-                gap(
+                record_gap(
                     worker,
                     &format!(
                         "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection for {decision}; request retained"
                     ),
+                    super::failure::Origin::Delivery,
                 )?;
             }
             return Ok(());
@@ -184,9 +185,10 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             drop(store);
             spawn("__review-consume", worker)?;
         } else if event == "Stop" {
-            gap(
+            record_gap(
                 worker,
                 &"REVIEW_REPORT_MISSING stage=observer: native turn ended without a submitted evidence report; focus the observer to inspect it",
+                super::failure::Origin::Delivery,
             )?;
         }
     }
@@ -280,6 +282,19 @@ fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
     Ok(())
 }
 pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
+    record_gap(worker, error, super::failure::Origin::Host)
+}
+pub fn gap_error(worker: &str, error: &(dyn std::error::Error + 'static)) -> Result<()> {
+    let mut gap = super::failure_snapshot::capture(worker, error)?;
+    gap["at_ms"] = kah_observer::session::now_ms().into();
+    let store = Store::open(worker)?;
+    crate::unattended_report::save(&store.directory, "gap.json", &gap)
+}
+fn record_gap(
+    worker: &str,
+    error: &dyn std::fmt::Display,
+    origin: super::failure::Origin,
+) -> Result<()> {
     if error.to_string().starts_with("REVIEW_PAUSED")
         || error.to_string().starts_with("REVIEW_BUSY")
     {
@@ -289,6 +304,6 @@ pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
     crate::unattended_report::save(
         &store.directory,
         "gap.json",
-        &json!({"error":if error.to_string().contains(" stage=") { error.to_string() } else {format!("REVIEW_IO stage=review: {error}")},"at_ms":kah_observer::session::now_ms()}),
+        &json!({"error":if error.to_string().contains(" stage=") { error.to_string() } else {format!("REVIEW_IO stage=review: {error}")},"at_ms":kah_observer::session::now_ms(),"origin":origin}),
     )
 }

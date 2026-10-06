@@ -1,5 +1,6 @@
 //! Persistent native context preparation; the model selects, Jev decides.
 use super::state::{Request, Store};
+mod validation;
 use crate::Result;
 use kah_observer::{
     context_selection::{self, Item, Manifest},
@@ -12,6 +13,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+pub(crate) use validation::validate_selection;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Job {
@@ -197,20 +199,25 @@ pub fn submit(args: &[String]) -> Result<()> {
         return Err("PREPARATION_ARGUMENTS stage=context_preparation".into());
     }
     let job: Job = super::source_store::read(Path::new(&args[3]))?;
-    let manifest: Manifest =
-        serde_json::from_slice(&super::consume::read_report(Path::new(&args[5]))?)?;
-    context_selection::prepare(
-        &job.decision,
-        &job.state,
-        &job.items,
-        &manifest,
-        &BTreeMap::new(),
-    )?;
+    let bytes = super::consume::read_report(Path::new(&args[5]))?;
     let root = Path::new(&args[3])
         .parent()
         .and_then(Path::parent)
         .and_then(Path::parent)
         .ok_or("PREPARATION_PATH stage=context_preparation")?;
+    let manifest = match validate_selection(&job, &bytes) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            super::liveness::selection_rejection::record(
+                &root.join("outbox"),
+                &job,
+                Path::new(&args[5]),
+                &bytes,
+                error.as_ref(),
+            )?;
+            return Err(error);
+        }
+    };
     super::workspace::publish_output(
         &root.join("outbox"),
         &format!("selected-{}.json", job.decision),
@@ -232,16 +239,10 @@ pub fn accept(worker: &str, decision: &str) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
     }
-    let manifest: Manifest = serde_json::from_slice(&super::consume::read_report(&path)?)?;
+    let bytes = super::consume::read_report(&path)?;
     let job: Job = super::state::read(&job_path(worker, decision)?)?
         .ok_or("PREPARATION_JOB stage=context_preparation")?;
-    context_selection::prepare(
-        &job.decision,
-        &job.state,
-        &job.items,
-        &manifest,
-        &BTreeMap::new(),
-    )?;
+    let manifest = validate_selection(&job, &bytes)?;
     super::source_store::save(
         &Store::directory(worker)?,
         &format!("selection-{decision}.json"),

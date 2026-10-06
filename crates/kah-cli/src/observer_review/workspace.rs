@@ -219,6 +219,11 @@ pub fn submit(args: &[String]) -> Result<()> {
 }
 
 pub(crate) fn validate_report_bytes(request: &Request, bytes: &[u8]) -> Result<Report> {
+    super::failure::validation(super::failure::Origin::ReportValidation, || {
+        validate_report(request, bytes)
+    })
+}
+fn validate_report(request: &Request, bytes: &[u8]) -> Result<Report> {
     let report:Report=serde_json::from_slice(bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no probability or unknown fields")?;
     let findings = report.verify(&request.id, &request.documents)?;
     require_units(request, &report)?;

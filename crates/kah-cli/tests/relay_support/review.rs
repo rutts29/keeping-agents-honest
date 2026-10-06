@@ -133,7 +133,12 @@ fn round(id: &str, number: usize) -> Value {
 fn retained(result: kah_cli::Result<Value>, worker: &str) -> Value {
     match result {
         Ok(value) => value,
-        Err(error) if kah_cli::observer_review::redelivery::retryable(&error.to_string()) => {
+        Err(error)
+            if kah_cli::observer_review::redelivery::retryable(
+                kah_cli::observer_review::failure::origin(error.as_ref()),
+                &error.to_string(),
+            ) =>
+        {
             let state = Reviews::read(worker).unwrap().unwrap();
             json!({"status":"retained_delivery_gap","pane":state.observer.pane,"request":state.pending.unwrap().id,"gap":error.to_string()})
         }

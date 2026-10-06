@@ -128,6 +128,11 @@ fn create(state: &State) -> Result<String> {
     }
 }
 fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<()> {
+    super::failure::validation(super::failure::Origin::Delivery, || {
+        deliver_native(home, state, prompt, existing)
+    })
+}
+fn deliver_native(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<()> {
     require_active(&state.worker.session)?;
     let (socket, _) = transport(state)?;
     let pane = state

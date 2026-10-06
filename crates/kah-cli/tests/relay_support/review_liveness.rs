@@ -122,7 +122,7 @@ fn automatic_recovery(
         if let Ok(bytes) = fs::read(path) {
             let gap: Value = serde_json::from_slice(&bytes).unwrap();
             assert!(
-                kah_cli::observer_review::redelivery::retryable(gap["error"].as_str().unwrap()),
+                kah_cli::observer_review::redelivery::gap_retryable(&gap),
                 "{gap}"
             );
         }

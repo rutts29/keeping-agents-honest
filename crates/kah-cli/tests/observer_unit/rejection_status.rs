@@ -38,14 +38,12 @@ fn host_reproduces_exact_current_report_rejection_and_rejects_stale_or_forged_re
     fs::write(&report, b"different report").unwrap();
     assert!(verified(&outbox, &request).unwrap().is_none());
     fs::write(&report, bytes).unwrap();
-    record(
-        &outbox,
-        &request,
-        &report,
-        bytes,
-        &"invented validation failure",
+    let invented = crate::observer_review::failure::validation::<()>(
+        crate::observer_review::failure::Origin::ReportValidation,
+        || Err("invented validation failure".into()),
     )
-    .unwrap();
+    .unwrap_err();
+    record(&outbox, &request, &report, bytes, invented.as_ref()).unwrap();
     assert!(verified(&outbox, &request).unwrap().is_none());
     record(&outbox, &request, &report, bytes, error.as_ref()).unwrap();
     fs::write(outbox.join("submitted-review-test.json"), "{}").unwrap();

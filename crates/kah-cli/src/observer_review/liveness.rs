@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 mod failure;
 mod handoff;
 mod monitor;
+pub(crate) mod selection_rejection;
 pub(crate) use handoff::awaiting_host;
 pub(crate) mod rejection;
 pub use monitor::{notice, processing, run, start, watch};

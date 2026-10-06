@@ -53,7 +53,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
                 .map_err(|e| e.into())
                 .and_then(|pid| lifecycle::watch(&args[1], pid, &args[3]))
                 .inspect_err(|e| {
-                    let _ = hook::gap(&args[1], e);
+                    let _ = hook::gap_error(&args[1], e.as_ref());
                 }),
         );
     }
@@ -105,6 +105,8 @@ pub mod checkpoint_claim;
 pub mod claims;
 pub mod delivery;
 pub mod events;
+pub mod failure;
+mod failure_snapshot;
 pub mod lifecycle;
 pub mod pause;
 pub mod steering;

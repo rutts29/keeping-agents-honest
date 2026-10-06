@@ -15,23 +15,32 @@ use std::{
 
 #[test]
 fn failed_native_redelivery_retains_the_pending_review_and_visible_gap() {
-    failed_redelivery("REVIEW_REPORT_MISSING stage=observer", "missing");
+    failed_redelivery(
+        kah_cli::observer_review::failure::Origin::Delivery,
+        "REVIEW_REPORT_MISSING stage=observer",
+        "missing",
+    );
 }
 
 #[test]
 fn invalid_context_selection_retries_without_accepting_or_discarding_it() {
-    failed_redelivery("CONTEXT_UNKNOWN_ITEM stage=context_selection", "selection");
+    failed_redelivery(
+        kah_cli::observer_review::failure::Origin::SelectionValidation,
+        "CONTEXT_UNKNOWN_ITEM stage=context_selection",
+        "selection",
+    );
 }
 
 #[test]
 fn historical_agent_wait_timeout_retries_after_later_worker_events() {
     failed_redelivery(
+        kah_cli::observer_review::failure::Origin::Delivery,
         "RUN_HERDR_COMMAND stage=pane: agent wait: {\"error\":{\"code\":\"timeout\",\"message\":\"timed out waiting for agent status\"},\"id\":\"cli:agent:wait\"}\n",
         "wait-timeout",
     );
 }
 
-fn failed_redelivery(error: &str, suffix: &str) {
+fn failed_redelivery(origin: kah_cli::observer_review::failure::Origin, error: &str, suffix: &str) {
     let worker = format!("redelivery-unit-{suffix}-{}", std::process::id());
     let home = std::env::temp_dir().join(&worker);
     let mut state = setup(&worker, &home);
@@ -58,7 +67,7 @@ fn failed_redelivery(error: &str, suffix: &str) {
         &serde_json::to_value(&request).unwrap(),
     )
     .unwrap();
-    let gap = json!({"error":error,"at_ms":1});
+    let gap = json!({"error":error,"at_ms":1,"origin":origin});
     kah_cli::unattended_report::save(&store.directory, "gap.json", &gap).unwrap();
     let directory = store.directory.clone();
     drop(store);

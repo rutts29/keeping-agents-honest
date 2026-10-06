@@ -15,6 +15,8 @@ struct Rejection {
     report_digest: String,
     report: PathBuf,
     reason: String,
+    #[serde(default)]
+    origin: super::super::failure::Origin,
 }
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -24,7 +26,7 @@ pub(crate) fn record(
     request: &Request,
     report: &Path,
     bytes: &[u8],
-    error: &dyn std::fmt::Display,
+    error: &(dyn std::error::Error + 'static),
 ) -> Result<()> {
     let root = outbox
         .parent()
@@ -40,6 +42,7 @@ pub(crate) fn record(
         report_digest: digest(bytes),
         report,
         reason: error.to_string(),
+        origin: super::super::failure::origin(error),
     };
     workspace::publish_output(
         outbox,
@@ -104,7 +107,23 @@ pub(crate) fn current(
     if request.worker != worker || request.id != id {
         return Ok(None);
     }
-    verified(outbox, &request)
+    let status = verified(outbox, &request)?;
+    if status.is_some() {
+        let record: Rejection =
+            serde_json::from_slice(&fs::read(outbox.join(format!("rejected-{id}.json")))?)?;
+        let bytes = fs::read(outbox.parent().unwrap().join(&record.report))?;
+        let error = workspace::validate_report_bytes(&request, &bytes).unwrap_err();
+        let origin = super::super::failure::origin(error.as_ref());
+        crate::unattended_report::save(
+            root,
+            "validation-current.json",
+            &serde_json::json!({
+                "request":id,"request_digest":record.request_digest,"report_digest":record.report_digest,
+                "error":record.reason,"origin":origin,"report":outbox.parent().unwrap().join(record.report)
+            }),
+        )?;
+    }
+    Ok(status)
 }
 
 #[cfg(test)]

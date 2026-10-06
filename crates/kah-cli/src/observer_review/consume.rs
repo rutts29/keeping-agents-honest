@@ -137,7 +137,7 @@ fn evidence(
         .workspace
         .join("outbox")
         .join(format!("submitted-{}.json", request.id));
-    let report: Report = serde_json::from_slice(&read_report(&path)?)?;
+    let report = workspace::validate_report_bytes(request, &read_report(&path)?)?;
     if report.reminder.is_some() {
         super::reminder::text(state, request, &report)?;
     }

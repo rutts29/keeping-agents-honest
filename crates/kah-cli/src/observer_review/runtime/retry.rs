@@ -18,12 +18,13 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     }
     let gap: Option<Value> = review::state::read(&gap_path)?;
-    if !gap.as_ref().is_some_and(|g| {
-        g["error"]
-            .as_str()
-            .is_some_and(review::redelivery::retryable)
-    }) {
+    if !gap.as_ref().is_some_and(review::redelivery::gap_retryable) {
         return Ok(());
+    }
+    if review::redelivery::unchanged_correction(&store, &pending.id, gap.as_ref().unwrap())? {
+        review::redelivery::park_correction(&store, &pending.id, gap.as_ref().unwrap())?;
+        drop(store);
+        return review::redelivery::notify(&state);
     }
     let request = workspace::request(&store, &pending.id)?;
     let _processing = review::liveness::processing(worker, &pending.id)?;
@@ -37,13 +38,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     }
     prompt.push_str(&format!("\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",gap.as_ref().unwrap()["error"]));
-    let number = review::redelivery::begin(
-        &store,
-        &request.id,
-        gap.as_ref().unwrap()["error"]
-            .as_str()
-            .unwrap_or("missing evidence report"),
-    )?;
+    let number = review::redelivery::begin_correction(&store, &request.id, gap.as_ref().unwrap())?;
     drop(store);
     let delivery = deliver(&home, &state, &prompt, true);
     let store = Store::open_wait(worker)?;

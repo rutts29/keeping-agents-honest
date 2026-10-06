@@ -2,62 +2,22 @@
 use super::state::Store;
 use crate::Result;
 use serde_json::{Value, json};
+mod correction;
 mod reviewer;
+pub use correction::*;
 pub use reviewer::notify;
 
-pub fn retryable(error: &str) -> bool {
-    super::delivery::wait_timeout(error)
-        || [
-            "REVIEW_REPORT_MISSING",
-            "REVIEW_SOURCE_UNKNOWN",
-            "REVIEW_REPORT_JSON",
-            "REVIEW_REQUEST_MISMATCH",
-            "REVIEW_EVIDENCE_EMPTY",
-            "REVIEW_FINDING_EMPTY",
-            "REVIEW_SOURCE_CHANGED",
-            "REVIEW_QUOTE_EMPTY",
-            "REVIEW_QUOTE_MISSING",
-            "REVIEW_QUOTE_UNIT",
-            "REVIEW_CHECKPOINT_SCOPE",
-            "REVIEW_CHECK_RECEIPT",
-            "REVIEW_CHECK_PROVENANCE",
-            "REVIEW_LEDGER_CHECK",
-            "REVIEW_USER_OPTIONS",
-            "REVIEW_THINKING_EMPTY",
-            "REVIEW_PROPORTION_",
-            "REVIEW_REMINDER_EMPTY",
-            "REVIEW_REMINDER_QUOTE",
-            "REVIEW_REMINDER_AUTHORITY",
-            "REVIEW_PREPARATION_MISSING",
-            "REVIEW_REMINDER_MISSING",
-            "REVIEW_REMINDER_NATIVE_LIMIT",
-            "REVIEW_NOT_IDLE",
-            "REVIEW_SUBMISSION_UNCONFIRMED",
-            "REVIEW_QUESTION_REFERENCE",
-            "REVIEW_REQUIREMENT_DIMENSION",
-            "REVIEW_REQUIREMENT_COVERAGE",
-            "REVIEW_REQUIREMENT_AUTHORITY",
-            "REVIEW_REQUIREMENT_ID",
-            "REVIEW_REQUIREMENT_EMPTY",
-            "REVIEW_REQUIREMENT_CITATION",
-            "REVIEW_REQUIREMENT_COMPONENT",
-            "REVIEW_REQUIREMENT_JSON",
-            "REVIEW_DEFERRAL_",
-            "REVIEW_PHASE_CLAIM_UNCERTAIN",
-            "REVIEW_PHASE_CLAIM_EVIDENCE_MISSING",
-            "REVIEW_CHECKPOINT_EVIDENCE_MISSING",
-            "REVIEW_CHECKPOINT_SCOPE_MISSING",
-            "REVIEW_APPLICABILITY_",
-            "REVIEW_PROTOCOL_",
-            "REVIEW_BLOCKER_",
-            "REVIEW_WORKER_QUESTION_",
-            "REVIEW_COMPLETION_RECEIPT_",
-            "CONTEXT_",
-            "REVIEW_OBSERVER_STALLED",
-            "REVIEW_CONTEXT_UPDATED",
-        ]
-        .iter()
-        .any(|prefix| error.starts_with(prefix))
+pub fn retryable(origin: super::failure::Origin, error: &str) -> bool {
+    super::failure::correctable(origin, error)
+        || origin == super::failure::Origin::Delivery
+            && !error.starts_with("REVIEW_SESSION_")
+            && !error.starts_with("REVIEW_HOOK_SCOPE")
+}
+pub fn gap_retryable(gap: &Value) -> bool {
+    let origin = serde_json::from_value(gap["origin"].clone()).unwrap_or_default();
+    gap["error"]
+        .as_str()
+        .is_some_and(|error| retryable(origin, error))
 }
 
 pub fn prompt(

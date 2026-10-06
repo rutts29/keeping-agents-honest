@@ -101,10 +101,19 @@ fn actual_held_review_lock_cannot_hide_stall_notice_or_pending_request() {
     let path = root.join("progress.json");
     let mut prior: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     prior.last_progress_ms = 0;
+    prior.sample.cause = "fixture awaiting actual resample".into();
     std::fs::write(&path, serde_json::to_vec(&prior).unwrap()).unwrap();
-    liveness::run(&worker).unwrap();
-    let progress: Progress =
-        serde_json::from_slice(&std::fs::read(root.join("progress.json")).unwrap()).unwrap();
+    // Sampling intentionally serializes nonblocking. A concurrent test's
+    // fork can briefly inherit the lock before exec closes descriptors.
+    // Observe an actual new sample before asserting its unchanged stall rule.
+    let progress: Progress = loop {
+        liveness::run(&worker).unwrap();
+        let current: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        if current.sample.cause != "fixture awaiting actual resample" {
+            break current;
+        }
+        std::thread::yield_now();
+    };
     assert!(progress.stalled);
     assert_eq!(progress.sample.cause, "review lock busy");
     let status = kah_cli::observer_review::control::status(&worker).unwrap();

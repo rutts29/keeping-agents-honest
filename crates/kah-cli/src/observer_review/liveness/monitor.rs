@@ -42,11 +42,14 @@ pub fn run(worker: &str) -> Result<()> {
         event(&root, worker, &progress)?;
     }
     if validation_blocked(&sample) {
-        crate::unattended_report::save(
-            &Store::directory(worker)?,
-            "gap.json",
-            &json!({"error":sample.cause.strip_prefix("VALIDATION BLOCKED: "),"status":"validation_blocked","at_ms":sample.now_ms}),
-        )?;
+        let root = Store::directory(worker)?;
+        let checked: Option<Value> =
+            super::super::state::read(&root.join("validation-current.json"))?;
+        let mut gap=checked.filter(|v|v["request"]==pending.id && v["error"].as_str()==sample.cause.strip_prefix("VALIDATION BLOCKED: "))
+            .unwrap_or_else(||json!({"error":sample.cause.strip_prefix("VALIDATION BLOCKED: "),"origin":super::super::failure::Origin::Host}));
+        gap["status"] = "validation_blocked".into();
+        gap["at_ms"] = sample.now_ms.into();
+        crate::unattended_report::save(&root, "gap.json", &gap)?;
         return notify(&state, &progress);
     }
     if !progress.stalled {
@@ -63,7 +66,7 @@ pub fn run(worker: &str) -> Result<()> {
     crate::unattended_report::save(
         &Store::directory(worker)?,
         "gap.json",
-        &json!({"error":error,"at_ms":sample.now_ms}),
+        &json!({"error":error,"at_ms":sample.now_ms,"origin":super::super::failure::Origin::Delivery}),
     )?;
     notify(&state, &progress)?;
     super::super::hook::spawn("__review-retry", worker)
@@ -138,7 +141,14 @@ fn sample(state: &State) -> Result<Sample> {
     let native_active = pane_working(state).unwrap_or(false);
     let controller_active = processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
     let outbox = state.observer.workspace.join("outbox");
-    let rejected = super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?;
+    let rejected = if super::super::preparation::pending(
+        &state.worker.session,
+        &super::super::preparation::active_decision(&state.worker.session, &pending.id)?,
+    )? {
+        super::selection_rejection::current(&root, &outbox, &state.worker.session, &pending.id)?
+    } else {
+        super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?
+    };
     let host_error = host_failure(&root)?;
     let cause = if let Some(reason) = rejected {
         reason
@@ -165,8 +175,8 @@ fn sample(state: &State) -> Result<Sample> {
 fn host_failure(root: &Path) -> Result<Option<String>> {
     let gap: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
     Ok(gap
-        .and_then(|g| g["error"].as_str().map(str::to_owned))
-        .filter(|error| !super::super::redelivery::retryable(error)))
+        .filter(|g| !super::super::redelivery::gap_retryable(g))
+        .and_then(|g| g["error"].as_str().map(str::to_owned)))
 }
 fn pane_working(state: &State) -> Result<bool> {
     let (socket, _) = super::super::runtime::transport(state)?;
