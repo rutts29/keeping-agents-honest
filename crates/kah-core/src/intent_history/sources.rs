@@ -1,5 +1,15 @@
 use super::*;
 
+/// Unverified kah transport markers are delegate context in every adapter.
+/// A host-validated kah-user envelope is promoted separately by relay intake.
+pub const KAH_DELEGATE_PREFIXES: &[&str] = &[
+    "[kah-reviewer]",
+    "[kah-builder]",
+    "[kah-observer]",
+    "[kah-relay]",
+    "[kah-user]",
+];
+
 /// The exact event schema accepted by this history implementation.
 pub const HISTORY_SCHEMA_VERSION: u32 = 2;
 

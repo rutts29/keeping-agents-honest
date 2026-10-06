@@ -8,15 +8,9 @@ use kah_core::intent_history::SourceRole;
 pub fn classify(text: &str, delivered_by_agent: bool) -> SourceRole {
     let text = text.trim_start();
     if delivered_by_agent
-        || [
-            "[kah-reviewer]",
-            "[kah-builder]",
-            "[kah-observer]",
-            "[kah-relay]",
-            "[kah-user]",
-        ]
-        .iter()
-        .any(|p| starts(text, p))
+        || kah_core::intent_history::KAH_DELEGATE_PREFIXES
+            .iter()
+            .any(|p| starts(text, p))
     {
         return SourceRole::Delegate;
     }

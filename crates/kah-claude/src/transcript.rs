@@ -183,15 +183,9 @@ fn role(row: &Value, text: &str) -> SourceRole {
     let text = crate::paste::content_start(text)
         .trim_start()
         .to_ascii_lowercase();
-    if [
-        "[kah-reviewer]",
-        "[kah-builder]",
-        "[kah-observer]",
-        "[kah-relay]",
-        "[kah-user]",
-    ]
-    .iter()
-    .any(|prefix| text.starts_with(prefix))
+    if kah_core::intent_history::KAH_DELEGATE_PREFIXES
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
     {
         SourceRole::Delegate
     } else if text.starts_with("<system-reminder>")
