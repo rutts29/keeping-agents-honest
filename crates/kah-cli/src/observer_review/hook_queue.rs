@@ -12,6 +12,9 @@ pub struct Event {
     pub socket: Option<std::path::PathBuf>,
     #[serde(default)]
     pub context: Option<super::request_context::Context>,
+    /// Set only after receive validates the host event's original binding.
+    #[serde(default)]
+    pub validated_pane: Option<String>,
 }
 impl Event {
     pub fn capture(input: Value, pid: Option<u32>) -> Self {
@@ -21,7 +24,23 @@ impl Event {
             pane: std::env::var("HERDR_PANE_ID").ok(),
             socket: std::env::var_os("HERDR_SOCKET_PATH").map(Into::into),
             context: None,
+            validated_pane: None,
         }
+    }
+    pub(super) fn retired_for(&self, state: &super::state::State) -> bool {
+        self.input["hook_event_name"] == "SessionEnd"
+            && self.validated_pane.is_some()
+            && self.validated_pane == self.pane
+            && self.pane != state.observer.pane
+            && self.socket == state.worker.socket
+            && state
+                .observer
+                .session
+                .as_deref()
+                .is_some_and(|session| self.input["session_id"].as_str() == Some(session))
+            && self.input["cwd"].as_str().is_some_and(|cwd| {
+                super::control::contains_workspace(&state.observer.workspace, cwd)
+            })
     }
 }
 pub fn enqueue(worker: &str, event: &Event) -> Result<()> {

@@ -38,6 +38,7 @@ fn receive(worker: &str) -> Result<()> {
         super::control::native_parent(&state.worker.provider),
     );
     validate(&state, &event)?;
+    event.validated_pane = state.observer.pane.clone();
     event.context = super::request_context::capture(&state, &event.input)?;
     match apply(worker, &event) {
         Err(e) if e.to_string().starts_with("REVIEW_BUSY") => {
@@ -55,6 +56,15 @@ pub(super) fn apply_wait(worker: &str, event: &super::hook_queue::Event) -> Resu
 fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> Result<()> {
     let input = &event.input;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
+    if event.retired_for(&state) {
+        let retained = store.directory.join("retired-hook-events");
+        kah_core::run_store::ensure_private_directory(&retained)?;
+        return crate::unattended_report::save(
+            &retained,
+            &format!("{}.json", crate::relay_store::nonce()),
+            &serde_json::to_value(event)?,
+        );
+    }
     validate(&state, event)?;
     let events = store.directory.join("hook-observations.jsonl");
     use std::io::Write;

@@ -1,0 +1,108 @@
+use kah_cli::observer_review::{
+    hook_queue,
+    state::{State, Store},
+};
+use serde_json::{Value, json};
+use std::fs;
+
+fn scenario(
+    suffix: &str,
+    socket: &str,
+    session: &str,
+    validated: bool,
+) -> (String, std::path::PathBuf) {
+    let worker = format!("retired-hook-{suffix}-{}", std::process::id());
+    let workspace = std::env::temp_dir().join(&worker);
+    fs::create_dir(&workspace).unwrap();
+    let state: State = serde_json::from_value(json!({
+        "worker":{"provider":"claude","session":worker,"project":workspace,"pane":"worker","socket":"/private/herdr.sock"},
+        "observer":{"session":"same-native-session","pane":"new-pane","name":"observer","workspace":workspace,"model":"claude-sonnet-5-5","effort":"low","transcript":null,"pid":1234,"process_stamp":null},
+        "pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":1,"native_tokens":0,"stopped":false
+    })).unwrap();
+    let store = Store::open(&worker).unwrap();
+    store.save(&state).unwrap();
+    let queued = store.directory.join("hook-events");
+    kah_core::run_store::ensure_private_directory(&queued).unwrap();
+    kah_cli::unattended_report::save(
+        &queued,
+        "old-end.json",
+        &json!({
+            "input":{"cwd":workspace,"hook_event_name":"SessionEnd","session_id":session},
+            "pid":111,"pane":"old-pane","socket":socket,"context":null,
+            "validated_pane":if validated {Some("old-pane")} else {None}
+        }),
+    )
+    .unwrap();
+    (worker, workspace)
+}
+fn cleanup(worker: &str, workspace: std::path::PathBuf) {
+    fs::remove_dir_all(Store::directory(worker).unwrap().parent().unwrap()).unwrap();
+    fs::remove_dir_all(workspace).unwrap();
+}
+#[test]
+fn already_validated_old_session_end_is_retained_without_stopping_resumed_observer() {
+    let (worker, workspace) = scenario(
+        "old-end",
+        "/private/herdr.sock",
+        "same-native-session",
+        true,
+    );
+    hook_queue::run(&worker).unwrap();
+    let state = Store::read(&worker).unwrap().unwrap();
+    assert_eq!(state.observer.pane.as_deref(), Some("new-pane"));
+    assert_eq!(state.observer.pid, Some(1234));
+    assert!(!state.stopped);
+    let root = Store::directory(&worker).unwrap();
+    let retained: Value = serde_json::from_slice(
+        &fs::read(
+            fs::read_dir(root.join("retired-hook-events"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(retained["input"]["hook_event_name"], "SessionEnd");
+    assert_eq!(retained["pane"], "old-pane");
+    assert!(!root.join("hook-events/old-end.json").exists());
+    cleanup(&worker, workspace);
+}
+#[test]
+fn a_prior_validation_cannot_authorize_a_different_socket_or_session() {
+    for (suffix, socket, session, validated) in [
+        ("socket", "/other/herdr.sock", "same-native-session", true),
+        (
+            "session",
+            "/private/herdr.sock",
+            "different-native-session",
+            true,
+        ),
+        (
+            "unvalidated",
+            "/private/herdr.sock",
+            "same-native-session",
+            false,
+        ),
+    ] {
+        let (worker, workspace) = scenario(suffix, socket, session, validated);
+        assert!(
+            hook_queue::run(&worker)
+                .unwrap_err()
+                .to_string()
+                .starts_with("REVIEW_HOOK_SCOPE")
+        );
+        assert_eq!(
+            Store::read(&worker)
+                .unwrap()
+                .unwrap()
+                .observer
+                .pane
+                .as_deref(),
+            Some("new-pane")
+        );
+        cleanup(&worker, workspace);
+    }
+}
