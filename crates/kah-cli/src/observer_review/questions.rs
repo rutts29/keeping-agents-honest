@@ -126,6 +126,9 @@ pub fn pending(root: &Path) -> Result<Vec<Value>> {
     Ok(questions)
 }
 pub fn message(question: &Value) -> Result<String> {
+    if question["kind"] == "checkpoint_approval" {
+        return super::gate_approval::message(question);
+    }
     let options = serde_json::to_string(&question["options"])?;
     Ok(format!(
         "[kah-builder] [kah-question] {} worker={} requirement={}\n{}{}{}\nThinker's summary: {}\nOptions: {}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. Relay the user's answer with this question id via kah steer; this is a question, not new user authority.",

@@ -9,6 +9,7 @@ pub mod control;
 pub mod decisions;
 pub mod deferrals;
 pub mod dispatch;
+pub mod gate_approval;
 pub mod hook;
 pub mod hook_queue;
 pub mod launch;
