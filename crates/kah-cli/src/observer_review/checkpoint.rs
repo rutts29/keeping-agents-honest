@@ -3,6 +3,7 @@ use crate::Result;
 use kah_observer::{checkpoint, judge::Judgment};
 use serde_json::{Value, json};
 use std::path::Path;
+mod delivery_owner;
 
 pub fn evaluate(
     home: &Path,
@@ -127,6 +128,10 @@ pub fn record(
     if result["assessment"]["state"] == "checkpoint_not_claimed" {
         return Ok(());
     }
+    if delivery_owner::preserve(state, request, result)? {
+        return Ok(());
+    }
+    let previous_delivery = delivery_owner::previous_key(state, request);
     state.checkpoint = Some(
         json!({"head":request.head,"intent_revision":request.intent["revision"],"request":request.id,"state":result["assessment"]["state"],"passed":result["assessment"]["passed"],"unproven":result["assessment"]["unproven"],"needs_user":result["assessment"]["needs_user"],"needs_thinker":result["assessment"]["needs_thinker"],"at_ms":kah_observer::session::now_ms()}),
     );
@@ -162,6 +167,7 @@ pub fn record(
         .as_array()
         .cloned()
         .unwrap_or_default();
+    delivery_owner::bind(state, request, previous_delivery)?;
     if result["assessment"]["passed"] == false {
         let text = format!(
             "[kah checkpoint review; context, not new user steering] Checkpoint on {} is not established: {}. Fix or demonstrate cumulative integration before starting the next phase. Verified evidence is in review {}.",

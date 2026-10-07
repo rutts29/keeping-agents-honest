@@ -29,7 +29,13 @@ pub fn request(
     if !config.enabled {
         return Ok(Status::Passed);
     }
+    let mut invalidation = Value::Null;
     if let Some(state) = Store::read(worker)? {
+        invalidation = state
+            .checkpoint
+            .as_ref()
+            .map(|c| c["delivery_invalidated"].clone())
+            .unwrap_or(Value::Null);
         if state.pending.is_some() {
             return Ok(Status::Pending);
         }
@@ -54,10 +60,11 @@ pub fn request(
     }
     let path = directory.join("completion-checkpoint-request.json");
     let previous: Option<Value> = observer_review::state::read(&path)?;
-    if !previous
-        .as_ref()
-        .is_some_and(|p| same_delivery(&p["key"], key) && p["revision"] == revision)
-    {
+    if !previous.as_ref().is_some_and(|p| {
+        same_delivery(&p["key"], key)
+            && p["revision"] == revision
+            && p["invalidation"] == invalidation
+    }) {
         observer_review::events::enqueue(
             worker,
             json!({"kind":"run_completion","completion_key":key,"intent_revision":revision,"verification":receipt,"actor":"kah controller; tests run on the agent's imported SHA, kah authored no commit"}),
@@ -65,7 +72,7 @@ pub fn request(
         crate::unattended_report::save(
             directory,
             "completion-checkpoint-request.json",
-            &json!({"key":key,"revision":revision}),
+            &json!({"key":key,"revision":revision,"invalidation":invalidation}),
         )?;
     }
     Ok(Status::Pending)
