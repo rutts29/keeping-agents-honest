@@ -15,10 +15,10 @@ pub struct Key {
 }
 impl Key {
     /// Evidence-only replies change action freshness, not the delivered code.
-    /// SHA, user sequence, test policy and controller ownership still bind it.
+    /// SHA, user sequence and test policy bind it. Controller lease/instance
+    /// freshness is enforced by the runner; a restart is not different code.
     pub fn same_delivery(&self, other: &Self) -> bool {
-        self.instance == other.instance
-            && self.commit == other.commit
+        self.commit == other.commit
             && self.user_sequence == other.user_sequence
             && self.command == other.command
             && self.online == other.online

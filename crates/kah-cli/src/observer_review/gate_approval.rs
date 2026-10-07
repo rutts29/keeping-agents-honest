@@ -19,7 +19,7 @@ pub use resolution::resolve;
 mod evidence;
 pub use evidence::captured;
 mod receiver;
-pub use receiver::{apply_answers, enqueue_answer, pending_answers};
+pub use receiver::{apply_answers, approved_authority, enqueue_answer, pending_answers};
 mod checks;
 mod producer;
 pub(super) use producer::{

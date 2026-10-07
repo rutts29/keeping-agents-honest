@@ -269,3 +269,50 @@ fn receipt_and_nonce_entries_follow_publish_chronology_not_filename_order() {
     drop(store);
     std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn recorded_fifo_survives_timestamp_reversal_and_ignores_publisher_temporaries() {
+    let worker = format!("queue-durable-order-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    queue::enqueue_once_at(
+        &store.directory,
+        "first",
+        &queue::Wake {
+            purpose: Purpose::Checkpoint,
+            turn: "first".into(),
+            trigger: json!({}),
+        },
+    )
+    .unwrap();
+    queue::enqueue(&worker, Purpose::Checkpoint, "second", json!({})).unwrap();
+    for entry in fs::read_dir(store.directory.join("queued")).unwrap() {
+        let path = entry.unwrap().path();
+        let receipt = path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("receipt-");
+        let time =
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(if receipt { 20 } else { 1 });
+        fs::File::open(path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(time))
+            .unwrap();
+    }
+    std::os::unix::fs::symlink(
+        "missing-publisher",
+        store.directory.join("queued/report-moving.tmp"),
+    )
+    .unwrap();
+    let jobs = queue::entries(&worker).unwrap();
+    assert_eq!(
+        jobs.iter()
+            .map(|(_, w)| w.turn.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "second"]
+    );
+    let directory = store.directory.clone();
+    drop(store);
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}

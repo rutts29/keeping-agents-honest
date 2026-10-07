@@ -164,6 +164,8 @@ fn apply(state: &mut super::super::state::State, answer: &Answer) -> Result<()> 
     }
     .into();
     checkpoint["user_answer"] = question["resolution"].clone();
+    checkpoint["answer_authority"] = answer.authority.clone();
+    checkpoint["intent_revision"] = projection.revision.into();
     checkpoint["pending_questions"] = json!([]);
     Ok(())
 }
@@ -204,3 +206,28 @@ fn confirmed_violations(state: &super::super::state::State) -> Vec<String> {
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/checkpoint_violations.rs"]
 mod tests;
+
+/// A resolved answer may itself append ledger records. Only that answer is
+/// excluded from comparison; changed goals or other active items invalidate it.
+pub fn approved_authority(state: &super::super::state::State, revision: u64) -> Result<bool> {
+    let Some(checkpoint) = &state.checkpoint else {
+        return Ok(false);
+    };
+    if !confirmed_violations(state).is_empty() || checkpoint["state"] != "checkpoint_user_approved"
+    {
+        return Ok(false);
+    }
+    let primary = session::Store::read(&RunStore::default_state_root()?, &state.worker.session)?
+        .ok_or("REVIEW_PRIMARY_STATE stage=approval")?;
+    let p = engine::projection(&primary)?.ok_or("REVIEW_PRIMARY_INTENT stage=approval")?;
+    let a = Answer {
+        source: serde_json::from_value(checkpoint["user_answer"]["source"].clone())?,
+        text: checkpoint["user_answer"]["verbatim"]
+            .as_str()
+            .unwrap_or("")
+            .into(),
+        revision,
+        authority: checkpoint["answer_authority"].clone(),
+    };
+    Ok(p.revision == revision && authority(&p, Some(&a)) == a.authority)
+}

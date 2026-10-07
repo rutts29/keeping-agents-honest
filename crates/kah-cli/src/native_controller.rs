@@ -186,6 +186,7 @@ struct Run<'a> {
     sampled: Instant,
     tests: Option<kah_run::verification::Receipt>,
     unsuccessful: u8,
+    followup_sample: Option<String>,
     online: bool,
 }
 impl<'a> Run<'a> {
@@ -232,6 +233,7 @@ impl<'a> Run<'a> {
             sampled: Instant::now() - Duration::from_secs(2),
             tests: None,
             unsuccessful: 0,
+            followup_sample: None,
             online,
         })
     }
@@ -340,8 +342,16 @@ impl<'a> Run<'a> {
                 // existing idle controller loop re-kicks a waiting evidence
                 // round; no model polling, extra ask or review deadline.
                 if crate::observer_review::gate_approval::pending_followups(&state.binding.session)?
+                    && self
+                        .history
+                        .as_mut()
+                        .map(History::completed)
+                        .transpose()?
+                        .unwrap_or(false)
+                    && state.action_digest != self.followup_sample
                 {
-                    crate::observer_review::queue::kick(&state.binding.session)?;
+                    crate::observer_review::hook::spawn("__gate-followup", &state.binding.session)?;
+                    self.followup_sample = state.action_digest.clone();
                 }
                 self.assess(&state)?;
             }

@@ -15,12 +15,16 @@ pub(super) fn attempt(
         record: directory.join("builder-request.json").display().to_string(),
         digest: format!("sha256:{:x}", Sha256::digest(text.as_bytes())),
     };
-    if claim(root, &round.binding, Stage::Builder)? {
+    if !round.claimed {
+        let transcript = ask_snapshot(root, state)?;
+        if !claim(root, &round.binding, Stage::Builder)? {
+            return read_response(root, state, round, pointer);
+        }
         source_store::save(
             &directory,
             "builder-request.json",
             &json!({"text":text,"receipt":pointer.receipt,
-            "created_ms":kah_observer::session::now_ms(),"transcript":request.documents.iter().find(|d|d.id=="transcript")}),
+            "created_ms":kah_observer::session::now_ms(),"transcript":transcript}),
         )?;
         // Herdr v0.9.3 native agent prompt, via the existing idempotent delegate
         // channel. Submission acknowledgement is not a builder answer.
@@ -101,7 +105,7 @@ fn read_response(
             response: BuilderOutcome::Evidence { response },
         }));
     }
-    if let Some(record) = new_primary_reply(&before, &current) {
+    if let Some(record) = new_primary_reply(&before, &current, &round.builder_receipt()) {
         return unmatched(&directory, &current, record, pointer);
     }
     Ok(None)
@@ -137,12 +141,27 @@ fn response<'a>(
 fn new_primary_reply<'a>(
     before: &kah_observer::review_evidence::Document,
     current: &'a kah_observer::review_evidence::Document,
+    receipt: &str,
 ) -> Option<&'a kah_observer::review_evidence::NativeRecord> {
+    // openai/codex rust-v0.160.0 protocol TurnItem::UserMessage; Claude
+    // native message.role user. Only native prompt rows establish ask receipt.
+    let ask = current.native_records.iter().find(|r| {
+        (r.context["record_type"] == "userMessage" || r.context["message_role"] == "user")
+            && r.context["is_meta"] != true
+            && r.context["is_sidechain"] != true
+            && !r.context["content_types"]
+                .as_array()
+                .is_some_and(|types| types.iter().any(|t| t == "tool_result"))
+            && current
+                .text
+                .get(r.start_byte..r.end_byte)
+                .is_some_and(|s| s.contains(receipt))
+    })?;
     current
         .native_records
         .iter()
         .rev()
-        .find(|record| is_new_primary(record, before))
+        .find(|record| record.start_byte >= ask.end_byte && is_new_primary(record, before))
 }
 fn is_new_primary(
     record: &kah_observer::review_evidence::NativeRecord,
@@ -183,4 +202,24 @@ fn unmatched(
             ),
         },
     }))
+}
+
+fn ask_snapshot(
+    root: &Path,
+    state: &super::super::super::state::State,
+) -> Result<kah_observer::review_evidence::Document> {
+    let home =
+        std::path::PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=verification")?);
+    let mut history = crate::native_history::History::open(
+        &home,
+        root,
+        &state.worker.provider,
+        &state.worker.project,
+        &state.worker.session,
+    )?;
+    super::super::super::capture::history_document(
+        &mut history,
+        &state.worker.provider,
+        &state.worker.session,
+    )
 }

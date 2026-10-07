@@ -78,7 +78,7 @@ fn all_verified_items_need_no_user_risk_question() {
     assert!(risks.is_empty());
 }
 #[test]
-fn renamed_or_not_due_items_cannot_disappear_as_verified() {
+fn renamed_items_cannot_disappear_as_verified() {
     let mut changed = report();
     changed.decision_units.as_mut().unwrap().requirements.pop();
     assert!(
@@ -87,17 +87,6 @@ fn renamed_or_not_due_items_cannot_disappear_as_verified() {
             &job(),
             &changed,
             &json!({"needs_thinker":[]}),
-            &pointer("checks"),
-            &pointer("decision")
-        )
-        .is_err()
-    );
-    assert!(
-        items(
-            &round(),
-            &job(),
-            &report(),
-            &json!({"needs_thinker":[],"not_due":["integration"]}),
             &pointer("checks"),
             &pointer("decision")
         )
@@ -265,7 +254,11 @@ fn all_verified_round_commits_passing_checkpoint_clears_pending_and_creates_no_q
 }
 
 fn completed_fixture() -> (std::path::PathBuf, Store, Request, std::path::PathBuf) {
-    let root = std::env::temp_dir().join(format!("kah-complete-followup-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!(
+        "kah-complete-followup-{}-{}",
+        std::process::id(),
+        crate::relay_store::nonce()
+    ));
     let store = Store::delivery_at(&root, true).unwrap();
     kah_core::run_store::ensure_private_directory(&root.join("requests")).unwrap();
     let request = Request {
@@ -381,4 +374,80 @@ fn final_report_risk_omission_is_correctable_by_the_same_thinker() {
         origin,
         &error.to_string()
     ));
+}
+
+#[test]
+fn non_requirement_uncertainty_finishes_review_without_risk_admission() {
+    let (root, store, request, path) = completed_fixture();
+    assert!(
+        finish(
+            &root,
+            &request,
+            &report(),
+            &json!({"passed":null,"needs_user":[],"needs_thinker":["proportion","steering"]})
+        )
+        .unwrap()
+    );
+    let saved: Value = source_store::read(&path.join("finished.json")).unwrap();
+    assert_eq!(saved["status"], "unconfirmed_observation");
+    assert!(completed(&root, &request).unwrap().is_none());
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn not_due_outcome_is_accounted_without_claiming_verified_or_opening_risk() {
+    let (verified, risks) = items(
+        &round(),
+        &job(),
+        &report(),
+        &json!({"needs_thinker":[],"not_due":["integration"]}),
+        &pointer("checks"),
+        &pointer("decision"),
+    )
+    .unwrap();
+    assert_eq!(verified.len(), 1);
+    assert_eq!(verified[0].requirement_id, "intent");
+    assert!(risks.is_empty());
+}
+
+#[test]
+fn returning_to_a_scope_republishes_existing_checks_without_repeating_them() {
+    let (root, store, mut request, path) = completed_fixture();
+    let r = round();
+    assert!(super::super::queue_checks(&root, &path, &r, &request, &job(), &proof()).unwrap());
+    let old = fs::read_dir(root.join("queued"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    kah_core::run_store::ensure_private_directory(&root.join("covered-triggers")).unwrap();
+    fs::rename(
+        &old,
+        root.join("covered-triggers").join(old.file_name().unwrap()),
+    )
+    .unwrap();
+    request.id = "review-returned-sha".into();
+    assert!(super::super::queue_checks(&root, &path, &r, &request, &job(), &proof()).unwrap());
+    assert!(!super::super::queue_checks(&root, &path, &r, &request, &job(), &proof()).unwrap());
+    let new = fs::read_dir(root.join("queued"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let wake: super::super::super::super::queue::Wake = source_store::read(&new).unwrap();
+    assert_eq!(wake.trigger["verification_followup"]["round"], r.id);
+    assert_eq!(
+        wake.trigger["verification_followup"]["proof"]["head"],
+        r.binding.head
+    );
+    assert!(
+        root.join("covered-triggers")
+            .join(old.file_name().unwrap())
+            .exists()
+    );
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
 }

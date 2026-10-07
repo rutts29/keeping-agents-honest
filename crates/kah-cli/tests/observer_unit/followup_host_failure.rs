@@ -67,3 +67,27 @@ fn waiting_builder_job_remains_kickable_after_stop_until_completion_is_durable()
     assert!(!pending(&worker).unwrap());
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn transient_history_failure_keeps_the_canonical_job_recoverable() {
+    let worker = format!("followup-transient-failure-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    let state:super::super::super::state::State=serde_json::from_value(json!({"worker":{"provider":"codex","session":worker,"project":"/fixture","pane":null,"socket":null},"observer":{"session":null,"pane":null,"name":"fixture","workspace":"/fixture","model":"gpt-6.1-sol","effort":"low","transcript":null},"pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    store.save(&state).unwrap();
+    let root = store.directory.clone();
+    drop(store);
+    let path = root.join("gate-followups/followup-transient");
+    kah_core::run_store::ensure_private_directory(&path).unwrap();
+    source_store::save(&path, "job.json", &json!({"retained":true})).unwrap();
+    failure(
+        &root,
+        &path,
+        &worker,
+        "CODEX_CONNECTION stage=history: timed out",
+    )
+    .unwrap();
+    assert_eq!(jobs(&root).unwrap(), vec![path.clone()]);
+    assert!(!path.join("finished.json").exists());
+    assert!(path.join("failure.json").exists());
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}

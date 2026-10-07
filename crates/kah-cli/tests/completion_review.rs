@@ -44,16 +44,18 @@ fn waiting_for_review_reuses_tests_but_changed_completion_inputs_reverify() {
     reply.action_digest = "new-native-evidence".into();
     assert_eq!(check(&reply).id().unwrap(), first.id().unwrap());
     assert_eq!(calls.get(), 1);
-    let mut variants = vec![original.clone(); 5];
-    variants[0].instance = "resumed-controller".into();
-    variants[1].commit = "commit-b".into();
-    variants[2].user_sequence = 2;
-    variants[3].command = "test other-suite".into();
-    variants[4].online = true;
+    let mut resumed = original.clone();
+    resumed.instance = "resumed-controller".into();
+    assert_eq!(check(&resumed).id().unwrap(), first.id().unwrap());
+    let mut variants = vec![original.clone(); 4];
+    variants[0].commit = "commit-b".into();
+    variants[1].user_sequence = 2;
+    variants[2].command = "test other-suite".into();
+    variants[3].online = true;
     for variant in variants {
         assert_ne!(check(&variant).id().unwrap(), first.id().unwrap());
     }
-    assert_eq!(calls.get(), 6);
+    assert_eq!(calls.get(), 5);
     fs::remove_dir_all(root).unwrap();
 }
 

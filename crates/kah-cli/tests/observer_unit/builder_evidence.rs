@@ -42,10 +42,44 @@ fn response_uses_host_native_provenance_and_ignores_old_messages_and_tool_output
 fn missing_receipt_in_a_completed_new_primary_reply_remains_visible_evidence() {
     let before = document("agentMessage", "old");
     let mut current = document("agentMessage", "new");
-    current.text = "Existing test and SHA receipts follow.".into();
+    current.text = "receipt-markerExisting test and SHA receipts follow.".into();
+    current.native_records[0].start_byte = "receipt-marker".len();
     current.native_records[0].end_byte = current.text.len();
+    current.native_records.insert(
+        0,
+        NativeRecord {
+            start_byte: 0,
+            end_byte: "receipt-marker".len(),
+            context: json!({"record_type":"userMessage","record_id":"ask"}),
+        },
+    );
     assert!(response(&before, &current, "receipt-marker").is_none());
-    assert!(new_primary_reply(&before, &current).is_some());
-    assert!(new_primary_reply(&before, &document("commandExecution", "new")).is_none());
-    assert!(new_primary_reply(&before, &document("agentMessage", "old")).is_none());
+    assert!(new_primary_reply(&before, &current, "receipt-marker").is_some());
+    assert!(
+        new_primary_reply(
+            &before,
+            &document("commandExecution", "new"),
+            "receipt-marker"
+        )
+        .is_none()
+    );
+    assert!(
+        new_primary_reply(&before, &document("agentMessage", "old"), "receipt-marker").is_none()
+    );
+}
+
+#[test]
+fn an_assistant_reply_before_the_ask_snapshot_cannot_end_the_evidence_wait() {
+    let before = document("agentMessage", "already-finished-after-checkpoint");
+    let current = before.clone();
+    assert!(new_primary_reply(&before, &current, "receipt-marker").is_none());
+    assert!(response(&before, &current, "receipt-marker").is_none());
+    assert!(
+        response(
+            &before,
+            &document("agentMessage", "reply-after-ask"),
+            "receipt-marker"
+        )
+        .is_some()
+    );
 }

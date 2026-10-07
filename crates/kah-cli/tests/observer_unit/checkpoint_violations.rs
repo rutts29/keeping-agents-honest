@@ -108,3 +108,60 @@ fn same_scope_recheck_preserves_the_pending_questions_checkpoint_identity() {
     drop(store);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn approval_intake_advances_revision_without_changing_the_other_authority() {
+    use kah_core::intent_history::{
+        Event, GoalRevision, History, IntentItem, IntentKind, SourceProvider, SourceRole,
+    };
+    use kah_core::projection::{ProjectionConfig, project};
+    let source = SourceRef::new(
+        SourceProvider::Codex,
+        "worker",
+        "task",
+        SourceRole::User,
+        "sha256:task",
+    );
+    let mut history = History::new(GoalRevision::new(1, "task", vec![source.clone()])).unwrap();
+    let before = project(&history, ProjectionConfig::default()).unwrap();
+    let answer_source = SourceRef::new(
+        SourceProvider::Codex,
+        "worker",
+        "answer",
+        SourceRole::User,
+        "sha256:answer",
+    );
+    let answer = Answer {
+        source: answer_source.clone(),
+        text: "Approve".into(),
+        revision: before.revision,
+        authority: authority(&before, None),
+    };
+    history
+        .append(Event::RequirementAdded {
+            item: IntentItem::new(
+                "answer",
+                IntentKind::Constraint,
+                "Approve",
+                vec![answer_source],
+            ),
+            approval: None,
+        })
+        .unwrap();
+    let after = project(&history, ProjectionConfig::default()).unwrap();
+    assert!(after.revision > before.revision);
+    assert_eq!(authority(&after, Some(&answer)), answer.authority);
+    history
+        .append(Event::RequirementAdded {
+            item: IntentItem::new(
+                "new-request",
+                IntentKind::Constraint,
+                "Do something else",
+                vec![source],
+            ),
+            approval: None,
+        })
+        .unwrap();
+    let changed = project(&history, ProjectionConfig::default()).unwrap();
+    assert_ne!(authority(&changed, Some(&answer)), answer.authority);
+}

@@ -33,6 +33,12 @@ pub fn request(
         if state.pending.is_some() {
             return Ok(Status::Pending);
         }
+        if let Some(checkpoint) = &state.checkpoint
+            && approval_delivery(directory, checkpoint, key)?
+            && observer_review::gate_approval::approved_authority(&state, revision)?
+        {
+            return Ok(Status::Passed);
+        }
         if state
             .checkpoint
             .as_ref()
@@ -68,3 +74,30 @@ pub fn request(
 fn same_delivery(value: &Value, key: &Key) -> bool {
     serde_json::from_value::<Key>(value.clone()).is_ok_and(|saved| saved.same_delivery(key))
 }
+
+fn approval_delivery(directory: &Path, checkpoint: &Value, key: &Key) -> Result<bool> {
+    if checkpoint["state"] != "checkpoint_user_approved" || checkpoint["head"] != key.commit {
+        return Ok(false);
+    }
+    let saved: Key = serde_json::from_value(checkpoint["completion_key"].clone())?;
+    if saved.command != key.command || saved.online != key.online {
+        return Ok(false);
+    }
+    let record: kah_run::store::Record =
+        observer_review::state::read(&directory.join("state.json"))?
+            .ok_or("RUN_STATE_MISSING stage=completion")?;
+    let added = record
+        .control
+        .inputs()
+        .iter()
+        .filter(|i| i.sequence > saved.user_sequence)
+        .collect::<Vec<_>>();
+    Ok(key.user_sequence == saved.user_sequence
+        || (added.len() == 1
+            && added[0].sequence == key.user_sequence
+            && added[0].text == checkpoint["user_answer"]["verbatim"]))
+}
+
+#[cfg(test)]
+#[path = "../tests/observer_unit/approval_delivery.rs"]
+mod tests;

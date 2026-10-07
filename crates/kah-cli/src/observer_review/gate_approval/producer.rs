@@ -45,6 +45,14 @@ pub(crate) fn begin(
             })?,
         )?;
     }
+    if round.stage == Stage::Checks && root.join("checks.json").is_file() {
+        let state = store
+            .load()?
+            .ok_or("REVIEW_STATE_MISSING stage=verification")?;
+        let job: Job = source_store::read(&root.join("job.json"))?;
+        return schedule_checks(&store.directory, &root, &state, &round, request, &job)
+            .map(|_| true);
+    }
     if round.stage == Stage::Evidence {
         let evidence = selected_evidence(request, report)?;
         advance(&store.directory, &round.binding, Step::Evidence(evidence))?;
@@ -133,18 +141,7 @@ fn schedule_checks(
     } else {
         return Err("REVIEW_FOLLOWUP_CHECK_UNKNOWN stage=verification: reserved attempt has no complete receipt; retained visibly, never rerun silently".into());
     };
-    let mut trigger = request.trigger.clone();
-    trigger["verification_followup"] = json!({"round":round.id,"stage":"checks_complete","proof":proof,
-        "record":path.join("checks.json"),"builder":round.builder,"original_unconfirmed_items":job.assessment["needs_thinker"]});
-    super::super::queue::enqueue_once_at(
-        root,
-        &round.checks_receipt(),
-        &super::super::queue::Wake {
-            purpose: Purpose::Checkpoint,
-            turn: request.turn.clone(),
-            trigger,
-        },
-    )?;
+    queue_checks(root, path, round, request, job, &proof)?;
     source_store::save(
         path,
         "finished.json",
@@ -207,11 +204,15 @@ fn failure(root: &Path, path: &Path, worker: &str, error: &str) -> Result<()> {
                 Some(socket),
             )
         });
-    source_store::save(
-        path,
-        "finished.json",
-        &json!({"status":"host_failed","error":error,"request":state.pending.as_ref().map(|p|&p.id)}),
-    )?;
+    // Only an externally reserved operation with unknown outcome must park.
+    // Read/connect failures keep the same durable job recoverable on new events.
+    if error.starts_with("REVIEW_FOLLOWUP_CHECK_UNKNOWN") {
+        source_store::save(
+            path,
+            "finished.json",
+            &json!({"status":"host_failed","error":error,"request":state.pending.as_ref().map(|p|&p.id)}),
+        )?;
+    }
     source_store::save(
         path,
         "failure.json",
@@ -222,3 +223,25 @@ fn failure(root: &Path, path: &Path, worker: &str, error: &str) -> Result<()> {
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/followup_host_failure.rs"]
 mod recovery_tests;
+
+fn queue_checks(
+    root: &Path,
+    path: &Path,
+    round: &VerificationRound,
+    request: &Request,
+    job: &Job,
+    proof: &DeliveryProof,
+) -> Result<bool> {
+    let mut trigger = request.trigger.clone();
+    trigger["verification_followup"] = json!({"round":round.id,"stage":"checks_complete","proof":proof,
+        "record":path.join("checks.json"),"builder":round.builder,"original_unconfirmed_items":job.assessment["needs_thinker"]});
+    super::super::queue::enqueue_once_at(
+        root,
+        &format!("{}-{}", round.checks_receipt(), request.id),
+        &super::super::queue::Wake {
+            purpose: Purpose::Checkpoint,
+            turn: request.turn.clone(),
+            trigger,
+        },
+    )
+}

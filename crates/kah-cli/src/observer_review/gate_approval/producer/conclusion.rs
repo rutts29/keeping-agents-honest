@@ -34,6 +34,14 @@ pub(crate) fn finish(
         &directory.join("checks.json"),
         &serde_json::to_value(&proof)?,
     )?;
+    if !risk_compatible(report, assessment) {
+        source_store::save(
+            &directory,
+            "finished.json",
+            &json!({"status":"unconfirmed_observation","request":request.id,"assessment":assessment,"reason":"Final uncertainty is not exclusively positive requirements; no risk admission or repeated verification round"}),
+        )?;
+        return Ok(true);
+    }
     let result_path = root.join("results").join(format!("{}.json", request.id));
     let result: Value = source_store::read(&result_path)?;
     let decision = pointer(&format!("{}-decision", round.id), &result_path, &result)?;
@@ -105,17 +113,18 @@ fn items(
             .decision_units
             .as_ref()
             .and_then(|units| units.requirements.iter().find(|r| r.id == id));
-        if !preserves(original, requirement) || !positive_requirement(requirement) {
+        if !preserves(original, requirement) {
             return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification: preserve semantic/factual kind and linked authority".into());
         }
+        if ["not_due", "deferred"].iter().any(|key| {
+            assessment[*key]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|value| value == id))
+        }) {
+            // The final checked decision records an exemption/deferral, not satisfaction.
+            continue;
+        }
         if !unresolved.iter().any(|value| value == id) {
-            if !positive_requirement(requirement)
-                || assessment["not_due"]
-                    .as_array()
-                    .is_some_and(|ids| ids.iter().any(|value| value == id))
-            {
-                return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification".into());
-            }
             verified.push(VerifiedRequirement {
                 requirement_id: id.into(),
                 evidence: round.evidence.clone().unwrap(),
@@ -237,4 +246,17 @@ fn checked_items(
         super::super::super::failure::Origin::ReportValidation,
         || items(round, job, report, assessment, receipt, decision),
     )
+}
+
+fn risk_compatible(report: &Report, assessment: &Value) -> bool {
+    assessment["needs_thinker"].as_array().is_some_and(|ids| {
+        ids.iter().all(|id| {
+            report.decision_units.as_ref().is_some_and(|units| {
+                units
+                    .requirements
+                    .iter()
+                    .any(|r| id == &r.id && positive_requirement(r))
+            })
+        })
+    })
 }

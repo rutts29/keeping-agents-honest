@@ -4,6 +4,7 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
+mod ordering;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -13,12 +14,16 @@ pub struct Wake {
     pub trigger: Value,
 }
 pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Result<()> {
-    let directory = Store::directory(worker)?.join("queued");
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
     kah_core::run_store::ensure_private_directory(&Store::directory(worker)?.join("sources"))?;
+    let name = format!("{}.json", crate::relay_store::nonce());
+    ordering::reserve(&root, &name)?;
     super::source_store::save(
         &directory,
-        &format!("{}.json", crate::relay_store::nonce()),
+        &name,
         &serde_json::to_value(Wake {
             purpose,
             turn: turn.into(),
@@ -31,32 +36,25 @@ pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     if !directory.exists() {
         return Ok(vec![]);
     }
-    let paths = fs::read_dir(directory)?
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    let mut paths = fs::read_dir(directory)?
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
-    // Both nonce and receipt filenames carry immutable triggers. Filesystem
-    // publish timestamps provide their common chronology, independent of names.
-    let mut chronological = paths
-        .into_iter()
-        .map(|path| {
-            let time = fs::metadata(&path)?.modified()?;
-            Ok((time, path))
-        })
-        .collect::<std::io::Result<Vec<_>>>()?;
-    chronological.sort();
-    let mut paths = chronological
-        .into_iter()
-        .map(|(_, path)| path)
-        .collect::<Vec<_>>();
     paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
-    let mut jobs = paths
-        .into_iter()
-        .map(|path| {
-            let value: Wake =
-                super::state::read(&path)?.ok_or("REVIEW_QUEUE_MISSING stage=queue")?;
-            Ok((path, value))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let order = ordering::record(&root, &paths)?;
+    paths.sort_by_key(|p| {
+        order
+            .get(p.file_name().unwrap().to_str().unwrap())
+            .copied()
+            .unwrap_or(u64::MAX)
+    });
+    let mut jobs = vec![];
+    for path in paths {
+        if let Some(value) = super::state::read::<Wake>(&path)? {
+            jobs.push((path, value));
+        }
+    }
     // Finish the one admitted verification round before newer routine claims
     // can manufacture more rechecks. Every trigger remains durably queued.
     jobs.sort_by_key(|(_, job)| match job.purpose {
@@ -190,6 +188,7 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     }
     let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
+    ordering::reserve(root, &name)?;
     super::source_store::save(&directory, &name, &value)?;
     Ok(true)
 }
