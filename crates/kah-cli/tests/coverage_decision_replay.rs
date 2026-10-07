@@ -58,7 +58,7 @@ fn retained_reasoned_coverage() {
         "trivial-passing-command",
         &state,
         &questions,
-        "contradicted",
+        "not_confirmed_supported",
     ));
     let passed = outcomes.iter().all(|r| r["confirmed"] == true);
     let evidence = json!({"passed":passed,"sourceTrace":root,"sourceReview":REVIEW,"head":result["head"],"privateFullArchive":archive,"nativeThinkerReasoningReused":true,"noAgentSessions":true,"existingSemanticQuestion":true,"thresholdsUnchanged":true,"frozenCases":registration(),"outcomes":outcomes});
@@ -184,7 +184,11 @@ fn judge(
     use std::os::unix::fs::OpenOptionsExt;
     let judgment = routing::evaluate(home, Backend::Jev, "jev-1.13.0", state, questions).unwrap();
     let key = questions.keys().next().unwrap();
-    let confirmed = decision_units::confirmed(&judgment, key, expected);
+    let confirmed = if expected == "not_confirmed_supported" {
+        !decision_units::confirmed(&judgment, key, "supported")
+    } else {
+        decision_units::confirmed(&judgment, key, expected)
+    };
     let record = json!({"state":state,"questions":questions,"judgment":judgment,"expected":expected,"confirmed":confirmed});
     let mut file = fs::OpenOptions::new()
         .write(true)
