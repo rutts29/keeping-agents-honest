@@ -59,6 +59,9 @@ impl Fixture {
         result.native_setup(&actual);
         result.sources(&actual, mode);
         result.seed();
+        if mode == "proofs" {
+            super::proof_inputs::retain_source(&result.root, &actual);
+        }
         save(
             &result.root.join("ownership.json"),
             &json!({"name":result.name,"home":result.home,
@@ -149,12 +152,9 @@ impl Fixture {
             } else {
                 self.home
                     .join(".claude/projects")
-                    .join(
-                        self.home
-                            .join("repos/mine/fixture-claude")
-                            .to_string_lossy()
-                            .replace('/', "-"),
-                    )
+                    .join(kah_claude::paths::project_key(
+                        &self.home.join("repos/mine/fixture-claude"),
+                    ))
                     .join(source.file_name().unwrap())
             };
             fs::create_dir_all(target.parent().unwrap()).unwrap();
@@ -231,6 +231,7 @@ impl Fixture {
             .map(|p| json!({"pid":p.pid,"cwd":p.cwd}))
             .collect::<Vec<_>>();
         let passed = processes.is_empty()
+            && super::proof_inputs::audit(&self.root)["passed"] == true
             && protected.iter().all(|r| r["unchanged"] == true)
             && logins.iter().all(|r| r["symlink_unchanged"] == true)
             && config_snapshot(&self.home.join(".config/kah")) == self.config_before
@@ -240,6 +241,7 @@ impl Fixture {
             )["passed"]
                 == true;
         json!({"passed":passed,"processes":processes,"protected":protected,"login_links":logins,
+            "historical_replay_source":super::proof_inputs::audit(&self.root),
             "recorder":{"path":self.root.join("terminal.log"),"bytes":fs::metadata(self.root.join("terminal.log")).map(|m|m.len()).unwrap_or(0)},
             "config_before":self.config_before,"config_after":config_snapshot(&self.home.join(".config/kah")),
             "shared_claude_config":super::config_audit::compare(&self.claude_before,&super::config_audit::snapshot(&self.claude_path,&self.root))})

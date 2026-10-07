@@ -1,3 +1,5 @@
+#[path = "../src/privacy.rs"]
+mod privacy;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
 mod processes;
@@ -6,6 +8,12 @@ mod processes;
 mod pty;
 #[allow(dead_code)]
 mod track2_support;
+
+#[test]
+#[ignore = "frozen detour/integration/deferral native proofs on both providers; final code only"]
+fn detour_integration_deferral() {
+    track2_support::launch("proofs");
+}
 
 #[test]
 #[ignore = "full native retained-session journey on both providers; make gate only"]

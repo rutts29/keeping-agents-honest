@@ -30,6 +30,9 @@ pub fn run(root: &Path, mode: &str) -> Value {
             .contains("kah-gate-track2-"),
         "TRACK2_SOCKET stage=scope"
     );
+    if mode == "proofs" {
+        return super::proof_journey::run(root);
+    }
     let dry = std::env::var_os("KAH_TRACK2_DRY_RUN").is_some();
     let mut outcomes = vec![];
     for provider in ["codex", "claude"] {
@@ -183,7 +186,7 @@ pub fn model(provider: &str) -> &'static str {
     }
 }
 impl Worker {
-    fn start(root: &Path, mode: &str, provider: &str) -> Self {
+    pub fn start(root: &Path, mode: &str, provider: &str) -> Self {
         let home = PathBuf::from(std::env::var_os("HOME").unwrap());
         assert_eq!(home, root.join("home"), "TRACK2_HOME stage=scope");
         let project = home.join(format!("repos/mine/fixture-{provider}"));
@@ -192,6 +195,11 @@ impl Worker {
             project.display()
         );
         let command = native(&home, &project, provider, mode, root, &prompt, None);
+        let command = if mode == "proofs" {
+            super::proof_hooks::capture(command, root, provider)
+        } else {
+            command
+        };
         let pane = Pane::start(&command).unwrap();
         let id = ready(&pane, provider, &project);
         register_session(root, &id);
@@ -406,7 +414,7 @@ pub fn ready(pane: &Pane, provider: &str, project: &Path) -> String {
         std::thread::sleep(Duration::from_millis(200));
     }
 }
-fn consent(pane: &Pane, provider: &str, project: &Path) {
+pub fn consent(pane: &Pane, provider: &str, project: &Path) {
     let view = pane.inspect().unwrap();
     let output = std::process::Command::new("herdr")
         .args([
