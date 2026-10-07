@@ -60,7 +60,10 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         );
     }
     if args == ["__review-project-context"] {
-        return Some(capture::project_cli());
+        return Some(capture::project_cli(None));
+    }
+    if args.len() == 3 && args[0] == "__review-project-context" && args[1] == "--commit-baseline" {
+        return Some(capture::project_cli(Some(&args[2])));
     }
     if args == ["__review-artifact-baseline"] {
         return Some(artifact_collect::cli());

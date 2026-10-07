@@ -10,6 +10,8 @@ use std::{
     process::Command,
 };
 mod binding;
+mod project;
+pub use project::cli as project_cli;
 pub mod controller_events;
 pub mod controller_receipts;
 pub mod historical;
@@ -204,19 +206,30 @@ pub(super) fn history_document(
 }
 
 pub(crate) fn project_context(home: &Path, state: &State) -> Result<Value> {
+    project_context_with_baseline(home, state, None)
+}
+pub fn project_context_with_baseline(
+    home: &Path,
+    state: &State,
+    baseline: Option<&str>,
+) -> Result<Value> {
+    let mut args = vec!["__review-project-context".to_owned()];
+    if let Some(baseline) = baseline {
+        args.extend(["--commit-baseline".into(), baseline.into()]);
+    }
     let output = if state.worker.project.starts_with(home.join("repos/mine")) {
         // Mine already authorizes native host tools. Keep run worktrees and
         // restricted repositories behind the existing gVisor Git boundary.
         Command::new(home.join(".local/bin/kah"))
-            .arg("__review-project-context")
+            .args(&args)
             .current_dir(&state.worker.project)
             .output()?
     } else {
-        restricted_context(home, state)?
+        restricted_context(home, state, &args)?
     };
     decode_project(output)
 }
-fn restricted_context(home: &Path, state: &State) -> Result<std::process::Output> {
+fn restricted_context(home: &Path, state: &State, args: &[String]) -> Result<std::process::Output> {
     let project = Project {
         domain: Domain::Research,
         root: state.worker.project.clone(),
@@ -230,15 +243,9 @@ fn restricted_context(home: &Path, state: &State) -> Result<std::process::Output
     executor = executor
         .with_read_only_mounts(&[(binary.clone(), binary.clone())])?
         .read_only_project();
-    Ok(executor
-        .command(
-            &project.root,
-            &[
-                binary.to_string_lossy().into_owned(),
-                "__review-project-context".into(),
-            ],
-        )?
-        .output()?)
+    let mut command = vec![binary.to_string_lossy().into_owned()];
+    command.extend_from_slice(args);
+    Ok(executor.command(&project.root, &command)?.output()?)
 }
 fn decode_project(output: std::process::Output) -> Result<Value> {
     if !output.status.success() {
@@ -279,114 +286,4 @@ pub(super) fn worktree_git(state: &State) -> Result<Option<PathBuf>> {
         )?
         .git_dir,
     ))
-}
-
-/// Runs only in the read-only gVisor context collector. No model or credentials.
-pub fn project_cli() -> Result<()> {
-    let root = std::env::current_dir()?;
-    let head = git(&root, &["rev-parse", "--verify", "HEAD"])?;
-    let committed = committed_snapshot(&root, head.as_deref())?;
-    let artifact_blobs = if let Some(head) = head.as_deref() {
-        super::artifact_collect::committed(&root, head.trim())?
-    } else {
-        Default::default()
-    };
-    let diff = git(
-        &root,
-        &["diff", "--no-ext-diff", "--no-textconv", "--binary"],
-    )?;
-    let staged = git(
-        &root,
-        &[
-            "diff",
-            "--cached",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--binary",
-        ],
-    )?;
-    let status = git(
-        &root,
-        &["status", "--porcelain=v1", "--untracked-files=all"],
-    )?;
-    let tags = git(&root, &["show-ref", "--tags"])?;
-    if root.join(".git").exists() && (diff.is_none() || staged.is_none() || status.is_none()) {
-        return Err("REVIEW_GIT_INCOMPLETE stage=context: cannot read complete Git context".into());
-    }
-    let mut plans = vec![];
-    for path in [
-        "docs/PLAN.md",
-        "docs/STATUS.md",
-        "docs/HANDOFF.md",
-        "PLAN.md",
-        "AGENTS.md",
-        "CLAUDE.md",
-    ] {
-        match fs::read_to_string(root.join(path)) {
-            Ok(text) => plans.push(json!({"path":path,"text":text})),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-            Err(e) => return Err(format!("REVIEW_PLAN_READ stage=context: {path}: {e}").into()),
-        }
-    }
-    println!(
-        "{}",
-        json!({"head":head.map(|h|h.trim().to_owned()),"committed_snapshot":committed,"artifact_blobs":artifact_blobs,"diff":format!("{}\n{}",diff.unwrap_or_default(),staged.unwrap_or_default()),"status":status,"tags":tags,"plans":plans,"full_context_not_truncated":true})
-    );
-    Ok(())
-}
-fn committed_snapshot(root: &Path, head: Option<&str>) -> Result<String> {
-    let Some(head) = head else {
-        return Ok(String::new());
-    };
-    // Diffing the empty tree captures ALL earlier phases, even on a clean tree.
-    // hash-object without -w computes the native SHA-1/SHA-256 empty tree ID
-    // without writing an object or authoring a commit.
-    let empty = git(root, &["hash-object", "-t", "tree", "/dev/null"])?
-        .ok_or("REVIEW_EMPTY_TREE stage=context")?;
-    git(
-        root,
-        &[
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--binary",
-            empty.trim(),
-            head.trim(),
-            "--",
-        ],
-    )?
-    .ok_or_else(|| {
-        "REVIEW_COMMITTED_CONTEXT stage=context: cannot read cumulative HEAD snapshot".into()
-    })
-}
-fn git(root: &Path, args: &[&str]) -> Result<Option<String>> {
-    let output = Command::new("/usr/bin/git")
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_NO_REPLACE_OBJECTS", "1")
-        .current_dir(root)
-        .args([
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            "core.pager=cat",
-            "-c",
-        ])
-        .arg(format!("safe.directory={}", root.display()))
-        .args(args)
-        .output()?;
-    if !output.status.success() {
-        eprintln!(
-            "REVIEW_GIT_COMMAND stage=context: git {args:?}: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-    }
-    Ok(output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).into_owned()))
 }

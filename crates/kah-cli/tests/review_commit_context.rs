@@ -56,6 +56,47 @@ fn exact_endpoints_keep_whole_changed_content_and_delete_records() {
     let packet = commit_context::collect(&root, Some(&base)).unwrap();
     assert_eq!(packet["head"], head);
     assert_eq!(packet["baseline"], base);
+    assert_collector_cli(&root, &base, &packet);
+    assert_whole_files(&packet, &whole);
+    let initial = commit_context::collect(&root, None).unwrap();
+    assert!(
+        initial["touched_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| file["path"] == "unchanged")
+    );
+    assert!(
+        commit_context::collect(&root, Some("HEAD; false"))
+            .unwrap_err()
+            .to_string()
+            .contains("REVIEW_COMMIT_BASELINE")
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn assert_collector_cli(root: &Path, base: &str, packet: &serde_json::Value) {
+    let output = Command::new(env!("CARGO_BIN_EXE_kah"))
+        .args(["__review-project-context", "--commit-baseline", base])
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let captured: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(&captured["commit_context"], packet);
+    assert!(
+        captured["committed_snapshot"]
+            .as_str()
+            .unwrap()
+            .contains("untouched")
+    );
+}
+
+fn assert_whole_files(packet: &serde_json::Value, whole: &str) {
     let files = packet["touched_files"].as_array().unwrap();
     assert_eq!(files.len(), 3);
     assert!(!files.iter().any(|file| file["path"] == "unchanged"));
@@ -74,19 +115,4 @@ fn exact_endpoints_keep_whole_changed_content_and_delete_records() {
         files.iter().find(|file| file["path"] == "binary").unwrap()["content"]["bytes"],
         serde_json::json!([0, 255, 10, 128])
     );
-    let initial = commit_context::collect(&root, None).unwrap();
-    assert!(
-        initial["touched_files"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|file| file["path"] == "unchanged")
-    );
-    assert!(
-        commit_context::collect(&root, Some("HEAD; false"))
-            .unwrap_err()
-            .to_string()
-            .contains("REVIEW_COMMIT_BASELINE")
-    );
-    fs::remove_dir_all(root).unwrap();
 }
