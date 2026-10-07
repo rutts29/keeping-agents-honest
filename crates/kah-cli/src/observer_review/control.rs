@@ -132,6 +132,7 @@ pub fn status(worker: &str) -> Result<Value> {
             value = json!({});
         }
         value["queued"] = json!(queued);
+        value["scheduling"] = super::queue::status(worker)?;
         value["checkpoint_events_pending"] = json!(checkpoint_events_pending);
         if let Some(progress) = liveness {
             value["liveness"] = json!({"progress":progress,"journal":Store::directory(worker)?.join("liveness/events.jsonl")});

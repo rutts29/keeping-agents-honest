@@ -60,6 +60,15 @@ pub fn submit_snapshot(
     }
     workspace::prepare(home, &state)?;
     let worker = request.worker.as_str();
+    super::timing::mark(
+        worker,
+        &request.id,
+        "queued",
+        request.trigger["queued_at_ms"]
+            .as_u64()
+            .unwrap_or(request.created_ms),
+    )?;
+    super::timing::now(worker, &request.id, "captured")?;
     let prompt = workspace::publish(&store, &state, request)?;
     let mut pending = Pending::from(request);
     pending.native_tokens_before = if state.observer.session.is_none() {
@@ -68,6 +77,7 @@ pub fn submit_snapshot(
         super::consume::tokens(home, &store, &state).ok()
     };
     state.pending = Some(pending);
+    super::queue::metadata::admitted(worker, request)?;
     if request.purpose == Purpose::Preparation {
         return begin_preparation(store, state, request);
     }
@@ -86,6 +96,7 @@ pub fn submit_snapshot(
     drop(store); // SessionStart must be able to bind before pane run returns.
     super::liveness::start(worker)?;
     deliver(home, &state, &prompt, existing)?;
+    super::timing::now(worker, &request.id, "delivered")?;
     super::lifecycle::start(worker)?;
     if !existing {
         startup_notice(&state)?;

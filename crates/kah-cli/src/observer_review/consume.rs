@@ -61,12 +61,12 @@ pub fn run(worker: &str) -> Result<()> {
         drop(store);
         return super::queue::kick(worker);
     }
-    let (path, report, actions) = evidence(&state, &request)?;
+    let (path, report, actions) = timed_evidence(&state, &request)?;
     if super::failure_snapshot::unchanged(&store.directory, &request, &path)? {
         return retry_correction(store, worker);
     }
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
-    let decision = decide(&home, &request, &actions, &report);
+    let decision = timed_decision(&home, &request, &actions, &report);
     if decision
         .as_ref()
         .is_err_and(|e| e.to_string().starts_with("JEV_PREPARATION_PENDING"))
@@ -362,7 +362,28 @@ pub(super) fn commit_result(
     if let Some(tokens) = tokens {
         state.native_tokens = tokens;
     }
-    store.save(state)
+    store.save(state)?;
+    super::timing::now(&request.worker, &request.id, "completed")
+}
+fn timed_evidence(
+    state: &State,
+    request: &super::state::Request,
+) -> Result<(PathBuf, Report, Vec<Value>)> {
+    super::timing::now(&request.worker, &request.id, "validation_started")?;
+    let evidence = evidence(state, request)?;
+    super::timing::now(&request.worker, &request.id, "validated")?;
+    Ok(evidence)
+}
+fn timed_decision(
+    home: &Path,
+    request: &super::state::Request,
+    actions: &[Value],
+    report: &Report,
+) -> Result<(judge::Judgment, Value, Value)> {
+    super::timing::now(&request.worker, &request.id, "judgment_started")?;
+    let result = decide(home, request, actions, report)?;
+    super::timing::now(&request.worker, &request.id, "judged")?;
+    Ok(result)
 }
 
 fn retry_correction(store: Store, worker: &str) -> Result<()> {

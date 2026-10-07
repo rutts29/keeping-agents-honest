@@ -176,6 +176,7 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             .join(format!("submitted-{}.json", pending.id))
             .exists()
         {
+            super::timing::now(&state.worker.session, &pending.id, "acknowledged")?;
             let store = Store::open(worker)?;
             crate::unattended_report::save(
                 &store.directory,

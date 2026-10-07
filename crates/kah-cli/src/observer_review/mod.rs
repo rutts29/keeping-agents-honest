@@ -28,6 +28,7 @@ pub mod snapshot;
 pub mod source_store;
 pub mod state;
 pub mod tags;
+pub mod timing;
 pub mod uncertainty;
 pub mod workspace;
 

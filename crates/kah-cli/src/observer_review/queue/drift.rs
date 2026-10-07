@@ -38,6 +38,7 @@ pub(super) fn append(root: &Path, turn: &str, trigger: Value) -> Result<()> {
     wake.trigger["event_receipts"] = json!(receipts);
     wake.trigger["coalesced_events"] = json!(originals);
     ordering::reserve(root, NAME)?;
+    metadata::queued(root, NAME, &wake)?;
     // Publish whole content first; its original record can be rebuilt after a crash.
     super::super::source_store::save(&directory, NAME, &serde_json::to_value(wake)?)?;
     super::super::source_store::save(&events, &event, &serde_json::to_value(incoming)?)
@@ -52,6 +53,7 @@ pub(super) fn detach(root: &Path, paths: &mut [PathBuf]) -> Result<()> {
             let detached = path.with_file_name(&name);
             fs::rename(&*path, &detached)?;
             ordering::renamed(root, NAME, &name)?;
+            metadata::renamed(root, NAME, &name)?;
             *path = detached;
         }
     }

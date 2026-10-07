@@ -6,8 +6,11 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 mod drift;
 mod identity;
+pub mod lanes;
+pub mod metadata;
 mod ordering;
 pub mod repair;
+pub mod supersede;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,6 +37,27 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
     if purpose == Purpose::Steering && identity::retained(&root, &name, &trigger)? {
         return Ok(());
     }
+    if purpose == Purpose::Checkpoint && trigger["review_class"] == "commit" {
+        return supersede::publish(
+            worker,
+            &root,
+            &name,
+            Wake {
+                purpose,
+                turn: turn.into(),
+                trigger,
+            },
+        );
+    }
+    metadata::queued(
+        &root,
+        &name,
+        &Wake {
+            purpose: purpose.clone(),
+            turn: turn.into(),
+            trigger: trigger.clone(),
+        },
+    )?;
     ordering::reserve(&root, &name)?;
     super::source_store::save(
         &directory,
@@ -50,7 +74,29 @@ pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
     entries_at(&root)
 }
+pub fn status(worker: &str) -> Result<Value> {
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    let jobs = entries_at(&root)?;
+    let stamps = metadata::stamps(&root, &jobs)?;
+    let now = kah_observer::session::now_ms();
+    let mut lanes = serde_json::Map::new();
+    for lane in [lanes::Lane::Intent, lanes::Lane::Commit, lanes::Lane::Gate] {
+        let waiting = jobs
+            .iter()
+            .filter(|(_, w)| lanes::Lane::of(w) == lane)
+            .collect::<Vec<_>>();
+        let oldest = waiting
+            .first()
+            .and_then(|(p, _)| stamps.get(p.file_name()?.to_str()?))
+            .map(|s| s.at_ms);
+        let key = serde_json::to_value(lane)?.as_str().unwrap().to_owned();
+        lanes.insert(key,json!({"depth":waiting.len(),"oldest_at_ms":oldest,"oldest_age_ms":oldest.map(|at|now.saturating_sub(at))}));
+    }
+    Ok(json!({"at_ms":now,"last_admitted_lane":metadata::last(&root)?,"lanes":lanes}))
+}
 fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
+    supersede::recover(root)?;
     let directory = root.join("queued");
     if !directory.exists() {
         return Ok(vec![]);
@@ -72,17 +118,13 @@ fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
             jobs.push((path, value));
         }
     }
-    // Finish the one admitted verification round before newer routine claims
-    // can manufacture more rechecks. Every trigger remains durably queued.
-    jobs.sort_by_key(|(_, job)| match job.purpose {
-        Purpose::Checkpoint
-            if job.trigger["verification_followup"]["stage"] == "checks_complete" =>
-        {
-            0
-        }
-        Purpose::Checkpoint => 1,
-        _ => 2,
-    });
+    let stamps = metadata::stamps(root, &jobs)?;
+    lanes::sort(
+        &mut jobs,
+        &stamps,
+        metadata::last(root)?,
+        kah_observer::session::now_ms(),
+    )?;
     Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {
@@ -118,9 +160,17 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         }
         break;
     }
-    let Some((job, mut paths)) = batch(&jobs) else {
+    let Some((mut job, mut paths)) = batch(&jobs) else {
         return Ok(None);
     };
+    let stamps = metadata::stamps(&root, &jobs)?;
+    job.trigger["queued_at_ms"] = json!(
+        paths
+            .iter()
+            .filter_map(|p| stamps.get(p.file_name()?.to_str()?))
+            .map(|s| s.at_ms)
+            .min()
+    );
     drift::detach(&root, &mut paths)?;
     Ok(Some((job, paths)))
 }
@@ -223,6 +273,7 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
     ordering::reserve(root, &name)?;
+    metadata::queued(root, &name, wake)?;
     super::source_store::save(&directory, &name, &value)?;
     Ok(true)
 }
