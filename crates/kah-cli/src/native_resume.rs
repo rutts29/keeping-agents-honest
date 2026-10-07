@@ -127,10 +127,12 @@ fn has_user(
 ) -> Result<bool> {
     let native = record.native.as_ref().unwrap();
     Ok(if native.provider == "claude" {
-        let path = home
-            .join(".claude/projects")
-            .join(record.worktree.to_string_lossy().replace('/', "-"))
-            .join(format!("{session}.jsonl"));
+        let path = crate::claude_transcript::resolve(
+            home,
+            &record.worktree,
+            session,
+            native.confirmation.as_ref().map(|c| c.transcript.as_path()),
+        )?;
         match fs::File::open(path) {
             Ok(file) => claude_reader(BufReader::new(file), session, &record.worktree)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,

@@ -43,12 +43,48 @@ pub fn run(root: &Path, mode: &str) -> Value {
             outcomes.push(json!({"provider":provider,"worker":worker.id,"native_fork":mode=="long",
                 "native_version":telemetry::version(provider),"model":model(provider),"effort":"low",
                 "dry_run":true,"gate_passed":false}));
+            if provider == "claude" && std::env::var_os("KAH_TRACK2_PATH_CHECK").is_some() {
+                outcomes.last_mut().unwrap()["native_path_check"] = path_check(&worker);
+            }
         } else {
             outcomes.push(exercise(&mut worker, mode));
         }
         worker.pane.close().unwrap();
     }
     json!({"passed":true,"dry_run":dry,"providers":outcomes})
+}
+fn path_check(worker: &Worker) -> Value {
+    let mut history = kah_cli::native_history::History::open(
+        &worker.home,
+        &worker.root.join("inspection"),
+        "claude",
+        &worker.project,
+        &worker.id,
+    )
+    .unwrap();
+    let users = history
+        .snapshot()
+        .unwrap()
+        .users
+        .unwrap()
+        .authoritative_records()
+        .len();
+    let tokens = history.tokens().unwrap();
+    let hook: Value =
+        serde_json::from_slice(&fs::read(worker.root.join("claude-start.json")).unwrap()).unwrap();
+    let confirmation = kah_cli::native_binding::claude_confirmation(
+        &hook,
+        &worker.home,
+        &worker.project,
+        "path-fixture",
+    )
+    .unwrap()
+    .unwrap();
+    assert!(users > 0 && tokens > 0, "CLAUDE_PATH_LIVE stage=history");
+    let result = json!({"passed":true,"native_transcript":confirmation.transcript,"primary_users":users,
+        "native_tokens":tokens,"volume_path":worker.project,"provider_version":telemetry::version("claude")});
+    save(&worker.root.join("claude-path-check.json"), &result);
+    result
 }
 fn exercise(worker: &mut Worker, mode: &str) -> Value {
     let start = kah_observer::session::now_ms();

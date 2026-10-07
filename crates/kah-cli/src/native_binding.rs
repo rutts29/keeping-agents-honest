@@ -65,13 +65,12 @@ pub fn claude_confirmation(
     if !cwd.starts_with(project) || cwd.components().any(|c| matches!(c, Component::ParentDir)) {
         return Err("RUN_NATIVE_SCOPE stage=native_binding".into());
     }
-    let transcript = home
-        .join(".claude/projects")
-        .join(project.to_string_lossy().replace('/', "-"))
-        .join(format!("{session}.jsonl"));
-    if input["transcript_path"].as_str() != transcript.to_str() {
-        return Err("RUN_NATIVE_TRANSCRIPT stage=native_binding".into());
-    }
+    let transcript = PathBuf::from(
+        input["transcript_path"]
+            .as_str()
+            .ok_or("RUN_NATIVE_TRANSCRIPT stage=native_binding")?,
+    );
+    crate::claude_transcript::validate(home, session, &transcript).map_err(|e| e.to_string())?;
     Ok(Some(Confirmation {
         instance: instance.into(),
         session: session.into(),
