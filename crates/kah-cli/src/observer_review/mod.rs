@@ -62,17 +62,8 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
                 }),
         );
     }
-    if args == ["__review-project-context"] {
-        return Some(capture::project_cli(None));
-    }
-    if args.len() == 3 && args[0] == "__review-project-context" && args[1] == "--commit-baseline" {
-        return Some(capture::project_cli(Some(&args[2])));
-    }
-    if args == ["__review-artifact-baseline"] {
-        return Some(artifact_collect::cli());
-    }
-    if args.len() == 2 && args[0] == "__review-history-repair" {
-        return Some(capture::historical::repair(&args[1]).map(|value| println!("{value}")));
+    if let Some(result) = maintenance(args) {
+        return Some(result);
     }
     if args.first().is_some_and(|arg| arg == "observe") {
         return observe_route(args);
@@ -107,6 +98,22 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     Some(result.inspect_err(|e| {
         let _ = hook::gap_error(&args[1], e.as_ref());
     }))
+}
+fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
+    match args {
+        [name] if name == "__review-project-context" => Some(capture::project_cli(None)),
+        [name, flag, head] if name == "__review-project-context" && flag == "--commit-baseline" => {
+            Some(capture::project_cli(Some(head)))
+        }
+        [name] if name == "__review-artifact-baseline" => Some(artifact_collect::cli()),
+        [name, worker] if name == "__review-history-repair" => {
+            Some(capture::historical::repair(worker).map(|value| println!("{value}")))
+        }
+        [name, worker, authorization] if name == "__review-light-migrate" => {
+            Some(queue::migration::cli(worker, authorization))
+        }
+        _ => None,
+    }
 }
 pub mod checkpoint;
 pub mod checkpoint_claim;

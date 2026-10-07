@@ -8,6 +8,7 @@ mod drift;
 mod identity;
 pub mod lanes;
 pub mod metadata;
+pub mod migration;
 mod ordering;
 pub mod repair;
 pub mod supersede;

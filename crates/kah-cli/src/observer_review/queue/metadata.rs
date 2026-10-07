@@ -3,6 +3,13 @@ use super::*;
 use lanes::{Lane, Stamp};
 use std::{collections::BTreeMap, path::Path, time::UNIX_EPOCH};
 type Metadata = BTreeMap<String, Stamp>;
+pub(super) fn reclassified(root: &Path, name: &str, wake: &Wake) -> Result<()> {
+    let mut map = load(root)?;
+    if let Some(stamp) = map.get_mut(name) {
+        stamp.lane = Lane::of(wake);
+    }
+    save(root, &map)
+}
 pub(super) fn queued(root: &Path, name: &str, wake: &Wake) -> Result<()> {
     let mut map = load(root)?;
     if !map.contains_key(name) {
