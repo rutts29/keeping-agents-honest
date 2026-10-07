@@ -25,6 +25,9 @@ pub struct Terminal {
 }
 impl Terminal {
     pub fn start(command: &str, log: &Path) -> Self {
+        Self::start_sized(command, log, 120, 36)
+    }
+    pub fn start_sized(command: &str, log: &Path, columns: u16, rows: u16) -> Self {
         // A resumed terminal may reuse this fixture log. Clear it before spawn
         // so readiness checks cannot consume the previous process's prompt.
         fs::OpenOptions::new()
@@ -50,10 +53,8 @@ impl Terminal {
                 "--quiet",
                 "--return",
                 "--flush",
-                "--output-limit",
-                "8M",
                 "--command",
-                &format!("stty cols 120 rows 36; {command}"),
+                &format!("stty cols {columns} rows {rows}; {command}"),
             ])
             .arg(log)
             .env("TERM", "xterm-256color")
