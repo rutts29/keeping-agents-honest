@@ -9,6 +9,7 @@ mod checkpoint_v6_heldout;
 mod checkpoint_v7_heldout;
 mod checkpoint_v8_heldout;
 mod checkpoints;
+mod commit_scope;
 mod hosted_search;
 mod linked_steer;
 mod queue_order;
@@ -52,6 +53,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_COMMIT_SCOPE").is_some() {
+        return Some(commit_scope::run);
+    }
     if std::env::var_os("KAH_GATE_VERIFY_FIRST").is_some() {
         return Some(verification_first::run);
     }

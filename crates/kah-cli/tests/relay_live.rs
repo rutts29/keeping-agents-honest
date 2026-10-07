@@ -101,6 +101,7 @@ fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value, no
 }
 fn evidence_name(reviewer_notified: bool) -> &'static str {
     [
+        ("KAH_GATE_COMMIT_SCOPE", "commit-scope.json"),
         ("KAH_GATE_VERIFY_FIRST", "verification-first.json"),
         ("KAH_GATE_QUEUE_ORDER", "queue-order.json"),
         ("KAH_GATE_AMBIGUITY", "genuine-ambiguity.json"),
