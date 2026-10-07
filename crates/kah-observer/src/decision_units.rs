@@ -11,6 +11,7 @@ mod evaluation;
 pub use applicability::Applicability;
 pub mod completion;
 pub mod context;
+pub mod controller_fact;
 pub mod controller_trigger;
 mod literal;
 mod literal_receipt;
