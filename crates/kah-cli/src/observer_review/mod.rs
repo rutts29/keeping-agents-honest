@@ -3,6 +3,7 @@ mod artifact_collect;
 mod artifact_git;
 pub mod artifacts;
 pub mod capture;
+pub mod commit_context;
 pub mod completion_due;
 pub mod consume;
 pub mod control;
