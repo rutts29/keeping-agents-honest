@@ -48,7 +48,7 @@ pub(super) fn execute(
     super::super::source_store::save(&directory, "proof.json", &serde_json::to_value(&proof)?)?;
     Ok(proof)
 }
-fn options(worker: &str) -> Result<LaunchOptions> {
+pub(super) fn options(worker: &str) -> Result<LaunchOptions> {
     let saved = crate::session_policy::saved(
         &kah_core::run_store::RunStore::default_state_root()?,
         worker,
@@ -58,7 +58,9 @@ fn options(worker: &str) -> Result<LaunchOptions> {
         yolo: false,
     })
 }
-fn trusted_candidate(state: &super::super::state::State) -> Result<kah_run::worktree::Worktree> {
+pub(super) fn trusted_candidate(
+    state: &super::super::state::State,
+) -> Result<kah_run::worktree::Worktree> {
     let id = state
         .worker
         .project

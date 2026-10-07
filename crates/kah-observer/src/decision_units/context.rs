@@ -7,6 +7,17 @@ pub fn decision(input: &Value, key: &str) -> Result<Value, String> {
     let Some((kind, id)) = key.split_once('.') else {
         return special(input, key);
     };
+    if matches!(
+        kind,
+        "coverage_subject" | "coverage_assertion" | "risk_admission"
+    ) {
+        let state = input["verification_contracts"][id].clone();
+        return if state.is_object() {
+            Ok(state)
+        } else {
+            Err("REVIEW_CONTRACT_CONTEXT stage=decision_context".into())
+        };
+    }
     if !matches!(kind, "requirement" | "applicability" | "blocker") {
         return special(input, key);
     }

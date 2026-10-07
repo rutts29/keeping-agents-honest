@@ -21,6 +21,11 @@ pub use evidence::captured;
 mod receiver;
 pub use receiver::{apply_answers, approved_authority, enqueue_answer, pending_answers};
 mod checks;
+mod contract_execution;
+mod contract_facts;
+mod contract_results;
+mod contracts;
+pub(super) use contracts::{outcome as contract_outcome, prepare as prepare_contracts};
 mod producer;
 pub(super) use producer::{
     begin as begin_followup, finish as finish_followup, guard as guard_followup,

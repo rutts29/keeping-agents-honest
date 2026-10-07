@@ -57,6 +57,7 @@ pub fn evaluate(
     steering::context(request, report, &mut input)?;
     crate::privacy::scrub(&mut input);
     let mut questions = decision_units::questions(units);
+    super::gate_approval::prepare_contracts(request, report, &mut input, &mut questions)?;
     if request.purpose == super::state::Purpose::Checkpoint
         && super::checkpoint_claim::doubtful(request)
     {
@@ -91,6 +92,8 @@ pub fn evaluate(
     let mut assessment = assessment(request, units, &judgment, deferrals);
     steering::apply(request, units, &judgment, &mut assessment)?;
     assessment["private_replay"] = archive;
+    assessment["contract_coverage"] =
+        super::gate_approval::contract_outcome(request, report, &judgment)?;
     assessment["jev_called"] = (!questions.is_empty()).into();
     Ok((judgment, prepared, assessment))
 }

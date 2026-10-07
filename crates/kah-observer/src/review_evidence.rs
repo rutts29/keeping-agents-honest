@@ -100,6 +100,8 @@ pub struct Report {
     pub decision_units: Option<crate::decision_units::ReviewUnits>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification_risks: Option<Vec<VerificationRisk>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_contracts: Option<Vec<crate::verification_contract::Item>>,
 }
 impl Report {
     pub fn verify_units(
@@ -157,6 +159,7 @@ impl Report {
         let mut units = crate::decision_units::schema::schema();
         value["$defs"] = units.as_object_mut().unwrap().remove("$defs").unwrap();
         value["properties"]["decision_units"] = units;
+        value["properties"]["verification_contracts"] = crate::verification_contract::schema();
         value["properties"]["verification_risks"] = json!({"type":"array","items":{
             "type":"object","additionalProperties":false,"required":["requirement_id","unverified","acceptance_risk"],
             "properties":{"requirement_id":{"type":"string"},"unverified":{"type":"string"},"acceptance_risk":{"type":"string"}}

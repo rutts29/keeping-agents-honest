@@ -11,6 +11,9 @@ pub(crate) fn finish(
     if request.trigger["verification_followup"]["stage"] != "checks_complete" {
         return Ok(false);
     }
+    if super::super::contract_results::send_back(root, request, assessment)? {
+        return Ok(true);
+    }
     let round = start(root, request)?;
     if round.stage == Stage::Complete {
         complete_record(root, &round, &request.id)?;
@@ -133,7 +136,13 @@ fn items(
         } else {
             let explanation = report.verification_risks.as_ref().and_then(|items|items.iter().find(|item|item.requirement_id==id))
                 .ok_or_else(||format!("REVIEW_FOLLOWUP_RISK_MISSING stage=verification: item {id}; provide plain verification_risks wording explaining what could not be verified and what acceptance risks; never ask for status confirmation"))?;
-            risks.push(risk(round, id, explanation, receipt));
+            risks.push(checked_risk(
+                round,
+                id,
+                explanation,
+                receipt,
+                units.version(),
+            )?);
         }
     }
     Ok((verified, risks))
@@ -197,6 +206,7 @@ fn pointer(receipt: &str, record: &Path, value: &Value) -> Result<EvidencePointe
 }
 
 pub(crate) fn guard(root: &Path, request: &Request, assessment: &mut Value) -> Result<()> {
+    super::super::contract_results::apply(root, request, assessment)?;
     if request.trigger["verification_followup"]["stage"] != "checks_complete" {
         return Ok(());
     }
@@ -259,4 +269,43 @@ fn risk_compatible(report: &Report, assessment: &Value) -> bool {
             })
         })
     })
+}
+
+fn contract_attempts(
+    round: &VerificationRound,
+    id: &str,
+    receipt: &EvidencePointer,
+) -> Result<super::super::contract_execution::ItemResult> {
+    let path = Path::new(&receipt.record)
+        .parent()
+        .ok_or("REVIEW_CONTRACT_RECEIPTS stage=verification")?
+        .join("item-results.json");
+    let results: Vec<super::super::contract_execution::ItemResult> = source_store::read(&path)?;
+    results
+        .into_iter()
+        .find(|r| r.binding == round.binding && r.requirement_id == id)
+        .ok_or(
+            "REVIEW_CONTRACT_RECEIPTS stage=verification: item-specific attempts required".into(),
+        )
+}
+
+fn checked_risk(
+    round: &VerificationRound,
+    id: &str,
+    explanation: &kah_observer::review_evidence::VerificationRisk,
+    receipt: &EvidencePointer,
+    version: u32,
+) -> Result<UnverifiedRisk> {
+    let mut value = risk(round, id, explanation, receipt);
+    if version >= 10 {
+        let result = contract_attempts(round, id, receipt)?;
+        if !result.semantic_risk_admissible {
+            return Err(format!(
+                "REVIEW_CONTRACT_STATUS_RISK stage=verification: {id} is worker verification work"
+            )
+            .into());
+        }
+        value.tried = result.tried;
+    }
+    Ok(value)
 }

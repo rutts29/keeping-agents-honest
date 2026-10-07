@@ -141,6 +141,16 @@ fn schedule_checks(
     } else {
         return Err("REVIEW_FOLLOWUP_CHECK_UNKNOWN stage=verification: reserved attempt has no complete receipt; retained visibly, never rerun silently".into());
     };
+    let items = super::contract_execution::execute(
+        root,
+        state,
+        round,
+        &job.report,
+        &job.assessment,
+        &proof,
+        request,
+    )?;
+    source_store::save(path, "item-results.json", &serde_json::to_value(items)?)?;
     queue_checks(root, path, round, request, job, &proof)?;
     source_store::save(
         path,
@@ -232,9 +242,11 @@ fn queue_checks(
     job: &Job,
     proof: &DeliveryProof,
 ) -> Result<bool> {
+    let items: Option<Vec<super::contract_execution::ItemResult>> =
+        super::super::state::read(&path.join("item-results.json"))?;
     let mut trigger = request.trigger.clone();
     trigger["verification_followup"] = json!({"round":round.id,"stage":"checks_complete","proof":proof,
-        "record":path.join("checks.json"),"builder":round.builder,"original_unconfirmed_items":job.assessment["needs_thinker"]});
+        "record":path.join("checks.json"),"builder":round.builder,"original_unconfirmed_items":job.assessment["needs_thinker"],"item_results":items.unwrap_or_default()});
     super::super::queue::enqueue_once_at(
         root,
         &format!("{}-{}", round.checks_receipt(), request.id),

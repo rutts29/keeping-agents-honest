@@ -4,10 +4,15 @@
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {
+        if units.version() >= 10 && matches!(requirement.judgment, Thinking::AtomicFact { .. }) {
+            // Host has already checked the exact receipt property. It is an
+            // observation, not a semantic question about obligation timing.
+            continue;
+        }
         if requirement.applicability.as_ref().is_some_and(|a| {
             a.controller_trigger
                 .as_ref()
@@ -124,6 +129,9 @@ pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due
         out_of_proportion: false,
     };
     for r in &units.requirements {
+        if units.version() >= 10 && matches!(r.judgment, Thinking::AtomicFact { .. }) {
+            continue;
+        }
         requirement(r, judgment, &mut outcome, phase_due, units.version() >= 8);
     }
     if units.proportion.is_some() {
