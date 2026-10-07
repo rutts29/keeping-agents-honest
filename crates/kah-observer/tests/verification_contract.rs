@@ -1,6 +1,6 @@
 use kah_observer::{
     judge::{Answer, Judgment, Metrics},
-    verification_contract::{Item, Method},
+    verification_contract::{Item, Method, ReceiptFact},
 };
 use std::collections::BTreeMap;
 fn item() -> Item {
@@ -53,4 +53,17 @@ fn missing_executable_coverage_never_becomes_a_user_risk() {
     };
     assert!(!i.covered(&judgment("supported", "supported")));
     assert_eq!(i.command(&[]).unwrap(), None);
+}
+
+#[test]
+fn controller_fact_relationship_uses_existing_coverage_validation() {
+    let mut i = item();
+    i.method = Method::ControllerReceipt {
+        facts: vec![ReceiptFact::HeadSha],
+    };
+    assert!(!i.covered(&judgment("unsupported", "unsupported")));
+    assert!(!i.covered(&judgment("supported", "unclear")));
+    assert!(i.covered(&judgment("supported", "supported")));
+    assert!(i.questions().contains_key("coverage_subject"));
+    assert!(i.questions().contains_key("coverage_assertion"));
 }

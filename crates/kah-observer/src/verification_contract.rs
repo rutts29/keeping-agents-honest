@@ -64,7 +64,9 @@ impl Item {
     pub fn covered(&self, judgment: &Judgment) -> bool {
         matches!(
             self.method,
-            Method::ExistingCheck { .. } | Method::TargetedCheck { .. }
+            Method::ExistingCheck { .. }
+                | Method::TargetedCheck { .. }
+                | Method::ControllerReceipt { .. }
         ) && ["coverage_subject", "coverage_assertion"]
             .iter()
             .all(|key| confirmed(judgment, key, "supported"))

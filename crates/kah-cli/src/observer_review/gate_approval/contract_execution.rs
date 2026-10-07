@@ -53,17 +53,18 @@ pub(super) fn execute(
         }) {
             coverage = json!({"native_fact_verified":true});
         }
+        let linked = linked_item(report, item)?;
         let mut result = if exempted(assessment, &item.requirement_id) {
-            initial(round, item, json!({"exempt":true,"prior":coverage}))
+            initial(round, &linked, json!({"exempt":true,"prior":coverage}))
         } else {
-            one(&directory, state, round, item, coverage, proof, request)?
+            one(&directory, state, round, &linked, coverage, proof, request)?
         };
         result.plan_digest = plan_digest(item)?;
         let mut tried =
-            super::contract_evidence::attempts(request, report, item, round, assessment)?;
+            super::contract_evidence::attempts(request, report, &linked, round, assessment)?;
         tried.extend(result.tried);
         result.tried = tried;
-        result.evidence = super::contract_evidence::selected(request, report, item)?;
+        result.evidence = super::contract_evidence::selected(request, report, &linked)?;
         super::super::source_store::save(
             &directory,
             path.file_name().unwrap().to_str().unwrap(),
@@ -72,6 +73,21 @@ pub(super) fn execute(
         results.push(result);
     }
     Ok(results)
+}
+pub(super) fn linked_item(report: &Report, item: &Item) -> Result<Item> {
+    let requirement = report
+        .decision_units
+        .as_ref()
+        .and_then(|units| {
+            units
+                .requirements
+                .iter()
+                .find(|r| r.id == item.requirement_id)
+        })
+        .ok_or("REVIEW_CONTRACT_ITEM stage=verification: unknown requirement")?;
+    let mut linked = item.clone();
+    linked.claim = requirement.name.clone();
+    Ok(linked)
 }
 pub(super) fn exempted(assessment: &Value, id: &str) -> bool {
     ["not_due", "deferred"].iter().any(|key| {
@@ -98,7 +114,8 @@ fn one(
     }
     match &item.method {
         Method::ControllerReceipt { facts } => {
-            result.verified = super::contract_facts::verified(request, proof, facts);
+            result.verified = coverage["covered"] == true
+                && super::contract_facts::verified(request, proof, facts);
             result.tried.push(Attempt {
                 what: format!(
                     "Compared the controller's {:?} receipts for {} against SHA {}.",
@@ -294,3 +311,7 @@ fn recovered_target(
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/targeted_recovery.rs"]
 mod recovery_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/controller_fact_coverage.rs"]
+mod controller_fact_tests;
