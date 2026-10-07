@@ -53,3 +53,42 @@ fn confirmed_claude_input_does_not_depend_on_herdrs_advisory_id() {
     n.provider = "codex".into();
     assert!(!run_pane::accepts_confirmed_input(&pane, &n, true));
 }
+#[test]
+fn native_hook_path_with_underscores_and_non_alphanumerics_is_authoritative() {
+    let id = "00000000-0000-4000-8000-000000000011";
+    let project = Path::new("/mnt/kah-fixtures/project.name space+[é]😀");
+    let path = format!(
+        "/home/test/.claude/projects/-mnt-HC-Volume-106758648-project-name-space------/{id}.jsonl"
+    );
+    let input = json!({"hook_event_name":"SessionStart","source":"startup","session_id":id,
+        "cwd":project,"transcript_path":path});
+    let confirmed =
+        native_binding::claude_confirmation(&input, Path::new("/home/test"), project, "launch")
+            .unwrap()
+            .unwrap();
+    assert_eq!(
+        confirmed.transcript,
+        Path::new(input["transcript_path"].as_str().unwrap())
+    );
+}
+#[test]
+fn native_hook_path_rejects_escape_and_wrong_session_file() {
+    let id = "00000000-0000-4000-8000-000000000012";
+    for path in [
+        format!("/home/test/.claude/projects/../secrets/{id}.jsonl"),
+        "/home/test/.claude/projects/-project/wrong.jsonl".into(),
+        format!("/outside/projects/-project/{id}.jsonl"),
+    ] {
+        let input = json!({"hook_event_name":"SessionStart","source":"startup","session_id":id,
+            "cwd":"/project","transcript_path":path});
+        assert!(
+            native_binding::claude_confirmation(
+                &input,
+                Path::new("/home/test"),
+                Path::new("/project"),
+                "launch"
+            )
+            .is_err()
+        );
+    }
+}

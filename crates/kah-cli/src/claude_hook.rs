@@ -97,6 +97,7 @@ pub fn handle(input: &Value) -> Result<Value, String> {
 fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> {
     validate_cwd(input, binding)?;
     let mut snapshot = snapshot(input, binding)?;
+    crate::claude_transcript::register_hook(&binding.project, input).map_err(|e| e.to_string())?;
     // Non-Stop hooks synchronize intent, not proposed or historical actions.
     // Judging before execution can suppress the eventual turn-end reminder.
     if input["hook_event_name"] != "Stop" {

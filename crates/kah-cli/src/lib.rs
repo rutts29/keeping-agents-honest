@@ -4,6 +4,7 @@ pub mod claude_hook;
 pub mod claude_launch;
 pub mod claude_policy;
 pub mod claude_setup;
+pub mod claude_transcript;
 pub mod completion_capture;
 pub mod completion_checkpoint;
 pub mod completion_inputs;

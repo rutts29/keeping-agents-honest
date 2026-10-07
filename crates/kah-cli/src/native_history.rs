@@ -70,10 +70,7 @@ impl History {
             if !session.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') || session.len() != 36 {
                 return Err("RUN_CLAUDE_SESSION stage=run_history".into());
             }
-            let path = home
-                .join(".claude/projects")
-                .join(project.to_string_lossy().replace('/', "-"))
-                .join(format!("{session}.jsonl"));
+            let path = crate::claude_transcript::resolve(home, project, session, None)?;
             return Ok(Self::Claude {
                 path,
                 project: project.into(),
