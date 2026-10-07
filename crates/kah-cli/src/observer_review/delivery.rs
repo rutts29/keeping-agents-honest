@@ -23,7 +23,8 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         .pending
         .as_ref()
         .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
-    let marker = format!("kah review request {} ", request.id);
+    let decision = super::preparation::active_decision(&state.worker.session, &request.id)?;
+    let marker = prompt_marker(prompt, &request.id, &decision)?;
     if !wait_idle(state, socket, pane)? {
         return Ok(());
     }
@@ -154,12 +155,12 @@ pub fn in_progress(state: &State) -> Result<bool> {
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
 /// record prove it; an idle client with no receipt gets the same original wake.
 pub fn cold(state: &State, prompt: &str) -> Result<()> {
-    let request = state
+    let pending = state
         .pending
         .as_ref()
-        .ok_or("REVIEW_PENDING_MISSING stage=delivery")?
-        .id
-        .clone();
+        .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
+    let active = super::preparation::active_decision(&state.worker.session, &pending.id)?;
+    let marker = prompt_marker(prompt, &pending.id, &active)?;
     let started = Instant::now();
     loop {
         let current =
@@ -171,7 +172,6 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
                 .as_ref()
                 .is_some_and(|p| p.exists())
         {
-            let marker = format!("kah review request {request} ");
             if wait_receipt(&current, &marker, 0)? {
                 return Ok(());
             }
@@ -340,4 +340,14 @@ fn screen(state: &State) -> Result<String> {
         Some(socket),
     )?;
     Ok(String::from_utf8(output.stdout)?)
+}
+
+fn prompt_marker(prompt: &str, review: &str, active: &str) -> Result<String> {
+    for id in [active, review] {
+        let marker = format!("kah review request {id} ");
+        if prompt.starts_with(&marker) {
+            return Ok(marker);
+        }
+    }
+    Err("REVIEW_PROMPT_BINDING stage=delivery: wake names neither owning review nor active decision".into())
 }
