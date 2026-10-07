@@ -5,6 +5,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if review::service::blocked(worker)? {
         return Ok(());
     }
+    let _waiting = review::liveness::waiting(worker)?;
     let store = Store::open_wait(worker)?;
     let Some(mut state) = store.load()? else {
         return Ok(());
@@ -17,6 +18,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     };
     let gap_path = store.directory.join("gap.json");
+    refresh_rejection(&store, &state, &pending.id)?;
     if working(&store, &state, &pending.id, &gap_path)? {
         return Ok(());
     }
@@ -41,7 +43,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if working(&store, &state, &request.id, &gap_path)? {
         return Ok(());
     }
-    prompt.push_str(&format!("\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",gap.as_ref().unwrap()["error"]));
+    prompt.push_str(&diagnostic(gap.as_ref().unwrap()));
     let number = review::redelivery::begin_correction(&store, &request.id, gap.as_ref().unwrap())?;
     drop(store);
     let delivery = deliver(&home, &state, &prompt, true);
@@ -58,8 +60,42 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     drop(store);
     review::redelivery::notify(&state)?;
     delivery?;
-    if review::state::read::<Value>(&gap_path)? == gap {
-        std::fs::remove_file(gap_path)?;
+    clear_same_gap(&gap_path, &gap)
+}
+fn clear_same_gap(path: &Path, gap: &Option<Value>) -> Result<()> {
+    if review::state::read::<Value>(path)? == *gap {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+fn diagnostic(gap: &Value) -> String {
+    if gap["error"]
+        .as_str()
+        .is_some_and(|e| e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET"))
+    {
+        "\nHost expansion completed: the complete cited file is now mapped in this SAME request. Re-read its manifest and resubmit your source-checked report; this was a host publication handoff, not a report mistake.".into()
+    } else {
+        format!(
+            "\nController validation diagnostic (not user steering): {}. Correct that report error before resubmitting the same request; preserve its original deferral anchors from intent.json.",
+            gap["error"]
+        )
+    }
+}
+fn refresh_rejection(store: &Store, state: &State, request: &str) -> Result<()> {
+    if review::liveness::rejection::current(
+        &store.directory,
+        &state.observer.workspace.join("outbox"),
+        &state.worker.session,
+        request,
+    )?
+    .is_none()
+    {
+        return Ok(());
+    }
+    let record: Value = review::state::read(&store.directory.join("validation-current.json"))?
+        .ok_or("REVIEW_REJECTION_MISSING stage=host_handoff")?;
+    if record["request"] == request {
+        crate::unattended_report::save(&store.directory, "gap.json", &record)?;
     }
     Ok(())
 }

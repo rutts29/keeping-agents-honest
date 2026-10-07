@@ -32,6 +32,17 @@ pub fn prompt(
     // packet may add a verified whole outside file, retaining its prior scope.
     super::workspace::prepare(home, state)?;
     let expanded = super::commit_packet::expand_rejected(store, state, request)?;
+    let rejected: Option<Value> =
+        super::state::read(&store.directory.join("validation-current.json"))?;
+    if rejected.as_ref().is_some_and(|r| {
+        r["request"] == request.id
+            && r["error"]
+                .as_str()
+                .is_some_and(|e| e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET"))
+    }) && expanded.documents.len() == request.documents.len()
+    {
+        return Err("REVIEW_EXPANSION_PENDING stage=packet: rejected source was not added; host binding or source needs attention".into());
+    }
     let report_prompt = super::workspace::publish(store, state, &expanded)?;
     if super::preparation::pending(&request.worker, decision)? {
         super::preparation::prompt(&request.worker)

@@ -169,6 +169,11 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
             }
             return Ok(());
         }
+        if rejected_report(state, &pending.id) {
+            // Reproduce this rejection in a fresh detached host job. Never rely
+            // on a long-lived watcher compiled before this report protocol.
+            return spawn("__review-retry", worker);
+        }
         if state
             .observer
             .workspace
@@ -199,6 +204,11 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
         super::queue::kick(worker)?;
     }
     Ok(())
+}
+fn rejected_report(state: &State, request: &str) -> bool {
+    let outbox = state.observer.workspace.join("outbox");
+    !outbox.join(format!("submitted-{request}.json")).is_file()
+        && outbox.join(format!("rejected-{request}.json")).is_file()
 }
 fn bind_name(state: &State) -> Result<()> {
     let (socket, _) = runtime::transport(state)?;

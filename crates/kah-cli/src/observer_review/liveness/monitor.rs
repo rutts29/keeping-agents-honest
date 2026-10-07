@@ -137,7 +137,8 @@ fn sample(state: &State) -> Result<Sample> {
     // not record progress, but still must never be automatically interrupted
     // or re-prompted while a later request waits for that pane.
     let native_active = pane_working(state).unwrap_or(false);
-    let controller_active = processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
+    let mut controller_active =
+        processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
     let outbox = state.observer.workspace.join("outbox");
     let rejected = if super::super::preparation::pending(
         &state.worker.session,
@@ -159,6 +160,7 @@ fn sample(state: &State) -> Result<Sample> {
     } else {
         "no current-request native activity or report growth".into()
     };
+    controller_active |= cause.starts_with("VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET");
     Ok(Sample {
         request: pending.id.clone(),
         now_ms: kah_observer::session::now_ms(),
@@ -259,7 +261,9 @@ pub fn processing(worker: &str, request: &str) -> Result<Processing> {
     Ok(Processing(root.join(filename)))
 }
 fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
-    let state = if service_outage(&p.sample) {
+    let state = if host_expansion(&p.sample) {
+        "host_expansion"
+    } else if service_outage(&p.sample) {
         "service_unavailable"
     } else if validation_blocked(&p.sample) {
         "validation_blocked"
@@ -321,24 +325,7 @@ fn notify(state: &State, p: &Progress) -> Result<()> {
     }) {
         return Ok(());
     }
-    let label = if service_outage(&p.sample) {
-        "service"
-    } else if validation_blocked(&p.sample) {
-        "validation-blocked"
-    } else if p.sample.native_active {
-        "possibly-hung"
-    } else {
-        "stalled"
-    };
-    let action = if service_outage(&p.sample) {
-        "Jev unavailable: payment required; request retained, no thinker correction or review retry."
-    } else if validation_blocked(&p.sample) {
-        "The exact failed report still fails host validation; pending review retained for correction."
-    } else if p.sample.native_active {
-        "Native Working has no new records; human decision required, no automatic interruption or prompt."
-    } else {
-        "Pending review retained; visible redelivery attempted."
-    };
+    let (label, action) = description(&p.sample);
     let text = format!(
         "[kah-builder] [kah-observer-{label}] worker={} request={} {}; last native record time {:?}. {action}",
         state.worker.session,
@@ -383,7 +370,7 @@ fn validation_notice(state: &State, progress: &Progress) -> Result<()> {
     notify(state, progress)?;
     if super::super::redelivery::gap_retryable(&gap)
         && !progress.sample.native_active
-        && !progress.sample.controller_active
+        && (!progress.sample.controller_active || host_expansion(&progress.sample))
     {
         super::super::hook::spawn("__review-retry", &state.worker.session)?;
     }

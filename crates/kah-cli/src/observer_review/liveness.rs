@@ -37,6 +37,39 @@ fn validation_blocked(sample: &Sample) -> bool {
 fn service_outage(sample: &Sample) -> bool {
     sample.cause.starts_with("SERVICE OUTAGE: ")
 }
+fn host_expansion(sample: &Sample) -> bool {
+    sample
+        .cause
+        .starts_with("VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET")
+}
+pub fn description(sample: &Sample) -> (&'static str, &'static str) {
+    if host_expansion(sample) {
+        (
+            "host-expansion",
+            "Whole-file mapping is awaiting host publication; this is host work, not a stalled observer or a report correction.",
+        )
+    } else if service_outage(sample) {
+        (
+            "service",
+            "Jev unavailable: payment required; request retained, no thinker correction or review retry.",
+        )
+    } else if validation_blocked(sample) {
+        (
+            "validation-blocked",
+            "The exact failed report still fails host validation; pending review retained for correction.",
+        )
+    } else if sample.native_active {
+        (
+            "possibly-hung",
+            "Native Working has no new records; human decision required, no automatic interruption or prompt.",
+        )
+    } else {
+        (
+            "stalled",
+            "Pending review retained; visible redelivery attempted.",
+        )
+    }
+}
 pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
     let same = previous.filter(|p| p.sample.request == sample.request);
     let grew = same.is_some_and(|p| {

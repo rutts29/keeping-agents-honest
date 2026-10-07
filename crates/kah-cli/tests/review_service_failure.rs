@@ -33,6 +33,27 @@ fn payment_liveness_is_a_service_outage_not_a_stall_or_report_correction() {
         service::cause("REVIEW_REQUIREMENT_EMPTY stage=report").starts_with("VALIDATION BLOCKED")
     );
 }
+
+#[test]
+fn whole_file_expansion_is_a_host_handoff_never_an_idle_observer_stall() {
+    use kah_cli::observer_review::liveness::{Sample, description, transition};
+    let mut sample = Sample {
+        request: "same-native-request".into(),
+        now_ms: 1,
+        started_ms: 1,
+        native_active: false,
+        controller_active: true,
+        transcript_version: None,
+        report_version: None,
+        cause: "VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET stage=report".into(),
+    };
+    let prior = transition(None, &sample);
+    sample.now_ms = 1000000;
+    assert!(!transition(Some(&prior), &sample).stalled);
+    assert_eq!(description(&sample).0, "host-expansion");
+    assert!(description(&sample).1.contains("awaiting host publication"));
+    assert!(!description(&sample).1.contains("retained for correction"));
+}
 #[test]
 fn jev_payment_required_is_never_a_thinker_correction_even_in_a_report_boundary() {
     let error = failure::validation(Origin::ReportValidation, || -> kah_cli::Result<()> {

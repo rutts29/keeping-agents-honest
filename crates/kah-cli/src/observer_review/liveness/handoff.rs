@@ -11,6 +11,12 @@ pub(crate) fn awaiting_host(state: &State) -> Result<bool> {
         return Ok(false);
     };
     let root = Store::directory(&state.worker.session)?;
+    let decision = preparation::active_decision(&state.worker.session, &pending.id)?;
+    if preparation::pending(&state.worker.session, &decision)? {
+        // The foreground selector validates before ACK. Recheck/copy that
+        // exact manifest on the host; no Jev call and no native re-prompt.
+        return preparation::accept(&state.worker.session, &decision);
+    }
     let ready: Option<Value> = state::read(&root.join("report-ready.json"))?;
     if !ready.is_some_and(|r| r["request"] == pending.id)
         || !state
@@ -20,10 +26,6 @@ pub(crate) fn awaiting_host(state: &State) -> Result<bool> {
             .join(format!("submitted-{}.json", pending.id))
             .is_file()
     {
-        return Ok(false);
-    }
-    let decision = preparation::active_decision(&state.worker.session, &pending.id)?;
-    if preparation::pending(&state.worker.session, &decision)? {
         return Ok(false);
     }
     let gap: Option<Value> = state::read(&root.join("gap.json"))?;
