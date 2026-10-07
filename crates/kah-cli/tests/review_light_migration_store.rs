@@ -65,6 +65,8 @@ fn fixture() -> (String, std::path::PathBuf, String) {
         json!({"review_class":"commit","head":b,"events":[{"kind":"native_head","head":b}]}),
     )
     .unwrap();
+    queue::enqueue(&worker,Purpose::Checkpoint,"unknown-head",
+        json!({"review_class":"commit","head":null,"events":[{"kind":"native_phase_claim","source":"Whole unknown-SHA claim"}]})).unwrap();
     drop(store);
     (worker, root, b)
 }
@@ -81,7 +83,7 @@ fn migration_retires_exact_originals_collapses_ancestors_and_preserves_real_gate
     let bytes = fs::read(&old).unwrap();
     let first = migration::run(&worker, "user-approved").unwrap();
     let after = queue::entries(&worker).unwrap();
-    assert_eq!(after.len(), 2);
+    assert_eq!(after.len(), 3);
     assert!(
         after
             .iter()
@@ -89,7 +91,7 @@ fn migration_retires_exact_originals_collapses_ancestors_and_preserves_real_gate
     );
     let light = after
         .iter()
-        .find(|(_, w)| w.trigger["review_class"] == "commit")
+        .find(|(_, w)| w.trigger["review_class"] == "commit" && w.trigger["head"] == b)
         .unwrap();
     assert_eq!(light.1.trigger["head"], b);
     assert_eq!(
@@ -144,10 +146,10 @@ fn resume_planned(worker: &str, manifest: &serde_json::Value) {
         "complete"
     );
     let jobs = queue::entries(worker).unwrap();
-    assert_eq!(jobs.len(), 2);
+    assert_eq!(jobs.len(), 3);
     assert_eq!(
         jobs.iter()
-            .find(|(_, w)| w.trigger["review_class"] == "commit")
+            .find(|(_, w)| w.trigger["review_class"] == "commit" && !w.trigger["head"].is_null())
             .unwrap()
             .1
             .trigger["events"]

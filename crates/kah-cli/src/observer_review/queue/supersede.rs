@@ -104,7 +104,7 @@ pub fn merge(
         authority.push(change.clone());
     }
     for (path, job) in jobs {
-        if job.trigger["review_class"] != "commit" {
+        if job.trigger["review_class"] != "commit" || job.trigger["head"].is_null() {
             continue;
         }
         let old = head(job)?;
