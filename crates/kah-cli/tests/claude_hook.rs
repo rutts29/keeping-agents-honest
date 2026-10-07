@@ -40,27 +40,9 @@ impl Fixture {
             "transcript_path":self.transcript,"hook_event_name":"UserPromptSubmit"})
     }
     fn run(&self, input: Value) -> Value {
-        let binding = Binding {
-            session: String::new(),
-            project: self.project.clone(),
-            codex_home: self.home.join(".codex"),
-            native: self.home.join("codex"),
-            model: "gpt-6.1-sol".into(),
-            effort: "low".into(),
-            timeout_secs: 1,
-            judge: Backend::Jev,
-            jev_model: "jev-latest".into(),
-        };
-        let mut child = Command::new(env!("CARGO_BIN_EXE_kah"))
+        let mut child = self
+            .command()
             .arg("__claude-hook")
-            .env("HOME", &self.home)
-            .env("XDG_STATE_HOME", self.home.join("state"))
-            .env(
-                "KAH_CLAUDE_BINDING",
-                serde_json::to_string(&binding).unwrap(),
-            )
-            .env_remove("CLAUDE_CONFIG_DIR")
-            .env_remove("HERDR_ENV")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -74,6 +56,30 @@ impl Fixture {
         let output = child.wait_with_output().unwrap();
         assert!(output.status.success());
         serde_json::from_slice(&output.stdout).unwrap()
+    }
+    fn command(&self) -> Command {
+        let binding = Binding {
+            session: String::new(),
+            project: self.project.clone(),
+            codex_home: self.home.join(".codex"),
+            native: self.home.join("codex"),
+            model: "gpt-6.1-sol".into(),
+            effort: "low".into(),
+            timeout_secs: 1,
+            judge: Backend::Jev,
+            jev_model: "jev-latest".into(),
+        };
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kah"));
+        command
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap())
+            .env("HOME", &self.home)
+            .env("XDG_STATE_HOME", self.home.join("state"))
+            .env(
+                "KAH_CLAUDE_BINDING",
+                serde_json::to_string(&binding).unwrap(),
+            );
+        command
     }
 }
 impl Drop for Fixture {
@@ -233,20 +239,53 @@ fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
     input["tool_use_id"] = "four".into();
     input["tool_name"] = "Bash".into();
     input["tool_response"] = json!({"exit_code":0});
-    assert_eq!(f.run(input.clone()), json!({}));
-    wait_worker(&f);
+    complete_batch(&f, input.clone());
     input["tool_use_id"] = "five".into();
     let output = f.run(input);
+    let message = output["systemMessage"].as_str().unwrap();
     assert!(
-        output["systemMessage"]
-            .as_str()
-            .unwrap()
-            .contains("JEV_KEY_UNAVAILABLE")
+        message.contains("JEV_KEY_UNAVAILABLE") && message.contains("kah observer active"),
+        "{output}"
     );
     let state = Store::read(&f.home.join("state/kah"), "session")
         .unwrap()
         .unwrap();
     assert!(state.gap.is_some());
+}
+
+fn complete_batch(f: &Fixture, input: Value) {
+    use std::os::unix::fs::OpenOptionsExt;
+    let directory = Store::directory(&f.home.join("state/kah"), "session");
+    // Keep the detached worker out of this hook-output assertion. Otherwise it
+    // can record intent before annotate() and legitimately emit an active notice.
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(directory.join("tool-worker.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    assert_eq!(f.run(input), json!({}));
+    let jobs = directory.join("tool-jobs");
+    assert_eq!(fs::read_dir(&jobs).unwrap().count(), 1);
+    let state = Store::read(&f.home.join("state/kah"), "session")
+        .unwrap()
+        .unwrap();
+    assert!(state.run_id.is_none() && state.gap.is_none());
+    assert_eq!(state.usage.incomplete_calls, 0);
+    assert_eq!(state.usage.calls, 0);
+    drop(lock);
+    assert!(
+        f.command()
+            .arg("__in-turn-worker")
+            .arg(&directory)
+            .status()
+            .unwrap()
+            .success()
+    );
+    wait_worker(f);
 }
 
 fn wait_worker(f: &Fixture) {
