@@ -1,3 +1,8 @@
 #!/bin/sh
 set -eu
+# Fixture repositories must not inherit this commit's index or Git directory.
+# https://git-scm.com/docs/githooks#_description
+for variable in $(git rev-parse --local-env-vars); do
+    unset "$variable"
+done
 exec make check
