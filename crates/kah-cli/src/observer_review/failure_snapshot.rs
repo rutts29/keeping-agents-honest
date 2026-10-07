@@ -57,3 +57,27 @@ pub(crate) fn capture(worker: &str, error: &(dyn std::error::Error + 'static)) -
     result["report"] = path.to_string_lossy().into_owned().into();
     Ok(result)
 }
+
+#[cfg(test)]
+#[path = "../../tests/observer_unit/post_ack_validation.rs"]
+mod tests;
+
+/// A structurally ACKed report can fail decision-dependent validation later.
+/// Do not repeat the judgment of those exact failed inputs while correcting.
+pub(super) fn unchanged(
+    root: &std::path::Path,
+    request: &super::state::Request,
+    report: &std::path::Path,
+) -> Result<bool> {
+    let Some(gap) = super::state::read::<Value>(&root.join("gap.json"))? else {
+        return Ok(false);
+    };
+    let origin = serde_json::from_value(gap["origin"].clone()).unwrap_or_default();
+    if !failure::correctable(origin, gap["error"].as_str().unwrap_or(""))
+        || gap["request"] != request.id
+        || gap["request_digest"] != digest(&serde_json::to_vec(request)?)
+    {
+        return Ok(false);
+    }
+    Ok(gap["report_digest"] == digest(&super::consume::read_report(report)?))
+}

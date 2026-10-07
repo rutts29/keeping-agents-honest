@@ -62,6 +62,9 @@ pub fn run(worker: &str) -> Result<()> {
         return super::queue::kick(worker);
     }
     let (path, report, actions) = evidence(&state, &request)?;
+    if super::failure_snapshot::unchanged(&store.directory, &request, &path)? {
+        return retry_correction(store, worker);
+    }
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
     let decision = decide(&home, &request, &actions, &report);
     if decision
@@ -360,4 +363,9 @@ pub(super) fn commit_result(
         state.native_tokens = tokens;
     }
     store.save(state)
+}
+
+fn retry_correction(store: Store, worker: &str) -> Result<()> {
+    drop(store);
+    super::hook::spawn("__review-retry", worker)
 }

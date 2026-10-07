@@ -288,7 +288,15 @@ pub fn gap_error(worker: &str, error: &(dyn std::error::Error + 'static)) -> Res
     let mut gap = super::failure_snapshot::capture(worker, error)?;
     gap["at_ms"] = kah_observer::session::now_ms().into();
     let store = Store::open(worker)?;
-    crate::unattended_report::save(&store.directory, "gap.json", &gap)
+    crate::unattended_report::save(&store.directory, "gap.json", &gap)?;
+    drop(store);
+    let origin = serde_json::from_value(gap["origin"].clone()).unwrap_or_default();
+    if super::failure::correctable(origin, gap["error"].as_str().unwrap_or("")) {
+        // A post-ACK failure may arrive after the native Stop hook; preserve
+        // the same correction handoff even when the worker remains idle.
+        spawn("__review-retry", worker)?;
+    }
+    Ok(())
 }
 fn record_gap(
     worker: &str,

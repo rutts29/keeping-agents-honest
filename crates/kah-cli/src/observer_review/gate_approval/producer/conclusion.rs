@@ -132,7 +132,7 @@ fn items(
             });
         } else {
             let explanation = report.verification_risks.as_ref().and_then(|items|items.iter().find(|item|item.requirement_id==id))
-                .ok_or("REVIEW_FOLLOWUP_RISK_MISSING stage=verification: explain what could not be verified and what acceptance risks; never ask for status confirmation")?;
+                .ok_or_else(||format!("REVIEW_FOLLOWUP_RISK_MISSING stage=verification: item {id}; provide plain verification_risks wording explaining what could not be verified and what acceptance risks; never ask for status confirmation"))?;
             risks.push(risk(round, id, explanation, receipt));
         }
     }

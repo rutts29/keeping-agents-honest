@@ -42,15 +42,7 @@ pub fn run(worker: &str) -> Result<()> {
         event(&root, worker, &progress)?;
     }
     if validation_blocked(&sample) {
-        let root = Store::directory(worker)?;
-        let checked: Option<Value> =
-            super::super::state::read(&root.join("validation-current.json"))?;
-        let mut gap=checked.filter(|v|v["request"]==pending.id && v["error"].as_str()==sample.cause.strip_prefix("VALIDATION BLOCKED: "))
-            .unwrap_or_else(||json!({"error":sample.cause.strip_prefix("VALIDATION BLOCKED: "),"origin":super::super::failure::Origin::Host}));
-        gap["status"] = "validation_blocked".into();
-        gap["at_ms"] = sample.now_ms.into();
-        crate::unattended_report::save(&root, "gap.json", &gap)?;
-        return notify(&state, &progress);
+        return validation_notice(&state, &progress);
     }
     if !progress.stalled {
         return Ok(());
@@ -149,7 +141,7 @@ fn sample(state: &State) -> Result<Sample> {
     } else {
         super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?
     };
-    let host_error = host_failure(&root)?;
+    let host_error = host_failure(&root, &pending.id)?;
     let cause = if let Some(reason) = rejected {
         reason
     } else if let Some(error) = host_error {
@@ -172,10 +164,16 @@ fn sample(state: &State) -> Result<Sample> {
         cause,
     })
 }
-fn host_failure(root: &Path) -> Result<Option<String>> {
+fn host_failure(root: &Path, request: &str) -> Result<Option<String>> {
     let gap: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
     Ok(gap
-        .filter(|g| !super::super::redelivery::gap_retryable(g))
+        .filter(|g| {
+            g["request"].as_str().is_none_or(|id| id == request)
+                && (super::super::failure::correctable(
+                    serde_json::from_value(g["origin"].clone()).unwrap_or_default(),
+                    g["error"].as_str().unwrap_or(""),
+                ) || !super::super::redelivery::gap_retryable(g))
+        })
         .and_then(|g| g["error"].as_str().map(str::to_owned)))
 }
 fn pane_working(state: &State) -> Result<bool> {
@@ -358,3 +356,27 @@ pub fn notice(worker: &str) -> Result<Option<Value>> {
     fs::remove_file(path)?;
     Ok(Some(json!({"systemMessage":value["text"]})))
 }
+
+fn validation_notice(state: &State, progress: &Progress) -> Result<()> {
+    let root = Store::directory(&state.worker.session)?;
+    let checked: Option<Value> = super::super::state::read(&root.join("validation-current.json"))?;
+    let current: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
+    let mut gap=current.filter(|v|v["request"]==progress.sample.request && v["error"].as_str()==progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")).or_else(||checked.filter(|v|v["request"]==progress.sample.request && v["error"].as_str()==progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")))
+            .unwrap_or_else(||json!({"error":progress.sample.cause.strip_prefix("VALIDATION BLOCKED: "),"origin":super::super::failure::Origin::Host}));
+    gap["status"] = "validation_blocked".into();
+    gap["at_ms"] = progress.sample.now_ms.into();
+    crate::unattended_report::save(&root, "gap.json", &gap)?;
+    notify(state, progress)?;
+    if super::super::redelivery::gap_retryable(&gap)
+        && !progress.sample.native_active
+        && !progress.sample.controller_active
+    {
+        super::super::hook::spawn("__review-retry", &state.worker.session)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/liveness_post_ack_match.rs"]
+mod correction_tests;
