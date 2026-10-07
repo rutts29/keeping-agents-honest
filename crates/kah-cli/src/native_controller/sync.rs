@@ -167,6 +167,7 @@ impl Run<'_> {
                 r.native.as_mut().unwrap().session = Some(c.session.clone());
                 Ok(())
             })?;
+            crate::observer_review::tags::schedule(&c.session)?;
         }
         if self.ready
             && pane["agent"]

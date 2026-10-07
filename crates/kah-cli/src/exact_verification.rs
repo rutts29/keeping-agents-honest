@@ -26,9 +26,11 @@ pub fn execute(
     let changed = tree
         .head()
         .and_then(|head| tree.dirty().map(|dirty| head != commit || dirty));
+    let recorded = record(log, &result, &changed);
     let removed = tree.remove_verification();
     cleanup?;
     removed?;
+    recorded?;
     Ok((result?, changed?))
 }
 fn run(
@@ -64,4 +66,25 @@ fn run(
         log,
         interrupted,
     )?)
+}
+
+pub(crate) fn receipt_path(log: &Path) -> std::path::PathBuf {
+    log.with_extension("receipt.json")
+}
+
+fn record(
+    log: &Path,
+    result: &Result<verification::Receipt>,
+    changed: &std::result::Result<bool, String>,
+) -> Result<()> {
+    if let (Ok(receipt), Ok(changed)) = (result, changed) {
+        let path = receipt_path(log);
+        crate::unattended_report::save(
+            path.parent()
+                .ok_or("RUN_TEST_RECEIPT_PATH stage=verification")?,
+            path.file_name().unwrap().to_str().unwrap(),
+            &serde_json::json!({"receipt":receipt,"changed":changed}),
+        )?;
+    }
+    Ok(())
 }

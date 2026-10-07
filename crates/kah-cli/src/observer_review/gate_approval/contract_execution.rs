@@ -149,7 +149,7 @@ fn targeted(
                 "REVIEW_CONTRACT_BINDING stage=verification: reserved command changed".into(),
             );
         }
-        return Ok(None);
+        return recovered_target(directory, item, command, &round.binding.head);
     }
     super::super::source_store::save(
         directory,
@@ -250,3 +250,35 @@ fn plan_digest(item: &Item) -> Result<String> {
         Sha256::digest(serde_json::to_vec(item)?)
     ))
 }
+
+fn recovered_target(
+    directory: &Path,
+    item: &Item,
+    command: &str,
+    head: &str,
+) -> Result<Option<TestReceipt>> {
+    let path = crate::exact_verification::receipt_path(
+        &directory.join(format!("{}.log", item.requirement_id)),
+    );
+    let Some(saved) = super::super::state::read::<Value>(&path)? else {
+        return Ok(None);
+    };
+    let receipt: kah_run::verification::Receipt = serde_json::from_value(saved["receipt"].clone())?;
+    if receipt.command != command || receipt.commit != head {
+        return Err("REVIEW_CONTRACT_BINDING stage=verification: recovered receipt changed".into());
+    }
+    let changed = saved["changed"]
+        .as_bool()
+        .ok_or("REVIEW_CONTRACT_RECEIPT stage=verification")?;
+    Ok(Some(TestReceipt {
+        command: receipt.command,
+        commit: receipt.commit,
+        exit_code: receipt.exit_code,
+        success: receipt.success && !changed,
+        output: receipt.output,
+    }))
+}
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/targeted_recovery.rs"]
+mod recovery_tests;

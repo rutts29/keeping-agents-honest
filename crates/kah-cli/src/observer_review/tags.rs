@@ -35,7 +35,11 @@ pub fn run(worker: &str) -> Result<()> {
         let state = Store::read(worker)?
             .map(Ok)
             .unwrap_or_else(|| State::new(crate::relay_store::endpoint(worker)?, &home))?;
-        let current = read_tags(&home, &state)?;
+        let current = match read_tags(&home, &state) {
+            Ok(current) => current,
+            Err(error) if error.to_string().starts_with("REVIEW_WORKTREE_PENDING") => return Ok(()),
+            Err(error) => return Err(error),
+        };
         let prior: Option<Vec<String>> = super::state::read(&root.join("git-tags.json"))?;
         let added = observed_additions(prior.as_deref(), &current);
         if !added.is_empty() {

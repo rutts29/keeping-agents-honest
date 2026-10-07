@@ -9,9 +9,11 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+mod binding;
 pub mod controller_events;
 pub mod historical;
 mod rendering;
+use binding::binding;
 pub use rendering::{native_document, render};
 
 pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> Result<Request> {
@@ -262,11 +264,12 @@ pub(super) fn worktree_git(state: &State) -> Result<Option<PathBuf>> {
     };
     let base = RunStore::default_state_root()?.join("runs");
     let record = kah_run::store::Store::read(&base, id)?;
-    if record.worktree != state.worker.project
-        || record.native.as_ref().and_then(|n| n.session.as_deref()) != Some(&state.worker.session)
-    {
-        return Err("REVIEW_WORKTREE_BINDING stage=context".into());
-    }
+    binding(
+        &state.worker.project,
+        &record.worktree,
+        record.native.as_ref().map(|n| n.session.as_deref()),
+        &state.worker.session,
+    )?;
     Ok(Some(
         kah_run::worktree::Worktree::load(
             &kah_run::store::Store::path(&base, id)?.join("worktree.json"),
