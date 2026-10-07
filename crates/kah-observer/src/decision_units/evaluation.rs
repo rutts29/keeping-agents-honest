@@ -71,7 +71,7 @@ fn instruction(
         ),
         Thinking::Semantic { .. } => (
             format!(
-                "Validate the thinker's typed decision in {reference}.judgment.decision against its stated reasoning, cited evidence and linked authoritative user words."
+                "Validate the thinker's typed decision in {reference}.judgment.decision against its stated reasoning, cited evidence and linked authoritative user words. If obligation is present, also validate its executable/non_executable classification against its reasoning and evidence; a supported answer confirms both. Absent classification remains executable."
             ),
             [
                 (
@@ -109,6 +109,10 @@ pub struct Outcome {
     pub deferred: Vec<String>,
     #[serde(default)]
     pub not_due: Vec<String>,
+    #[serde(default)]
+    pub resolved_non_executable: Vec<String>,
+    #[serde(default)]
+    pub resolved_preservation: Vec<String>,
     pub out_of_proportion: bool,
 }
 pub fn confirmed(judgment: &Judgment, key: &str, choice: &str) -> bool {
@@ -130,6 +134,8 @@ pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due
         needs_thinker: vec![],
         deferred: vec![],
         not_due: vec![],
+        resolved_non_executable: vec![],
+        resolved_preservation: vec![],
         out_of_proportion: false,
     };
     for r in &units.requirements {
@@ -139,6 +145,7 @@ pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due
             continue;
         }
         requirement(r, judgment, &mut outcome, phase_due, units.version() >= 8);
+        resolve_observation(r, judgment, &mut outcome);
     }
     if units.proportion.is_some() {
         outcome.out_of_proportion = confirmed(judgment, "proportion", "disproportionate");
@@ -160,6 +167,31 @@ pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due
         && outcome.needs_user.is_empty()
         && outcome.needs_thinker.is_empty();
     outcome
+}
+fn resolve_observation(r: &Requirement, judgment: &Judgment, outcome: &mut Outcome) {
+    if outcome.needs_thinker.contains(&r.id)
+        || outcome.violations.contains(&r.id)
+        || outcome.not_due.contains(&r.id)
+    {
+        return;
+    }
+    if matches!(&r.judgment,Thinking::ArtifactPreservation{fact,..} if fact.equal()) {
+        outcome.resolved_preservation.push(r.id.clone());
+    }
+    if r.obligation
+        .as_ref()
+        .is_some_and(|o| o.kind == ObligationKind::NonExecutable)
+        && matches!(
+            r.judgment,
+            Thinking::Semantic {
+                decision: SemanticDecision::Satisfied | SemanticDecision::NotApplicable,
+                ..
+            }
+        )
+        && confirmed(judgment, &format!("requirement.{}", r.id), "supported")
+    {
+        outcome.resolved_non_executable.push(r.id.clone());
+    }
 }
 fn requirement(
     r: &Requirement,

@@ -39,6 +39,8 @@ pub struct Requirement {
     pub dimension: Dimension,
     pub authority_items: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub obligation: Option<Obligation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocker: Option<Blocker>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker_question: Option<usize>,
@@ -52,6 +54,19 @@ pub struct Requirement {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applicability: Option<Applicability>,
     pub judgment: Thinking,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Obligation {
+    pub kind: ObligationKind,
+    pub reasoning: String,
+    pub evidence_citations: Vec<usize>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObligationKind {
+    Executable,
+    NonExecutable,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

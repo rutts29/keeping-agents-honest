@@ -43,6 +43,7 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
         fact.verify(r, documents)?;
     }
     controller_fact(r, documents)?;
+    obligation(r, &citations)?;
     if let Thinking::AtomicFact {
         fact,
         evidence_citations,
@@ -65,6 +66,19 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
         serde_json::to_value(r).map_err(|_| "REVIEW_REQUIREMENT_JSON stage=decision_units")?;
     value["citations"] = json!(citations);
     Ok(value)
+}
+fn obligation(r: &Requirement, citations: &[Value]) -> Result<(), String> {
+    if let Some(o) = &r.obligation {
+        nonempty(&o.reasoning)?;
+        if o.evidence_citations.is_empty()
+            || o.evidence_citations
+                .iter()
+                .any(|i| citations.get(*i).is_none())
+        {
+            return Err("REVIEW_OBLIGATION_CITATION stage=decision_units".into());
+        }
+    }
+    Ok(())
 }
 fn controller_fact(r: &Requirement, documents: &[Document]) -> Result<(), String> {
     if let Thinking::ControllerFact {

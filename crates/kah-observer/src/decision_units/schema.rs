@@ -29,6 +29,7 @@ fn requirement() -> Value {
         ],
         json!({
             "id":{"type":"string","pattern":"^[A-Za-z0-9_-]+$"},"name":{"type":"string"},
+            "obligation":{"anyOf":[{"type":"null"},object(&["kind","reasoning","evidence_citations"],json!({"kind":{"enum":["executable","non_executable"]},"reasoning":{"type":"string"},"evidence_citations":{"$ref":"#/$defs/indices"}}))]},
             "dimension":{"enum":["intent","integration","deferral","drift","steering"]},
             "authority_items":{"type":"array","minItems":1,"items":{"type":"string"}},
             "blocker":{"enum":[null,"future_implementation","user_decision"]},

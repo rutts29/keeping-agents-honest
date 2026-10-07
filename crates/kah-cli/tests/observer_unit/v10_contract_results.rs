@@ -108,6 +108,24 @@ fn exemption_no_longer_applicable_needs_a_check_instead_of_a_user_question() {
 }
 
 #[test]
+fn final_confirmed_observations_resolve_stale_flags_but_executable_stays_blocking() {
+    let items = [
+        result("no-push", false, true),
+        result("preserved", false, true),
+        result("normalize", false, true),
+    ];
+    let mut a = json!({"passed":null,"violations":[],"needs_user":[],"needs_thinker":["normalize"],"resolved_non_executable":["no-push"],"resolved_preservation":["preserved"]});
+    apply_items(&items, &mut a).unwrap();
+    assert_eq!(a["needs_check"].as_array().unwrap().len(), 1);
+    assert_eq!(a["needs_check"][0]["id"], "normalize");
+    assert_eq!(a["passed"], false);
+    a["needs_thinker"] = json!([]);
+    apply_items(&items[..2], &mut a).unwrap();
+    assert!(a["needs_check"].as_array().unwrap().is_empty());
+    assert_eq!(a["passed"], true);
+}
+
+#[test]
 fn named_send_back_result_releases_pending_without_creating_a_user_wait() {
     use crate::observer_review::{
         consume, questions,

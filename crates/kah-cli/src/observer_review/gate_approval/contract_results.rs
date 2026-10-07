@@ -84,6 +84,13 @@ fn apply_items(items: &[ItemResult], assessment: &mut Value) -> Result<()> {
 }
 fn needs_check(item: &ItemResult, assessment: &Value) -> bool {
     !super::contract_execution::exempted(assessment, &item.requirement_id)
+        && !["resolved_non_executable", "resolved_preservation"]
+            .iter()
+            .any(|key| {
+                assessment[*key]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == &item.requirement_id))
+            })
         && (item.needs_check
             || (!item.verified
                 && !item.semantic_risk_admissible

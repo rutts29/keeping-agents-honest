@@ -30,11 +30,9 @@ pub fn decision(input: &Value, key: &str) -> Result<Value, String> {
     } else {
         "judgment"
     };
-    let indices = original[field]["evidence_citations"]
-        .as_array()
-        .ok_or("REVIEW_DECISION_MANIFEST stage=decision_context")?;
+    let indices = evidence_indices(original, field, kind)?;
     let mut local = original.clone();
-    let manifest = select(&mut local, indices, &original[field]["reasoning"])?;
+    let manifest = select(&mut local, &indices, &original[field]["reasoning"])?;
     if kind == "applicability" {
         local.as_object_mut().unwrap().remove("judgment");
         local.as_object_mut().unwrap().remove("blocker");
@@ -58,6 +56,22 @@ pub fn decision(input: &Value, key: &str) -> Result<Value, String> {
     state["source_manifest"]["other_requirements_reason"] =
         "Each named requirement is independently evaluated with its own complete evidence.".into();
     Ok(state)
+}
+fn evidence_indices(original: &Value, field: &str, kind: &str) -> Result<Vec<Value>, String> {
+    let mut indices = original[field]["evidence_citations"]
+        .as_array()
+        .ok_or("REVIEW_DECISION_MANIFEST stage=decision_context")?
+        .clone();
+    if kind == "requirement" {
+        indices.extend(
+            original["obligation"]["evidence_citations"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .cloned(),
+        );
+    }
+    Ok(indices)
 }
 
 fn select(local: &mut Value, indices: &[Value], reason: &Value) -> Result<Value, String> {
