@@ -10,6 +10,7 @@ pub mod lanes;
 pub mod metadata;
 pub mod migration;
 mod ordering;
+pub mod preparation_coverage;
 pub mod repair;
 pub mod supersede;
 
@@ -138,6 +139,7 @@ pub fn drain(worker: &str) -> Result<Value> {
             json!({"status":"service_unavailable","error":"Jev unavailable: payment required","queued_retained":true}),
         );
     }
+    preparation_coverage::run(worker)?;
     if let Some(state) = Store::read(worker)?
         && state.pending.is_some()
     {

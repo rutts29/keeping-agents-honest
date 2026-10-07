@@ -50,7 +50,7 @@ fn whole_state(state: &State, context: &Context<'_>, prior_items: &[(String, Str
         .join("\n");
     json!({
         "prior_intent":{"goal":context.prior.map(|p|&p.goal.text),"items":prior_items},
-        "intent":{"goal":context.projection.goal.text,"items":items(context.projection),"failures":state.failures,"completed_outcomes":[],"open_outcomes":[]},
+        "intent":{"revision":context.projection.revision,"goal":context.projection.goal.text,"items":items(context.projection),"failures":state.failures,"completed_outcomes":[],"open_outcomes":[]},
         "event":{"user_text":user,"agent_text":agent,"actions":context.actions}
     })
 }

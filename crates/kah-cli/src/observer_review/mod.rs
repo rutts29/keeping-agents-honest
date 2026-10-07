@@ -112,6 +112,9 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
         [name, worker, authorization] if name == "__review-light-migrate" => {
             Some(queue::migration::cli(worker, authorization))
         }
+        [name, worker] if name == "__review-preparation-coverage" => {
+            Some(queue::preparation_coverage::run(worker).map(|value| println!("{value}")))
+        }
         _ => None,
     }
 }

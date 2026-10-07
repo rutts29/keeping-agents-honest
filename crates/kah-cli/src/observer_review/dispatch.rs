@@ -89,9 +89,24 @@ pub fn outcome(binding: &Binding, outcome: &mut Outcome) -> Result<()> {
         return Ok(());
     }
     for (purpose, trigger) in triggers {
+        let trigger = if purpose == Purpose::Drift {
+            stamp_drift(&binding.session, trigger, outcome.projection.as_ref())
+        } else {
+            trigger
+        };
         super::queue::enqueue(&binding.session, purpose, &config.turn, trigger)?;
     }
     hook::spawn("__review-wake", &binding.session)
+}
+fn stamp_drift(
+    worker: &str,
+    trigger: Value,
+    projection: Option<&kah_core::projection::ActiveProjection>,
+) -> Value {
+    let Some(p) = projection else { return trigger };
+    let intent = json!({"revision":p.revision,"goal":p.goal.text,
+        "items":p.preserve.iter().chain(&p.frontier).chain(&p.validation).map(|i|json!([i.id,i.text])).collect::<Vec<_>>()});
+    super::queue::preparation_coverage::stamp(worker, trigger, &intent)
 }
 pub fn triggers(verification: Option<Value>, steering: Option<Value>) -> Vec<(Purpose, Value)> {
     let mut triggers = vec![];
