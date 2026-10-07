@@ -82,12 +82,14 @@ pub fn documents(project: &mut Value) -> Result<Vec<Document>> {
             .ok_or("REVIEW_COMMIT_DIFF stage=packet")?,
     ));
     touched(head, context, &mut docs)?;
+    let endpoints = json!({"baseline":context["baseline"],"baseline_tree":context["baseline_tree"],"head":head});
     let object = project
         .as_object_mut()
         .ok_or("REVIEW_COMMIT_PROJECT stage=packet")?;
     object.remove("committed_snapshot");
     object.remove("full_tree_files");
     object.remove("commit_context");
+    object.insert("review_diff".into(), endpoints);
     Ok(docs)
 }
 fn touched(head: &str, context: &Value, docs: &mut Vec<Document>) -> Result<()> {

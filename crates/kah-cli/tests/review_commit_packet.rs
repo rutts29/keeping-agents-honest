@@ -75,6 +75,11 @@ fn fixture(whole: &str) -> (Request, serde_json::Value) {
 }
 
 fn assert_scope(request: &Request, project: &serde_json::Value) {
+    assert_eq!(project["review_diff"]["baseline"], "old");
+    assert_eq!(
+        project["review_diff"]["head"],
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    );
     assert_eq!(
         request
             .documents
