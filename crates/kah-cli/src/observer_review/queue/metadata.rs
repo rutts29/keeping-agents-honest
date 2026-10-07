@@ -6,10 +6,16 @@ type Metadata = BTreeMap<String, Stamp>;
 pub(super) fn queued(root: &Path, name: &str, wake: &Wake) -> Result<()> {
     let mut map = load(root)?;
     if !map.contains_key(name) {
+        let path = root.join("queued").join(name);
+        let at_ms = if path.exists() {
+            legacy_at(root, name, &path)?
+        } else {
+            kah_observer::session::now_ms()
+        };
         map.insert(
             name.into(),
             Stamp {
-                at_ms: kah_observer::session::now_ms(),
+                at_ms,
                 lane: Lane::of(wake),
             },
         );
@@ -39,12 +45,20 @@ pub(super) fn stamps(root: &Path, jobs: &[(PathBuf, Wake)]) -> Result<Metadata> 
                 },
             );
         }
+        if let Some(original) = repair_age(root, name)? {
+            let stamp = map.get_mut(name).unwrap();
+            stamp.at_ms = stamp.at_ms.min(original);
+        }
     }
     save(root, &map)?;
     Ok(map)
 }
 fn legacy_at(root: &Path, name: &str, path: &Path) -> Result<u64> {
-    let mut at = modified(path)?;
+    let at = modified(path)?;
+    Ok(repair_age(root, name)?.map_or(at, |original| original.min(at)))
+}
+fn repair_age(root: &Path, name: &str) -> Result<Option<u64>> {
+    let mut at: Option<u64> = None;
     let repairs = root.join("queue-repairs");
     if repairs.exists() {
         for entry in fs::read_dir(repairs)? {
@@ -60,7 +74,8 @@ fn legacy_at(root: &Path, name: &str, path: &Path) -> Result<u64> {
                     let original = row["original"]
                         .as_str()
                         .ok_or("REVIEW_QUEUE_ORIGINAL stage=timing")?;
-                    at = at.min(modified(&root.join("queue-retired").join(original))?);
+                    let old = modified(&root.join("queue-retired").join(original))?;
+                    at = Some(at.map_or(old, |current| current.min(old)));
                 }
             }
         }

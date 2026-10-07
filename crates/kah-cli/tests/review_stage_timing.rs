@@ -49,3 +49,58 @@ fn first_enqueue_time_survives_updates_and_snapshot_transfer_and_stages_do_not_r
     assert!(timing::mark(&worker, "../escape", "acknowledged", 40).is_err());
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
+#[test]
+fn first_append_and_cached_metadata_recover_retained_original_age() {
+    let worker = format!("repaired-age-{}", std::process::id());
+    let root = Store::directory(&worker).unwrap();
+    for name in ["queue-retired", "queue-repairs"] {
+        kah_core::run_store::ensure_private_directory(&root.join(name)).unwrap();
+    }
+    std::fs::write(
+        root.join("queue-retired/original.json"),
+        "retained original",
+    )
+    .unwrap();
+    let original_at = std::fs::metadata(root.join("queue-retired/original.json"))
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    queue::enqueue(
+        &worker,
+        Purpose::Drift,
+        "first",
+        json!({"actions":["first"]}),
+    )
+    .unwrap();
+    kah_cli::observer_review::source_store::save(
+        &root,
+        "queue-metadata.json",
+        &json!({"drift-pending.json":{"at_ms":original_at+10000,"lane":"intent"}}),
+    )
+    .unwrap();
+    kah_cli::observer_review::source_store::save(
+        &root.join("queue-repairs"),
+        "repair.json",
+        &json!({"rows":[{"original":"original.json","replacement":"drift-pending.json"}]}),
+    )
+    .unwrap();
+    queue::entries(&worker).unwrap();
+    let recovered: Value =
+        kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
+    assert_eq!(recovered["drift-pending.json"]["at_ms"], original_at);
+    std::fs::remove_file(root.join("queue-metadata.json")).unwrap();
+    queue::enqueue(
+        &worker,
+        Purpose::Drift,
+        "later",
+        json!({"actions":["later"]}),
+    )
+    .unwrap();
+    let append: Value =
+        kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
+    assert_eq!(append["drift-pending.json"]["at_ms"], original_at);
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
