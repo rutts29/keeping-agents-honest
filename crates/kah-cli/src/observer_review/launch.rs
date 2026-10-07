@@ -196,6 +196,7 @@ fn claude(home: &Path, state: &State, project: Project, args: Arguments) -> Resu
                 json!(format!("Edit(/{}/**)", path.display())),
             ]);
     }
+    let scratch = claude_scratch(&project.root, &mut settings)?;
     arguments[index] = settings.to_string().into();
     let private = crate::claude_setup::runtime_directory(&project)?.join("offline/control");
     for name in ["executor", "mcp-online", "mcp-offline"] {
@@ -217,6 +218,7 @@ fn claude(home: &Path, state: &State, project: Project, args: Arguments) -> Resu
             command.env_remove(key);
         }
     }
+    command.env("CLAUDE_CODE_TMPDIR", scratch);
     Ok(command)
 }
 fn quote(value: &str) -> String {
@@ -250,4 +252,14 @@ fn run_config(state: &State) -> Result<Vec<String>> {
                 .is_some_and(|(key, _)| key == "service_tier")
         })
         .collect())
+}
+
+fn claude_scratch(root: &Path, settings: &mut Value) -> Result<std::path::PathBuf> {
+    // anthropics/claude-code v2.1.292/CHANGELOG.md (2.1.5): native internal-temp
+    // override. The runtime dir is intentionally denied to host file tools;
+    // observer scratch belongs under its existing writable outbox mount.
+    let scratch = root.join("outbox/tmp");
+    std::fs::create_dir_all(&scratch)?;
+    settings["env"]["CLAUDE_CODE_TMPDIR"] = json!(scratch);
+    Ok(scratch)
 }
