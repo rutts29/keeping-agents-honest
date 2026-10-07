@@ -132,6 +132,11 @@ fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
     Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {
+    if super::service::blocked(worker)? {
+        return Ok(
+            json!({"status":"service_unavailable","error":"Jev unavailable: payment required","queued_retained":true}),
+        );
+    }
     if let Some(state) = Store::read(worker)?
         && state.pending.is_some()
     {

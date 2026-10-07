@@ -140,6 +140,9 @@ pub fn status(worker: &str) -> Result<Value> {
         value["queued"] = json!(queued);
         value["scheduling"] = super::queue::status(worker)?;
         value["checkpoint_events_pending"] = json!(checkpoint_events_pending);
+        value["service"] = json!(state::read::<Value>(
+            &Store::directory(worker)?.join("service-outage.json")
+        )?);
         if let Some(intent) = intent {
             value["intent_status"] = intent;
         }

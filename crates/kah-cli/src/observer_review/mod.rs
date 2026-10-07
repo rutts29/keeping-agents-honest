@@ -27,6 +27,7 @@ pub mod reminder;
 pub mod reminder_queue;
 pub mod request_context;
 pub mod runtime;
+pub mod service;
 pub mod snapshot;
 pub mod source_store;
 pub mod state;

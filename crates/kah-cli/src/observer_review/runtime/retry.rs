@@ -2,6 +2,9 @@ use super::*;
 use crate::observer_review as review;
 pub fn retry_pending(worker: &str) -> Result<()> {
     require_active(worker)?;
+    if review::service::blocked(worker)? {
+        return Ok(());
+    }
     let store = Store::open_wait(worker)?;
     let Some(mut state) = store.load()? else {
         return Ok(());

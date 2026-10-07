@@ -61,3 +61,19 @@ fn transient_errors_back_off_and_never_fall_back_to_another_backend() {
         assert!(Backend::for_domain(domain, Some("luna")).is_err());
     }
 }
+
+#[test]
+fn payment_required_is_not_an_http_retry() {
+    let mut calls = 0;
+    assert!(
+        retry(
+            || {
+                calls += 1;
+                Err(failure(402))
+            },
+            |_| panic!("payment outage retried")
+        )
+        .is_err()
+    );
+    assert_eq!(calls, 1);
+}

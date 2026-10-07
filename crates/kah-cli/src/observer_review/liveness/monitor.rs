@@ -11,8 +11,16 @@ use std::{
     time::UNIX_EPOCH,
 };
 
+pub fn waiting(worker: &str) -> Result<Option<Processing>> {
+    Store::read(worker)?
+        .and_then(|s| s.pending.map(|p| processing(worker, &p.id)))
+        .transpose()
+}
 pub fn run(worker: &str) -> Result<()> {
     super::super::runtime::require_active(worker)?;
+    if super::super::service::blocked(worker)? {
+        return Ok(());
+    }
     let root = Store::directory(worker)?.join("liveness");
     let _lock = match Store::delivery_at(&root, false) {
         Ok(lock) => lock,

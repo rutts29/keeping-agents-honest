@@ -38,7 +38,13 @@ pub fn evaluate(
                 client: jev::HttpClient::from_home(home)?,
                 model: jev_model.into(),
             };
-            retry(|| judge.evaluate(state, questions), std::thread::sleep)
+            let result = retry(|| judge.evaluate(state, questions), std::thread::sleep);
+            if result.is_ok() {
+                availability::record(home, None)?;
+            } else if result.as_ref().is_err_and(|e| e.status == Some(402)) {
+                availability::record(home, Some(402))?;
+            }
+            result
         }
     }
 }

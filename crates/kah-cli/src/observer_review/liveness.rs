@@ -6,7 +6,7 @@ mod monitor;
 pub(crate) mod selection_rejection;
 pub(crate) use handoff::awaiting_host;
 pub(crate) mod rejection;
-pub use monitor::{notice, processing, run, start, watch};
+pub use monitor::{notice, processing, run, start, waiting, watch};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sample {

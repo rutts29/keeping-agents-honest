@@ -36,12 +36,22 @@ pub fn validation<T>(origin: Origin, operation: impl FnOnce() -> Result<T>) -> R
     })
 }
 pub fn origin(error: &(dyn Error + 'static)) -> Origin {
+    let mut cause = Some(error);
+    while let Some(error) = cause {
+        if error.downcast_ref::<kah_observer::judge::Error>().is_some() {
+            return Origin::Host;
+        }
+        cause = error.source();
+    }
     error
         .downcast_ref::<Failure>()
         .map(|f| f.origin)
         .unwrap_or_default()
 }
 pub fn correctable(origin: Origin, error: &str) -> bool {
+    if error.starts_with("JEV_") {
+        return false;
+    }
     if !matches!(
         origin,
         Origin::ReportValidation | Origin::SelectionValidation
