@@ -1,5 +1,23 @@
 use super::*;
 use crate::review_evidence::verify_quote;
+pub(super) fn verified_requirement(
+    r: &Requirement,
+    documents: &[Document],
+    version: Option<u32>,
+    authority_required: bool,
+) -> Result<Value, String> {
+    (|| {
+        let value = requirement(r, documents, authority_required)?;
+        if version.is_some_and(|v| v >= 7) {
+            super::blocker::require_typed(r)?;
+        }
+        if version.is_some_and(|v| v >= 8) {
+            super::literal_receipt::verify(r, value["citations"].as_array().unwrap(), documents)?;
+        }
+        Ok(value)
+    })()
+    .map_err(|e: String| format!("{e}; requirement {:?}", r.id))
+}
 
 pub(super) fn id(id: &str) -> bool {
     !id.is_empty()
@@ -7,14 +25,17 @@ pub(super) fn id(id: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
-pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Value, String> {
-    if r.name.trim().is_empty() || r.authority_items.is_empty() || r.citations.is_empty() {
-        return Err("REVIEW_REQUIREMENT_EMPTY stage=decision_units".into());
-    }
+pub(super) fn requirement(
+    r: &Requirement,
+    documents: &[Document],
+    authority_required: bool,
+) -> Result<Value, String> {
+    required_fields(r, authority_required)?;
     let citations = r
         .citations
         .iter()
-        .map(|c| verify_quote(c, documents))
+        .enumerate()
+        .map(|(i, c)| verify_quote(c, documents).map_err(|e| format!("{e}; citations[{i}]")))
         .collect::<Result<Vec<_>, _>>()?;
     let indices = thinking(&r.judgment)?;
     super::blocker::validate(r, &citations)?;
@@ -31,13 +52,17 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
         applicability::validate(a, &citations)?;
     }
     if indices.is_empty() || indices.iter().any(|i| citations.get(*i).is_none()) {
-        return Err("REVIEW_REQUIREMENT_CITATION stage=decision_units".into());
+        return Err("REVIEW_REQUIREMENT_CITATION stage=decision_units: judgment.evidence_citations must select existing citations".into());
     }
     if r.components.iter().any(|c| c.name.trim().is_empty()) {
-        return Err("REVIEW_REQUIREMENT_COMPONENT stage=decision_units".into());
+        return Err(
+            "REVIEW_REQUIREMENT_COMPONENT stage=decision_units: components[].name must be nonempty"
+                .into(),
+        );
     }
-    for receipt in &r.checks {
-        check(receipt, &citations)?;
+    for (index, receipt) in r.checks.iter().enumerate() {
+        check(receipt, &citations)
+            .map_err(|e| format!("{e}; checks[{index}] {:?}", receipt.name))?;
     }
     if let Thinking::ArtifactPreservation { fact, .. } = &r.judgment {
         fact.verify(r, documents)?;
@@ -51,17 +76,7 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     {
         fact.validate(&r.checks, evidence_citations)?;
     }
-    if let Thinking::NeedsUser { ledger_review, .. } = &r.judgment {
-        nonempty(&ledger_review.reasoning)?;
-        if ledger_review.citations.is_empty()
-            || ledger_review
-                .citations
-                .iter()
-                .any(|i| !citations.get(*i).is_some_and(|c| c["kind"] == "ledger"))
-        {
-            return Err("REVIEW_LEDGER_CHECK stage=decision_units: cite existing ledger decisions before asking the user".into());
-        }
-    }
+    ledger_review(r, &citations)?;
     let mut value =
         serde_json::to_value(r).map_err(|_| "REVIEW_REQUIREMENT_JSON stage=decision_units")?;
     value["citations"] = json!(citations);
@@ -69,13 +84,13 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
 }
 fn obligation(r: &Requirement, citations: &[Value]) -> Result<(), String> {
     if let Some(o) = &r.obligation {
-        nonempty(&o.reasoning)?;
+        nonempty(&o.reasoning, "obligation.reasoning")?;
         if o.evidence_citations.is_empty()
             || o.evidence_citations
                 .iter()
                 .any(|i| citations.get(*i).is_none())
         {
-            return Err("REVIEW_OBLIGATION_CITATION stage=decision_units".into());
+            return Err("REVIEW_OBLIGATION_CITATION stage=decision_units: obligation.evidence_citations must select existing citations".into());
         }
     }
     Ok(())
@@ -87,7 +102,7 @@ fn controller_fact(r: &Requirement, documents: &[Document]) -> Result<(), String
     } = &r.judgment
     {
         if !evidence_citations.contains(&fact.receipt_citation) {
-            return Err("REVIEW_CONTROLLER_FACT_CITATION stage=decision_units".into());
+            return Err("REVIEW_CONTROLLER_FACT_CITATION stage=decision_units: judgment.evidence_citations must include fact.receipt_citation".into());
         }
         fact.verify(r, documents)?;
     }
@@ -108,7 +123,7 @@ fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
             condition,
             evidence_citations,
         } => {
-            nonempty(condition)?;
+            nonempty(condition, "judgment.condition")?;
             evidence_citations
         }
         Thinking::Semantic {
@@ -116,7 +131,7 @@ fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
             evidence_citations,
             ..
         } => {
-            nonempty(reasoning)?;
+            nonempty(reasoning, "judgment.reasoning")?;
             evidence_citations
         }
         Thinking::NeedsUser {
@@ -126,8 +141,8 @@ fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
             evidence_citations,
             ..
         } => {
-            nonempty(summary)?;
-            nonempty(question)?;
+            nonempty(summary, "judgment.summary")?;
+            nonempty(question, "judgment.question")?;
             if options.len() < 2 || options.iter().any(|s| s.trim().is_empty()) {
                 return Err(
                     "REVIEW_USER_OPTIONS stage=decision_units: provide meaningful alternatives"
@@ -139,14 +154,16 @@ fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
     };
     Ok(indices)
 }
-fn nonempty(text: &str) -> Result<(), String> {
+fn nonempty(text: &str, field: &str) -> Result<(), String> {
     if text.trim().is_empty() {
-        return Err("REVIEW_THINKING_EMPTY stage=decision_units".into());
+        return Err(format!(
+            "REVIEW_THINKING_EMPTY stage=decision_units: {field} is empty"
+        ));
     }
     Ok(())
 }
 fn check(receipt: &CheckReceipt, citations: &[Value]) -> Result<(), String> {
-    nonempty(&receipt.name)?;
+    nonempty(&receipt.name, "checks[].name")?;
     if ![
         receipt.command_citation,
         receipt.result_citation,
@@ -203,14 +220,20 @@ pub(super) fn proportion(p: &Proportion, documents: &[Document]) -> Result<Value
     {
         return Err("REVIEW_PROPORTION_EVIDENCE stage=decision_units".into());
     }
-    for text in [
-        &p.name,
-        &p.worst_case_consequence,
-        &p.estimated_recovery_usage,
-        &p.spent_usage,
-        &p.reasoning,
+    for (field, text) in [
+        ("proportion.name", &p.name),
+        (
+            "proportion.worst_case_consequence",
+            &p.worst_case_consequence,
+        ),
+        (
+            "proportion.estimated_recovery_usage",
+            &p.estimated_recovery_usage,
+        ),
+        ("proportion.spent_usage", &p.spent_usage),
+        ("proportion.reasoning", &p.reasoning),
     ] {
-        nonempty(text)?;
+        nonempty(text, field)?;
     }
     let citations = p
         .citations
@@ -221,4 +244,41 @@ pub(super) fn proportion(p: &Proportion, documents: &[Document]) -> Result<Value
         serde_json::to_value(p).map_err(|_| "REVIEW_PROPORTION_JSON stage=decision_units")?;
     value["citations"] = json!(citations);
     Ok(value)
+}
+
+fn required_fields(r: &Requirement, authority_required: bool) -> Result<(), String> {
+    let empty = [
+        ("name", r.name.trim().is_empty()),
+        (
+            "authority_items",
+            authority_required && r.authority_items.is_empty(),
+        ),
+        ("citations", r.citations.is_empty()),
+    ]
+    .into_iter()
+    .filter_map(|(field, missing)| missing.then_some(field))
+    .collect::<Vec<_>>();
+    if !empty.is_empty() {
+        return Err(format!(
+            "REVIEW_REQUIREMENT_EMPTY stage=decision_units: requirement {:?}, empty fields: {}",
+            r.id,
+            empty.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+fn ledger_review(r: &Requirement, citations: &[Value]) -> Result<(), String> {
+    if let Thinking::NeedsUser { ledger_review, .. } = &r.judgment {
+        nonempty(&ledger_review.reasoning, "judgment.ledger_review.reasoning")?;
+        if ledger_review.citations.is_empty()
+            || ledger_review
+                .citations
+                .iter()
+                .any(|i| !citations.get(*i).is_some_and(|c| c["kind"] == "ledger"))
+        {
+            return Err("REVIEW_LEDGER_CHECK stage=decision_units: cite existing ledger decisions before asking the user".into());
+        }
+    }
+    Ok(())
 }

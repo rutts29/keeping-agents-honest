@@ -213,7 +213,10 @@ impl ReviewUnits {
                 .as_str()
                 .ok_or("REVIEW_REQUIREMENT_ID stage=decision_units")?;
             if !validation::id(id) || named.insert(id.into(), item.clone()).is_some() {
-                return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
+                return Err(format!(
+                    "REVIEW_REQUIREMENT_ID stage=decision_units: invalid or duplicate requirement id {:?}",
+                    id
+                ));
             }
         }
         Ok(
@@ -234,25 +237,26 @@ impl ReviewUnits {
         let mut requirements = vec![];
         for requirement in &self.requirements {
             if !validation::id(&requirement.id) || !ids.insert(&requirement.id) {
-                return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
+                return Err(format!(
+                    "REVIEW_REQUIREMENT_ID stage=decision_units: invalid or duplicate requirement id {:?}",
+                    requirement.id
+                ));
             }
-            let value = validation::requirement(requirement, documents)?;
-            if self.version.is_some_and(|version| version >= 7) {
-                blocker::require_typed(requirement)?;
-            }
-            if self.version.is_some_and(|v| v >= 8) {
-                literal_receipt::verify(
-                    requirement,
-                    value["citations"].as_array().unwrap(),
-                    documents,
-                )?;
-            }
+            let value = validation::verified_requirement(
+                requirement,
+                documents,
+                self.version,
+                !active_items.is_empty(),
+            )?;
             if requirement
                 .authority_items
                 .iter()
                 .any(|id| !active_items.contains(id))
             {
-                return Err("REVIEW_REQUIREMENT_AUTHORITY stage=decision_units: authority item is not in the protected input".into());
+                return Err(format!(
+                    "REVIEW_REQUIREMENT_AUTHORITY stage=decision_units: requirement {:?} authority_items {:?} contains an item outside protected input",
+                    requirement.id, requirement.authority_items
+                ));
             }
             covered.extend(requirement.authority_items.iter());
             requirements.push(value);
@@ -267,7 +271,10 @@ impl ReviewUnits {
         let proportion = self
             .proportion
             .as_ref()
-            .map(|p| validation::proportion(p, documents))
+            .map(|p| {
+                validation::proportion(p, documents)
+                    .map_err(|e| format!("{e}; proportion {:?}", p.id))
+            })
             .transpose()?;
         let steering = self
             .steering

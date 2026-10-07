@@ -37,7 +37,10 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
     if purpose == Purpose::Steering && identity::retained(&root, &name, &trigger)? {
         return Ok(());
     }
-    if purpose == Purpose::Checkpoint && trigger["review_class"] == "commit" {
+    if purpose == Purpose::Checkpoint
+        && trigger["review_class"] == "commit"
+        && trigger["head"].as_str().is_some()
+    {
         return supersede::publish(
             worker,
             &root,

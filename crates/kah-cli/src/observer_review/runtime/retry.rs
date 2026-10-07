@@ -24,7 +24,8 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if review::redelivery::unchanged_correction(&store, &pending.id, gap.as_ref().unwrap())? {
         review::redelivery::park_correction(&store, &pending.id, gap.as_ref().unwrap())?;
         drop(store);
-        return review::redelivery::notify(&state);
+        review::redelivery::notify(&state)?;
+        return review::queue::kick(worker);
     }
     let request = workspace::request(&store, &pending.id)?;
     let _processing = review::liveness::processing(worker, &pending.id)?;

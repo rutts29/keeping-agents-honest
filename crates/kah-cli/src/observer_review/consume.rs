@@ -12,6 +12,9 @@ use std::{
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
+#[cfg(test)]
+#[path = "../../tests/observer_unit/light_commit_ownership.rs"]
+mod light_ownership_tests;
 
 /// Open first, then inspect the descriptor: no symlinks, devices or FIFO waits.
 pub fn read_report(path: &Path) -> Result<Vec<u8>> {
@@ -86,7 +89,7 @@ pub fn run(worker: &str) -> Result<()> {
         super::reminder::save(&store, &request, &report)?;
     }
     commit_result(&store, &mut state, &request, result, tokens.ok())?;
-    if request.purpose == Purpose::Checkpoint {
+    if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(&request) {
         super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
     }
     finish(store, &path, worker)
@@ -122,6 +125,10 @@ pub fn needs_reminder(assessment: &Value, judgment: &judge::Judgment) -> bool {
             && assessment["application"] == "verified_for_next_native_event"
             && assessment["steering_directs"] == true
             && kah_observer::decision_units::confirmed(judgment, "steering.proposal", "supported")
+        || assessment["state"] == "commit_failed"
+            && assessment["violations"]
+                .as_array()
+                .is_some_and(|v| !v.is_empty())
 }
 pub fn question_version(request: &super::state::Request, report: &Report) -> u32 {
     if let Some(units) = &report.decision_units {
@@ -180,7 +187,7 @@ fn decide(
     if report.decision_units.is_some() {
         return super::decisions::evaluate(home, request, report, actions);
     }
-    if request.purpose == Purpose::Checkpoint {
+    if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(request) {
         return super::checkpoint::evaluate(home, request, actions);
     }
     if request.purpose == Purpose::Steering {
@@ -352,7 +359,7 @@ pub(super) fn commit_result(
     result: Value,
     tokens: Option<u64>,
 ) -> Result<()> {
-    if request.purpose == Purpose::Checkpoint {
+    if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(request) {
         super::checkpoint::record(store, state, request, &result)?;
     }
     state.latest = Some(result);
@@ -363,13 +370,7 @@ pub(super) fn commit_result(
         state.native_tokens = tokens;
     }
     store.save(state)?;
-    if request.purpose == Purpose::Checkpoint && request.head.is_some() {
-        super::source_store::save(
-            &store.directory,
-            "last-reviewed-sha.json",
-            &json!({"head":request.head,"request":request.id,"review_class":request.trigger["review_class"],"reviewed_not_necessarily_passed":true}),
-        )?;
-    }
+    super::commit_packet::reviewed(store, request)?;
     super::timing::now(&request.worker, &request.id, "completed")
 }
 fn timed_evidence(

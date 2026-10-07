@@ -64,11 +64,40 @@ pub fn transfer(worker: &str) -> Result<()> {
     // Ownership transfers once durable in the queue, even while another review
     // holds its lock. Waiting for native submission re-enqueued this same batch
     // on every follow-up and kept an idle observer reviewing its own triggers.
-    super::queue::enqueue(worker, Purpose::Checkpoint, &turn, json!({"events":events}))?;
+    for trigger in batches(&events) {
+        super::queue::enqueue(worker, Purpose::Checkpoint, &turn, trigger)?;
+    }
     for path in paths {
         fs::remove_file(path)?;
     }
     Ok(())
+}
+pub fn batches(events: &[Value]) -> Vec<Value> {
+    let mut light: Vec<(String, Vec<Value>)> = vec![];
+    let mut heavy = vec![];
+    for event in events {
+        if event["review_class"] == "commit"
+            && matches!(
+                event["kind"].as_str(),
+                Some("native_head" | "native_phase_claim")
+            )
+        {
+            let head = event["head"].as_str().unwrap_or("");
+            if let Some((_, items)) = light.iter_mut().find(|(h, _)| h == head) {
+                items.push(event.clone());
+            } else {
+                light.push((head.into(), vec![event.clone()]));
+            }
+        } else {
+            heavy.push(event.clone());
+        }
+    }
+    let mut batches = vec![];
+    if !heavy.is_empty() {
+        batches.push(json!({"review_class":"gate","events":heavy}));
+    }
+    batches.extend(light.into_iter().map(|(head,events)|json!({"review_class":"commit","head":if head.is_empty(){None}else{Some(head)},"events":events})));
+    batches
 }
 pub fn cli(args: &[String]) -> Result<()> {
     if args.len() > 2 {

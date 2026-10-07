@@ -69,7 +69,9 @@ pub(crate) fn preflight_contexts(
         input["decision"] = kah_observer::decision_units::ReviewUnits::named_state(&verified)?;
         steering::context(request, report, &mut input)?;
         let mut questions = kah_observer::decision_units::questions(units);
-        super::gate_approval::prepare_contracts(request, report, &mut input, &mut questions)?;
+        if !super::commit_packet::is_commit(request) {
+            super::gate_approval::prepare_contracts(request, report, &mut input, &mut questions)?;
+        }
         if units.version() >= 8 {
             for key in questions.keys() {
                 scoped::report_context(&input, key)?;
@@ -89,18 +91,11 @@ pub fn evaluate(
     let units = report.decision_units.as_ref().ok_or("REVIEW_UNITS_MISSING stage=decision: return named factual or reasoned semantic requirements")?;
     let verified = verify(request, report)?.ok_or("REVIEW_UNITS_MISSING stage=decision")?;
     let deferrals = super::deferrals::collect(request, actions)?;
-    let mut input = super::checkpoint::decision_context(
-        &request.intent,
-        &request.trigger,
-        request.head.as_deref(),
-        &serde_json::json!(actions),
-        serde_json::json!(deferrals),
-    );
-    input["decision"] = decision_units::ReviewUnits::named_state(&verified)?;
-    steering::context(request, report, &mut input)?;
-    crate::privacy::scrub(&mut input);
+    let mut input = evaluation_input(request, report, actions, &deferrals, &verified)?;
     let mut questions = decision_units::questions(units);
-    super::gate_approval::prepare_contracts(request, report, &mut input, &mut questions)?;
+    if !super::commit_packet::is_commit(request) {
+        super::gate_approval::prepare_contracts(request, report, &mut input, &mut questions)?;
+    }
     if request.purpose == super::state::Purpose::Checkpoint
         && super::checkpoint_claim::doubtful(request)
     {
@@ -114,6 +109,15 @@ pub fn evaluate(
     } else {
         legacy(home, request, &input, &questions, units.version())?
     };
+    if super::commit_packet::is_commit(request) {
+        let mut result = super::light_commit::conclusion(
+            &assessment(request, units, &judgment, deferrals),
+            archive,
+            !questions.is_empty(),
+        );
+        super::light_commit::coverage(request, report, &mut result);
+        return Ok((judgment, prepared, result));
+    }
     match super::checkpoint_claim::assessment(&judgment) {
         Ok(Some(assessment)) => return Ok((judgment, prepared, assessment)),
         Err(error)
@@ -236,4 +240,24 @@ pub fn assessment(
         _ => "decision",
     };
     serde_json::json!({"state":format!("{purpose}_{state}"),"passed":if state=="passed" {Some(true)}else if state=="failed" {Some(false)}else{None},"violations":outcome.violations,"needs_user":outcome.needs_user,"needs_thinker":outcome.needs_thinker,"not_due":outcome.not_due,"resolved_non_executable":outcome.resolved_non_executable,"resolved_preservation":outcome.resolved_preservation,"deferred":outcome.deferred,"unproven":outcome.violations.iter().chain(&outcome.needs_user).chain(&outcome.needs_thinker).collect::<Vec<_>>(),"deferrals":open,"out_of_proportion":outcome.out_of_proportion,"checkpoint_question_set":units.version(),"controller_phase_due":if phase_due{Some(serde_json::json!({"worker":request.worker,"request":request.id,"head":request.head,"source":"persistent_verified_claim","judgment_key":"claim_made"}))}else{None}})
+}
+
+fn evaluation_input(
+    request: &Request,
+    report: &Report,
+    actions: &[Value],
+    deferrals: &[Value],
+    verified: &Value,
+) -> Result<Value> {
+    let mut input = super::checkpoint::decision_context(
+        &request.intent,
+        &request.trigger,
+        request.head.as_deref(),
+        &serde_json::json!(actions),
+        serde_json::json!(deferrals),
+    );
+    input["decision"] = kah_observer::decision_units::ReviewUnits::named_state(verified)?;
+    steering::context(request, report, &mut input)?;
+    crate::privacy::scrub(&mut input);
+    Ok(input)
 }

@@ -20,6 +20,7 @@ use binding::binding;
 pub use rendering::{native_document, render};
 
 pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> Result<Request> {
+    let mut trigger = super::commit_packet::trigger(&purpose, trigger);
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=context")?);
     let source = Store::read(&RunStore::default_state_root()?, &state.worker.session)?
         .ok_or("REVIEW_WORKER_STATE stage=context")?;
@@ -34,13 +35,12 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     documents.push(history(&home, state)?);
     let mut project = scoped_project_context(&home, state, &trigger)?;
     super::artifacts::documents(&state.worker.session, &project, &mut documents)?;
-    let mut trigger = trigger;
     trigger["decision_protocol_version"] = json!(kah_observer::decision_units::VERSION);
     if purpose == Purpose::Steering {
         let input = serde_json::from_value(trigger["uncertain_user_input"].clone())?;
         trigger["steering_context"] = super::steering::context(&state.worker.session, &input)?;
     }
-    if purpose == Purpose::Drift {
+    if purpose == Purpose::Drift || trigger["review_class"] == "commit" {
         trigger["last_completed_drift_review"] = super::state::read::<Value>(
             &super::state::Store::directory(&state.worker.session)?.join("last-drift-review.json"),
         )?
@@ -122,7 +122,8 @@ fn project_documents(
     trigger: &Value,
     documents: &mut Vec<Document>,
 ) -> Result<()> {
-    let commit = trigger["review_class"] == "commit";
+    let commit = (trigger["review_class"] == "commit" || trigger["packet_scope"] == "diff-v1")
+        && !project["head"].is_null();
     if commit {
         documents.extend(super::commit_packet::documents(project)?);
     } else {
@@ -166,7 +167,10 @@ fn project_documents(
     Ok(())
 }
 fn scoped_project_context(home: &Path, state: &State, trigger: &Value) -> Result<Value> {
-    if trigger["review_class"] != "commit" {
+    if trigger["review_class"] != "commit" && trigger["packet_scope"] != "diff-v1" {
+        return project_context(home, state);
+    }
+    if super::tags::head(home, state)?.is_none() {
         return project_context(home, state);
     }
     let previous = super::state::read::<Value>(
@@ -175,6 +179,14 @@ fn scoped_project_context(home: &Path, state: &State, trigger: &Value) -> Result
     let baseline = previous
         .as_ref()
         .and_then(|p| p["head"].as_str())
+        .or_else(|| state.checkpoint.as_ref().and_then(|r| r["head"].as_str()))
+        .or_else(|| {
+            state
+                .latest
+                .as_ref()
+                .filter(|r| r["purpose"] == "checkpoint")
+                .and_then(|r| r["head"].as_str())
+        })
         .unwrap_or("empty");
     project_context_with_baseline(home, state, Some(baseline))
 }

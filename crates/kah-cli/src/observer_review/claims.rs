@@ -67,11 +67,19 @@ pub fn run(worker: &str) -> Result<()> {
         crate::privacy::scrub(&mut input);
         let judgment =
             judge::routing::evaluate(&home, binding.judge, &binding.jev_model, &input, &questions)?;
-        if needs_review(&judgment) {
+        if let Some(class) = review_class(&judgment) {
+            let state = Store::read(worker)?.map(Ok).unwrap_or_else(|| {
+                super::state::State::new(crate::relay_store::endpoint(worker)?, &home)
+            })?;
+            let head = super::tags::head(&home, &state)?;
+            let class = match class {
+                ReviewClass::Commit => "commit",
+                ReviewClass::Gate => "gate",
+            };
             let uncertain = matches!(judgment.answers.get("phase_claim"),Some(Answer::Noul{noul}) if *noul<judge::questions::STEERING_PROBABILITY);
             super::events::enqueue(
                 worker,
-                json!({"kind":"native_phase_claim","source":input,"judgment":judgment,"question_set":VERSION,"uncertain":uncertain}),
+                json!({"kind":"native_phase_claim","review_class":class,"head":head,"source":input,"judgment":judgment,"question_set":VERSION,"uncertain":uncertain}),
             )?;
         }
         crate::unattended_report::save(

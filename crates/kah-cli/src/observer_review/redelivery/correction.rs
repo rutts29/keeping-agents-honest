@@ -29,6 +29,7 @@ pub fn unchanged_correction(store: &Store, request: &str, gap: &Value) -> Result
         }))
 }
 pub fn park_correction(store: &Store, request: &str, gap: &Value) -> Result<()> {
+    super::parked::release(store, request, gap)?;
     let mut blocked = gap.clone();
     blocked["status"] = "validation_blocked_unchanged".into();
     blocked["request"] = request.into();

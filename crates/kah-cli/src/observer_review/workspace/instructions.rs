@@ -39,6 +39,9 @@ pub fn require_units(request: &Request, report: &Report) -> Result<()> {
         return Err("REVIEW_UNITS_REQUIRED stage=report: provide named factual requirements or reasoned typed semantic decisions using decision_units in schema.json".into());
     }
     contract::require(request, report)?;
+    if super::super::commit_packet::is_commit(request) {
+        super::super::light_commit::require(report)?;
+    }
     if report.decision_units.as_ref().is_some_and(|u| {
         u.requirements.iter().any(|r| {
             r.applicability.is_none()

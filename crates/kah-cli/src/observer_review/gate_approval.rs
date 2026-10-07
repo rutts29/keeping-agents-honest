@@ -178,6 +178,9 @@ pub(super) fn guard_report(
     report: &Report,
     assessment: &mut Value,
 ) -> Result<()> {
+    if super::commit_packet::is_commit(request) {
+        return Ok(());
+    }
     guard_followup(root, request, assessment)?;
     unchecked_final(request, report, assessment)
 }

@@ -177,3 +177,32 @@ fn persisted_catalog_keeps_only_an_index_in_the_packet_and_recovers_complete_sou
     fs::remove_dir_all(state_root).unwrap();
     assert!(!root.exists());
 }
+#[test]
+fn steering_scope_does_not_advance_the_last_code_reviewed_sha() {
+    use kah_cli::observer_review::{source_store, state::Store};
+    let (mut request, _) = fixture("whole file");
+    request.worker = format!("scope-baseline-{}", kah_cli::relay_store::nonce());
+    let store = Store::open(&request.worker).unwrap();
+    source_store::save(
+        &store.directory,
+        "last-reviewed-sha.json",
+        &json!({"head":"old-reviewed-sha"}),
+    )
+    .unwrap();
+    request.purpose = Purpose::Steering;
+    request.trigger = commit_packet::trigger(&request.purpose, json!({}));
+    assert!(commit_packet::is_scoped(&request));
+    assert!(!commit_packet::is_commit(&request));
+    commit_packet::reviewed(&store, &request).unwrap();
+    let baseline: serde_json::Value =
+        source_store::read(&store.directory.join("last-reviewed-sha.json")).unwrap();
+    assert_eq!(baseline["head"], "old-reviewed-sha");
+    request.purpose = Purpose::Drift;
+    commit_packet::reviewed(&store, &request).unwrap();
+    let baseline: serde_json::Value =
+        source_store::read(&store.directory.join("last-reviewed-sha.json")).unwrap();
+    assert_eq!(baseline["head"], "old-reviewed-sha");
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}

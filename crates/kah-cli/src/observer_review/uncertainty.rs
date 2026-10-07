@@ -49,6 +49,9 @@ pub fn record(
     assessment: &Value,
     judgment: &kah_observer::judge::Judgment,
 ) -> Result<()> {
+    if super::commit_packet::is_commit(request) {
+        return super::light_commit::record(store, request, report, assessment, judgment);
+    }
     let followup_finished =
         super::gate_approval::finish_followup(&store.directory, request, report, assessment)?;
     super::questions::resolve(&store.directory, request, report, judgment)?;

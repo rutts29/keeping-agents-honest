@@ -24,6 +24,7 @@ pub fn schedule(worker: &str) -> Result<()> {
 pub fn run(worker: &str) -> Result<()> {
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=tags")?);
     let root = Store::directory(worker)?;
+    let _sample = Store::delivery_at(&root.join("tag-events"), true)?;
     loop {
         let mut paths = fs::read_dir(root.join("tag-events"))?
             .map(|e| e.map(|e| e.path()))
@@ -35,11 +36,16 @@ pub fn run(worker: &str) -> Result<()> {
         let state = Store::read(worker)?
             .map(Ok)
             .unwrap_or_else(|| State::new(crate::relay_store::endpoint(worker)?, &home))?;
-        let current = match read_tags(&home, &state) {
+        let refs = match read_refs(&home, &state) {
             Ok(current) => current,
             Err(error) if error.to_string().starts_with("REVIEW_WORKTREE_PENDING") => return Ok(()),
             Err(error) => return Err(error),
         };
+        sample_head(worker, &root, &refs)?;
+        let current = refs
+            .into_iter()
+            .filter(|r| r.starts_with("refs/tags/"))
+            .collect::<Vec<_>>();
         let prior: Option<Vec<String>> = super::state::read(&root.join("git-tags.json"))?;
         let added = observed_additions(prior.as_deref(), &current);
         if !added.is_empty() {
@@ -66,7 +72,28 @@ pub fn additions(previous: &[String], current: &[String]) -> Vec<String> {
         .cloned()
         .collect()
 }
-fn read_tags(home: &Path, state: &State) -> Result<Vec<String>> {
+/// git/git v2.53.0 Documentation/git-for-each-ref.adoc: --include-root-refs
+/// includes HEAD, including detached HEAD, in the same native metadata read.
+pub fn head(home: &Path, state: &State) -> Result<Option<String>> {
+    Ok(read_refs(home, state)?
+        .into_iter()
+        .find_map(|r| r.strip_prefix("HEAD ").map(str::to_owned)))
+}
+fn sample_head(worker: &str, root: &Path, refs: &[String]) -> Result<()> {
+    let head = refs.iter().find_map(|r| r.strip_prefix("HEAD "));
+    let previous: Option<String> = super::state::read(&root.join("git-head.json"))?;
+    if let Some(head) = head
+        && previous.as_deref() != Some(head)
+    {
+        super::events::enqueue(
+            worker,
+            json!({"kind":"native_head","review_class":"commit","head":head,"source":"controller Git metadata","at_ms":kah_observer::session::now_ms()}),
+        )?;
+        crate::unattended_report::save(root, "git-head.json", &json!(head))?;
+    }
+    Ok(())
+}
+fn read_refs(home: &Path, state: &State) -> Result<Vec<String>> {
     let args = [
         "git",
         "-c",
@@ -74,8 +101,10 @@ fn read_tags(home: &Path, state: &State) -> Result<Vec<String>> {
         "-c",
         "core.fsmonitor=false",
         "for-each-ref",
+        "--include-root-refs",
         "--format=%(refname) %(objectname)",
         "refs/tags",
+        "HEAD",
     ];
     let output = if state.worker.project.starts_with(home.join("repos/mine")) {
         Command::new(args[0])

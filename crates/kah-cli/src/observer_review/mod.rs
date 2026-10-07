@@ -15,6 +15,7 @@ pub mod gate_approval;
 pub mod hook;
 pub mod hook_queue;
 pub mod launch;
+pub mod light_commit;
 pub mod liveness;
 pub mod preparation;
 mod prepared_result;

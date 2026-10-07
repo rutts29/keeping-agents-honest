@@ -13,6 +13,29 @@ pub use storage::persist;
 pub fn is_commit(request: &Request) -> bool {
     request.purpose == Purpose::Checkpoint && request.trigger["review_class"] == "commit"
 }
+pub fn is_scoped(request: &Request) -> bool {
+    is_commit(request) || request.trigger["packet_scope"] == "diff-v1"
+}
+pub fn trigger(purpose: &Purpose, mut trigger: Value) -> Value {
+    if matches!(purpose, Purpose::Drift | Purpose::Steering) || trigger["review_class"] == "commit"
+    {
+        trigger["packet_scope"] = json!("diff-v1");
+    }
+    if trigger["review_class"] == "commit" {
+        trigger["review_protocol"] = json!("commit-v1");
+    }
+    trigger
+}
+pub fn reviewed(store: &super::state::Store, request: &Request) -> Result<()> {
+    if request.purpose == Purpose::Checkpoint && request.head.is_some() {
+        super::source_store::save(
+            &store.directory,
+            "last-reviewed-sha.json",
+            &json!({"head":request.head,"request":request.id,"review_class":request.trigger["review_class"],"reviewed_not_necessarily_passed":true}),
+        )?;
+    }
+    Ok(())
+}
 pub fn file_id(path: &str) -> String {
     format!("commit-file-{:x}", Sha256::digest(path.as_bytes()))
 }
@@ -105,7 +128,7 @@ fn document(head: &str, file: &Value) -> Result<Document> {
     ))
 }
 pub fn validate_report(request: &Request, report: &Value) -> Result<()> {
-    if !is_commit(request) {
+    if !is_scoped(request) {
         return Ok(());
     }
     let mut sources = BTreeSet::new();
@@ -121,7 +144,7 @@ pub fn validate_report(request: &Request, report: &Value) -> Result<()> {
     Ok(())
 }
 pub fn expand(request: &mut Request, report: &Value) -> Result<Vec<String>> {
-    if !is_commit(request) {
+    if !is_scoped(request) {
         return Ok(vec![]);
     }
     let Some(catalog) = request

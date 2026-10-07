@@ -6,7 +6,7 @@ use crate::observer_review::{
 };
 pub fn rejected(store: &Store, state: &State, request: &Request) -> Result<Request> {
     let mut expanded = request.clone();
-    if !is_commit(request) {
+    if !is_scoped(request) {
         return Ok(expanded);
     }
     if state.worker.session != request.worker
