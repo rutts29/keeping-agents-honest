@@ -101,6 +101,9 @@ fn read_response(
             response: BuilderOutcome::Evidence { response },
         }));
     }
+    if let Some(record) = new_primary_reply(&before, &current) {
+        return unmatched(&directory, &current, record, pointer);
+    }
     Ok(None)
 }
 fn query(round: &VerificationRound, job: &Job) -> String {
@@ -124,23 +127,60 @@ fn response<'a>(
     receipt: &str,
 ) -> Option<&'a kah_observer::review_evidence::NativeRecord> {
     current.native_records.iter().find(|record| {
-        let context = &record.context;
-        let assistant =
-            context["record_type"] == "agentMessage" || context["message_role"] == "assistant";
-        assistant
-            && context["is_meta"] != true
-            && context["is_sidechain"] != true
-            && !before
-                .native_records
-                .iter()
-                .any(|old| old.context["record_id"] == context["record_id"])
+        is_new_primary(record, before)
             && current
                 .text
                 .get(record.start_byte..record.end_byte)
                 .is_some_and(|text| text.contains(receipt))
     })
 }
+fn new_primary_reply<'a>(
+    before: &kah_observer::review_evidence::Document,
+    current: &'a kah_observer::review_evidence::Document,
+) -> Option<&'a kah_observer::review_evidence::NativeRecord> {
+    current
+        .native_records
+        .iter()
+        .rev()
+        .find(|record| is_new_primary(record, before))
+}
+fn is_new_primary(
+    record: &kah_observer::review_evidence::NativeRecord,
+    before: &kah_observer::review_evidence::Document,
+) -> bool {
+    let context = &record.context;
+    (context["record_type"] == "agentMessage" || context["message_role"] == "assistant")
+        && context["is_meta"] != true
+        && context["is_sidechain"] != true
+        && !before
+            .native_records
+            .iter()
+            .any(|old| old.context["record_id"] == context["record_id"])
+}
 
 #[cfg(test)]
 #[path = "../../../../tests/observer_unit/builder_evidence.rs"]
 mod tests;
+
+fn unmatched(
+    directory: &Path,
+    current: &kah_observer::review_evidence::Document,
+    record: &kah_observer::review_evidence::NativeRecord,
+    pointer: EvidencePointer,
+) -> Result<Option<BuilderReceipt>> {
+    let path = directory.join("builder-unmatched-response.json");
+    source_store::save(
+        directory,
+        "builder-unmatched-response.json",
+        &json!({"source":current.uri,"record":record.context,"text":current.text.get(record.start_byte..record.end_byte)}),
+    )?;
+    Ok(Some(BuilderReceipt {
+        request: pointer,
+        response: BuilderOutcome::Unavailable {
+            reason: format!(
+                "Completed native reply omitted the requested receipt; full evidence retained at {}. No second ask.",
+                path.display()
+            ),
+        },
+    }))
+}

@@ -353,3 +353,32 @@ fn the_final_round_accounts_for_new_positive_uncertainty_without_a_second_ask() 
             .any(|r| r.requirement_id == "evidence_response")
     );
 }
+
+#[test]
+fn final_report_risk_omission_is_correctable_by_the_same_thinker() {
+    let mut missing = report();
+    missing.verification_risks = None;
+    let error = checked_items(
+        &round(),
+        &job(),
+        &missing,
+        &json!({"needs_thinker":["intent"]}),
+        &pointer("checks"),
+        &pointer("decision"),
+    )
+    .unwrap_err();
+    let origin = crate::observer_review::failure::origin(error.as_ref());
+    assert_eq!(
+        origin,
+        crate::observer_review::failure::Origin::ReportValidation
+    );
+    assert!(
+        error
+            .to_string()
+            .starts_with("REVIEW_FOLLOWUP_RISK_MISSING")
+    );
+    assert!(crate::observer_review::failure::correctable(
+        origin,
+        &error.to_string()
+    ));
+}

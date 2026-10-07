@@ -218,3 +218,7 @@ fn failure(root: &Path, path: &Path, worker: &str, error: &str) -> Result<()> {
         &json!({"error":error,"reviewer_submitted":delivery.is_ok(),"delivery_error":delivery.err().map(|e|e.to_string()),"at_ms":kah_observer::session::now_ms()}),
     )
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/followup_host_failure.rs"]
+mod recovery_tests;

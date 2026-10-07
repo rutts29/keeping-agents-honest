@@ -37,10 +37,7 @@ pub(crate) fn finish(
     let result_path = root.join("results").join(format!("{}.json", request.id));
     let result: Value = source_store::read(&result_path)?;
     let decision = pointer(&format!("{}-decision", round.id), &result_path, &result)?;
-    let (verified, risks) = super::super::super::failure::validation(
-        super::super::super::failure::Origin::ReportValidation,
-        || items(&round, &job, report, assessment, &receipt, &decision),
-    )?;
+    let (verified, risks) = checked_items(&round, &job, report, assessment, &receipt, &decision)?;
     let round = advance(
         root,
         &round.binding,
@@ -226,4 +223,18 @@ fn preserves(
                 .iter()
                 .all(|item| current.authority_items.contains(item))
     })
+}
+
+fn checked_items(
+    round: &VerificationRound,
+    job: &Job,
+    report: &Report,
+    assessment: &Value,
+    receipt: &EvidencePointer,
+    decision: &EvidencePointer,
+) -> Result<(Vec<VerifiedRequirement>, Vec<UnverifiedRisk>)> {
+    super::super::super::failure::validation(
+        super::super::super::failure::Origin::ReportValidation,
+        || items(round, job, report, assessment, receipt, decision),
+    )
 }

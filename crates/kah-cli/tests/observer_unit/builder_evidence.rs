@@ -37,3 +37,15 @@ fn response_uses_host_native_provenance_and_ignores_old_messages_and_tool_output
     synthetic.native_records[0].context["is_sidechain"] = true.into();
     assert!(response(&before, &synthetic, "receipt-marker").is_none());
 }
+
+#[test]
+fn missing_receipt_in_a_completed_new_primary_reply_remains_visible_evidence() {
+    let before = document("agentMessage", "old");
+    let mut current = document("agentMessage", "new");
+    current.text = "Existing test and SHA receipts follow.".into();
+    current.native_records[0].end_byte = current.text.len();
+    assert!(response(&before, &current, "receipt-marker").is_none());
+    assert!(new_primary_reply(&before, &current).is_some());
+    assert!(new_primary_reply(&before, &document("commandExecution", "new")).is_none());
+    assert!(new_primary_reply(&before, &document("agentMessage", "old")).is_none());
+}

@@ -120,10 +120,7 @@ fn eligible_gate_creates_one_bound_question_with_plain_summary_and_all_evidence(
     assert_eq!(pending[0]["request"], "review-rethink");
     let text = kah_cli::observer_review::questions::message(&pending[0]).unwrap();
     assert!(text.starts_with("[kah-builder] Accept gate "));
-    assert_eq!(
-        kah_codex::authorship::classify(&text, false),
-        kah_core::intent_history::SourceRole::Delegate
-    );
+    assert_question_delegate(&text);
     assert!(text.contains("Risk if accepted:"));
     assert!(text.contains("or send it back for more evidence?"));
     assert!(pending[0]["jev"].to_string().contains("unclear"));
@@ -371,4 +368,22 @@ fn fixture(label: &str) -> std::path::PathBuf {
     )
     .unwrap();
     root
+}
+
+fn assert_question_delegate(text: &str) {
+    assert_eq!(
+        kah_codex::authorship::classify(text, false),
+        kah_core::intent_history::SourceRole::Delegate
+    );
+    let row = json!({"type":"user","uuid":"question","sessionId":"reviewer","cwd":"/fixture","message":{"role":"user","content":text}});
+    let snapshot = kah_claude::transcript::parse(
+        &(row.to_string() + "\n"),
+        "reviewer",
+        std::path::Path::new("/fixture"),
+    )
+    .unwrap();
+    assert!(
+        snapshot.users.is_none(),
+        "question context must not become reviewer user intent"
+    );
 }
