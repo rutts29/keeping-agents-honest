@@ -307,11 +307,7 @@ fn starts_request(text: &str, provider: &str, marker: &str) -> bool {
     text.starts_with(marker)
 }
 pub fn safe_keyboard(screen: &str) -> Result<()> {
-    let lower = screen.to_ascii_lowercase();
-    if ["billing", "credit", "purchase", "upgrade", "payment"]
-        .iter()
-        .any(|w| lower.contains(w))
-    {
+    if crate::native_billing::active(screen) {
         return Err("REVIEW_BILLING_ABORT stage=delivery: no keypress sent".into());
     }
     Ok(())

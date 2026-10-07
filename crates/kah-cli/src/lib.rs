@@ -58,3 +58,5 @@ pub mod native_controller;
 pub mod native_history;
 pub mod native_resume;
 pub mod run_pane;
+
+pub mod native_billing;

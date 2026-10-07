@@ -38,6 +38,7 @@ fn correction_required(error: &str) -> bool {
     !super::super::delivery::wait_timeout(error)
         && ![
             "REVIEW_OBSERVER_STALLED",
+            "REVIEW_BILLING_ABORT",
             "REVIEW_SUBMISSION_UNCONFIRMED",
             "REVIEW_NOT_IDLE",
             "REVIEW_REPORT_MISSING",

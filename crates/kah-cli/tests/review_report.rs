@@ -140,7 +140,12 @@ fn only_a_native_user_receipt_confirms_delivery_and_enter_is_composer_scoped() {
         "claude"
     ));
     for word in ["billing", "CREDIT", "purchase", "upgrade", "payment"] {
-        assert!(safe_keyboard(&format!("❯ {marker} {word}")).is_err());
+        assert!(
+            safe_keyboard(&format!(
+                "The Jev {word} outage was resolved.\n❯ {marker}\n? for shortcuts"
+            ))
+            .is_ok()
+        );
     }
 }
 

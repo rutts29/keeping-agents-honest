@@ -4,6 +4,7 @@ fn delivery_noise_cannot_undo_ack_but_host_errors_are_not_retried_as_success() {
     for error in [
         "REVIEW_REPORT_MISSING stage=observer",
         "REVIEW_OBSERVER_STALLED stage=liveness",
+        "REVIEW_BILLING_ABORT",
         "REVIEW_SUBMISSION_UNCONFIRMED stage=delivery",
     ] {
         assert!(!correction_required(error));
