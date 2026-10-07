@@ -11,6 +11,13 @@ use std::{env, path::PathBuf};
 pub fn payment_required(error: &str) -> bool {
     error.starts_with("JEV_") && error.split_whitespace().any(|v| v == "http_status=402")
 }
+pub fn cause(error: &str) -> String {
+    if payment_required(error) {
+        format!("SERVICE OUTAGE: Jev unavailable: payment required ({error})")
+    } else {
+        format!("VALIDATION BLOCKED: {error}")
+    }
+}
 pub fn blocked(worker: &str) -> Result<bool> {
     if super::control::config(worker)?.is_none_or(|c| !c.enabled) {
         return Ok(false);

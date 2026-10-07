@@ -11,11 +11,6 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-pub fn waiting(worker: &str) -> Result<Option<Processing>> {
-    Store::read(worker)?
-        .and_then(|s| s.pending.map(|p| processing(worker, &p.id)))
-        .transpose()
-}
 pub fn run(worker: &str) -> Result<()> {
     super::super::runtime::require_active(worker)?;
     if super::super::service::blocked(worker)? {
@@ -48,6 +43,9 @@ pub fn run(worker: &str) -> Result<()> {
     crate::unattended_report::save(&root, "progress.json", &serde_json::to_value(&progress)?)?;
     if progress.changed {
         event(&root, worker, &progress)?;
+    }
+    if service_outage(&sample) {
+        return notify(&state, &progress);
     }
     if validation_blocked(&sample) {
         return validation_notice(&state, &progress);
@@ -153,7 +151,7 @@ fn sample(state: &State) -> Result<Sample> {
     let cause = if let Some(reason) = rejected {
         reason
     } else if let Some(error) = host_error {
-        format!("VALIDATION BLOCKED: {error}")
+        super::super::service::cause(&error)
     } else if Store::open(&state.worker.session).is_err() {
         "review lock busy".into()
     } else if state.observer.pane.is_none() {
@@ -261,7 +259,9 @@ pub fn processing(worker: &str, request: &str) -> Result<Processing> {
     Ok(Processing(root.join(filename)))
 }
 fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
-    let state = if validation_blocked(&p.sample) {
+    let state = if service_outage(&p.sample) {
+        "service_unavailable"
+    } else if validation_blocked(&p.sample) {
         "validation_blocked"
     } else if p.stalled && p.sample.native_active {
         "possibly_hung"
@@ -314,19 +314,25 @@ fn notify(state: &State, p: &Progress) -> Result<()> {
     if prior.as_ref().is_some_and(|v| {
         v["request"] == p.sample.request
             && v["cause"] == p.sample.cause
-            && (validation_blocked(&p.sample) || v["last_progress_ms"] == p.last_progress_ms)
+            && (validation_blocked(&p.sample)
+                || service_outage(&p.sample)
+                || v["last_progress_ms"] == p.last_progress_ms)
             && v["submitted"] == true
     }) {
         return Ok(());
     }
-    let label = if validation_blocked(&p.sample) {
+    let label = if service_outage(&p.sample) {
+        "service"
+    } else if validation_blocked(&p.sample) {
         "validation-blocked"
     } else if p.sample.native_active {
         "possibly-hung"
     } else {
         "stalled"
     };
-    let action = if validation_blocked(&p.sample) {
+    let action = if service_outage(&p.sample) {
+        "Jev unavailable: payment required; request retained, no thinker correction or review retry."
+    } else if validation_blocked(&p.sample) {
         "The exact failed report still fails host validation; pending review retained for correction."
     } else if p.sample.native_active {
         "Native Working has no new records; human decision required, no automatic interruption or prompt."

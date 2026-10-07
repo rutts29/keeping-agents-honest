@@ -6,7 +6,12 @@ mod monitor;
 pub(crate) mod selection_rejection;
 pub(crate) use handoff::awaiting_host;
 pub(crate) mod rejection;
-pub use monitor::{notice, processing, run, start, waiting, watch};
+pub use monitor::{Processing, notice, processing, run, start, watch};
+pub fn waiting(worker: &str) -> crate::Result<Option<Processing>> {
+    super::state::Store::read(worker)?
+        .and_then(|s| s.pending.map(|p| processing(worker, &p.id)))
+        .transpose()
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Sample {
@@ -28,6 +33,9 @@ pub struct Progress {
 }
 fn validation_blocked(sample: &Sample) -> bool {
     sample.cause.starts_with("VALIDATION BLOCKED: ")
+}
+fn service_outage(sample: &Sample) -> bool {
+    sample.cause.starts_with("SERVICE OUTAGE: ")
 }
 pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
     let same = previous.filter(|p| p.sample.request == sample.request);
@@ -62,9 +70,11 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
     };
     let stalled = same.is_some()
         && !validation_blocked(sample)
+        && !service_outage(sample)
         && !sample.controller_active
         && sample.now_ms.saturating_sub(last_progress_ms) >= observation_ms;
     let changed = stalled != same.is_some_and(|p| p.stalled)
+        || service_outage(sample) != same.is_some_and(|p| service_outage(&p.sample))
         || validation_blocked(sample) != same.is_some_and(|p| validation_blocked(&p.sample))
         || validation_blocked(sample) && same.is_some_and(|p| p.sample.cause != sample.cause)
         || stalled && same.is_some_and(|p| p.sample.native_active != sample.native_active);

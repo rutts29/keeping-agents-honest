@@ -3,6 +3,37 @@ use kah_cli::observer_review::{
     redelivery,
 };
 #[test]
+fn payment_liveness_is_a_service_outage_not_a_stall_or_report_correction() {
+    use kah_cli::observer_review::{
+        liveness::{Sample, transition},
+        service,
+    };
+    let mut sample = Sample {
+        request: "retained".into(),
+        now_ms: 1,
+        started_ms: 1,
+        native_active: false,
+        controller_active: false,
+        transcript_version: None,
+        report_version: None,
+        cause: service::cause("JEV_SERVICE_UNAVAILABLE stage=review_service http_status=402"),
+    };
+    assert!(
+        sample
+            .cause
+            .starts_with("SERVICE OUTAGE: Jev unavailable: payment required")
+    );
+    assert!(!sample.cause.contains("VALIDATION BLOCKED"));
+    let prior = transition(None, &sample);
+    sample.now_ms = 1000000;
+    let next = transition(Some(&prior), &sample);
+    assert!(!next.stalled);
+    assert!(!next.changed);
+    assert!(
+        service::cause("REVIEW_REQUIREMENT_EMPTY stage=report").starts_with("VALIDATION BLOCKED")
+    );
+}
+#[test]
 fn jev_payment_required_is_never_a_thinker_correction_even_in_a_report_boundary() {
     let error = failure::validation(Origin::ReportValidation, || -> kah_cli::Result<()> {
         Err(kah_observer::judge::Error {
