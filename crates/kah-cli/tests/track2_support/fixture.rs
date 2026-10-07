@@ -32,7 +32,9 @@ impl Fixture {
             ".codex/sessions",
             ".codex/archived_sessions",
             ".claude/projects",
+            ".cache",
             "repos/mine",
+            "repos/research",
         ] {
             fs::create_dir_all(home.join(dir)).unwrap();
         }

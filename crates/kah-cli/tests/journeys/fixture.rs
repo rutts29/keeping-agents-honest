@@ -15,6 +15,14 @@ pub(super) struct Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         jobs::cleanup(&self.project, &self.sessions);
+        if let Some(root) = std::env::var_os("KAH_TRACK2_ROOT") {
+            assert!(
+                self.project.starts_with(PathBuf::from(root).join("home")),
+                "TRACK2_RETAIN_SCOPE stage=cleanup"
+            );
+            kah_cli::native_child::stop_executors(&self.project).unwrap();
+            return; // Native evidence and state stay under the retained private root.
+        }
         for id in &self.sessions {
             cleanup_observer(&self.project, id);
             let _ = Command::new("/home/example/.local/bin/codex")
