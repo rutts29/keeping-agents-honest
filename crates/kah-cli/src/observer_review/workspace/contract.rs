@@ -1,4 +1,4 @@
-//! Fresh native submissions use v9; historical reports remain readable.
+//! Native submissions use their captured protocol; historical reports stay readable.
 use crate::Result;
 use crate::observer_review::state::Request;
 use kah_observer::{
@@ -10,15 +10,7 @@ pub(super) fn require(request: &Request, report: &Report) -> Result<()> {
     let Some(units) = &report.decision_units else {
         return Ok(());
     };
-    let version = if request
-        .documents
-        .iter()
-        .any(|d| d.id == "controller-evidence")
-    {
-        9
-    } else {
-        8
-    };
+    let version = version(request)?;
     if units.version != Some(version) {
         return Err(
             "REVIEW_PROTOCOL_REQUIRED stage=report: fresh reports need the request protocol version"
@@ -47,5 +39,24 @@ pub(super) fn require(request: &Request, report: &Report) -> Result<()> {
     }
     Ok(())
 }
+pub(crate) fn version(request: &Request) -> Result<u32> {
+    if let Some(value) = request.trigger.get("decision_protocol_version") {
+        return match value.as_u64() {
+            Some(version @ 8..=10) => Ok(version as u32),
+            _ => Err("REVIEW_PROTOCOL_REQUIRED stage=report: unknown captured protocol".into()),
+        };
+    }
+    Ok(
+        if request
+            .documents
+            .iter()
+            .any(|d| d.id == "controller-evidence")
+        {
+            9
+        } else {
+            8
+        },
+    )
+}
 pub(super) const CONTEXT: &str = "V8 evidence: each independent decision receives ONLY its own checked source manifest. For judgment.evidence_citations select whole relevant citations for the substantive decision; for applicability.evidence_citations select whole relevant timing/authority citations. Rust keeps the goal and linked authority_items verbatim and evaluates these decisions separately; no individual decision is split. A semantic requirement's checks must have all their command/result/SHA citations in its substantive selection; omit unrelated checks instead of putting another requirement's failure in this manifest. Preserve complete quotes, their meaning and source locations. The complete report still covers every protected active user item. Exact sha/exit_status/output_line facts are checked mechanically against trusted native metadata/output; contradictions are rejected, matching receipts cannot become violations. Never invent a missing native exit status or infer it from command text. For a current pending question, copy its existing_question_id from pending-questions and keep that requirement id. One decision has one active question. The worker's exact native quote refines the referenced wait, retaining the old wording as superseded lineage, never opening another wait. Unknown, answered or unrelated references are rejected. With no existing wait set existing_question_id=null. A later answer keeps the referenced requirement and cites the new user authority; never treat the observer's paraphrase as the user's answer.";
-pub(super) const INSTRUCTIONS: &str = "V9 contract: set decision_units.version=9 for requests carrying controller-evidence; retained earlier requests keep version=8. For an obligation conditional on a kah observer evidence ask, copy applicability.controller_trigger={receipt_citation,receipt} from controller-evidence and set due to its occurred value. No accepted ask means literally not due; an accepted ask means due, with the response independently judged. Rust checks the host delivery binding. Worker text cannot supply this fact. Other semantic timing remains reasoned applicability. Each requirement declares blocker=null when unblocked, future_implementation only for missing implementation explicitly authorized in a later phase, or user_decision for a missing user choice. A user_decision MUST use needs_user, a cited ledger_review and one named question; never hide it as semantic deferred. If the worker already asked natively, copy its exact native assistant quote into question and put that citation index in worker_question; the relay identifies it as the worker's question, never a second phrasing. Preserve the same requirement id when answered. Only the affected decision waits; unrelated authorized work continues. Each non-needs_user requirement's applicability declares phase_completion=true only for completion obligations of the CURRENT phase at this event, not the entire future goal. If completion-due exists, those phase_completion requirements copy controller_due={receipt_citation,receipt} from that controller document, due=true, unconditional=false. Rust establishes that timing literally; Jev validates the substantive decision. Unconfirmed phase claims have no such receipt and keep semantic applicability. For ongoing/mid-turn or later-phase timing use phase_completion=false, controller_due=null and reasoned semantic applicability. Unconditional prohibitions always apply: due=true, unconditional=true, phase_completion=false. A missing future completion receipt is not a mid-turn violation. The controller binds receipts to this request, worker, event and SHA. Never fabricate a receipt or reuse an old one. Keep exact source quotes, source digests and native provenance. No probabilities or overall pass/fail from the thinker.";
+pub(super) const INSTRUCTIONS: &str = "Set decision_units.version to the exact const in this request's schema.json. New captured requests use v10; retained v8/v9 requests keep their recorded protocol. For an obligation conditional on a kah observer evidence ask, copy applicability.controller_trigger={receipt_citation,receipt} from controller-evidence and set due to its occurred value. No accepted ask means literally not due; an accepted ask means due, with the response independently judged. Rust checks the host delivery binding. Worker text cannot supply this fact. Other semantic timing remains reasoned applicability. Each requirement declares blocker=null when unblocked, future_implementation only for missing implementation explicitly authorized in a later phase, or user_decision for a missing user choice. A user_decision MUST use needs_user, a cited ledger_review and one named question; never hide it as semantic deferred. If the worker already asked natively, copy its exact native assistant quote into question and put that citation index in worker_question; the relay identifies it as the worker's question, never a second phrasing. Preserve the same requirement id when answered. Only the affected decision waits; unrelated authorized work continues. Each non-needs_user requirement's applicability declares phase_completion=true only for completion obligations of the CURRENT phase at this event, not the entire future goal. If completion-due exists, those phase_completion requirements copy controller_due={receipt_citation,receipt} from that controller document, due=true, unconditional=false. Rust establishes that timing literally; Jev validates the substantive decision. Unconfirmed phase claims have no such receipt and keep semantic applicability. For ongoing/mid-turn or later-phase timing use phase_completion=false, controller_due=null and reasoned semantic applicability. Unconditional prohibitions always apply: due=true, unconditional=true, phase_completion=false. A missing future completion receipt is not a mid-turn violation. The controller binds receipts to this request, worker, event and SHA. Never fabricate a receipt or reuse an old one. Keep exact source quotes, source digests and native provenance. No probabilities or overall pass/fail from the thinker.";

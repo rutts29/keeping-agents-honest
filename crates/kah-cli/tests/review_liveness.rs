@@ -186,7 +186,9 @@ fn processing_marker_protects_real_progress_then_publish_crash_is_visible() {
             .contains("stalled")
     );
     state.pending = None;
-    let store = Store::open(&worker).unwrap();
+    // Liveness may have started a detached recovery holding the store lock.
+    // Use the existing controller lock wait before recording recovery.
+    let store = Store::open_wait(&worker).unwrap();
     store.save(&state).unwrap();
     drop(store);
     liveness::run(&worker).unwrap();

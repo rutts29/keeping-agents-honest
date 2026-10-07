@@ -95,3 +95,44 @@ fn native_report_cannot_omit_due_at_event_validation() {
     value["decision_units"]["requirements"][0]["applicability"] = json!({"due":false,"unconditional":false,"phase_completion":false,"reasoning":"No completion claim yet.","evidence_citations":[0]});
     assert!(workspace::require_units(&request, &serde_json::from_value(value).unwrap()).is_ok());
 }
+
+#[test]
+fn captured_protocol_selects_v10_without_rewriting_retained_v8_v9_requests() {
+    use kah_cli::observer_review::workspace;
+    let mut request = Request {
+        id: "review-protocol".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: None,
+        intent: json!({}),
+        trigger: json!({"decision_protocol_version":10}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    let mut raw = json!({"request_id":request.id,"findings":[],"decision_units":{"version":10,"requirements":[{
+        "id":"pending","name":"Ongoing work","dimension":"intent","authority_items":["goal"],"citations":[],"components":[],"checks":[],
+        "applicability":{"due":false,"unconditional":false,"phase_completion":false,"reasoning":"Work is ongoing.","evidence_citations":[0]},
+        "judgment":{"kind":"semantic","decision":"satisfied","reasoning":"Work follows intent.","evidence_citations":[0]}
+    }]}});
+    assert!(
+        workspace::require_units(&request, &serde_json::from_value(raw.clone()).unwrap()).is_ok()
+    );
+    raw["decision_units"]["version"] = json!(9);
+    assert!(
+        workspace::require_units(&request, &serde_json::from_value(raw.clone()).unwrap()).is_err()
+    );
+    request.trigger = json!({});
+    request.documents.push(Document::new(
+        "controller-evidence",
+        "controller_event",
+        "kah:events",
+        "{}",
+    ));
+    assert!(
+        workspace::require_units(&request, &serde_json::from_value(raw.clone()).unwrap()).is_ok()
+    );
+    request.documents.clear();
+    raw["decision_units"]["version"] = json!(8);
+    assert!(workspace::require_units(&request, &serde_json::from_value(raw).unwrap()).is_ok());
+}

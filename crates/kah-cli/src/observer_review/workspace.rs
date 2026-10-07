@@ -79,13 +79,8 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         )?;
     }
     let mut report_schema = schema(&request.purpose);
-    if !request
-        .documents
-        .iter()
-        .any(|d| d.id == "controller-evidence")
-    {
-        report_schema["properties"]["decision_units"]["properties"]["version"] = json!({"const":8});
-    }
+    report_schema["properties"]["decision_units"]["properties"]["version"] =
+        json!({"const":instructions::protocol_version(request)?});
     fs::write(
         input.join("schema.json"),
         serde_json::to_vec_pretty(&report_schema)?,

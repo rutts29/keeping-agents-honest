@@ -32,6 +32,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     let mut project = project_context(&home, state)?;
     super::artifacts::documents(&state.worker.session, &project, &mut documents)?;
     let mut trigger = trigger;
+    trigger["decision_protocol_version"] = json!(kah_observer::decision_units::VERSION);
     if purpose == Purpose::Steering {
         let input = serde_json::from_value(trigger["uncertain_user_input"].clone())?;
         trigger["steering_context"] = super::steering::context(&state.worker.session, &input)?;

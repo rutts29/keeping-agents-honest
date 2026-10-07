@@ -5,6 +5,7 @@ use kah_observer::review_evidence::Report;
 use serde_json::{Value, json};
 #[path = "contract.rs"]
 mod contract;
+pub(super) use contract::version as protocol_version;
 
 pub fn schema(purpose: &Purpose) -> Value {
     let mut value = Report::schema();
