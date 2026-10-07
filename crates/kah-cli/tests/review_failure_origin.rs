@@ -16,6 +16,7 @@ fn every_review_code_is_classified_by_origin_with_only_explicit_identity_integri
                 || code == "REVIEW_REQUEST_ID"
                 || code == "REVIEW_SOURCE_DIGEST"
                 || code == "REVIEW_COMPLETION_RECEIPT_BINDING"
+                || code == "REVIEW_CONTROLLER_FACT_BINDING"
                 || code == "REVIEW_QUESTION_REFERENCE_SCOPE";
             assert_eq!(correctable(origin, code), !fatal, "{origin:?}: {code}");
         }

@@ -21,15 +21,18 @@ pub(super) fn target(root: &Path, request: &Request, r: &Requirement) -> Result<
         return Ok(None);
     };
     let questions = pending(root)?;
-    let question = questions.into_iter().find(|q| q["id"] == *id).ok_or(
-        "REVIEW_QUESTION_REFERENCE stage=question: reference must name an active question",
-    )?;
-    if !super::question_scope(&question, request, &r.id) {
-        return Err(
-            "REVIEW_QUESTION_REFERENCE_SCOPE stage=question: different worker or decision".into(),
-        );
-    }
-    Ok(Some(question))
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        let question = questions.into_iter().find(|q| q["id"] == *id).ok_or(
+            "REVIEW_QUESTION_REFERENCE stage=question: reference must name an active question",
+        )?;
+        if !super::question_scope(&question, request, &r.id) {
+            return Err(
+                "REVIEW_QUESTION_REFERENCE_SCOPE stage=question: different worker or decision"
+                    .into(),
+            );
+        }
+        Ok(Some(question))
+    })
 }
 
 pub(super) fn require_new(root: &Path, request: &Request, r: &Requirement) -> Result<()> {
@@ -37,7 +40,12 @@ pub(super) fn require_new(root: &Path, request: &Request, r: &Requirement) -> Re
         .iter()
         .any(|q| super::question_scope(q, request, &r.id))
     {
-        return Err("REVIEW_QUESTION_REFERENCE_REQUIRED stage=question: cite existing_question_id; one decision has one active wait".into());
+        return super::super::failure::validation(
+            super::super::failure::Origin::ReportValidation,
+            || {
+                Err("REVIEW_QUESTION_REFERENCE_REQUIRED stage=question: cite existing_question_id; one decision has one active wait".into())
+            },
+        );
     }
     Ok(())
 }

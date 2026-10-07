@@ -27,7 +27,13 @@ impl Error for Failure {
     }
 }
 pub fn validation<T>(origin: Origin, operation: impl FnOnce() -> Result<T>) -> Result<T> {
-    operation().map_err(|error| Box::new(Failure { origin, error }) as Box<dyn Error>)
+    operation().map_err(|error| {
+        if error.is::<Failure>() {
+            error
+        } else {
+            Box::new(Failure { origin, error }) as Box<dyn Error>
+        }
+    })
 }
 pub fn origin(error: &(dyn Error + 'static)) -> Origin {
     error
@@ -48,6 +54,7 @@ pub fn correctable(origin: Origin, error: &str) -> bool {
         "REVIEW_REQUEST_ID",
         "REVIEW_SOURCE_DIGEST",
         "REVIEW_COMPLETION_RECEIPT_BINDING",
+        "REVIEW_CONTROLLER_FACT_BINDING",
         "REVIEW_QUESTION_REFERENCE_SCOPE",
     ]
     .contains(&code)

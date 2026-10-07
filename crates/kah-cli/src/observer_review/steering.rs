@@ -54,6 +54,14 @@ pub fn verify_proposal(
     request: &Request,
     report: &kah_observer::review_evidence::Report,
 ) -> Result<Option<Value>> {
+    super::failure::validation(super::failure::Origin::ReportValidation, || {
+        validate_proposal(request, report)
+    })
+}
+fn validate_proposal(
+    request: &Request,
+    report: &kah_observer::review_evidence::Report,
+) -> Result<Option<Value>> {
     let Some(proposal) = report
         .decision_units
         .as_ref()

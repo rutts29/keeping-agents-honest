@@ -79,6 +79,11 @@ pub(super) fn execute(
     Ok(results)
 }
 pub(super) fn linked_item(report: &Report, item: &Item) -> Result<Item> {
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        bind_item(report, item)
+    })
+}
+fn bind_item(report: &Report, item: &Item) -> Result<Item> {
     let requirement = report
         .decision_units
         .as_ref()

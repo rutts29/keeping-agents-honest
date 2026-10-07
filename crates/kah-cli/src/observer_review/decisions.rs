@@ -3,6 +3,9 @@ use super::state::Request;
 use crate::Result;
 use kah_observer::review_evidence::Report;
 use serde_json::Value;
+#[cfg(test)]
+#[path = "../../tests/observer_unit/report_boundaries.rs"]
+mod boundary_tests;
 mod coverage;
 mod scoped;
 mod steering;
@@ -29,12 +32,51 @@ pub fn verify(request: &Request, report: &Report) -> Result<Option<Value>> {
     verify_evidence(request, report)
 }
 pub fn verify_evidence(request: &Request, report: &Report) -> Result<Option<Value>> {
+    super::failure::validation(super::failure::Origin::ReportValidation, || {
+        verify_sources(request, report)
+    })
+}
+fn verify_sources(request: &Request, report: &Report) -> Result<Option<Value>> {
     super::completion_due::bind(request, report)?;
     super::capture::controller_events::bind(request, report)?;
     super::capture::controller_receipts::bind(request, report)?;
     report
         .verify_units(&request.documents, &active_items(&request.intent))
         .map_err(Into::into)
+}
+
+/// Validate every independent source selection before acknowledging a report.
+/// This does not judge it, access credentials, or execute its proposed checks.
+pub(crate) fn preflight_contexts(
+    request: &Request,
+    report: &Report,
+    actions: &[Value],
+) -> Result<()> {
+    super::failure::validation(super::failure::Origin::ReportValidation, || {
+        let Some(units) = &report.decision_units else {
+            return Ok(());
+        };
+        let verified =
+            verify_evidence(request, report)?.ok_or("REVIEW_UNITS_MISSING stage=decision")?;
+        let deferrals = super::deferrals::collect(request, actions)?;
+        let mut input = super::checkpoint::decision_context(
+            &request.intent,
+            &request.trigger,
+            request.head.as_deref(),
+            &serde_json::json!(actions),
+            serde_json::json!(deferrals),
+        );
+        input["decision"] = kah_observer::decision_units::ReviewUnits::named_state(&verified)?;
+        steering::context(request, report, &mut input)?;
+        let mut questions = kah_observer::decision_units::questions(units);
+        super::gate_approval::prepare_contracts(request, report, &mut input, &mut questions)?;
+        if units.version() >= 8 {
+            for key in questions.keys() {
+                scoped::report_context(&input, key)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 pub fn evaluate(

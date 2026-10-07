@@ -2,6 +2,11 @@ use super::*;
 use kah_observer::decision_units::{Dimension, ReviewUnits};
 
 pub fn checkpoint(request: &Request, units: &ReviewUnits, deferrals: &[Value]) -> Result<()> {
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        validate(request, units, deferrals)
+    })
+}
+fn validate(request: &Request, units: &ReviewUnits, deferrals: &[Value]) -> Result<()> {
     if request.purpose != super::super::state::Purpose::Checkpoint {
         return Ok(());
     }

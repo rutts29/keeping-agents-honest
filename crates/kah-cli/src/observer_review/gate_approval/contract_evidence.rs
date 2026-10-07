@@ -10,6 +10,17 @@ pub(super) fn attempts(
     round: &VerificationRound,
     assessment: &Value,
 ) -> Result<Vec<Attempt>> {
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        report_attempts(request, report, item, round, assessment)
+    })
+}
+fn report_attempts(
+    request: &Request,
+    report: &Report,
+    item: &Item,
+    round: &VerificationRound,
+    assessment: &Value,
+) -> Result<Vec<Attempt>> {
     let requirement = report
         .decision_units
         .as_ref()
@@ -67,6 +78,11 @@ pub(super) fn attempts(
 }
 
 pub(super) fn selected(request: &Request, report: &Report, item: &Item) -> Result<Vec<Value>> {
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        report_sources(request, report, item)
+    })
+}
+fn report_sources(request: &Request, report: &Report, item: &Item) -> Result<Vec<Value>> {
     let requirement = report
         .decision_units
         .as_ref()

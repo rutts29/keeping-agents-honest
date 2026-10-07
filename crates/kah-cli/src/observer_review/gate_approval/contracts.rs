@@ -12,6 +12,23 @@ pub(crate) fn prepare(
     input: &mut Value,
     questions: &mut Questions,
 ) -> Result<()> {
+    // Controller receipts are host state; validate them outside the report boundary.
+    let commands = super::super::failure::validation(super::super::failure::Origin::Host, || {
+        captured(request)
+    })?
+    .map(|p| p.tests.into_iter().map(|t| t.command).collect::<Vec<_>>())
+    .unwrap_or_default();
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        prepare_report(request, report, input, questions, &commands)
+    })
+}
+fn prepare_report(
+    request: &Request,
+    report: &Report,
+    input: &mut Value,
+    questions: &mut Questions,
+    commands: &[String],
+) -> Result<()> {
     let Some(items) = &report.verification_contracts else {
         return Ok(());
     };
@@ -21,9 +38,6 @@ pub(crate) fn prepare(
         .ok_or("REVIEW_CONTRACT_UNITS stage=verification")?;
     let verified = super::super::decisions::verify_evidence(request, report)?
         .ok_or("REVIEW_CONTRACT_UNITS stage=verification")?;
-    let commands = captured(request)?
-        .map(|p| p.tests.into_iter().map(|t| t.command).collect::<Vec<_>>())
-        .unwrap_or_default();
     let mut seen = BTreeSet::new();
     input["verification_contracts"] = json!({});
     for item in items {
@@ -61,7 +75,7 @@ pub(crate) fn prepare(
         ) {
             continue;
         }
-        add_questions(request, item, value, &evidence, &commands, input, questions)?;
+        add_questions(request, item, value, &evidence, commands, input, questions)?;
     }
     Ok(())
 }

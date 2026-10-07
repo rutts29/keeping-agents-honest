@@ -34,7 +34,7 @@ pub fn evaluate(
     let mut states = serde_json::Map::new();
     let mut archives = serde_json::Map::new();
     for (key, question) in questions {
-        let mut state = context::decision(input, key)?;
+        let mut state = report_context(input, key)?;
         crate::privacy::scrub(&mut state);
         let questions = Questions::from([(key.clone(), question.clone())]);
         let (decided, reused) = decide(home, request, &state, &questions)?;
@@ -50,6 +50,12 @@ pub fn evaluate(
         json!({"independent_decisions":states}),
         Value::Object(archives),
     ))
+}
+
+pub(super) fn report_context(input: &Value, key: &str) -> Result<Value> {
+    super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+        context::decision(input, key).map_err(Into::into)
+    })
 }
 
 fn decide(

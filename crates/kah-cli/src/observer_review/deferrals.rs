@@ -4,6 +4,11 @@ use crate::Result;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 pub fn collect(request: &Request, actions: &[Value]) -> Result<Vec<Value>> {
+    super::failure::validation(super::failure::Origin::ReportValidation, || {
+        validate(request, actions)
+    })
+}
+fn validate(request: &Request, actions: &[Value]) -> Result<Vec<Value>> {
     let mut items = request.intent["open_deferrals"]
         .as_array()
         .cloned()

@@ -280,13 +280,20 @@ fn contract_attempts(
         .parent()
         .ok_or("REVIEW_CONTRACT_RECEIPTS stage=verification")?
         .join("item-results.json");
-    let results: Vec<super::super::contract_execution::ItemResult> = source_store::read(&path)?;
-    results
-        .into_iter()
-        .find(|r| r.binding == round.binding && r.requirement_id == id)
-        .ok_or(
-            "REVIEW_CONTRACT_RECEIPTS stage=verification: item-specific attempts required".into(),
-        )
+    let results: Vec<super::super::contract_execution::ItemResult> =
+        super::super::super::failure::validation(
+            super::super::super::failure::Origin::Host,
+            || source_store::read(&path),
+        )?;
+    super::super::super::failure::validation(super::super::super::failure::Origin::Host, || {
+        results
+            .into_iter()
+            .find(|r| r.binding == round.binding && r.requirement_id == id)
+            .ok_or(
+                "REVIEW_CONTRACT_RECEIPTS stage=verification: item-specific attempts required"
+                    .into(),
+            )
+    })
 }
 
 fn checked_risk(

@@ -10,6 +10,11 @@ pub(super) fn validate(request: &Request, report: &Report, findings: Vec<Value>)
     let Some(units) = &report.decision_units else {
         return Ok(());
     };
+    let actions = findings
+        .iter()
+        .map(|v| json!({"evidence":v}))
+        .collect::<Vec<_>>();
+    super::super::decisions::preflight_contexts(request, report, &actions)?;
     let questions: Vec<Value> = request
         .documents
         .iter()
