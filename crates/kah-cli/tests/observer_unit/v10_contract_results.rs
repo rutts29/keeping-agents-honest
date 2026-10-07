@@ -76,3 +76,47 @@ fn covered_all_means_no_user_question_but_violations_still_win() {
     apply_items(&results, &mut assessment).unwrap();
     assert_eq!(assessment["passed"], false);
 }
+
+#[test]
+fn named_send_back_result_releases_pending_without_creating_a_user_wait() {
+    use crate::observer_review::{
+        consume, questions,
+        state::{Pending, Purpose, Request, State, Store},
+    };
+    let root = std::env::temp_dir().join(format!(
+        "kah-send-back-lease-{}",
+        crate::relay_store::nonce()
+    ));
+    let mut store = Store::delivery_at(&root.join("test-owner"), true).unwrap();
+    store.directory = root.join("review");
+    kah_core::run_store::ensure_private_directory(&store.directory).unwrap();
+    let request = Request {
+        id: "review-send-back".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: Some("a".repeat(40)),
+        intent: json!({"revision":1}),
+        trigger: json!({}),
+        documents: vec![],
+        created_ms: 1,
+    };
+    let mut state:State=serde_json::from_value(json!({"worker":{"provider":"codex","session":"worker","project":root,"pane":null,"socket":null},"observer":{"session":null,"pane":null,"name":"fixture","workspace":root,"model":"gpt-6.1-sol","effort":"low","transcript":null},"pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    state.pending = Some(Pending::from(&request));
+    let mut assessment = json!({"passed":null,"violations":[],"needs_user":[],"needs_thinker":["normalize"],"unproven":[]});
+    apply_items(&[result("normalize", false, true)], &mut assessment).unwrap();
+    consume::commit_result(
+        &store,
+        &mut state,
+        &request,
+        json!({"request":request.id,"head":request.head,"assessment":assessment}),
+        None,
+    )
+    .unwrap();
+    let saved = store.load().unwrap().unwrap();
+    assert!(saved.pending.is_none());
+    assert_eq!(saved.checkpoint.unwrap()["state"], "checkpoint_needs_check");
+    assert!(questions::pending(&store.directory).unwrap().is_empty());
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}

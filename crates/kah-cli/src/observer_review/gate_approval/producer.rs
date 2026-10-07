@@ -32,6 +32,13 @@ pub(crate) fn begin(
     }
     let round = start(&store.directory, request)?;
     let root = directory(&store.directory, &round);
+    if root.join("finished.json").exists() {
+        super::contract_delivery::retry(&store.directory, request, &round)?;
+        let finished: Value = source_store::read(&root.join("finished.json"))?;
+        if finished["status"] == "needs_check" {
+            return Ok(true);
+        }
+    }
     kah_core::run_store::ensure_private_directory(&root)?;
     if !root.join("job.json").exists() {
         source_store::save(

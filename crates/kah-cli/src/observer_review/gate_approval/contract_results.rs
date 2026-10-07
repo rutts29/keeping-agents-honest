@@ -84,28 +84,7 @@ pub(super) fn send_back(root: &Path, request: &Request, assessment: &Value) -> R
         "finished.json",
         &json!({"status":"needs_check","request":request.id,"items":items,"automatic_user_question":false}),
     )?;
-    for item in items {
-        let text = format!(
-            "kah item {} needs a check covering {} on SHA {}. The gate is not passed. This is verification work for the worker, not a user status question. Existing attempts and receipts are retained in {}.",
-            item["id"],
-            item["claim"],
-            round.binding.head,
-            path.display()
-        );
-        crate::send_cli::run(&[
-            "send".into(),
-            request.worker.clone(),
-            text.clone(),
-            "--sender".into(),
-            "kah-observer".into(),
-            "--receipt".into(),
-            format!("{}-needs-check-{}", round.id, item["id"].as_str().unwrap()),
-        ])?;
-        super::super::reminder_queue::save(
-            root,
-            &json!({"request":request.id,"purpose":"checkpoint","turn":request.turn,"system_notice":true,"text":text}),
-        )?;
-    }
+    super::contract_delivery::deliver(root, request, &round, items)?;
     Ok(true)
 }
 

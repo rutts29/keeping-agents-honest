@@ -21,6 +21,7 @@ pub use evidence::captured;
 mod receiver;
 pub use receiver::{apply_answers, approved_authority, enqueue_answer, pending_answers};
 mod checks;
+mod contract_delivery;
 mod contract_execution;
 mod contract_facts;
 mod contract_results;
@@ -97,6 +98,27 @@ pub fn eligible_after_followup(
         return false;
     }
     let ids = assessment["needs_thinker"].as_array().unwrap();
+    if report
+        .decision_units
+        .as_ref()
+        .is_some_and(|u| u.version() >= 10)
+        && ids.iter().any(|id| {
+            let Some(id) = id.as_str() else {
+                return true;
+            };
+            !report.verification_contracts.as_ref().is_some_and(|items| {
+                items.iter().any(|i| {
+                    i.requirement_id == id
+                        && matches!(
+                            i.method,
+                            kah_observer::verification_contract::Method::SemanticRisk { .. }
+                        )
+                })
+            }) || assessment["contract_coverage"][id]["semantic_risk_admissible"] != true
+        })
+    {
+        return false;
+    }
     let risks = followup.risks();
     risks.len() == ids.len()
         && ids

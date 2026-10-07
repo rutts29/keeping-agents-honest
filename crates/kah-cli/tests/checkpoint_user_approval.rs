@@ -387,3 +387,59 @@ fn assert_question_delegate(text: &str) {
         "question context must not become reviewer user intent"
     );
 }
+
+#[test]
+fn v10_risk_admission_requires_a_current_semantic_plan_and_validation() {
+    use kah_observer::verification_contract::{Item, Method};
+    let root = fixture("v10-risk-admission");
+    let done = gate_approval::followup::completed(&root, &request())
+        .unwrap()
+        .unwrap();
+    let mut r = report();
+    r.decision_units.as_mut().unwrap().version = Some(10);
+    assert!(!gate_approval::eligible_after_followup(
+        &request(),
+        &r,
+        &assessment(),
+        &proof(),
+        &done
+    ));
+    r.verification_contracts = Some(vec![Item {
+        requirement_id: "intent".into(),
+        claim: "Unresolved scope choice".into(),
+        evidence_citations: vec![0],
+        coverage_reasoning: "User decides the named trade-off.".into(),
+        method: Method::SemanticRisk {
+            why_not_executable: "The user's intended scope has two genuine alternatives.".into(),
+        },
+    }]);
+    let mut a = assessment();
+    a["contract_coverage"] = json!({"intent":{"semantic_risk_admissible":true}});
+    assert!(gate_approval::eligible_after_followup(
+        &request(),
+        &r,
+        &a,
+        &proof(),
+        &done
+    ));
+    a["contract_coverage"]["intent"]["semantic_risk_admissible"] = false.into();
+    assert!(!gate_approval::eligible_after_followup(
+        &request(),
+        &r,
+        &a,
+        &proof(),
+        &done
+    ));
+    a["contract_coverage"]["intent"]["semantic_risk_admissible"] = true.into();
+    r.verification_contracts.as_mut().unwrap()[0].method = Method::TargetedCheck {
+        command: "node -e \"console.log('PASS')\"".into(),
+    };
+    assert!(!gate_approval::eligible_after_followup(
+        &request(),
+        &r,
+        &a,
+        &proof(),
+        &done
+    ));
+    std::fs::remove_dir_all(root).unwrap();
+}
