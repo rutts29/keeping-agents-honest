@@ -25,7 +25,9 @@ pub fn deliver(receipt: &Receipt) -> Result<Value> {
                 &receipt.message(),
             )?;
             // Unknown delivery must not fall back and duplicate a native steer.
-            return delivery::send(&base, &message, &mut client).map_err(Into::into);
+            if delivery::owns_session(&mut client, &receipt.receiver).unwrap_or(false) {
+                return delivery::send(&base, &message, &mut client).map_err(Into::into);
+            }
         }
     }
     let pane = endpoint

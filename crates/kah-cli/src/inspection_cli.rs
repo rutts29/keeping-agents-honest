@@ -148,6 +148,9 @@ fn print_review(session: &str) -> Result<()> {
     if review.is_null() {
         return Ok(());
     }
+    if review["intent_status"]["active"] == false {
+        println!("Full-context observer: observer has no intent to check");
+    }
     println!(
         "Full-context observer: {} / {}; session {}; pane {}; {} wakes; pending {}",
         review["model"].as_str().unwrap_or("not started"),

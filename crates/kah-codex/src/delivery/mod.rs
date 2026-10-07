@@ -73,6 +73,17 @@ impl Rpc for Control {
         })
     }
 }
+/// openai/codex rust-v0.160.0 protocol/v2/thread.rs: loaded/list names
+/// only sessions owned in memory by this server; default has no page limit.
+pub fn owns_session(rpc: &mut impl Rpc, session: &str) -> Result<bool, String> {
+    let page = rpc
+        .request("thread/loaded/list", json!({}))
+        .map_err(|_| "SEND_SESSION_OWNERSHIP stage=delegate_channel")?;
+    let ids = page["data"]
+        .as_array()
+        .ok_or("SEND_SESSION_OWNERSHIP_SCHEMA stage=delegate_channel")?;
+    Ok(ids.iter().any(|id| id.as_str() == Some(session)))
+}
 
 pub fn send(base: &Path, message: &Message, rpc: &mut impl Rpc) -> Result<Value, String> {
     let mut receipt = Receipt::open(base, message)?;

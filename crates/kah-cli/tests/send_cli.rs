@@ -53,6 +53,12 @@ fn embedded_delegate_child() {
     let base = RunStore::default_state_root().unwrap();
     for provider in ["codex", "claude"] {
         register(&root, &base, provider);
+        let status = kah_cli::observer_review::control::status(provider).unwrap();
+        assert_eq!(status["intent_status"]["active"], false);
+        assert_eq!(
+            status["intent_status"]["message"],
+            "observer has no intent to check"
+        );
         send(provider, "evidence", "proof").unwrap();
         send(provider, "evidence", "proof").unwrap();
         assert!(

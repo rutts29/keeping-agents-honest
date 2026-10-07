@@ -97,6 +97,14 @@ fn deliver(
         }
         Err(error) => return Err(error.into()),
     };
+    // An overlay socket may point to a daemon that does not own this --no-daemon
+    // TUI. Check native in-memory ownership BEFORE any receipt/payload mutation.
+    if (user || endpoint.is_some())
+        && !delivery::owns_session(&mut client, session).unwrap_or(false)
+    {
+        println!("{}", fallback(&message, text, receipt, user)?);
+        return Ok(());
+    }
     let result = delivery::send(&RunStore::default_state_root()?, &message, &mut client)?;
     println!("{result}");
     Ok(())

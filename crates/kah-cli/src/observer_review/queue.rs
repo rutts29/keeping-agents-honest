@@ -76,6 +76,7 @@ pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
 }
 pub fn status(worker: &str) -> Result<Value> {
     let root = Store::directory(worker)?;
+    kah_core::run_store::ensure_private_directory(&root.join("sources"))?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
     let jobs = entries_at(&root)?;
     let stamps = metadata::stamps(&root, &jobs)?;
