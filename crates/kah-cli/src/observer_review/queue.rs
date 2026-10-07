@@ -139,7 +139,6 @@ pub fn drain(worker: &str) -> Result<Value> {
             json!({"status":"service_unavailable","error":"Jev unavailable: payment required","queued_retained":true}),
         );
     }
-    preparation_coverage::run(worker)?;
     if let Some(state) = Store::read(worker)?
         && state.pending.is_some()
     {
@@ -148,6 +147,7 @@ pub fn drain(worker: &str) -> Result<Value> {
         }
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
+    preparation_coverage::run(worker)?;
     super::events::transfer(worker)?;
     let claimed = claim_batch(worker)?;
     if let Some((job, paths)) = claimed {
