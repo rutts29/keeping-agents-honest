@@ -48,7 +48,11 @@ pub(super) fn execute(
         if report.decision_units.as_ref().is_some_and(|u| {
             u.version() >= 10
                 && u.requirements.iter().any(|r| {
-                    r.id == item.requirement_id && matches!(r.judgment, Thinking::AtomicFact { .. })
+                    r.id == item.requirement_id
+                        && matches!(
+                            r.judgment,
+                            Thinking::AtomicFact { .. } | Thinking::ControllerFact { .. }
+                        )
                 })
         }) {
             coverage = json!({"native_fact_verified":true});

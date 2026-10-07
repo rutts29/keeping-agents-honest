@@ -11,6 +11,7 @@ use std::{
 };
 mod binding;
 pub mod controller_events;
+pub mod controller_receipts;
 pub mod historical;
 mod rendering;
 use binding::binding;
@@ -68,6 +69,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         &super::state::Store::directory(&request.worker)?,
         &mut request,
     )?;
+    controller_receipts::add(&mut request)?;
     historical::add(
         &super::state::Store::directory(&request.worker)?,
         &mut request,

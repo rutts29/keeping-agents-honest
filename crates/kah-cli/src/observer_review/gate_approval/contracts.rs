@@ -45,15 +45,20 @@ pub(crate) fn prepare(
             .find(|r| r["id"] == item.requirement_id)
             .unwrap();
         let evidence = selected(item, value)?;
-        if matches!(requirement.judgment, Thinking::AtomicFact { .. })
-            && matches!(item.method, Method::SemanticRisk { .. })
+        if matches!(
+            requirement.judgment,
+            Thinking::AtomicFact { .. } | Thinking::ControllerFact { .. }
+        ) && matches!(item.method, Method::SemanticRisk { .. })
         {
             return Err(
                 "REVIEW_CONTRACT_LITERAL_RISK stage=verification: receipt facts are code work"
                     .into(),
             );
         }
-        if matches!(requirement.judgment, Thinking::AtomicFact { .. }) {
+        if matches!(
+            requirement.judgment,
+            Thinking::AtomicFact { .. } | Thinking::ControllerFact { .. }
+        ) {
             continue;
         }
         add_questions(request, item, value, &evidence, &commands, input, questions)?;

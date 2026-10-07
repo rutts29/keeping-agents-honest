@@ -31,6 +31,7 @@ pub fn verify(request: &Request, report: &Report) -> Result<Option<Value>> {
 pub fn verify_evidence(request: &Request, report: &Report) -> Result<Option<Value>> {
     super::completion_due::bind(request, report)?;
     super::capture::controller_events::bind(request, report)?;
+    super::capture::controller_receipts::bind(request, report)?;
     report
         .verify_units(&request.documents, &active_items(&request.intent))
         .map_err(Into::into)

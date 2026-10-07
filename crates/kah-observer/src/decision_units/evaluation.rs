@@ -4,11 +4,13 @@
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {
-        if units.version() >= 10 && matches!(requirement.judgment, Thinking::AtomicFact { .. }) {
+        if matches!(requirement.judgment, Thinking::ControllerFact { .. })
+            || units.version() >= 10 && matches!(requirement.judgment, Thinking::AtomicFact { .. })
+        {
             // Host has already checked the exact receipt property. It is an
             // observation, not a semantic question about obligation timing.
             continue;
@@ -86,7 +88,9 @@ fn instruction(
                 ),
             ],
         ),
-        Thinking::NeedsUser { .. } | Thinking::ArtifactPreservation { .. } => return None,
+        Thinking::NeedsUser { .. }
+        | Thinking::ArtifactPreservation { .. }
+        | Thinking::ControllerFact { .. } => return None,
     })
 }
 
@@ -129,7 +133,9 @@ pub fn assess_with_phase_due(units: &ReviewUnits, judgment: &Judgment, phase_due
         out_of_proportion: false,
     };
     for r in &units.requirements {
-        if units.version() >= 10 && matches!(r.judgment, Thinking::AtomicFact { .. }) {
+        if matches!(r.judgment, Thinking::ControllerFact { .. })
+            || units.version() >= 10 && matches!(r.judgment, Thinking::AtomicFact { .. })
+        {
             continue;
         }
         requirement(r, judgment, &mut outcome, phase_due, units.version() >= 8);

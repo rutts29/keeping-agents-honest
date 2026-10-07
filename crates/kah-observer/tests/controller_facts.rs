@@ -48,3 +48,20 @@ fn bindings_and_contradictory_properties_are_rejected() {
         fixture(json!({"property":"test_output_line","test_index":0,"expected":"ABSENT"}));
     assert!(fact.verify(&r, &docs).is_err());
 }
+
+#[test]
+fn typed_controller_fact_is_verified_without_jev_questions() {
+    let (fact, mut r, docs) = fixture(json!({"property":"test_exit","test_index":0,"expected":0}));
+    r.judgment = serde_json::from_value(
+        json!({"kind":"controller_fact","fact":fact,"evidence_citations":[0]}),
+    )
+    .unwrap();
+    let units = kah_observer::decision_units::ReviewUnits {
+        version: Some(11),
+        requirements: vec![r],
+        proportion: None,
+        steering: None,
+    };
+    units.verify(&docs, &["goal".into()]).unwrap();
+    assert!(kah_observer::decision_units::questions(&units).is_empty());
+}

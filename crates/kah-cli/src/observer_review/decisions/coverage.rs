@@ -6,7 +6,13 @@ pub fn checkpoint(request: &Request, units: &ReviewUnits, deferrals: &[Value]) -
         return Ok(());
     }
     for dimension in [Dimension::Intent, Dimension::Integration, Dimension::Drift] {
-        if !units.requirements.iter().any(|r| r.dimension == dimension) {
+        if !units.requirements.iter().any(|r| {
+            r.dimension == dimension
+                && !matches!(
+                    r.judgment,
+                    kah_observer::decision_units::Thinking::ControllerFact { .. }
+                )
+        }) {
             return Err(format!("REVIEW_REQUIREMENT_DIMENSION stage=checkpoint: named {dimension:?} requirements missing").into());
         }
     }

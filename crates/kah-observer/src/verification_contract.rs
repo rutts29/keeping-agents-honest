@@ -84,7 +84,7 @@ pub fn schema() -> Value {
         "method":{"oneOf":[variant("controller_receipt","facts",receipt_schema()),variant("existing_check","test_index",json!({"type":"integer","minimum":0})),variant("targeted_check","command",json!({"type":"string"})),variant("semantic_risk","why_not_executable",json!({"type":"string"})),variant("needs_check","why",json!({"type":"string"}))]}}}})
 }
 
-fn receipt_schema() -> Value {
+pub(crate) fn receipt_schema() -> Value {
     json!({"type":"array","items":{"oneOf":[
         {"type":"object","additionalProperties":false,"required":["property"],"properties":{"property":{"const":"head_sha"}}},
         {"type":"object","additionalProperties":false,"required":["property","test_index","expected"],"properties":{"property":{"const":"test_exit"},"test_index":{"type":"integer","minimum":0},"expected":{"type":"integer"}}},

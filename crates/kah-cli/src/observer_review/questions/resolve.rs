@@ -36,6 +36,7 @@ pub fn resolve(
             Thinking::Semantic { .. } => "supported",
             Thinking::NeedsUser { .. } => continue,
             Thinking::ArtifactPreservation { .. } => continue,
+            Thinking::ControllerFact { .. } => continue,
         };
         if !confirmed(judgment, &format!("requirement.{}", unit.id), choice) {
             continue;

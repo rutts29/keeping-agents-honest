@@ -42,6 +42,7 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     if let Thinking::ArtifactPreservation { fact, .. } = &r.judgment {
         fact.verify(r, documents)?;
     }
+    controller_fact(r, documents)?;
     if let Thinking::AtomicFact {
         fact,
         evidence_citations,
@@ -65,8 +66,24 @@ pub(super) fn requirement(r: &Requirement, documents: &[Document]) -> Result<Val
     value["citations"] = json!(citations);
     Ok(value)
 }
+fn controller_fact(r: &Requirement, documents: &[Document]) -> Result<(), String> {
+    if let Thinking::ControllerFact {
+        fact,
+        evidence_citations,
+    } = &r.judgment
+    {
+        if !evidence_citations.contains(&fact.receipt_citation) {
+            return Err("REVIEW_CONTROLLER_FACT_CITATION stage=decision_units".into());
+        }
+        fact.verify(r, documents)?;
+    }
+    Ok(())
+}
 fn thinking(judgment: &Thinking) -> Result<&[usize], String> {
     let indices = match judgment {
+        Thinking::ControllerFact {
+            evidence_citations, ..
+        } => evidence_citations,
         Thinking::ArtifactPreservation {
             evidence_citations, ..
         } => evidence_citations,

@@ -104,3 +104,14 @@ fn test<'a>(value: &'a Value, index: usize, head: &str) -> Option<&'a Value> {
 fn oid(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
+
+pub(super) fn schema() -> Value {
+    super::schema::object(
+        &["worker", "request", "head", "receipt_citation", "property"],
+        json!({
+            "worker":{"type":"string"},"request":{"type":"string"},"head":{"type":"string"},
+            "receipt_citation":{"type":"integer","minimum":0},
+            "property":crate::verification_contract::receipt_schema()["items"].clone()
+        }),
+    )
+}

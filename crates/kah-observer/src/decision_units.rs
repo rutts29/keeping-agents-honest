@@ -93,6 +93,10 @@ pub struct CheckReceipt {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Thinking {
+    ControllerFact {
+        fact: controller_fact::Fact,
+        evidence_citations: Vec<usize>,
+    },
     ArtifactPreservation {
         fact: artifact::ArtifactFact,
         evidence_citations: Vec<usize>,
