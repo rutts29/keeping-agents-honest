@@ -203,7 +203,7 @@ impl ReviewUnits {
     pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
         if self
             .version
-            .is_some_and(|version| !matches!(version, 7..=9))
+            .is_some_and(|version| !(7..=VERSION).contains(&version))
         {
             return Err(
                 "REVIEW_PROTOCOL_VERSION stage=decision_units: unknown report protocol".into(),
@@ -217,7 +217,7 @@ impl ReviewUnits {
                 return Err("REVIEW_REQUIREMENT_ID stage=decision_units".into());
             }
             let value = validation::requirement(requirement, documents)?;
-            if matches!(self.version, Some(7..=9)) {
+            if self.version.is_some_and(|version| version >= 7) {
                 blocker::require_typed(requirement)?;
             }
             if self.version.is_some_and(|v| v >= 8) {

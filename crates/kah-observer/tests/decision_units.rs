@@ -115,3 +115,43 @@ fn a_native_user_request_is_not_an_executed_check_receipt() {
             .starts_with("REVIEW_CHECK_PROVENANCE")
     );
 }
+
+#[test]
+fn v10_protocol_verifies_whole_authority_and_keeps_typed_blocker_guards() {
+    let doc = Document::new(
+        "user",
+        "ledger",
+        "native:user",
+        "Integrate parser and renderer; do not publish.",
+    );
+    let mut value = report(&doc);
+    value["version"] = json!(10);
+    let units: ReviewUnits = serde_json::from_value(value.clone()).unwrap();
+    assert!(
+        units
+            .verify(
+                std::slice::from_ref(&doc),
+                &["goal".into(), "no-publish".into()]
+            )
+            .is_ok()
+    );
+    value["requirements"][0]["judgment"] = json!({"kind":"needs_user","reason":"ambiguous_instructions","summary":"Missing choice.","question":"Preserve or normalize?","options":["Preserve","Normalize"],"evidence_citations":[0],"ledger_review":{"reasoning":"No choice exists.","citations":[0]}});
+    let units: ReviewUnits = serde_json::from_value(value.clone()).unwrap();
+    assert!(
+        units
+            .verify(
+                std::slice::from_ref(&doc),
+                &["goal".into(), "no-publish".into()]
+            )
+            .unwrap_err()
+            .starts_with("REVIEW_BLOCKER_USER_QUESTION")
+    );
+    value["version"] = json!(999);
+    let units: ReviewUnits = serde_json::from_value(value).unwrap();
+    assert!(
+        units
+            .verify(&[doc], &["goal".into(), "no-publish".into()])
+            .unwrap_err()
+            .starts_with("REVIEW_PROTOCOL_VERSION")
+    );
+}
