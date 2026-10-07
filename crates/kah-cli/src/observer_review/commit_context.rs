@@ -3,6 +3,8 @@
 use crate::Result;
 use serde_json::{Value, json};
 use std::{path::Path, process::Command};
+mod tree;
+pub use tree::collect as tree;
 pub fn collect(root: &Path, baseline: Option<&str>) -> Result<Value> {
     let head = text(root, &["rev-parse", "--verify", "HEAD"])?;
     let head = head.trim();

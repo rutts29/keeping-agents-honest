@@ -32,7 +32,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         &serde_json::to_string_pretty(&projection)?,
     )];
     documents.push(history(&home, state)?);
-    let mut project = project_context(&home, state)?;
+    let mut project = scoped_project_context(&home, state, &trigger)?;
     super::artifacts::documents(&state.worker.session, &project, &mut documents)?;
     let mut trigger = trigger;
     trigger["decision_protocol_version"] = json!(kah_observer::decision_units::VERSION);
@@ -47,6 +47,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         .unwrap_or(Value::Null);
     }
     project_documents(&mut project, &trigger, &mut documents)?;
+    super::commit_packet::persist(state, &mut documents)?;
     add_previous(state, &mut documents)?;
     add_reconsideration(state, &trigger, &mut documents)?;
     add_questions(state, &mut documents)?;
@@ -121,12 +122,17 @@ fn project_documents(
     trigger: &Value,
     documents: &mut Vec<Document>,
 ) -> Result<()> {
-    documents.push(Document::new(
-        "committed-snapshot",
-        "committed_code",
-        "git:HEAD-complete-tree",
-        project["committed_snapshot"].as_str().unwrap_or(""),
-    ));
+    let commit = trigger["review_class"] == "commit";
+    if commit {
+        documents.extend(super::commit_packet::documents(project)?);
+    } else {
+        documents.push(Document::new(
+            "committed-snapshot",
+            "committed_code",
+            "git:HEAD-complete-tree",
+            project["committed_snapshot"].as_str().unwrap_or(""),
+        ));
+    }
     documents.push(Document::new(
         "checkpoint-event",
         "controller_event",
@@ -138,7 +144,7 @@ fn project_documents(
         .unwrap()
         .remove("committed_snapshot");
     documents.push(Document::new(
-        "diff",
+        if commit { "working-diff" } else { "diff" },
         "diff",
         "git:working-diff",
         project["diff"].as_str().unwrap_or(""),
@@ -158,6 +164,19 @@ fn project_documents(
         ));
     }
     Ok(())
+}
+fn scoped_project_context(home: &Path, state: &State, trigger: &Value) -> Result<Value> {
+    if trigger["review_class"] != "commit" {
+        return project_context(home, state);
+    }
+    let previous = super::state::read::<Value>(
+        &super::state::Store::directory(&state.worker.session)?.join("last-reviewed-sha.json"),
+    )?;
+    let baseline = previous
+        .as_ref()
+        .and_then(|p| p["head"].as_str())
+        .unwrap_or("empty");
+    project_context_with_baseline(home, state, Some(baseline))
 }
 fn add_previous(state: &State, documents: &mut Vec<Document>) -> Result<()> {
     if let Some(previous) = &state.latest {

@@ -85,7 +85,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         input.join("schema.json"),
         serde_json::to_vec_pretty(&report_schema)?,
     )?;
-    let manifest = json!({"request_id":request.id,"purpose":request.purpose,"worker":request.worker,"head":request.head,"trigger":request.trigger,"documents":request.documents.iter().map(|d|json!({"id":d.id,"kind":d.kind,"uri":d.uri,"digest":d.digest,"path":input.join(format!("{}.txt",d.id)),"bytes":d.text.len()})).collect::<Vec<_>>()});
+    let manifest = json!({"request_id":request.id,"purpose":request.purpose,"worker":request.worker,"head":request.head,"trigger":request.trigger,"documents":request.documents.iter().map(|d|json!({"id":d.id,"kind":d.kind,"uri":d.uri,"digest":d.digest,"path":input.join(format!("{}.txt",d.id)),"bytes":d.text.len(),"in_packet":d.kind!="lossless_tree_catalog"})).collect::<Vec<_>>()});
     fs::write(
         input.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest)?,
@@ -228,6 +228,7 @@ pub(crate) fn validate_report_bytes(request: &Request, bytes: &[u8]) -> Result<R
 }
 fn validate_report(request: &Request, bytes: &[u8]) -> Result<Report> {
     let report:Report=serde_json::from_slice(bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no probability or unknown fields")?;
+    super::commit_packet::validate_report(request, &serde_json::to_value(&report)?)?;
     let findings = report.verify(&request.id, &request.documents)?;
     require_units(request, &report)?;
     preflight::validate(request, &report, findings)?;

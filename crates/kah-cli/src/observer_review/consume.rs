@@ -363,6 +363,13 @@ pub(super) fn commit_result(
         state.native_tokens = tokens;
     }
     store.save(state)?;
+    if request.purpose == Purpose::Checkpoint && request.head.is_some() {
+        super::source_store::save(
+            &store.directory,
+            "last-reviewed-sha.json",
+            &json!({"head":request.head,"request":request.id,"review_class":request.trigger["review_class"],"reviewed_not_necessarily_passed":true}),
+        )?;
+    }
     super::timing::now(&request.worker, &request.id, "completed")
 }
 fn timed_evidence(

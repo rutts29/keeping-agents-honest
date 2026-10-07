@@ -41,6 +41,14 @@ pub fn cli(baseline: Option<&str>) -> Result<()> {
             &root,
             (baseline != "empty").then_some(baseline),
         )?;
+        let head = context["head"]
+            .as_str()
+            .ok_or("REVIEW_COMMIT_HEAD stage=context")?;
+        if context["commit_context"]["head"] != head {
+            return Err("REVIEW_COMMIT_HEAD_CHANGED stage=context".into());
+        }
+        context["full_tree_files"] =
+            serde_json::to_value(super::super::commit_context::tree(&root, head)?)?;
     }
     println!("{context}");
     Ok(())

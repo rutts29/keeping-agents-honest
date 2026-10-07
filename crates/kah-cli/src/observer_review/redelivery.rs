@@ -27,10 +27,11 @@ pub fn prompt(
     request: &super::state::Request,
     decision: &str,
 ) -> Result<String> {
-    // The sources/request stay identical; only helper/schema/instructions are
-    // refreshed so an in-flight native session can correct an older report.
+    // Preserve the request and refresh helper/schema/instructions. A commit
+    // packet may add a verified whole outside file, retaining its prior scope.
     super::workspace::prepare(home, state)?;
-    let report_prompt = super::workspace::publish(store, state, request)?;
+    let expanded = super::commit_packet::expand_rejected(store, state, request)?;
+    let report_prompt = super::workspace::publish(store, state, &expanded)?;
     if super::preparation::pending(&request.worker, decision)? {
         super::preparation::prompt(&request.worker)
     } else {
