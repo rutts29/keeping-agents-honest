@@ -69,6 +69,8 @@ pub struct State {
     #[serde(default)]
     pub judgments: Vec<crate::judge::Judgment>,
     #[serde(default)]
+    pub prepared_decisions: std::collections::BTreeSet<String>,
+    #[serde(default)]
     pub failures: Vec<serde_json::Value>,
 }
 impl State {
@@ -86,6 +88,7 @@ impl State {
             observations: 0,
             usage: Usage::default(),
             judgments: Vec::new(),
+            prepared_decisions: Default::default(),
             failures: Vec::new(),
         }
     }

@@ -3,6 +3,7 @@ use crate::Result;
 use kah_observer::{intake::Decision, session};
 use serde_json::{Value, json};
 use std::path::PathBuf;
+mod packets;
 
 pub fn consume(worker: &str) -> Result<()> {
     let store = Store::open_wait(worker)?;
@@ -14,6 +15,10 @@ pub fn consume(worker: &str) -> Result<()> {
         .clone()
         .ok_or("PREPARATION_PENDING stage=context_preparation")?;
     let request = workspace::request(&store, &pending.id)?;
+    if preparation::batch::packets::packets(&request).is_some() {
+        drop(store);
+        return packets::consume(worker);
+    }
     preparation::accept(worker, &pending.id)?;
     let packet = &request.trigger["preparation"];
     let questions = serde_json::from_value(packet["questions"].clone())?;
@@ -29,28 +34,7 @@ pub fn consume(worker: &str) -> Result<()> {
         return super::runtime::prepare_context(worker);
     }
     let (judgment, input) = evaluated?;
-    let base = kah_core::run_store::RunStore::default_state_root()?;
-    let mut primary = session::Store::open_wait(&base, worker)?;
-    if packet["purpose"] == "steering" {
-        apply_steering(&mut primary, &input, &judgment)?;
-    }
-    primary.append(&json!({"kind":"judgment","source":"observer","purpose":packet["purpose"],"question_set":kah_observer::judge::questions::VERSION,"judgment":judgment,"prepared":true,"at_ms":session::now_ms()}))?;
-    let mut source = primary
-        .load()?
-        .ok_or("PREPARATION_PRIMARY_STATE stage=context_preparation")?;
-    source.judgments.push(judgment.clone());
-    source.usage.calls += judgment.metrics.calls;
-    source.usage.input_tokens += judgment.metrics.input_tokens;
-    source.usage.cached_input_tokens += judgment.metrics.cached_input_tokens;
-    source.usage.output_tokens += judgment.metrics.output_tokens;
-    source.usage.elapsed_ms += judgment.metrics.elapsed_ms;
-    source.usage.incomplete_calls += judgment.metrics.failed_calls;
-    source.gap = None;
-    primary.save(&source)?;
-    drop(primary);
-    if packet["purpose"] == "drift" {
-        drift(&request, &input, &judgment)?;
-    }
+    apply(&request, packet, &input, &judgment)?;
     state.latest = Some(
         json!({"request":pending.id,"purpose":"preparation","judgment":judgment,"prepared_state":input}),
     );
@@ -93,6 +77,40 @@ fn drift(
             &request.turn,
             trigger,
         )?;
+    }
+    Ok(())
+}
+
+fn apply(
+    request: &super::state::Request,
+    packet: &Value,
+    input: &Value,
+    judgment: &kah_observer::judge::Judgment,
+) -> Result<()> {
+    let worker = &request.worker;
+    let base = kah_core::run_store::RunStore::default_state_root()?;
+    let mut primary = session::Store::open_wait(&base, worker)?;
+    let mut source = primary
+        .load()?
+        .ok_or("PREPARATION_PRIMARY_STATE stage=context_preparation")?;
+    if source.prepared_decisions.insert(request.id.clone()) {
+        if packet["purpose"] == "steering" {
+            apply_steering(&mut primary, input, judgment)?;
+        }
+        primary.append(&json!({"kind":"judgment","source":"observer","decision":request.id,"purpose":packet["purpose"],"question_set":kah_observer::judge::questions::VERSION,"judgment":judgment,"prepared":true,"at_ms":session::now_ms()}))?;
+        source.judgments.push(judgment.clone());
+        source.usage.calls += judgment.metrics.calls;
+        source.usage.input_tokens += judgment.metrics.input_tokens;
+        source.usage.cached_input_tokens += judgment.metrics.cached_input_tokens;
+        source.usage.output_tokens += judgment.metrics.output_tokens;
+        source.usage.elapsed_ms += judgment.metrics.elapsed_ms;
+        source.usage.incomplete_calls += judgment.metrics.failed_calls;
+    }
+    source.gap = None;
+    primary.save(&source)?;
+    drop(primary);
+    if packet["purpose"] == "drift" {
+        drift(request, input, judgment)?;
     }
     Ok(())
 }

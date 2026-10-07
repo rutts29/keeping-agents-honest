@@ -24,6 +24,9 @@ pub fn evaluate(
     input: &Value,
     questions: &Questions,
 ) -> Result<(Judgment, Value, Value)> {
+    if super::super::preparation::batch::plan(request, input, questions)? {
+        return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
+    }
     let mut combined = Judgment {
         backend: "not_requested".into(),
         model: "none".into(),
@@ -52,7 +55,7 @@ pub fn evaluate(
     ))
 }
 
-pub(super) fn report_context(input: &Value, key: &str) -> Result<Value> {
+pub(crate) fn report_context(input: &Value, key: &str) -> Result<Value> {
     super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
         context::decision(input, key).map_err(Into::into)
     })
@@ -64,13 +67,7 @@ fn decide(
     input: &Value,
     questions: &Questions,
 ) -> Result<(Decided, bool)> {
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&json!({
-        "state":input,"questions":questions}))?)
-    );
-    let mut request = original.clone();
-    request.id = format!("{}-v8-{digest}", original.id);
+    let request = request_for(original, input, questions)?;
     let root = super::super::state::Store::directory(&request.worker)?.join("decisions");
     kah_core::run_store::ensure_private_directory(&root)?;
     let name = format!("{}.json", request.id);
@@ -136,3 +133,18 @@ fn metrics(total: &mut Metrics, part: &Metrics) {
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/scoped_metrics.rs"]
 mod tests;
+
+pub(crate) fn request_for(
+    original: &Request,
+    input: &Value,
+    questions: &Questions,
+) -> Result<Request> {
+    let digest = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&json!({
+        "state":input,"questions":questions}))?)
+    );
+    let mut request = original.clone();
+    request.id = format!("{}-v8-{digest}", original.id);
+    Ok(request)
+}

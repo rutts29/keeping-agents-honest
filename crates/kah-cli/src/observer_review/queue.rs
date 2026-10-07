@@ -215,6 +215,9 @@ fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
 /// Snapshot only existing queued events. Later events retain their own files
 /// and cause a follow-up; the in-flight review is never mutated.
 pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
+    if let Some(batch) = super::preparation::batch::packets::group(jobs) {
+        return Some(batch);
+    }
     let first = jobs.first()?;
     if first.1.purpose != Purpose::Drift || first.1.trigger.get("captured_snapshot").is_some() {
         return Some((first.1.clone(), vec![first.0.clone()]));

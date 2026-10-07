@@ -7,7 +7,7 @@ use serde_json::Value;
 #[path = "../../tests/observer_unit/report_boundaries.rs"]
 mod boundary_tests;
 mod coverage;
-mod scoped;
+pub(crate) mod scoped;
 mod steering;
 pub use coverage::checkpoint as checkpoint_coverage;
 

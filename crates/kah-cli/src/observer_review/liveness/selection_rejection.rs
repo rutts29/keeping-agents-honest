@@ -19,6 +19,23 @@ pub(crate) fn record(
     bytes: &[u8],
     error: &dyn std::fmt::Display,
 ) -> Result<()> {
+    record_value(
+        outbox,
+        &job.decision,
+        &serde_json::to_value(job)?,
+        path,
+        bytes,
+        error,
+    )
+}
+pub(crate) fn record_value(
+    outbox: &Path,
+    decision: &str,
+    original: &Value,
+    path: &Path,
+    bytes: &[u8],
+    error: &dyn std::fmt::Display,
+) -> Result<()> {
     let root = outbox
         .parent()
         .ok_or("PREPARATION_PATH stage=selection_rejection")?
@@ -30,9 +47,9 @@ pub(crate) fn record(
         .to_path_buf();
     workspace::publish_output(
         outbox,
-        &format!("rejected-selection-{}.json", job.decision),
+        &format!("rejected-selection-{decision}.json"),
         &json!({
-            "decision":job.decision,"request_digest":digest(&serde_json::to_vec(job)?),
+            "decision":decision,"request_digest":digest(&serde_json::to_vec(original)?),
             "report_digest":digest(bytes),"report":report,"error":error.to_string()
         }),
     )
@@ -49,9 +66,13 @@ pub(crate) fn current(
     else {
         return Ok(None);
     };
-    let job: Job =
-        super::super::source_store::read(&root.join(format!("preparation-{decision}.json")))?;
-    if record["request_digest"] != digest(&serde_json::to_vec(&job)?) {
+    let batch = preparation::batch::load(worker, &decision)?;
+    let original = if let Some(batch) = &batch {
+        serde_json::to_value(batch)?
+    } else {
+        super::super::source_store::read(&root.join(format!("preparation-{decision}.json")))?
+    };
+    if record["request_digest"] != digest(&serde_json::to_vec(&original)?) {
         return Ok(None);
     }
     let base = outbox
@@ -72,7 +93,17 @@ pub(crate) fn current(
     if record["report_digest"] != digest(&bytes) {
         return Ok(None);
     }
-    let Err(error) = preparation::validate_selection(&job, &bytes) else {
+    let validation = if let Some(batch) = &batch {
+        preparation::batch::validate_submission(
+            batch,
+            &preparation::batch::jobs(worker, batch)?,
+            &bytes,
+        )
+        .map(|_| ())
+    } else {
+        preparation::validate_selection(&serde_json::from_value(original)?, &bytes).map(|_| ())
+    };
+    let Err(error) = validation else {
         return Ok(None);
     };
     if record["error"] != error.to_string() {

@@ -1,7 +1,12 @@
 //! Persistent native context preparation; the model selects, Jev decides.
 use super::state::{Request, Store};
+pub mod batch;
+mod calibration;
+mod job;
+pub use job::job;
 mod validation;
 use crate::Result;
+pub(crate) use calibration::calibration;
 use kah_observer::{
     context_selection::{self, Item, Manifest},
     judge::{self, Questions},
@@ -28,6 +33,9 @@ fn job_path(worker: &str, decision: &str) -> Result<PathBuf> {
     Ok(Store::directory(worker)?.join(format!("preparation-{decision}.json")))
 }
 pub fn pending(worker: &str, decision: &str) -> Result<bool> {
+    if let Some(batch) = batch::load(worker, decision)? {
+        return batch::pending(worker, &batch);
+    }
     let root = Store::directory(worker)?;
     Ok(job_path(worker, decision)?.exists()
         && !root.join(format!("prepared-{decision}.json")).exists())
@@ -132,20 +140,7 @@ fn selection_path(worker: &str, decision: &str) -> Result<PathBuf> {
     Ok(Store::directory(worker)?.join(format!("selection-{decision}.json")))
 }
 pub fn stage(request: &Request, input: &Value, questions: &Questions, reason: &str) -> Result<()> {
-    let ids = request.intent["items"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|item| item["id"].as_str().map(str::to_owned))
-        .collect::<BTreeSet<_>>();
-    let job = Job {
-        decision: request.id.clone(),
-        worker: request.worker.clone(),
-        state: input.clone(),
-        questions: questions.clone(),
-        items: context_selection::items(input, &ids),
-        reason: reason.into(),
-    };
+    let job = job(request, input, questions, reason);
     super::source_store::save(
         &Store::directory(&request.worker)?,
         &format!("preparation-{}.json", request.id),
@@ -167,6 +162,9 @@ pub fn prompt(worker: &str) -> Result<String> {
         .as_ref()
         .ok_or("PREPARATION_PENDING stage=context_preparation")?;
     let decision = active_decision(worker, &pending.id)?;
+    if let Some(batch) = batch::load(worker, &decision)? {
+        return batch::prompt(worker, &batch);
+    }
     let job: Job = super::state::read(&job_path(worker, &decision)?)?
         .ok_or("PREPARATION_JOB stage=context_preparation")?;
     let directory = state.observer.workspace.join("inputs").join(&pending.id);
@@ -230,6 +228,9 @@ pub fn submit(args: &[String]) -> Result<()> {
     Ok(())
 }
 pub fn accept(worker: &str, decision: &str) -> Result<bool> {
+    if let Some(batch) = batch::load(worker, decision)? {
+        return batch::accept(worker, &batch);
+    }
     let state = Store::read(worker)?.ok_or("PREPARATION_STATE stage=context_preparation")?;
     let path = state
         .observer
@@ -368,27 +369,6 @@ fn revise(request: &Request, job: &Job, reason: &str) -> Result<()> {
             fs::remove_file(path)?;
         }
     }
+    batch::reopen(&request.worker, &request.id)?;
     Ok(())
-}
-
-fn calibration(worker: &str) -> Result<Option<kah_observer::context_budget::Calibration>> {
-    let mut calibration: Option<kah_observer::context_budget::Calibration> =
-        super::state::read(&Store::directory(worker)?.join("token-calibration.json"))?;
-    if calibration.is_none() {
-        let source = kah_observer::session::Store::read(
-            &kah_core::run_store::RunStore::default_state_root()?,
-            worker,
-        )?;
-        calibration = source.and_then(|s| {
-            s.judgments.iter().rev().find_map(|j| {
-                j.metrics
-                    .input_utf8_bytes
-                    .map(|bytes| kah_observer::context_budget::Calibration {
-                        input_utf8_bytes: bytes,
-                        input_tokens: j.metrics.input_tokens,
-                    })
-            })
-        });
-    }
-    Ok(calibration)
 }
