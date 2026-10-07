@@ -26,10 +26,18 @@ fn busy_reviews_preserve_every_trigger_and_whole_preparation_packet_across_turns
     )
     .unwrap();
     let jobs = queue::entries(&worker).unwrap();
-    assert_eq!(jobs.len(), 3);
-    assert_eq!(jobs[0].1.turn, "same-turn");
+    // Merge drift at enqueue while preserving all content.
+    assert_eq!(jobs.len(), 2);
+    assert_eq!(jobs[0].1.turn, "later-turn");
+    assert_eq!(
+        jobs[0].1.trigger["coalesced_triggers"][0]["marker"],
+        "first"
+    );
+    assert_eq!(
+        jobs[0].1.trigger["coalesced_triggers"][1]["marker"],
+        "latest"
+    );
     assert_eq!(jobs[1].1.trigger, whole);
-    assert_eq!(jobs[2].1.trigger["marker"], "latest");
     let directory = store.directory.clone();
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
@@ -65,11 +73,15 @@ fn uncertain_ticks_coalesce_at_snapshot_and_later_events_remain_queued() {
     )
     .unwrap();
     let snapshot = queue::entries(&worker).unwrap();
-    let (job, paths) = queue::batch(&snapshot).unwrap();
-    assert_eq!(paths.len(), 2);
+    // Same user rule: claiming detaches the single pending aggregate.
+    let (job, paths) = queue::claim_batch(&worker).unwrap().unwrap();
+    assert_eq!(paths.len(), 1);
     assert_eq!(job.trigger["actions"].as_array().unwrap().len(), 2);
     assert_eq!(
-        job.trigger["coalesced_triggers"].as_array().unwrap().len(),
+        snapshot[0].1.trigger["coalesced_triggers"]
+            .as_array()
+            .unwrap()
+            .len(),
         2
     );
     queue::enqueue(

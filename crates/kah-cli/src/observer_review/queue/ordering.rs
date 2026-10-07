@@ -3,6 +3,15 @@ use super::*;
 use std::{collections::BTreeMap, path::Path};
 type Order = BTreeMap<String, u64>;
 
+pub(super) fn renamed(root: &Path, old: &str, new: &str) -> Result<()> {
+    let mut order: Order =
+        super::super::state::read(&root.join("queue-order.json"))?.unwrap_or_default();
+    if let Some(sequence) = order.remove(old) {
+        order.insert(new.into(), sequence);
+    }
+    super::super::source_store::save(root, "queue-order.json", &serde_json::to_value(order)?)
+}
+
 pub(super) fn reserve(root: &Path, name: &str) -> Result<()> {
     let mut order: Order =
         super::super::state::read(&root.join("queue-order.json"))?.unwrap_or_default();

@@ -4,7 +4,10 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
+mod drift;
+mod identity;
 mod ordering;
+pub mod repair;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -19,7 +22,18 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
     let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
     kah_core::run_store::ensure_private_directory(&Store::directory(worker)?.join("sources"))?;
-    let name = format!("{}.json", crate::relay_store::nonce());
+    if purpose == Purpose::Drift && trigger.get("captured_snapshot").is_none() {
+        return drift::append(&root, turn, trigger);
+    }
+    let name = if purpose == Purpose::Steering {
+        identity::steering(&trigger)?
+            .unwrap_or_else(|| format!("{}.json", crate::relay_store::nonce()))
+    } else {
+        format!("{}.json", crate::relay_store::nonce())
+    };
+    if purpose == Purpose::Steering && identity::retained(&root, &name, &trigger)? {
+        return Ok(());
+    }
     ordering::reserve(&root, &name)?;
     super::source_store::save(
         &directory,
@@ -32,17 +46,20 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
     )
 }
 pub fn entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
-    let directory = Store::directory(worker)?.join("queued");
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    entries_at(&root)
+}
+fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
+    let directory = root.join("queued");
     if !directory.exists() {
         return Ok(vec![]);
     }
-    let root = Store::directory(worker)?;
-    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
     let mut paths = fs::read_dir(directory)?
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     paths.retain(|p| p.extension().is_some_and(|e| e == "json"));
-    let order = ordering::record(&root, &paths)?;
+    let order = ordering::record(root, &paths)?;
     paths.sort_by_key(|p| {
         order
             .get(p.file_name().unwrap().to_str().unwrap())
@@ -78,7 +95,19 @@ pub fn drain(worker: &str) -> Result<Value> {
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
     super::events::transfer(worker)?;
-    let mut jobs = entries(worker)?;
+    let claimed = claim_batch(worker)?;
+    if let Some((job, paths)) = claimed {
+        return submit_batch(worker, job, paths);
+    }
+    Ok(json!({"status":"idle"}))
+}
+pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
+        return Ok(None);
+    }
+    let mut jobs = entries_at(&root)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
@@ -89,32 +118,37 @@ pub fn drain(worker: &str) -> Result<Value> {
         }
         break;
     }
-    if let Some((job, paths)) = batch(&jobs) {
-        let submitted = if let Some(snapshot) = job.trigger.get("captured_snapshot") {
-            super::snapshot::submit(worker, snapshot)
-        } else {
-            super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)
-        };
-        let receipt = match submitted {
-            Ok(receipt) => receipt,
-            Err(error) if error.to_string().starts_with("REVIEW_BUSY") => {
-                return Ok(json!({"status":"queued","reason":"review_store_busy"}));
-            }
-            Err(error) => return Err(error),
-        };
-        if matches!(
-            receipt["status"].as_str(),
-            Some("submitted" | "preparation_submitted")
-        ) {
-            let handled = Store::directory(worker)?.join("covered-triggers");
-            kah_core::run_store::ensure_private_directory(&handled)?;
-            for path in paths {
-                fs::rename(&path, handled.join(path.file_name().unwrap()))?;
-            }
+    let Some((job, mut paths)) = batch(&jobs) else {
+        return Ok(None);
+    };
+    drift::detach(&root, &mut paths)?;
+    Ok(Some((job, paths)))
+}
+fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
+    let submitted = if let Some(snapshot) = job.trigger.get("captured_snapshot") {
+        super::snapshot::submit(worker, snapshot)
+    } else {
+        super::runtime::submit(worker, job.purpose, &job.turn, job.trigger)
+    };
+    let receipt = match submitted {
+        Ok(receipt) => receipt,
+        Err(error) if error.to_string().starts_with("REVIEW_BUSY") => {
+            return Ok(json!({"status":"queued","reason":"review_store_busy"}));
         }
-        return Ok(receipt);
+        Err(error) => return Err(error),
+    };
+    if matches!(
+        receipt["status"].as_str(),
+        Some("submitted" | "preparation_submitted")
+    ) {
+        let handled = Store::directory(worker)?.join("covered-triggers");
+        kah_core::run_store::ensure_private_directory(&handled)?;
+        let _lock = Store::delivery_at(&Store::directory(worker)?.join("queue-receipts"), true)?;
+        for path in paths {
+            fs::rename(&path, handled.join(path.file_name().unwrap()))?;
+        }
     }
-    Ok(json!({"status":"idle"}))
+    Ok(receipt)
 }
 /// Snapshot only existing queued events. Later events retain their own files
 /// and cause a follow-up; the in-flight review is never mutated.

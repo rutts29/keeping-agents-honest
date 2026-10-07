@@ -63,8 +63,14 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         }
     }
     diagnostic(state, &marker, &text)?;
-    Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; inspect private review/delivery-gap.json".into())
+    Err(missing_receipt())
 }
+fn missing_receipt() -> Box<dyn std::error::Error> {
+    "REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; acknowledge this request's marker in your native turn, or remain idle for host delivery recovery. Host diagnostics are retained separately.".into()
+}
+#[cfg(test)]
+#[path = "../../tests/observer_unit/receipt_guidance.rs"]
+mod guidance_tests;
 fn wait_idle(state: &State, socket: &std::path::Path, pane: &str) -> Result<bool> {
     let waited = crate::run_pane::invoke_at(
         &[
