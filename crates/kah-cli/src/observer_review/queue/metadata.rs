@@ -64,8 +64,10 @@ fn repair_age(root: &Path, name: &str) -> Result<Option<u64>> {
         for entry in fs::read_dir(repairs)? {
             let file = entry?.path();
             if file.extension().is_some_and(|s| s == "json") {
-                let record: Value = super::super::source_store::read(&file)?;
-                for row in record["rows"]
+                let raw: Value = serde_json::from_slice(&fs::read(&file)?)?;
+                let rows =
+                    super::super::source_store::expand(raw["rows"].clone(), &root.join("sources"))?;
+                for row in rows
                     .as_array()
                     .into_iter()
                     .flatten()
