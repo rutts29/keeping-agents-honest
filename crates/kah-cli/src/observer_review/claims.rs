@@ -7,6 +7,21 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, path::PathBuf};
 pub const VERSION: u32 = 2;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReviewClass {
+    Commit,
+    Gate,
+}
+pub fn review_class(judgment: &Judgment) -> Option<ReviewClass> {
+    if !needs_review(judgment) {
+        return None;
+    }
+    match judgment.answers.get("phase_claim") {
+        Some(Answer::Noul { noul }) if *noul < 0.8 => Some(ReviewClass::Commit),
+        Some(Answer::Noul { .. }) => Some(ReviewClass::Gate),
+        _ => None,
+    }
+}
 pub fn needs_review(judgment: &Judgment) -> bool {
     judgment.backend == "jev"
         && matches!(judgment.answers.get("phase_claim"),Some(Answer::Noul{noul}) if *noul>kah_observer::intake::IGNORE_PROBABILITY)
