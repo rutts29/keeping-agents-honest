@@ -91,3 +91,56 @@ pub(super) fn send_back(root: &Path, request: &Request, assessment: &Value) -> R
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/v10_contract_results.rs"]
 mod tests;
+
+pub(crate) fn unchecked_final(
+    request: &Request,
+    report: &Report,
+    assessment: &mut Value,
+) -> Result<()> {
+    if request.trigger["verification_followup"]["stage"] != "checks_complete"
+        || report
+            .decision_units
+            .as_ref()
+            .is_none_or(|u| u.version() < 10)
+    {
+        return Ok(());
+    }
+    if !assessment["violations"]
+        .as_array()
+        .is_some_and(Vec::is_empty)
+    {
+        return Ok(());
+    }
+    let ids = assessment["needs_thinker"]
+        .as_array()
+        .ok_or("REVIEW_CONTRACT_OUTCOME stage=verification")?
+        .clone();
+    let results = request.trigger["verification_followup"]["item_results"].as_array();
+    let mut missing = vec![];
+    for id in ids {
+        if !results.is_some_and(|items| items.iter().any(|i| i["requirement_id"] == id)) {
+            let claim = report
+                .decision_units
+                .as_ref()
+                .unwrap()
+                .requirements
+                .iter()
+                .find(|r| id == r.id)
+                .map(|r| r.name.clone())
+                .unwrap_or_else(|| id.as_str().unwrap_or("unknown").into());
+            missing.push(json!({"id":id,"claim":claim,"tried":[],"reason":"New final item has no item-bound verification receipt"}));
+        }
+    }
+    if !missing.is_empty() {
+        if !assessment["needs_check"].is_array() {
+            assessment["needs_check"] = json!([]);
+        }
+        assessment["needs_check"]
+            .as_array_mut()
+            .unwrap()
+            .extend(missing);
+        assessment["passed"] = false.into();
+        assessment["state"] = "checkpoint_needs_check".into();
+    }
+    Ok(())
+}

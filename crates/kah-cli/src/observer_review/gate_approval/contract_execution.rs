@@ -17,6 +17,7 @@ pub(super) struct ItemResult {
     pub coverage: Value,
     pub check: Option<TestReceipt>,
     pub tried: Vec<Attempt>,
+    pub evidence: Vec<Value>,
 }
 pub(super) fn execute(
     root: &Path,
@@ -52,7 +53,12 @@ pub(super) fn execute(
         }) {
             coverage = json!({"native_fact_verified":true});
         }
-        let result = one(&directory, state, round, item, coverage, proof, request)?;
+        let mut result = one(&directory, state, round, item, coverage, proof, request)?;
+        let mut tried =
+            super::contract_evidence::attempts(request, report, item, round, assessment)?;
+        tried.extend(result.tried);
+        result.tried = tried;
+        result.evidence = super::contract_evidence::selected(request, report, item)?;
         super::super::source_store::save(
             &directory,
             path.file_name().unwrap().to_str().unwrap(),
@@ -181,22 +187,8 @@ fn initial(round: &VerificationRound, item: &Item, coverage: Value) -> ItemResul
         semantic_risk_admissible: false,
         coverage: coverage.clone(),
         check: None,
-        tried: vec![
-            Attempt {
-                what: format!(
-                    "Read checked source citations {:?} for {}: {}",
-                    item.evidence_citations, item.requirement_id, item.claim
-                ),
-                receipt: round.evidence.as_ref().unwrap()[0].receipt.clone(),
-            },
-            Attempt {
-                what: format!(
-                    "Asked the worker once for evidence about {} on {}.",
-                    item.claim, round.binding.head
-                ),
-                receipt: round.builder_receipt(),
-            },
-        ],
+        tried: vec![],
+        evidence: vec![],
     }
 }
 

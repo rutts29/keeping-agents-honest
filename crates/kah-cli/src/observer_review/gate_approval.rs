@@ -22,9 +22,11 @@ mod receiver;
 pub use receiver::{apply_answers, approved_authority, enqueue_answer, pending_answers};
 mod checks;
 mod contract_delivery;
+mod contract_evidence;
 mod contract_execution;
 mod contract_facts;
 mod contract_results;
+pub(super) use contract_results::unchecked_final;
 mod contracts;
 pub(super) use contracts::{outcome as contract_outcome, prepare as prepare_contracts};
 mod producer;
@@ -168,4 +170,14 @@ fn positive_uncertainty(
                     })
             })
     })
+}
+
+pub(super) fn guard_report(
+    root: &Path,
+    request: &Request,
+    report: &Report,
+    assessment: &mut Value,
+) -> Result<()> {
+    guard_followup(root, request, assessment)?;
+    unchecked_final(request, report, assessment)
 }

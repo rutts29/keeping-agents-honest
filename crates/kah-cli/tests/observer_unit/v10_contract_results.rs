@@ -16,6 +16,7 @@ fn result(id: &str, verified: bool, needs_check: bool) -> ItemResult {
         semantic_risk_admissible: !verified && !needs_check,
         coverage: json!({"covered":verified}),
         check: None,
+        evidence: vec![],
         tried: vec![Attempt {
             what: format!("Checked the source and receipt specific to {id}."),
             receipt: format!("{id}-receipt"),
@@ -119,4 +120,32 @@ fn named_send_back_result_releases_pending_without_creating_a_user_wait() {
     assert!(questions::pending(&store.directory).unwrap().is_empty());
     drop(store);
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn new_final_item_is_named_builder_work_and_never_a_user_risk() {
+    let mut request = crate::observer_review::state::Request {
+        id: "review-new-final".into(),
+        worker: "worker".into(),
+        purpose: crate::observer_review::state::Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: Some("a".repeat(40)),
+        intent: json!({"revision":1}),
+        trigger: json!({"verification_followup":{"stage":"checks_complete","item_results":[]}}),
+        documents: vec![],
+        created_ms: 1,
+    };
+    let mut report:Report=serde_json::from_value(json!({"request_id":request.id,"findings":[],"decision_units":{"version":10,"requirements":[{"id":"new-contract","name":"New export condition","dimension":"integration","authority_items":["goal"],"citations":[],"components":[],"checks":[],"judgment":{"kind":"semantic","decision":"satisfied","reasoning":"Needs its own new check","evidence_citations":[0]}}]}})).unwrap();
+    let mut a =
+        json!({"passed":null,"needs_thinker":["new-contract"],"needs_user":[],"violations":[]});
+    unchecked_final(&request, &report, &mut a).unwrap();
+    assert_eq!(a["passed"], false);
+    assert_eq!(a["needs_check"][0]["id"], "new-contract");
+    assert!(a["needs_user"].as_array().unwrap().is_empty());
+    a = json!({"passed":false,"state":"checkpoint_failed","needs_thinker":["new-contract"],"needs_user":[],"violations":["scope"]});
+    unchecked_final(&request, &report, &mut a).unwrap();
+    assert_eq!(a["state"], "checkpoint_failed");
+    report.decision_units.as_mut().unwrap().version = Some(9);
+    request.trigger = json!({});
+    unchecked_final(&request, &report, &mut a).unwrap();
 }

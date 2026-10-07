@@ -75,7 +75,7 @@ pub fn run(worker: &str) -> Result<()> {
         return super::runtime::prepare_context(worker);
     }
     let (judgment, input, mut assessment) = decision?;
-    super::gate_approval::guard_followup(&store.directory, &request, &mut assessment)?;
+    super::gate_approval::guard_report(&store.directory, &request, &report, &mut assessment)?;
     let version = question_version(&request, &report);
     let tokens = tokens(&home, &store, &state);
     let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":version,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
