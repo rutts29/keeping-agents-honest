@@ -79,6 +79,35 @@ fn covered_all_means_no_user_question_but_violations_still_win() {
 }
 
 #[test]
+fn confirmed_exemptions_remain_accounted_without_missing_check_or_verified_claim() {
+    let items = [
+        result("future", false, true),
+        result("delivered", true, false),
+    ];
+    for key in ["not_due", "deferred"] {
+        let mut a = json!({"passed":null,"violations":[],"needs_user":[],"needs_thinker":["delivered"],"unproven":["delivered"]});
+        a[key] = json!(["future"]);
+        apply_items(&items, &mut a).unwrap();
+        assert_eq!(a["passed"], true);
+        assert_eq!(a[key], json!(["future"]));
+        assert_eq!(a["contract_verified"], json!(["delivered"]));
+        assert!(a["needs_check"].as_array().unwrap().is_empty());
+        assert!(a["unproven"].as_array().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn exemption_no_longer_applicable_needs_a_check_instead_of_a_user_question() {
+    let mut item = result("future", false, false);
+    item.semantic_risk_admissible = false;
+    let mut a = json!({"passed":null,"violations":[],"needs_user":[],"needs_thinker":["future"],"unproven":["future"]});
+    apply_items(&[item], &mut a).unwrap();
+    assert_eq!(a["passed"], false);
+    assert_eq!(a["needs_check"][0]["id"], "future");
+    assert!(a["needs_user"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn named_send_back_result_releases_pending_without_creating_a_user_wait() {
     use crate::observer_review::{
         consume, questions,

@@ -53,7 +53,12 @@ pub(super) fn execute(
         }) {
             coverage = json!({"native_fact_verified":true});
         }
-        let mut result = one(&directory, state, round, item, coverage, proof, request)?;
+        let mut result = if exempted(assessment, &item.requirement_id) {
+            initial(round, item, json!({"exempt":true,"prior":coverage}))
+        } else {
+            one(&directory, state, round, item, coverage, proof, request)?
+        };
+        result.plan_digest = plan_digest(item)?;
         let mut tried =
             super::contract_evidence::attempts(request, report, item, round, assessment)?;
         tried.extend(result.tried);
@@ -67,6 +72,13 @@ pub(super) fn execute(
         results.push(result);
     }
     Ok(results)
+}
+pub(super) fn exempted(assessment: &Value, id: &str) -> bool {
+    ["not_due", "deferred"].iter().any(|key| {
+        assessment[*key]
+            .as_array()
+            .is_some_and(|ids| ids.iter().any(|value| value == id))
+    })
 }
 fn one(
     directory: &Path,

@@ -36,10 +36,12 @@ pub(super) fn apply(root: &Path, request: &Request, assessment: &mut Value) -> R
 fn apply_items(items: &[ItemResult], assessment: &mut Value) -> Result<()> {
     let verified = items
         .iter()
-        .filter(|i| i.verified)
+        .filter(|i| {
+            i.verified && !super::contract_execution::exempted(assessment, &i.requirement_id)
+        })
         .map(|i| &i.requirement_id)
         .collect::<BTreeSet<_>>();
-    let needed=items.iter().filter(|i|i.needs_check).map(|i|json!({"id":i.requirement_id,"claim":i.claim,"tried":i.tried,"receipt":i.check,"coverage":i.coverage})).collect::<Vec<_>>();
+    let needed=items.iter().filter(|i| needs_check(i,assessment)).map(|i|json!({"id":i.requirement_id,"claim":i.claim,"tried":i.tried,"receipt":i.check,"coverage":i.coverage})).collect::<Vec<_>>();
     if !assessment["violations"]
         .as_array()
         .is_some_and(Vec::is_empty)
@@ -55,6 +57,16 @@ fn apply_items(items: &[ItemResult], assessment: &mut Value) -> Result<()> {
     });
     assessment["contract_verified"] = json!(verified);
     assessment["needs_check"] = json!(needed);
+    assessment["unproven"] = json!(
+        assessment["needs_thinker"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .chain(assessment["needs_user"].as_array().into_iter().flatten())
+            .filter_map(Value::as_str)
+            .chain(needed.iter().filter_map(|item| item["id"].as_str()))
+            .collect::<BTreeSet<_>>()
+    );
     if !needed.is_empty() {
         assessment["passed"] = false.into();
         assessment["state"] = "checkpoint_needs_check".into();
@@ -69,6 +81,15 @@ fn apply_items(items: &[ItemResult], assessment: &mut Value) -> Result<()> {
         assessment["state"] = "checkpoint_passed".into();
     }
     Ok(())
+}
+fn needs_check(item: &ItemResult, assessment: &Value) -> bool {
+    !super::contract_execution::exempted(assessment, &item.requirement_id)
+        && (item.needs_check
+            || (!item.verified
+                && !item.semantic_risk_admissible
+                && assessment["needs_thinker"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == &item.requirement_id))))
 }
 pub(super) fn send_back(root: &Path, request: &Request, assessment: &Value) -> Result<bool> {
     let Some(items) = assessment["needs_check"]
