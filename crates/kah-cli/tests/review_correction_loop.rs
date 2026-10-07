@@ -41,6 +41,7 @@ fn parked_validation_releases_its_slot_and_retains_the_pending_request() {
     let state: State = serde_json::from_value(json!({"worker":{"provider":"codex","session":worker,"project":"/tmp/fixture","pane":null,"socket":null},"observer":{"session":null,"pane":null,"name":"fixture","workspace":"/tmp/fixture","model":"gpt-6.1-sol","effort":"low","transcript":null},"pending":{"id":"review-stuck","purpose":"checkpoint","turn":"t","head":"a","created_ms":1,"native_tokens_before":null},"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
     store.save(&state).unwrap();
     let gap = json!({"error":"REVIEW_REQUIREMENT_EMPTY stage=decision_units","report_digest":"same","request_digest":"same"});
+    kah_cli::unattended_report::save(&store.directory, "gap.json", &gap).unwrap();
     redelivery::park_correction(&store, "review-stuck", &gap).unwrap();
     assert!(store.load().unwrap().unwrap().pending.is_none());
     let parked: serde_json::Value = kah_cli::observer_review::source_store::read(
@@ -49,6 +50,10 @@ fn parked_validation_releases_its_slot_and_retains_the_pending_request() {
     .unwrap();
     assert_eq!(parked["pending"]["id"], "review-stuck");
     assert_eq!(parked["gap"], gap);
+    assert!(
+        !store.directory.join("gap.json").exists(),
+        "old gap must not correct the next review"
+    );
     assert_ne!(
         store.load().unwrap().unwrap().checkpoint.unwrap()["passed"],
         true
