@@ -141,6 +141,48 @@ fn answered_report() -> Report {
 }
 
 #[test]
+fn grouped_gate_question_cannot_be_resolved_by_semantic_user_interpretation() {
+    use kah_observer::judge::{Answer, Judgment, Metrics};
+    use std::collections::BTreeMap;
+    let root = std::env::temp_dir().join(format!("kah-grouped-answer-{}", std::process::id()));
+    let saved = questions::store(
+        &root,
+        &request(),
+        &report(),
+        &json!({"needs_user":["format"]}),
+    )
+    .unwrap();
+    let mut question = saved[0].clone();
+    question["kind"] = "checkpoint_approval".into();
+    let path = root
+        .join("questions")
+        .join(format!("{}.json", question["id"].as_str().unwrap()));
+    std::fs::write(path, serde_json::to_vec(&question).unwrap()).unwrap();
+    let mut answer = request();
+    answer.intent = json!({"goal":"Original","items":[{"id":"user-answer","text":"Use exact output.","source":[{"role":"user","origin":"relayed"}]}]});
+    let judgment = Judgment {
+        backend: "jev".into(),
+        model: "jev-latest".into(),
+        answers: BTreeMap::from([(
+            "requirement.format".into(),
+            Answer::Choice {
+                choice: "supported".into(),
+                confidence: 0.95,
+                probabilities: BTreeMap::from([("supported".into(), 0.95)]),
+            },
+        )]),
+        metrics: Metrics::default(),
+        fallback_reason: None,
+    };
+    assert_eq!(
+        questions::resolve(&root, &answer, &answered_report(), &judgment).unwrap(),
+        0
+    );
+    assert_eq!(questions::pending(&root).unwrap().len(), 1);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn answer_detection_preserves_old_authority_and_includes_a_new_user_goal() {
     let question = json!({"authority_at_question":["goal","old"],"goal_at_question":"Original"});
     let intent = json!({"goal":"Use exact output.","goal_source":[{"role":"user","origin":"relayed"}],"items":[{"id":"old","text":"Old decision","source":[{"role":"user"}]},{"id":"agent-new","text":"I choose normalized","source":[{"role":"assistant"}]}]});

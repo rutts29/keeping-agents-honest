@@ -21,7 +21,7 @@ pub(super) fn validate(request: &Request, report: &Report, findings: Vec<Value>)
         if let Some(id) = &r.existing_question_id {
             let q = questions.iter().find(|q| q["id"] == *id && q["status"] == "pending")
                 .ok_or("REVIEW_QUESTION_REFERENCE stage=question: unknown or resolved captured reference")?;
-            if q["worker"] != request.worker || q["requirement"] != r.id {
+            if !super::super::questions::question_scope(q, request, &r.id) {
                 return Err(
                     "REVIEW_QUESTION_REFERENCE_SCOPE stage=question: different worker or decision"
                         .into(),
@@ -30,8 +30,7 @@ pub(super) fn validate(request: &Request, report: &Report, findings: Vec<Value>)
         } else if matches!(r.judgment, Thinking::NeedsUser { .. })
             && let Some(q) = questions.iter().find(|q| {
                 q["status"] == "pending"
-                    && q["worker"] == request.worker
-                    && q["requirement"] == r.id
+                    && super::super::questions::question_scope(q, request, &r.id)
             })
         {
             return Err(format!(

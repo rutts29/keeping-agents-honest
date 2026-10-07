@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 mod answers;
 mod lineage;
+mod scope;
+pub(super) use scope::matches as question_scope;
 mod native;
 mod resolve;
 pub use answers::queue as queue_answers;
@@ -37,6 +39,12 @@ pub fn store(
             continue;
         }
         let target = lineage::target(root, request, r)?;
+        if target
+            .as_ref()
+            .is_some_and(|q| q["kind"] == "checkpoint_approval")
+        {
+            continue;
+        }
         let source = native::source(&verified, r)?;
         let Some(value) = draft(request, r, source)? else {
             continue;

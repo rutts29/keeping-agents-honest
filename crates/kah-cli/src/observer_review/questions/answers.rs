@@ -16,6 +16,9 @@ pub fn queue(store: &Store, worker: &str) -> Result<()> {
     let intent = json!({"goal":projection.goal.text,"goal_source":projection.goal.source_refs,"items":projection.preserve.iter().chain(&projection.frontier).chain(&projection.validation).map(|i|json!({"id":i.id,"text":i.text,"source":i.introduced_by})).collect::<Vec<_>>()});
     let _delivery = Store::delivery_at(&store.directory.join("questions"), true)?;
     for mut question in super::pending(&store.directory)? {
+        if question["kind"] == "checkpoint_approval" {
+            continue;
+        }
         let items = super::new_user_items(&question, &intent);
         let digest = kah_observer::context_selection::digest(&json!(items));
         if items.is_empty() || question["last_answer_sources"] == digest {

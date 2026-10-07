@@ -6,7 +6,7 @@ pub fn validate(request: &Request, units: &ReviewUnits) -> Result<()> {
     let root = super::super::state::Store::directory(&request.worker)?;
     for r in &units.requirements {
         target(&root, request, r)?;
-        if units.version() == 8
+        if units.version() >= 8
             && matches!(r.judgment, Thinking::NeedsUser { .. })
             && r.existing_question_id.is_none()
         {
@@ -24,7 +24,7 @@ pub(super) fn target(root: &Path, request: &Request, r: &Requirement) -> Result<
     let question = questions.into_iter().find(|q| q["id"] == *id).ok_or(
         "REVIEW_QUESTION_REFERENCE stage=question: reference must name an active question",
     )?;
-    if question["worker"] != request.worker || question["requirement"] != r.id {
+    if !super::question_scope(&question, request, &r.id) {
         return Err(
             "REVIEW_QUESTION_REFERENCE_SCOPE stage=question: different worker or decision".into(),
         );
@@ -35,7 +35,7 @@ pub(super) fn target(root: &Path, request: &Request, r: &Requirement) -> Result<
 pub(super) fn require_new(root: &Path, request: &Request, r: &Requirement) -> Result<()> {
     if pending(root)?
         .iter()
-        .any(|q| q["worker"] == request.worker && q["requirement"] == r.id)
+        .any(|q| super::question_scope(q, request, &r.id))
     {
         return Err("REVIEW_QUESTION_REFERENCE_REQUIRED stage=question: cite existing_question_id; one decision has one active wait".into());
     }

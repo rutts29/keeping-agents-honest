@@ -21,6 +21,9 @@ pub fn resolve(
     let _delivery = super::super::state::Store::delivery_at(&root.join("questions"), true)?;
     let mut resolved = 0;
     for mut question in super::pending(root)? {
+        if question["kind"] == "checkpoint_approval" {
+            continue;
+        }
         let Some(unit) = units
             .requirements
             .iter()
