@@ -101,11 +101,6 @@ pub fn candidate(request: &Request, entry: &Entry) -> Result<Option<Value>> {
         return Ok(None);
     }
     let requirement: Requirement = serde_json::from_value(entry.verdict["requirement"].clone())?;
-    // Temporary WIP guard: old receipts remain in append-only history.
-    // Until latest-result identity is bound, test-backed items stay fresh.
-    if !requirement.checks.is_empty() {
-        return Ok(None);
-    }
     if super::always(
         requirement.dimension,
         requirement
@@ -129,7 +124,8 @@ pub fn candidate(request: &Request, entry: &Entry) -> Result<Option<Value>> {
         Err(error)
             if error.to_string().starts_with("REVIEW_CACHE_AUTHORITY")
                 || error.to_string().starts_with("REVIEW_CACHE_SOURCE")
-                || error.to_string().starts_with("REVIEW_CACHE_COMPONENT") =>
+                || error.to_string().starts_with("REVIEW_CACHE_COMPONENT")
+                || error.to_string().starts_with("REVIEW_CACHE_RECEIPT") =>
         {
             Ok(None)
         }

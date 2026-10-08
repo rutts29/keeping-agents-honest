@@ -40,7 +40,8 @@ pub(super) fn components(request: &Request, r: &Requirement) -> Result<BTreeMap<
         Ok((component.name.clone(),digest(&json!({"native":native,"role":component.role}))?))
     }).collect()
 }
-pub(super) fn tests(r: &Requirement) -> Result<BTreeMap<String, String>> {
+pub(super) fn tests(request: &Request, r: &Requirement) -> Result<BTreeMap<String, String>> {
+    let latest = super::receipts::latest(request, r)?;
     r.checks
         .iter()
         .map(|check| {
@@ -59,7 +60,7 @@ pub(super) fn tests(r: &Requirement) -> Result<BTreeMap<String, String>> {
             .collect::<std::result::Result<Vec<_>, _>>()?;
             Ok((
                 check.name.clone(),
-                digest(&json!({"check":check,"receipts":selected}))?,
+                digest(&json!({"check":check,"receipts":selected,"native_execution":latest[&check.name]}))?,
             ))
         })
         .collect()

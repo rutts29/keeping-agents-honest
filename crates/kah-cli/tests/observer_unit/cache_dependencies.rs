@@ -78,12 +78,8 @@ fn component_dependency_uses_native_blob_digest_not_just_its_name() {
 #[test]
 fn check_dependencies_include_exact_native_command_result_and_sha_quotes() {
     let (mut request, mut r) = fixture();
-    let native = Document::new(
-        "transcript",
-        "worker_transcript",
-        "native:worker",
-        "cargo test parser\nPASS\nSHA\n",
-    );
+    let native = crate::observer_review::capture::native_document("codex","worker",
+        &json!([{"item":{"type":"commandExecution","id":"check","command":"cargo test parser","cwd":"/repo","status":"completed","exitCode":0,"aggregatedOutput":"PASS\nSHA\n"}}])).unwrap();
     for quote in ["cargo test parser", "PASS", "SHA"] {
         r.citations.push(Citation {
             source: native.id.clone(),
@@ -102,12 +98,8 @@ fn check_dependencies_include_exact_native_command_result_and_sha_quotes() {
     });
     let original = fingerprint(&request, &r).unwrap();
     r.citations[2].quote = "FAIL".into();
-    request.documents[1] = Document::new(
-        "transcript",
-        "worker_transcript",
-        "native:worker",
-        "cargo test parser\nFAIL\nSHA\n",
-    );
+    request.documents[1] = crate::observer_review::capture::native_document("codex","worker",
+        &json!([{"item":{"type":"commandExecution","id":"check","command":"cargo test parser","cwd":"/repo","status":"completed","exitCode":1,"aggregatedOutput":"FAIL\nSHA\n"}}])).unwrap();
     for citation in r.citations.iter_mut().skip(1) {
         citation.digest = request.documents[1].digest.clone();
     }

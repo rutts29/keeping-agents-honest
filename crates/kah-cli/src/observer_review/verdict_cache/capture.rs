@@ -155,7 +155,7 @@ pub(super) fn fingerprint(request: &Request, r: &decision_units::Requirement) ->
     }
     let plans = super::dependencies::plans(request, r);
     let components = super::dependencies::components(request, r)?;
-    let tests = super::dependencies::tests(r)?;
+    let tests = super::dependencies::tests(request, r)?;
     Ok(Evidence {
         authority,
         blobs,
@@ -176,9 +176,13 @@ fn snapshot(
 ) -> Result<(Evidence, Option<String>)> {
     match fingerprint(request, r) {
         Ok(evidence) => Ok((evidence, None)),
-        Err(error) if error.to_string().starts_with("REVIEW_CACHE_COMPONENT") => {
+        Err(error)
+            if error.to_string().starts_with("REVIEW_CACHE_COMPONENT")
+                || error.to_string().starts_with("REVIEW_CACHE_RECEIPT") =>
+        {
             let mut without_component = r.clone();
             without_component.components.clear();
+            without_component.checks.clear();
             Ok((
                 fingerprint(request, &without_component)?,
                 Some(error.to_string()),

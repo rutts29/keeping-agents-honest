@@ -18,6 +18,7 @@ pub fn native_document(provider: &str, session: &str, value: &Value) -> Result<D
         .ok_or("REVIEW_NATIVE_RECORDS stage=native_provenance")?;
     let mut text = String::new();
     let mut records = vec![];
+    let execution_contexts = super::executions::contexts(provider, rows);
     for (index, row) in rows.iter().enumerate() {
         let start_byte = text.len();
         let path = format!("native/{index}");
@@ -26,6 +27,7 @@ pub fn native_document(provider: &str, session: &str, value: &Value) -> Result<D
         walk(row, &path, &mut text, &paths, &mut outputs);
         let mut provenance = context(provider, &path, row);
         provenance["output_ranges"] = json!(outputs);
+        provenance["executions"] = execution_contexts[index].clone();
         records.push(NativeRecord {
             start_byte,
             end_byte: text.len(),
