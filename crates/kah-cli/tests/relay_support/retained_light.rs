@@ -45,8 +45,7 @@ pub fn run(root: &Path) -> Value {
     let state = super::review::quiescent(&worker, "codex");
     let (original, packet_bytes) = scoped(&worker, state);
     let id = original.id.clone();
-    let submitted = snapshot::wake(&original).unwrap();
-    assert_eq!(submitted["status"], "submitted");
+    let submitted = retained_submission(&original);
     let pane = Pane {
         id: submitted["pane"].as_str().unwrap().into(),
     };
@@ -137,4 +136,24 @@ fn finish(
         serde_json::to_vec_pretty(&output).unwrap(),
     )
     .unwrap();
+}
+
+fn retained_submission(request: &Request) -> Value {
+    match snapshot::wake(request) {
+        Ok(value) => value,
+        Err(error)
+            if error
+                .to_string()
+                .starts_with("REVIEW_SUBMISSION_UNCONFIRMED") =>
+        {
+            // Native startup may exceed the short delivery handshake; the
+            // product retains this exact request and starts its liveness owner
+            // before delivery (runtime::submit_snapshot). Await that recovery.
+            let state = Reviews::read(&request.worker).unwrap().unwrap();
+            assert_eq!(state.pending.as_ref().unwrap().id, request.id);
+            eprintln!("Retained cold handshake: {error}");
+            json!({"status":"delivery_retained","request":request.id,"pane":state.observer.pane.unwrap()})
+        }
+        Err(error) => panic!("Snapshot failed outside retained delivery: {error}"),
+    }
 }
