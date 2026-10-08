@@ -102,7 +102,7 @@ fn add_questions(
         );
         context["coverage"]["proposed_claim"] = json!(item.claim);
         context["coverage"]["item"]["claim"] = requirement["name"].clone();
-        context["coverage"]["requirement"] = json!({"id":requirement["id"],"name":requirement["name"],"judgment":requirement["judgment"],"authority_items":requirement["authority_items"]});
+        context["coverage"]["requirement"] = json!({"id":requirement["id"],"name":requirement["name"],"judgment":requirement["judgment"],"authority_items":requirement["authority_items"],"deferral_id":requirement["deferral_id"]});
         input["verification_contracts"][&item.requirement_id] = context;
         for (key, q) in item.questions() {
             questions.insert(format!("{key}.{}", item.requirement_id), q);

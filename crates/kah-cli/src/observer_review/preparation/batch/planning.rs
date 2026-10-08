@@ -24,7 +24,8 @@ pub fn plan(request: &Request, input: &Value, questions: &Questions) -> Result<b
     let calibration = preparation::calibration(&request.worker)?;
     let mut jobs = vec![];
     for (key, question) in questions {
-        let mut state = scoped::report_context(input, key)?;
+        let mut state =
+            crate::observer_review::decision_deferral_scope::decision(request, input, key)?;
         crate::privacy::scrub(&mut state);
         let questions = Questions::from([(key.clone(), question.clone())]);
         let local = scoped::request_for(request, &state, &questions)?;

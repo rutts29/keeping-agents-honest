@@ -37,7 +37,7 @@ pub fn evaluate(
     let mut archives = serde_json::Map::new();
     for (key, question) in questions {
         decision_stage(request, key, "started")?;
-        let mut state = report_context(input, key)?;
+        let mut state = super::super::decision_deferral_scope::decision(request, input, key)?;
         crate::privacy::scrub(&mut state);
         let questions = Questions::from([(key.clone(), question.clone())]);
         let (decided, reused) = match decide(home, request, &state, &questions) {
