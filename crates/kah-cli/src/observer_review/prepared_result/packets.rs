@@ -48,6 +48,9 @@ fn one(
     job: &preparation::Job,
 ) -> Result<Value> {
     let root = Store::directory(&request.worker)?;
+    if let Some(terminal) = batch::terminal_packets::lookup(&request.worker, packet)? {
+        return Ok(terminal["receipt"].clone());
+    }
     let name = format!("packet-result-{}.json", job.decision);
     let identity = kah_observer::context_selection::digest(
         &json!({"original":job.state,"questions":job.questions,"packet":packet}),
@@ -108,6 +111,7 @@ fn terminal(
         "original_queue_source":packet["source"],"terminal":"unconfirmed_context","passed":null,
         "error":error.to_string(),"source":"context-rejections","no_automatic_reasks":true});
     crate::observer_review::source_store::save(root, name, &receipt)?;
+    batch::terminal_packets::record(&local.worker, packet, &receipt)?;
     crate::observer_review::reminder_queue::save(
         root,
         &json!({"request":local.id,"purpose":"uncertainty","turn":local.turn,"system_notice":true,

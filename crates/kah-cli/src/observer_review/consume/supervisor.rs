@@ -38,18 +38,31 @@ pub fn supervise(worker: &str) -> Result<()> {
     execute(worker, &program)
 }
 pub fn execute(worker: &str, program: &Path) -> Result<()> {
+    let result = execute_inner(worker, program);
+    if let Err(error) = &result {
+        outcome::record(
+            worker,
+            json!({"kind":"supervisor_failure","reason":error.to_string()}),
+        )?;
+    }
+    result
+}
+fn execute_inner(worker: &str, program: &Path) -> Result<()> {
     let started = std::time::Instant::now();
     let mut child = Command::new(program)
         .args(["__review-consume-worker", worker])
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .spawn()?;
+        .spawn()
+        .map_err(|e| format!("REVIEW_CONSUME_SPAWN stage=supervision: {e}"))?;
     outcome::record(
         worker,
         json!({"kind":"child_started","child_pid":child.id()}),
     )?;
-    let status = child.wait()?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("REVIEW_CONSUME_WAIT stage=supervision: {e}"))?;
     let reason = reason(status);
     outcome::record(
         worker,

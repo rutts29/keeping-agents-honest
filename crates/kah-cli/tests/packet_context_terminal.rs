@@ -107,7 +107,46 @@ fn ordinary_consume_retains_terminal_packet_and_finishes_the_other_packet() {
             .join("reminders")
             .is_dir()
     );
+    next_batch(&worker);
     fs::remove_dir_all(root).unwrap();
+}
+fn next_batch(worker: &str) {
+    use kah_cli::observer_review::queue;
+    queue::enqueue(
+        worker,
+        Purpose::Preparation,
+        "first",
+        packet("first")["trigger"].clone(),
+    )
+    .unwrap();
+    assert!(
+        queue::claim_batch(worker).unwrap().is_none(),
+        "same terminal source must not be admitted under a new review id"
+    );
+    assert!(queue::header_entries(worker).unwrap().is_empty());
+    assert!(
+        Store::directory(worker)
+            .unwrap()
+            .join("terminal-packet-links")
+            .is_dir()
+    );
+    let mut changed = packet("first")["trigger"].clone();
+    changed["preparation"]["questions"] =
+        serde_json::to_value(kah_observer::verified_judgment::questions()).unwrap();
+    queue::enqueue(worker, Purpose::Preparation, "first", changed).unwrap();
+    assert!(
+        queue::claim_batch(worker).unwrap().is_some(),
+        "changed questions are eligible again"
+    );
+    let mut changed_source = packet("first");
+    changed_source["trigger"]["preparation"]["state"]["intent"]["goal"] =
+        json!("Changed whole authority.");
+    assert!(
+        batch::terminal_packets::lookup(worker, &changed_source)
+            .unwrap()
+            .is_none(),
+        "changed original source is eligible again"
+    );
 }
 
 fn staged(worker: &str) -> Store {

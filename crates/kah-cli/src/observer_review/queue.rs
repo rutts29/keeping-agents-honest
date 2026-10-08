@@ -179,6 +179,17 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         return Ok(None);
     }
     let mut jobs = headers::at(&root)?;
+    let mut pending_jobs = vec![];
+    for (path, job) in jobs {
+        if job.purpose == Purpose::Preparation
+            && job.trigger.get("captured_snapshot").is_none()
+            && super::preparation::batch::terminal_packets::retire(worker, &job, &path)?
+        {
+            continue;
+        }
+        pending_jobs.push((path, job));
+    }
+    jobs = pending_jobs;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");

@@ -52,7 +52,16 @@ pub fn finished(
 
 pub fn run(worker: &str) -> Result<()> {
     let started = std::time::Instant::now();
-    let before = pending(worker)?;
+    let before = match pending(worker) {
+        Ok(value) => value,
+        Err(error) => {
+            record(
+                worker,
+                json!({"kind":"return","success":false,"reason":error.to_string(),"stage":"before_start"}),
+            )?;
+            return Err(error);
+        }
+    };
     record(worker, json!({"kind":"started","pending":before}))?;
     super::super::queue::memory::sample(worker, "consume_start")?;
     let result = super::run_inner(worker);

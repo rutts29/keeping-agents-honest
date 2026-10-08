@@ -8,6 +8,7 @@ mod lifecycle;
 pub mod packet_refs;
 pub mod packets;
 mod planning;
+pub mod terminal_packets;
 pub use planning::plan;
 mod selection;
 mod transport;
