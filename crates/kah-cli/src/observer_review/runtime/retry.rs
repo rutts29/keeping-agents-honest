@@ -23,7 +23,7 @@ pub fn retry_pending(worker: &str) -> Result<()> {
         return Ok(());
     }
     let gap: Option<Value> = review::state::read(&gap_path)?;
-    if !gap.as_ref().is_some_and(review::redelivery::gap_retryable) {
+    if !retry_due(&store.directory, &pending.id, gap.as_ref())? {
         return Ok(());
     }
     if review::redelivery::unchanged_correction(&store, &pending.id, gap.as_ref().unwrap())? {
@@ -62,6 +62,17 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     delivery?;
     clear_same_gap(&gap_path, &gap)
 }
+fn retry_due(root: &Path, request: &str, gap: Option<&Value>) -> Result<bool> {
+    let Some(gap) = gap.filter(|g| review::redelivery::gap_retryable(g)) else {
+        return Ok(false);
+    };
+    if gap["error"].as_str().is_some_and(|e| {
+        e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET") || e.starts_with("REVIEW_EXPANSION_PENDING")
+    }) {
+        return review::redelivery::expansion_retry::due(root, request);
+    }
+    Ok(true)
+}
 fn clear_same_gap(path: &Path, gap: &Option<Value>) -> Result<()> {
     if review::state::read::<Value>(path)? == *gap {
         std::fs::remove_file(path)?;
@@ -69,10 +80,9 @@ fn clear_same_gap(path: &Path, gap: &Option<Value>) -> Result<()> {
     Ok(())
 }
 fn diagnostic(gap: &Value) -> String {
-    if gap["error"]
-        .as_str()
-        .is_some_and(|e| e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET"))
-    {
+    if gap["error"].as_str().is_some_and(|e| {
+        e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET") || e.starts_with("REVIEW_EXPANSION_PENDING")
+    }) {
         "\nHost expansion completed: the complete cited file is now mapped in this SAME request. Re-read its manifest and resubmit your source-checked report; this was a host publication handoff, not a report mistake.".into()
     } else {
         format!(
@@ -82,6 +92,8 @@ fn diagnostic(gap: &Value) -> String {
     }
 }
 fn refresh_rejection(store: &Store, state: &State, request: &str) -> Result<()> {
+    let prior: Option<Value> =
+        review::state::read(&store.directory.join("validation-current.json"))?;
     if review::liveness::rejection::current(
         &store.directory,
         &state.observer.workspace.join("outbox"),
@@ -95,6 +107,19 @@ fn refresh_rejection(store: &Store, state: &State, request: &str) -> Result<()> 
     let record: Value = review::state::read(&store.directory.join("validation-current.json"))?
         .ok_or("REVIEW_REJECTION_MISSING stage=host_handoff")?;
     if record["request"] == request {
+        let existing: Option<Value> = review::state::read(&store.directory.join("gap.json"))?;
+        if existing.as_ref().is_some_and(|v| {
+            v["request"] == request
+                && v["error"]
+                    .as_str()
+                    .is_some_and(|e| e.starts_with("REVIEW_EXPANSION_PENDING"))
+                && prior.as_ref().is_some_and(|p| {
+                    p["request_digest"] == record["request_digest"]
+                        && p["report_digest"] == record["report_digest"]
+                })
+        }) {
+            return Ok(());
+        }
         crate::unattended_report::save(&store.directory, "gap.json", &record)?;
     }
     Ok(())

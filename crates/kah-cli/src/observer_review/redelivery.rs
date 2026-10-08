@@ -3,6 +3,7 @@ use super::state::Store;
 use crate::Result;
 use serde_json::{Value, json};
 mod correction;
+pub(crate) mod expansion_retry;
 mod parked;
 mod reviewer;
 pub use correction::*;
@@ -15,6 +16,12 @@ pub fn retryable(origin: super::failure::Origin, error: &str) -> bool {
             && !error.starts_with("REVIEW_HOOK_SCOPE")
 }
 pub fn gap_retryable(gap: &Value) -> bool {
+    if gap["error"]
+        .as_str()
+        .is_some_and(|e| e.starts_with("REVIEW_EXPANSION_PENDING"))
+    {
+        return true;
+    }
     let origin = serde_json::from_value(gap["origin"].clone()).unwrap_or_default();
     gap["error"]
         .as_str()
@@ -46,7 +53,7 @@ pub fn prompt(
         return super::preparation::prompt(&request.worker);
     }
     let expanded = super::commit_packet::expand_rejected(store, state, request)?;
-    if expansion_required && expanded.documents.len() == request.documents.len() {
+    if expansion_required && !expansion_changed(request, &expanded) {
         return Err("REVIEW_EXPANSION_PENDING stage=packet: rejected source was not added; host binding or source needs attention".into());
     }
     let report_prompt = super::workspace::publish(store, state, &expanded)?;
@@ -55,6 +62,17 @@ pub fn prompt(
     } else {
         Ok(report_prompt)
     }
+}
+pub fn expansion_changed(
+    original: &super::state::Request,
+    expanded: &super::state::Request,
+) -> bool {
+    original.documents.len() != expanded.documents.len()
+        || original
+            .documents
+            .iter()
+            .zip(&expanded.documents)
+            .any(|(old, new)| old.id != new.id || old.digest != new.digest || old.kind != new.kind)
 }
 
 pub fn begin(store: &Store, request: &str, error: &str) -> Result<u64> {

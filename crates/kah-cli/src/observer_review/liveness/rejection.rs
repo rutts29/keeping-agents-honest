@@ -91,7 +91,13 @@ pub(crate) fn verified(outbox: &Path, request: &Request) -> Result<Option<String
     Ok(workspace::validate_report_bytes(request, &report)
         .err()
         .filter(|e| e.to_string() == record.reason)
-        .map(|_| format!("VALIDATION BLOCKED: {}", record.reason)))
+        .map(|_| {
+            if record.reason.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET") {
+                format!("HOST EXPANSION: {}", record.reason)
+            } else {
+                format!("VALIDATION BLOCKED: {}", record.reason)
+            }
+        }))
 }
 pub(crate) fn current(
     root: &Path,

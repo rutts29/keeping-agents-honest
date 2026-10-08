@@ -47,6 +47,9 @@ pub fn run(worker: &str) -> Result<()> {
     if service_outage(&sample) {
         return notify(&state, &progress);
     }
+    if host_expansion(&sample) {
+        return super::super::hook::spawn("__review-retry", worker);
+    }
     if validation_blocked(&sample) {
         return validation_notice(&state, &progress);
     }
@@ -149,7 +152,12 @@ fn sample(state: &State) -> Result<Sample> {
         super::rejection::current(&root, &outbox, &state.worker.session, &pending.id)?
     };
     let host_error = host_failure(&root, &pending.id)?;
-    let cause = if let Some(reason) = rejected {
+    let cause = if let Some(error) = host_error
+        .as_ref()
+        .filter(|e| e.starts_with("REVIEW_EXPANSION_PENDING"))
+    {
+        super::super::service::cause(error)
+    } else if let Some(reason) = rejected {
         reason
     } else if let Some(error) = host_error {
         super::super::service::cause(&error)
@@ -160,7 +168,8 @@ fn sample(state: &State) -> Result<Sample> {
     } else {
         "no current-request native activity or report growth".into()
     };
-    controller_active |= cause.starts_with("VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET");
+    controller_active |= cause.starts_with("HOST EXPANSION: ")
+        || cause.starts_with("VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET");
     Ok(Sample {
         request: pending.id.clone(),
         now_ms: kah_observer::session::now_ms(),
@@ -314,7 +323,11 @@ fn recovered(root: &Path, worker: &str) -> Result<()> {
 }
 fn notify(state: &State, p: &Progress) -> Result<()> {
     let root = Store::directory(&state.worker.session)?.join("liveness");
+    let blocked_state = super::failure::notice_state(state, p)?;
     let prior: Option<Value> = super::super::state::read(&root.join("reviewer.json"))?;
+    if super::failure::already_notified(prior.as_ref(), &p.sample.request, blocked_state.as_ref()) {
+        return Ok(());
+    }
     if prior.as_ref().is_some_and(|v| {
         v["request"] == p.sample.request
             && v["cause"] == p.sample.cause
@@ -344,18 +357,13 @@ fn notify(state: &State, p: &Progress) -> Result<()> {
     crate::unattended_report::save(
         &root,
         "reviewer.json",
-        &json!({"request":p.sample.request,"cause":p.sample.cause,"last_progress_ms":p.last_progress_ms,
+        &json!({"request":p.sample.request,"cause":p.sample.cause,"notice_state":blocked_state,"last_progress_ms":p.last_progress_ms,
         "submitted":sent.is_ok(),"error":sent.err().map(|e|e.to_string())}),
     )?;
     Ok(())
 }
 pub fn notice(worker: &str) -> Result<Option<Value>> {
-    let path = Store::directory(worker)?.join("liveness/notice.json");
-    let Some(value) = super::super::state::read::<Value>(&path)? else {
-        return Ok(None);
-    };
-    fs::remove_file(path)?;
-    Ok(Some(json!({"systemMessage":value["text"]})))
+    super::failure::take_notice(worker)
 }
 
 fn validation_notice(state: &State, progress: &Progress) -> Result<()> {
