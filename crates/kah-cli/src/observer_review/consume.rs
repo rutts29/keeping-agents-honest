@@ -52,14 +52,16 @@ fn run_inner(worker: &str) -> Result<()> {
         return Ok(());
     };
     let _processing = super::liveness::processing(worker, &pending.id)?;
+    if pending.purpose == Purpose::Preparation {
+        // Consume an already selected/terminal context before considering a
+        // native helper refresh. A new wake refreshes its helper when needed.
+        drop(store);
+        return super::prepared_result::consume(worker);
+    }
     if super::preparation::pending(worker, &pending.id)? && super::runtime::helper_changed(&state)?
     {
         drop(store);
         return super::runtime::prepare_context(worker);
-    }
-    if pending.purpose == Purpose::Preparation {
-        drop(store);
-        return super::prepared_result::consume(worker);
     }
     let request = workspace::request(&store, &pending.id)?;
     super::queue::memory::sample(worker, "consume_request_loaded")?;

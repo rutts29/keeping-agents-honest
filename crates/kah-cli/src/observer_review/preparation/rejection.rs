@@ -1,6 +1,26 @@
 //! An unchanged provider-rejected context is an observation, never another
 //! automatic rethink, a content cap, or a fabricated Jev decision.
 use super::*;
+pub fn known(request: &Request, prepared: &Value, questions: &Questions) -> Result<bool> {
+    let path = Store::directory(&request.worker)?
+        .join("context-rejections")
+        .join(format!("{}.json", request.id));
+    if !path.exists() {
+        return Ok(false);
+    }
+    use super::super::source_store::{Select, read_selected};
+    let record = read_selected(
+        &path,
+        &Select::fields(&[
+            ("state", Select::All),
+            ("prepared_digest", Select::All),
+            ("questions", Select::All),
+        ]),
+    )?;
+    Ok(record["state"] == "unconfirmed_context"
+        && record["prepared_digest"] == context_selection::digest(prepared)
+        && record["questions"] == serde_json::to_value(questions)?)
+}
 pub fn record(
     request: &Request,
     job: &Job,
@@ -12,10 +32,23 @@ pub fn record(
     kah_core::run_store::ensure_private_directory(&root)?;
     let name = format!("{}.json", request.id);
     let digest = context_selection::digest(prepared);
-    let previous: Option<Value> = super::super::state::read(&root.join(&name))?;
-    let unchanged = previous
-        .as_ref()
-        .is_some_and(|p| p["prepared_digest"] == digest && p["error"] == error);
+    let questions = serde_json::to_value(&job.questions)?;
+    use super::super::source_store::{Select, read_selected};
+    let previous = if root.join(&name).exists() {
+        Some(read_selected(
+            &root.join(&name),
+            &Select::fields(&[
+                ("prepared_digest", Select::All),
+                ("error", Select::All),
+                ("questions", Select::All),
+            ]),
+        )?)
+    } else {
+        None
+    };
+    let unchanged = previous.as_ref().is_some_and(|p| {
+        p["prepared_digest"] == digest && p["error"] == error && p["questions"] == questions
+    });
     super::super::source_store::save(
         &root,
         &name,

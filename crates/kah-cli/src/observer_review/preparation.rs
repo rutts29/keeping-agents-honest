@@ -310,6 +310,9 @@ fn retry(
         &manifest,
         &BTreeMap::new(),
     )?;
+    if rejection::known(request, &prepared, &job.questions)? {
+        return Err(format!("PREPARATION_CONTEXT_UNCONFIRMED stage=context_preparation: {} repeated identical rejected context",request.id).into());
+    }
     let archive_path =
         Store::directory(&request.worker)?.join(format!("prepared-{}.json", request.id));
     if let Some(saved) = super::state::read::<Value>(&archive_path)? {
