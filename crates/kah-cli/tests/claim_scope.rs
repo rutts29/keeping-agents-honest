@@ -30,3 +30,28 @@ fn only_phase_gate_probability_routes_heavy_and_smaller_claims_stay_light() {
         assert_eq!(scope::review_class(&judgment), expected);
     }
 }
+
+#[test]
+fn native_claim_producer_uses_the_replayed_two_fact_screen() {
+    use kah_cli::observer_review::claims;
+    assert_eq!(claims::VERSION, scope::VERSION);
+    assert_eq!(
+        serde_json::to_value(claims::questions()).unwrap(),
+        serde_json::to_value(scope::questions()).unwrap()
+    );
+    let implementation = Judgment {
+        backend: "jev".into(),
+        model: "jev-1.13.0".into(),
+        answers: BTreeMap::from([
+            ("phase_claim".into(), Answer::Noul { noul: 0.02 }),
+            ("implementation_claim".into(), Answer::Noul { noul: 0.96 }),
+        ]),
+        metrics: Default::default(),
+        fallback_reason: None,
+    };
+    assert!(claims::needs_review(&implementation));
+    assert_eq!(
+        claims::review_class(&implementation),
+        Some(ReviewClass::Commit)
+    );
+}
