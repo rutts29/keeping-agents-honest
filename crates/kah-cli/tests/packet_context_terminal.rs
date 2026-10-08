@@ -134,6 +134,9 @@ fn next_batch(worker: &str) {
     changed["preparation"]["questions"] =
         serde_json::to_value(kah_observer::verified_judgment::questions()).unwrap();
     queue::enqueue(worker, Purpose::Preparation, "first", changed).unwrap();
+    // Changed packets wait for the next commit boundary.
+    assert!(queue::claim_batch(worker).unwrap().is_none());
+    release_at_commit(worker);
     assert!(
         queue::claim_batch(worker).unwrap().is_some(),
         "changed questions are eligible again"
@@ -284,4 +287,20 @@ fn staged_single(worker: &str) -> Store {
     )
     .unwrap();
     store
+}
+
+fn release_at_commit(worker: &str) {
+    use kah_cli::observer_review::queue;
+    queue::enqueue(
+        worker,
+        Purpose::Checkpoint,
+        "new-commit",
+        json!({"review_class":"gate","head":"exact-new-head"}),
+    )
+    .unwrap();
+    for (path, wake) in queue::entries(worker).unwrap() {
+        if wake.purpose == Purpose::Checkpoint {
+            fs::remove_file(path).unwrap();
+        }
+    }
 }
