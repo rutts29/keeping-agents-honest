@@ -118,7 +118,15 @@ pub(super) fn ensure_directory(path: &Path) -> Result<(), RunStoreError> {
             {
                 ensure_directory(parent)?;
             }
-            fs::create_dir(path).map_err(|error| io_error("create state directory", path, error))
+            match fs::create_dir(path) {
+                Ok(()) => Ok(()),
+                // A concurrent creator won. Re-inspect rather than treating
+                // EEXIST as success: symlinks and non-directories still fail.
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    ensure_directory(path)
+                }
+                Err(error) => Err(io_error("create state directory", path, error)),
+            }
         }
         Err(error) => Err(io_error("inspect state directory", path, error)),
     }
