@@ -44,13 +44,29 @@ impl<'de> Visitor<'de> for Seed<'_> {
     }
     fn visit_seq<A: SeqAccess<'de>>(self, mut array: A) -> std::result::Result<Value, A::Error> {
         let Select::Each(child) = self.0 else {
-            return Err(serde::de::Error::custom("unexpected metadata array"));
+            while array.next_element::<IgnoredAny>()?.is_some() {}
+            return Ok(Value::Null);
         };
         let mut result = vec![];
         while let Some(value) = array.next_element_seed(Seed(child))? {
             result.push(value);
         }
         Ok(Value::Array(result))
+    }
+    fn visit_str<E: serde::de::Error>(self, _: &str) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_bool<E: serde::de::Error>(self, _: bool) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_i64<E: serde::de::Error>(self, _: i64) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_u64<E: serde::de::Error>(self, _: u64) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
     }
     fn visit_unit<E: serde::de::Error>(self) -> std::result::Result<Value, E> {
         Ok(Value::Null)

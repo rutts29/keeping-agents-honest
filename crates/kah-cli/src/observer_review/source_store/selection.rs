@@ -37,7 +37,7 @@ fn resolve(value: Value, root: &Path, selection: &Select) -> Result<Value> {
         return if matches!(selection, Select::All) {
             super::expand(value, root)
         } else {
-            Err("REVIEW_SOURCE_SELECTION_TYPE stage=metadata".into())
+            Ok(Value::Null)
         };
     }
     match (value, selection) {
@@ -58,6 +58,6 @@ fn resolve(value: Value, root: &Path, selection: &Select) -> Result<Value> {
         )),
         (value, Select::All) => super::expand(value, root),
         (Value::Null, _) => Ok(Value::Null),
-        _ => Err("REVIEW_SOURCE_SELECTION_TYPE stage=metadata".into()),
+        _ => Ok(Value::Null),
     }
 }

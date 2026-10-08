@@ -11,7 +11,7 @@ pub fn stamp(worker: &str, mut trigger: Value, intent: &Value) -> Value {
 pub fn run(worker: &str) -> Result<Value> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    let jobs = super::super::entries_at(&root)?;
+    let jobs = coverage_jobs(&root)?;
     if !jobs.iter().any(|(_, w)| {
         w.purpose == Purpose::Preparation && w.trigger["preparation"]["purpose"] == "drift"
     }) {
@@ -41,7 +41,7 @@ pub fn run(worker: &str) -> Result<Value> {
         }
     }
     Ok(
-        json!({"worker":worker,"before":jobs.len(),"after":super::super::entries_at(&root)?.len(),"retired":retired,"kept":kept}),
+        json!({"worker":worker,"before":jobs.len(),"after":coverage_jobs(&root)?.len(),"retired":retired,"kept":kept}),
     )
 }
 fn candidates(
@@ -156,4 +156,45 @@ fn coverage_fields() -> crate::observer_review::source_store::Select {
         ),
         ("documents", Select::Each(Box::new(document))),
     ])
+}
+
+fn coverage_jobs(root: &Path) -> Result<Vec<(std::path::PathBuf, Wake)>> {
+    use crate::observer_review::source_store::{Select, read_selected};
+    let authority = Select::fields(&[
+        ("goal", Select::All),
+        ("revision", Select::All),
+        ("items", Select::All),
+    ]);
+    let ids = Select::Each(Box::new(Select::fields(&[("id", Select::All)])));
+    let state = Select::fields(&[
+        ("intent", authority),
+        ("event", Select::fields(&[("actions", ids.clone())])),
+    ]);
+    let prep = Select::fields(&[("purpose", Select::All), ("state", state)]);
+    let trigger = Select::fields(&[
+        ("preparation", prep),
+        ("coverage_worker", Select::All),
+        ("coverage_authority", Select::All),
+        ("actions", ids),
+    ]);
+    let selection = Select::fields(&[
+        ("purpose", Select::All),
+        ("turn", Select::All),
+        ("trigger", trigger),
+    ]);
+    let mut jobs = vec![];
+    let directory = root.join("queued");
+    if !directory.exists() {
+        return Ok(jobs);
+    }
+    for file in fs::read_dir(directory)? {
+        let path = file?.path();
+        if path.extension().is_some_and(|e| e == "json") {
+            jobs.push((
+                path.clone(),
+                serde_json::from_value(read_selected(&path, &selection)?)?,
+            ));
+        }
+    }
+    Ok(jobs)
 }
