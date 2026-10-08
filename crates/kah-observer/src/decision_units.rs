@@ -234,6 +234,17 @@ impl ReviewUnits {
         active_items: &[String],
         required_items: &[String],
     ) -> Result<Value, String> {
+        let sources = crate::review_evidence::VerifiedSources::new(documents);
+        self.verify_with_sources(&sources, active_items, required_items)
+    }
+    /// Sources carry their immutable document binding and verified quote cache.
+    pub fn verify_with_sources(
+        &self,
+        sources: &crate::review_evidence::VerifiedSources<'_>,
+        active_items: &[String],
+        required_items: &[String],
+    ) -> Result<Value, String> {
+        let documents = sources.documents();
         if self
             .version
             .is_some_and(|version| !(7..=VERSION).contains(&version))
@@ -245,7 +256,6 @@ impl ReviewUnits {
         let mut ids = BTreeSet::new();
         let mut covered = BTreeSet::new();
         let mut requirements = vec![];
-        let sources = crate::review_evidence::VerifiedSources::new(documents);
         for requirement in &self.requirements {
             if !validation::id(&requirement.id) || !ids.insert(&requirement.id) {
                 return Err(format!(
@@ -256,7 +266,7 @@ impl ReviewUnits {
             let value = validation::verified_requirement(
                 requirement,
                 documents,
-                &sources,
+                sources,
                 self.version,
                 !active_items.is_empty(),
             )?;

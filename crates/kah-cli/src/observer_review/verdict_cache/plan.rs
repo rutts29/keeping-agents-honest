@@ -32,8 +32,9 @@ pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
     expand_code_sources(request, &saved)?;
     let mut carried = vec![];
     let mut dirty = vec![];
+    let sources = VerifiedSources::new(&request.documents);
     for entry in saved {
-        match candidate(request, &entry)? {
+        match candidate_with_sources(request, &entry, &sources)? {
             Some(value) => carried.push(value),
             None => dirty.push(entry.requirement),
         }
@@ -49,7 +50,8 @@ pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
     );
     request.trigger["cache_plan"] = json!({"protocol":"commit-cache-v1","dirty":dirty,
         "carried":carried.iter().map(|v|json!({"id":v["requirement"],"review":v["carried_from_review"],"head":v["carried_from_sha"]})).collect::<Vec<_>>(),
-        "record_source":id,"record_digest":record.digest,"always":"intent overview,drift,prohibitions,claim_made,proportion,user waits"});
+        "record_source":id,"record_digest":record.digest,"source_digest_checks":sources.digest_checks(),"source_quote_checks":sources.quote_checks(),
+        "always":"intent overview,drift,prohibitions,claim_made,proportion,user waits"});
     request.documents.push(record);
     Ok(())
 }
@@ -78,6 +80,14 @@ fn expand_code_sources(request: &mut Request, entries: &[Entry]) -> Result<()> {
 mod tests;
 
 pub fn candidate(request: &Request, entry: &Entry) -> Result<Option<Value>> {
+    let sources = VerifiedSources::new(&request.documents);
+    candidate_with_sources(request, entry, &sources)
+}
+fn candidate_with_sources(
+    request: &Request,
+    entry: &Entry,
+    sources: &VerifiedSources<'_>,
+) -> Result<Option<Value>> {
     if !commit_packet::is_commit(request)
         || !entry.confirmed
         || entry.always
@@ -116,11 +126,11 @@ pub fn candidate(request: &Request, entry: &Entry) -> Result<Option<Value>> {
     ) {
         return Ok(None);
     }
-    let Some(current) = current_requirement(request, &requirement)? else {
+    let Some(current) = current_requirement(request, &requirement, sources)? else {
         return Ok(None);
     };
     match capture::fingerprint(request, &current) {
-        Ok(evidence) => refresh_verified(request, entry, &current, &evidence),
+        Ok(evidence) => refresh_verified(entry, &current, &evidence, sources),
         Err(error)
             if error.to_string().starts_with("REVIEW_CACHE_AUTHORITY")
                 || error.to_string().starts_with("REVIEW_CACHE_SOURCE")
@@ -133,10 +143,10 @@ pub fn candidate(request: &Request, entry: &Entry) -> Result<Option<Value>> {
     }
 }
 fn refresh_verified(
-    request: &Request,
     entry: &Entry,
     current: &Requirement,
     evidence: &super::Evidence,
+    sources: &VerifiedSources<'_>,
 ) -> Result<Option<Value>> {
     let Some(mut carried) = entry.carry(evidence, false) else {
         return Ok(None);
@@ -147,7 +157,11 @@ fn refresh_verified(
         proportion: None,
         steering: None,
     };
-    let verified = match units.verify(&request.documents, &current.authority_items) {
+    let verified = match units.verify_with_sources(
+        sources,
+        &current.authority_items,
+        &current.authority_items,
+    ) {
         Ok(verified) => verified,
         Err(_) => return Ok(None),
     };
@@ -158,9 +172,9 @@ fn refresh_verified(
 fn current_requirement(
     request: &Request,
     requirement: &Requirement,
+    sources: &VerifiedSources<'_>,
 ) -> Result<Option<Requirement>> {
     let mut current = requirement.clone();
-    let sources = VerifiedSources::new(&request.documents);
     for citation in &mut current.citations {
         let Some(document) = request.documents.iter().find(|d| d.id == citation.source) else {
             return Ok(None);

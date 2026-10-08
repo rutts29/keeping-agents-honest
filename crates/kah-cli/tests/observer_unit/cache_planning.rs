@@ -155,3 +155,36 @@ fn untouched_committed_source_is_checked_from_catalog_and_kept_reference_only() 
     drop(store);
     std::fs::remove_dir_all(root).unwrap();
 }
+#[test]
+fn request_candidates_share_one_immutable_source_verifier() {
+    let (mut request, entry) = fixture();
+    let mut second = entry.clone();
+    second.requirement = "second-behavior".into();
+    second.verdict["requirement"]["id"] = "second-behavior".into();
+    second.verdict["verified"]["id"] = "second-behavior".into();
+    request.worker = format!("shared-cache-plan-{}", crate::relay_store::nonce());
+    let store = crate::observer_review::state::Store::open(&request.worker).unwrap();
+    let root = store.directory.join("verdict-cache");
+    kah_core::run_store::ensure_private_directory(&root).unwrap();
+    for (name, entry) in [("one.json", entry), ("two.json", second)] {
+        crate::observer_review::source_store::save(
+            &root,
+            name,
+            &serde_json::to_value(entry).unwrap(),
+        )
+        .unwrap();
+    }
+    prepare(&store.directory, &mut request).unwrap();
+    assert_eq!(
+        request.trigger["cache_plan"]["carried"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(request.trigger["cache_plan"]["source_digest_checks"], 1);
+    assert_eq!(request.trigger["cache_plan"]["source_quote_checks"], 1);
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}

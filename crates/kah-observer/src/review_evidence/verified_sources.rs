@@ -17,6 +17,9 @@ impl<'a> VerifiedSources<'a> {
     pub fn digest_checks(&self) -> usize {
         self.digests.borrow().len()
     }
+    pub fn documents(&self) -> &'a [Document] {
+        self.documents
+    }
     pub fn quote_checks(&self) -> usize {
         self.quotes.borrow().len()
     }
