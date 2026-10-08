@@ -1,3 +1,5 @@
+#[path = "helper_binary.rs"]
+mod helper_binary;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -73,8 +75,7 @@ impl Fixture {
         let binary = std::env::var_os("KAH_TRACK2_BINARY")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_kah")));
-        fs::copy(&binary, self.home.join(".local/bin/kah")).unwrap();
-        executable(&self.home.join(".local/bin/kah"));
+        helper_binary::install(&binary, &self.home.join(".local/bin/kah"));
         let target = actual.join(".codex/auth.json");
         let link = self.home.join(".codex/auth.json");
         symlink(&target, &link).unwrap();
