@@ -67,6 +67,49 @@ fn snapshot_counts_real_repeated_notices_and_leaves_every_source_byte_unchanged(
     assert_eq!(digest_tree(&root), before);
     std::fs::remove_dir_all(root).unwrap();
 }
+#[test]
+fn durable_admission_and_native_done_are_preserved_while_evidence_ack_is_separate() {
+    let root =
+        std::env::temp_dir().join(format!("keep-up-stages-{}", kah_cli::relay_store::nonce()));
+    let review = root.join("review");
+    for dir in ["requests", "queued", "stage-timings"] {
+        std::fs::create_dir_all(review.join(dir)).unwrap();
+    }
+    std::fs::create_dir_all(root.join("outbox")).unwrap();
+    std::fs::write(
+        review.join("state.json"),
+        json!({"pending":null,"observer":{"workspace":root},"worker":{"session":"fixture"}})
+            .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        review.join("requests/review-one.json"),
+        json!({"id":"review-one","purpose":"checkpoint","trigger":{"review_class":"commit"}})
+            .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        review.join("stage-timings/review-one.json"),
+        json!({"at_ms":{"admitted":123,"native_done":456,"completed":789}}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        review.join("last-admitted-lane.json"),
+        json!({"request":"another","at_ms":999}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(root.join("outbox/submitted-review-one.json"), "{}").unwrap();
+    let result = support::sample(&review, &root);
+    let row = &result["reviews"][0];
+    assert_eq!(row["at_ms"]["admitted"], 123);
+    assert_eq!(row["at_ms"]["native_done"], 456);
+    assert!(row["at_ms"]["evidence_ack"].is_u64());
+    assert_eq!(
+        row["stage_sources"]["native_done"],
+        "per-request validated native Stop host receipt"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
 fn digest_tree(root: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     let mut files = vec![];
     for entry in std::fs::read_dir(root).unwrap() {

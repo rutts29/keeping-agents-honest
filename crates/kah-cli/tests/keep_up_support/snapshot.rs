@@ -88,18 +88,22 @@ fn review(
     );
     let mut stages = timing["at_ms"].as_object().cloned().unwrap_or_default();
     stages.insert("consumed".into(), timing["at_ms"]["completed"].clone());
-    stages.insert(
-        "admitted".into(),
-        if admitted["request"] == id {
-            admitted["at_ms"].clone()
-        } else {
-            Value::Null
-        },
-    );
+    let durable_admitted = stages.get("admitted").is_some_and(Value::is_u64);
+    if !durable_admitted {
+        stages.insert(
+            "admitted".into(),
+            if admitted["request"] == id {
+                admitted["at_ms"].clone()
+            } else {
+                Value::Null
+            },
+        );
+    }
     let workspace = state["observer"]["workspace"].as_str().map(Path::new);
     let ack =
         workspace.and_then(|p| modified(&p.join("outbox").join(format!("submitted-{id}.json"))));
-    stages.insert("native_done".into(), json!(ack));
+    let durable_native_done = stages.get("native_done").is_some_and(Value::is_u64);
+    stages.insert("evidence_ack".into(), json!(ack));
     let missing = [
         "queued",
         "admitted",
@@ -125,7 +129,9 @@ fn review(
     Ok(
         json!({"id":id,"head":head,"purpose":request["purpose"],"review_class":request["trigger"]["review_class"],
         "commit_ms":commit,"commit_clock":"git committer timestamp, second precision","at_ms":stages,"missing_stages":missing,
-        "stage_sources":{"admitted":"last-admitted-lane exact request only","native_done":"mtime of accepted submitted-request evidence ACK, not native turn end","judged":"host judgment completion","consumed":"host completed mark"},
+        "stage_sources":{"admitted":if durable_admitted{"per-request host admission receipt"}else{"last-admitted-lane exact request fallback"},
+        "native_done":if durable_native_done{"per-request validated native Stop host receipt"}else{"missing native turn-end receipt"},
+        "evidence_ack":"mtime of accepted evidence ACK; separate from native turn end","judged":"host judgment completion","consumed":"host completed mark"},
         "assessment":result["assessment"],"gaps":gaps}),
     )
 }
@@ -198,7 +204,7 @@ fn counters(events: &[Value], reviews: &[Value], retries: &Value) -> Value {
             .iter()
             .any(|s| event["state"] == *s)
             && reviews.iter().any(|r| {
-                let ack = r["at_ms"]["native_done"].as_u64();
+                let ack = r["at_ms"]["evidence_ack"].as_u64();
                 let event_ms = sample["now_ms"].as_u64();
                 r["id"] == sample["request"]
                     && ack.zip(event_ms).is_some_and(|(ack, t)| {
