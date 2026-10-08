@@ -67,7 +67,13 @@ fn one(
         .into();
     local.intent = job.state["intent"].clone();
     let (judgment, input) = preparation::evaluate(home, &local, &job.state, &job.questions)?;
-    apply(&local, &packet["trigger"]["preparation"], &input, &judgment)?;
+    let original = batch::packet_refs::original(packet)?;
+    apply(
+        &local,
+        &original["trigger"]["preparation"],
+        &input,
+        &judgment,
+    )?;
     let receipt = json!({"decision":job.decision,"original_digest":identity,"turn":local.turn,"original_queue_source":packet["source"],"judgment":judgment,"prepared_state":input});
     crate::observer_review::source_store::save(&root, &name, &receipt)?;
     Ok(receipt)

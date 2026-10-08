@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 mod drift;
+mod headers;
 mod identity;
 pub mod lanes;
 mod memory;
@@ -176,7 +177,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     if crate::observer_review::state::read_control(worker)?.is_some_and(|s| s.pending.is_some()) {
         return Ok(None);
     }
-    let mut jobs = entries_at(&root)?;
+    let mut jobs = headers::at(&root)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
@@ -187,7 +188,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         }
         break;
     }
-    let Some((mut job, mut paths)) = batch(&jobs) else {
+    let Some((mut job, mut paths)) = headers::selected(worker, &jobs)? else {
         return Ok(None);
     };
     let stamps = metadata::stamps(&root, &jobs)?;
@@ -311,4 +312,10 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
 /// Native hooks schedule host work without inspecting or waiting on admission.
 pub fn schedule(worker: &str) -> Result<()> {
     super::hook::spawn("__review-kick", worker)
+}
+
+pub fn header_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    headers::at(&root)
 }

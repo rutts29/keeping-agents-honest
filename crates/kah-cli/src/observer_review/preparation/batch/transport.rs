@@ -7,36 +7,29 @@ use crate::observer_review::{
 use serde_json::json;
 use std::path::Path;
 pub fn stage(worker: &str, review: &str, jobs: &[Job]) -> Result<Batch> {
-    let batch = Batch::new(review, worker, jobs)?;
+    stage_iter(worker, review, jobs.iter().cloned().map(Ok))
+}
+pub fn stage_iter(
+    worker: &str,
+    review: &str,
+    jobs: impl IntoIterator<Item = Result<Job>>,
+) -> Result<Batch> {
     let root = Store::directory(worker)?;
+    let mut entries = vec![];
+    let mut seen = std::collections::BTreeSet::new();
     for job in jobs {
-        let snapshot = format!("preparation-batch-job-{}.json", digest(job)?);
-        if let Some(saved) = state::read::<Job>(&root.join(&snapshot))? {
-            if digest(&saved)? != digest(job)? {
-                return Err(
-                    "PREPARATION_BATCH_CHANGED stage=context_preparation: immutable job snapshot"
-                        .into(),
-                );
-            }
-        } else {
-            source_store::save(&root, &snapshot, &serde_json::to_value(job)?)?;
+        let job = job?;
+        let batch = Batch::new(review, worker, std::slice::from_ref(&job))?;
+        let entry = batch.decisions.into_iter().next().unwrap();
+        if !seen.insert(entry.decision.clone()) {
+            return Err(
+                "PREPARATION_BATCH_IDENTITY stage=context_preparation: duplicate job".into(),
+            );
         }
-        if let Some(saved) =
-            state::read::<Job>(&root.join(format!("preparation-{}.json", job.decision)))?
-            && digest(&saved)? != digest(job)?
-        {
-            return Err(format!(
-                "PREPARATION_BATCH_CHANGED stage=context_preparation: {}",
-                job.decision
-            )
-            .into());
-        }
-        source_store::save(
-            &root,
-            &format!("preparation-{}.json", job.decision),
-            &serde_json::to_value(job)?,
-        )?;
+        store_job(&root, &job)?;
+        entries.push(entry);
     }
+    let batch = Batch::from_entries(review, worker, entries)?;
     source_store::save(
         &root,
         &format!("preparation-batch-{}.json", batch.id),
@@ -53,24 +46,24 @@ pub fn load(worker: &str, id: &str) -> Result<Option<Batch>> {
     state::read(&Store::directory(worker)?.join(format!("preparation-batch-{id}.json")))
 }
 pub fn jobs(worker: &str, batch: &Batch) -> Result<Vec<Job>> {
-    let root = Store::directory(worker)?;
     batch
         .decisions
         .iter()
-        .map(|entry| {
-            let job: Job =
-                state::read(&root.join(format!("preparation-batch-job-{}.json", entry.digest)))?
-                    .ok_or("PREPARATION_BATCH_JOB stage=context_preparation")?;
-            if digest(&job)? != entry.digest {
-                return Err(format!(
-                    "PREPARATION_BATCH_CHANGED stage=context_preparation: {}",
-                    entry.decision
-                )
-                .into());
-            }
-            Ok(job)
-        })
+        .map(|entry| load_job(worker, entry))
         .collect()
+}
+pub fn load_job(worker: &str, entry: &Entry) -> Result<Job> {
+    let root = Store::directory(worker)?;
+    let job: Job = state::read(&root.join(format!("preparation-batch-job-{}.json", entry.digest)))?
+        .ok_or("PREPARATION_BATCH_JOB stage=context_preparation")?;
+    if digest(&job)? != entry.digest || job.decision != entry.decision || job.worker != worker {
+        return Err(format!(
+            "PREPARATION_BATCH_CHANGED stage=context_preparation: {}",
+            entry.decision
+        )
+        .into());
+    }
+    Ok(job)
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -90,19 +83,15 @@ pub fn submit(args: &[String]) -> Result<()> {
         .and_then(Path::parent)
         .ok_or("PREPARATION_BATCH_PATH stage=context_preparation")?;
     let input = crate::observer_review::consume::read_report(Path::new(&args[5]))?;
-    let jobs = batch
-        .decisions
-        .iter()
-        .map(|entry| {
-            source_store::read(
-                &path
-                    .parent()
-                    .unwrap()
-                    .join(format!("preparation-{}.json", entry.decision)),
-            )
-        })
-        .collect::<Result<Vec<Job>>>()?;
-    let (submitted, manifests) = match validate_submission(&batch, &jobs, &input) {
+    let jobs = batch.decisions.iter().map(|entry| {
+        source_store::read(
+            &path
+                .parent()
+                .unwrap()
+                .join(format!("preparation-{}.json", entry.decision)),
+        )
+    });
+    let (submitted, manifests) = match validate_submission_iter(&batch, jobs, &input) {
         Ok(result) => result,
         Err(error) => {
             crate::observer_review::liveness::selection_rejection::record_value(
@@ -155,6 +144,55 @@ pub fn validate_submission(
             }
             let manifests = validate(batch, jobs, &submitted.selections)?;
             Ok((submitted, manifests))
+        },
+    )
+}
+
+fn store_job(root: &Path, job: &Job) -> Result<()> {
+    let snapshot = format!("preparation-batch-job-{}.json", digest(job)?);
+    if let Some(saved) = state::read::<Job>(&root.join(&snapshot))? {
+        if digest(&saved)? != digest(job)? {
+            return Err(
+                "PREPARATION_BATCH_CHANGED stage=context_preparation: immutable job snapshot"
+                    .into(),
+            );
+        }
+    } else {
+        source_store::save(root, &snapshot, &serde_json::to_value(job)?)?;
+    }
+    if let Some(saved) =
+        state::read::<Job>(&root.join(format!("preparation-{}.json", job.decision)))?
+        && digest(&saved)? != digest(job)?
+    {
+        return Err(format!(
+            "PREPARATION_BATCH_CHANGED stage=context_preparation: {}",
+            job.decision
+        )
+        .into());
+    }
+    source_store::save(
+        root,
+        &format!("preparation-{}.json", job.decision),
+        &serde_json::to_value(job)?,
+    )?;
+    Ok(())
+}
+
+pub fn validate_submission_iter(
+    batch: &Batch,
+    jobs: impl IntoIterator<Item = Result<Job>>,
+    bytes: &[u8],
+) -> Result<(Submission, Vec<Manifest>)> {
+    crate::observer_review::failure::validation(
+        crate::observer_review::failure::Origin::SelectionValidation,
+        || {
+            let submitted: Submission = serde_json::from_slice(bytes)
+                .map_err(|e| format!("CONTEXT_BATCH_JSON stage=context_selection: {e}"))?;
+            if submitted.batch != batch.id {
+                return Err("CONTEXT_BATCH_IDENTITY stage=context_selection".into());
+            }
+            let checked = validate_iter(batch, jobs, &submitted.selections)?;
+            Ok((submitted, checked))
         },
     )
 }

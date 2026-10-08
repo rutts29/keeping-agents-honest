@@ -11,7 +11,7 @@ impl<'de> DeserializeSeed<'de> for Seed<'_> {
         self,
         d: D,
     ) -> std::result::Result<Value, D::Error> {
-        if matches!(self.0, Select::All) {
+        if matches!(self.0, Select::All | Select::Raw) {
             Value::deserialize(d)
         } else {
             d.deserialize_any(self)

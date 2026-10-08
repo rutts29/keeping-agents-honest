@@ -6,6 +6,7 @@ mod visitor;
 #[derive(Clone)]
 pub enum Select {
     All,
+    Raw,
     Fields(BTreeMap<String, Select>),
     Each(Box<Select>),
 }
@@ -25,6 +26,9 @@ pub fn read_selected(path: &Path, selection: &Select) -> Result<Value> {
     resolve(raw, &root, selection)
 }
 fn resolve(value: Value, root: &Path, selection: &Select) -> Result<Value> {
+    if matches!(selection, Select::Raw) {
+        return Ok(value);
+    }
     if let Some(digest) = value.get("$kah_source").and_then(Value::as_str) {
         if digest.len() != 64 || !digest.bytes().all(|c| c.is_ascii_hexdigit()) {
             return Err("REVIEW_SOURCE_ID stage=metadata".into());

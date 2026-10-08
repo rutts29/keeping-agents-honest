@@ -36,11 +36,14 @@ pub fn stage_packets(request: &Request) -> Result<bool> {
     let Some(packets) = request.trigger["preparation_packets"].as_array() else {
         return Ok(false);
     };
-    let mut jobs = vec![];
-    for (index, packet) in packets.iter().enumerate() {
-        jobs.push(job_for_packet(request, index, packet)?);
-    }
-    stage(&request.worker, &request.id, &jobs)?;
+    stage_iter(
+        &request.worker,
+        &request.id,
+        packets
+            .iter()
+            .enumerate()
+            .map(|(index, packet)| job_for_packet(request, index, packet)),
+    )?;
     Ok(true)
 }
 pub fn packets(request: &Request) -> Option<&Vec<Value>> {
@@ -48,19 +51,27 @@ pub fn packets(request: &Request) -> Option<&Vec<Value>> {
 }
 
 pub fn job_for_packet(request: &Request, index: usize, packet: &Value) -> Result<Job> {
-    let input = &packet["trigger"]["preparation"];
+    let original = super::packet_refs::original(packet)?;
+    let input = &original["trigger"]["preparation"];
     let questions = serde_json::from_value(input["questions"].clone())?;
-    let mut local = request.clone();
-    local.id = format!(
-        "{}-packet-{:x}",
-        request.id,
-        Sha256::digest(serde_json::to_vec(&(index, packet))?)
-    );
-    local.turn = packet["turn"]
-        .as_str()
-        .ok_or("PREPARATION_PACKET_TURN stage=context_preparation")?
-        .into();
-    local.intent = input["state"]["intent"].clone();
+    let local = Request {
+        id: format!(
+            "{}-packet-{:x}",
+            request.id,
+            Sha256::digest(serde_json::to_vec(&(index, packet))?)
+        ),
+        worker: request.worker.clone(),
+        purpose: request.purpose.clone(),
+        turn: original["turn"]
+            .as_str()
+            .ok_or("PREPARATION_PACKET_TURN stage=context_preparation")?
+            .into(),
+        head: request.head.clone(),
+        intent: input["state"]["intent"].clone(),
+        trigger: Value::Null,
+        documents: vec![],
+        created_ms: request.created_ms,
+    };
     Ok(preparation::job(
         &local,
         &input["state"],

@@ -15,7 +15,8 @@ pub fn pending(worker: &str, batch: &Batch) -> Result<bool> {
     Ok(false)
 }
 pub fn prompt(worker: &str, batch: &Batch) -> Result<String> {
-    let state = Store::read(worker)?.ok_or("PREPARATION_BATCH_STATE stage=context_preparation")?;
+    let state = crate::observer_review::state::read_control(worker)?
+        .ok_or("PREPARATION_BATCH_STATE stage=context_preparation")?;
     let directory = state.observer.workspace.join("inputs").join(&batch.review);
     let source = directory.join(format!("preparation-batch-{}.json", batch.id));
     source_store::save(
@@ -24,7 +25,8 @@ pub fn prompt(worker: &str, batch: &Batch) -> Result<String> {
         &serde_json::to_value(batch)?,
     )?;
     let mut paths = vec![];
-    for job in jobs(worker, batch)? {
+    for entry in &batch.decisions {
+        let job = load_job(worker, entry)?;
         let name = format!("preparation-{}.json", job.decision);
         source_store::save(&directory, &name, &serde_json::to_value(&job)?)?;
         paths.push(json!({"decision":job.decision,"source":directory.join(name)}));
@@ -64,7 +66,8 @@ pub fn reopen(worker: &str, decision: &str) -> Result<()> {
     if !batch.decisions.iter().any(|e| e.decision == decision) {
         return Ok(());
     }
-    let state = Store::read(worker)?.ok_or("PREPARATION_BATCH_STATE stage=context_preparation")?;
+    let state = crate::observer_review::state::read_control(worker)?
+        .ok_or("PREPARATION_BATCH_STATE stage=context_preparation")?;
     // Retain the old ACK/manifest as evidence; a rejected complete decision
     // needs a new batch selection, without rerunning successful Jev decisions.
     let archive = root

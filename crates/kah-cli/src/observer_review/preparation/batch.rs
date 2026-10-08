@@ -5,13 +5,16 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 mod lifecycle;
+pub mod packet_refs;
 pub mod packets;
 mod planning;
 pub use planning::plan;
 mod selection;
 mod transport;
+mod validation;
 pub use lifecycle::*;
 pub use transport::*;
+pub use validation::validate_iter;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Batch {
@@ -48,6 +51,9 @@ impl Batch {
                 digest: digest(job)?,
             });
         }
+        Self::from_entries(review, worker, decisions)
+    }
+    pub(crate) fn from_entries(review: &str, worker: &str, decisions: Vec<Entry>) -> Result<Self> {
         if decisions.is_empty() {
             return Err("PREPARATION_BATCH_EMPTY stage=context_preparation".into());
         }
