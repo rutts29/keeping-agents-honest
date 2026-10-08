@@ -1,8 +1,11 @@
 use super::*;
+#[path = "host_gap.rs"]
+mod host_gap;
 use crate::{
     Result,
     observer_review::state::{State, Store},
 };
+use host_gap::host_failure;
 use serde_json::{Value, json};
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
@@ -181,18 +184,6 @@ fn sample(state: &State) -> Result<Sample> {
         report_version: super::host_progress::combined(&root, &outbox, &pending.id, &report)?,
         cause,
     })
-}
-fn host_failure(root: &Path, request: &str) -> Result<Option<String>> {
-    let gap: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
-    Ok(gap
-        .filter(|g| {
-            g["request"].as_str().is_none_or(|id| id == request)
-                && (super::super::failure::correctable(
-                    serde_json::from_value(g["origin"].clone()).unwrap_or_default(),
-                    g["error"].as_str().unwrap_or(""),
-                ) || !super::super::redelivery::gap_retryable(g))
-        })
-        .and_then(|g| g["error"].as_str().map(str::to_owned)))
 }
 fn pane_working(state: &State) -> Result<bool> {
     let (socket, _) = super::super::runtime::transport(state)?;
@@ -375,10 +366,22 @@ fn validation_notice(state: &State, progress: &Progress) -> Result<()> {
     let root = Store::directory(&state.worker.session)?;
     let checked: Option<Value> = super::super::state::read(&root.join("validation-current.json"))?;
     let current: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
-    let mut gap=current.filter(|v|v["request"]==progress.sample.request && v["error"].as_str()==progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")).or_else(||checked.filter(|v|v["request"]==progress.sample.request && v["error"].as_str()==progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")))
-            .unwrap_or_else(||json!({"error":progress.sample.cause.strip_prefix("VALIDATION BLOCKED: "),"origin":super::super::failure::Origin::Host}));
+    let Some(mut gap) = current
+        .filter(|v| {
+            v["request"] == progress.sample.request
+                && v["error"].as_str() == progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")
+        })
+        .or_else(|| {
+            checked.filter(|v| {
+                v["request"] == progress.sample.request
+                    && v["error"].as_str()
+                        == progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")
+            })
+        })
+    else {
+        return Ok(());
+    };
     gap["status"] = "validation_blocked".into();
-    gap["at_ms"] = progress.sample.now_ms.into();
     crate::unattended_report::save(&root, "gap.json", &gap)?;
     notify(state, progress)?;
     if super::super::redelivery::gap_retryable(&gap)

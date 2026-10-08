@@ -2,6 +2,41 @@ use kah_cli::observer_review::{consume, state::Store};
 use serde_json::{Value, json};
 use std::{fs, os::unix::fs::PermissionsExt};
 #[test]
+fn typed_child_outcome_requires_matching_pid_request_and_execution_time() {
+    let worker = format!("consume-match-{}", kah_cli::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let rows = [
+        json!({"pid":7,"at_ms":5,"event":{"kind":"return","before":"old","success":false,"reason":"REVIEW_OLD stage=consume"}}),
+        json!({"pid":7,"at_ms":10,"event":{"kind":"return","before":"old","success":false,"reason":"JEV_HTTP_STATUS stage=judge http_status=503"}}),
+        json!({"pid":8,"at_ms":11,"event":{"kind":"return","before":"old","success":false,"reason":"REVIEW_OTHER stage=consume"}}),
+    ];
+    fs::write(
+        store.directory.join("consume-outcomes.jsonl"),
+        rows.iter().map(|v| format!("{v}\n")).collect::<String>(),
+    )
+    .unwrap();
+    let reported = consume::supervision_failure::reported(&worker, 7, 8, &Some("old".into()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        reported["reason"],
+        "JEV_HTTP_STATUS stage=judge http_status=503"
+    );
+    assert!(
+        consume::supervision_failure::reported(&worker, 7, 8, &Some("new".into()))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        consume::supervision_failure::reported(&worker, 7, 12, &Some("old".into()))
+            .unwrap()
+            .is_none()
+    );
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
 fn a_failed_consume_records_a_typed_reason() {
     let worker = format!("consume-failure-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();

@@ -49,6 +49,8 @@ pub fn execute(worker: &str, program: &Path) -> Result<()> {
 }
 fn execute_inner(worker: &str, program: &Path) -> Result<()> {
     let started = std::time::Instant::now();
+    let started_ms = kah_observer::session::now_ms();
+    let request = outcome::pending(worker)?;
     let mut child = Command::new(program)
         .args(["__review-consume-worker", worker])
         .stdin(Stdio::inherit())
@@ -63,15 +65,25 @@ fn execute_inner(worker: &str, program: &Path) -> Result<()> {
     let status = child
         .wait()
         .map_err(|e| format!("REVIEW_CONSUME_WAIT stage=supervision: {e}"))?;
-    let reason = reason(status);
+    let reported = super::supervision_failure::reported(worker, child.id(), started_ms, &request)?;
+    let reason = reported
+        .as_ref()
+        .and_then(|v| v["reason"].as_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| reason(status));
     outcome::record(
         worker,
-        json!({"kind":"child_exited","child_pid":child.id(),"exit_code":status.code(),"signal":status.signal(),"reason":reason,"elapsed_ms":started.elapsed().as_millis()}),
+        json!({"kind":"child_exited","request":request,"child_pid":child.id(),"exit_code":status.code(),"signal":status.signal(),"reason":reason,"typed_return":reported,"elapsed_ms":started.elapsed().as_millis()}),
     )?;
     eprintln!("{reason}");
     if status.success() {
         Ok(())
     } else {
-        Err(reason.into())
+        Err(super::supervision_failure::Failure {
+            request,
+            child_pid: child.id(),
+            reason,
+        }
+        .into())
     }
 }

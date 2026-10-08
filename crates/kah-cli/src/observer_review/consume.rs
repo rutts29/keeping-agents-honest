@@ -31,6 +31,7 @@ pub fn read_report(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 pub(crate) mod outcome;
+pub mod supervision_failure;
 pub mod supervisor;
 mod timed;
 pub fn run(worker: &str) -> Result<()> {
