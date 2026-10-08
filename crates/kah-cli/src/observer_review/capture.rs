@@ -254,10 +254,18 @@ pub fn project_context_with_baseline(
     baseline: Option<&str>,
 ) -> Result<Value> {
     let mut args = vec!["__review-project-context".to_owned()];
+    let map_stamp = if baseline.is_some() {
+        super::component_map::producer::current(
+            &super::state::Store::directory(&state.worker.session)?,
+            &state.worker.session,
+        )?
+    } else {
+        None
+    };
     if let Some(baseline) = baseline {
         args.extend(["--commit-baseline".into(), baseline.into()]);
         let map = super::component_map::producer::path(&state.observer.workspace);
-        if map.exists() {
+        if map_stamp.is_some() {
             args.extend(["--component-map".into(), map.to_string_lossy().into_owned()]);
         }
     }
@@ -271,7 +279,11 @@ pub fn project_context_with_baseline(
     } else {
         restricted_context(home, state, &args)?
     };
-    decode_project(output)
+    let project = decode_project(output)?;
+    if let Some(stamp) = &map_stamp {
+        super::component_map::producer::check_collected(stamp, &project)?;
+    }
+    Ok(project)
 }
 fn restricted_context(home: &Path, state: &State, args: &[String]) -> Result<std::process::Output> {
     let project = Project {

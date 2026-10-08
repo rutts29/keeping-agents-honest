@@ -33,6 +33,12 @@ pub struct Check {
     pub command: String,
 }
 impl Map {
+    pub fn digest(&self) -> Result<String> {
+        Ok(format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(self)?)
+        ))
+    }
     pub fn validate(&self, requirements: &[String]) -> Result<()> {
         self.structure()?;
         for component in &self.components {
@@ -118,7 +124,7 @@ impl Map {
         }
         let unmapped: Vec<_> = changed.difference(&mapped).cloned().collect();
         Ok(
-            json!({"version":1,"head":head,"baseline":baseline,"components":components,
+            json!({"version":1,"declaration_digest":self.digest()?,"head":head,"baseline":baseline,"components":components,
             "unmapped_paths":unmapped,"cochange_history":native::history(root, head, baseline)?,
             "runtime_read_validation":"not yet captured","untouched_test_failures":"not yet captured"}),
         )

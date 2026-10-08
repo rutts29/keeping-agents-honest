@@ -44,11 +44,12 @@ pub fn record(store: &Store, request: &Request, workspace: &Path, report: &Repor
         return Ok(());
     };
     let root = store.directory.join("component-maps");
+    let digest = map.digest()?;
     kah_core::run_store::ensure_private_directory(&root)?;
     source_store::save(
         &root,
         &format!("{}.json", request.id),
-        &json!({"request":request.id,"worker":request.worker,"head":request.head,"map":map,
+        &json!({"request":request.id,"worker":request.worker,"head":request.head,"map":map,"map_digest":digest,
             "status":"declaration checked; runtime dependency validation still required"}),
     )?;
     let target = path(workspace);
@@ -56,6 +57,56 @@ pub fn record(store: &Store, request: &Request, workspace: &Path, report: &Repor
     kah_core::run_store::ensure_private_directory(public)?;
     crate::unattended_report::save(public, "current.json", &serde_json::to_value(map)?)?;
     kah_run::access::share_tree(public, kah_run::access::service_uid()?, false)?;
+    source_store::save(
+        &root,
+        "current.json",
+        &json!({"request":request.id,"worker":request.worker,
+        "head":request.head,"map_digest":digest}),
+    )?;
+    Ok(())
+}
+pub fn current(directory: &Path, worker: &str) -> Result<Option<Value>> {
+    let root = directory.join("component-maps");
+    let Some(stamp) = crate::observer_review::state::read::<Value>(&root.join("current.json"))?
+    else {
+        return Ok(None);
+    };
+    if stamp["worker"] != worker {
+        return Err(
+            "REVIEW_MAP_BINDING stage=component_map: different worker in private pointer".into(),
+        );
+    }
+    let request = stamp["request"]
+        .as_str()
+        .ok_or("REVIEW_MAP_BINDING stage=component_map: missing request")?;
+    if !request.starts_with("review-")
+        || !request
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return Err(
+            "REVIEW_MAP_BINDING stage=component_map: invalid private request reference".into(),
+        );
+    }
+    let original: Value =
+        crate::observer_review::state::read(&root.join(format!("{request}.json")))?
+            .ok_or("REVIEW_MAP_BINDING stage=component_map: private original missing")?;
+    let map: Map = serde_json::from_value(original["map"].clone())?;
+    if original["worker"] != worker
+        || original["request"] != request
+        || original["map_digest"] != stamp["map_digest"]
+        || map.digest()? != stamp["map_digest"]
+    {
+        return Err("REVIEW_MAP_BINDING stage=component_map: private provenance mismatch".into());
+    }
+    Ok(Some(stamp))
+}
+pub fn check_collected(stamp: &Value, project: &Value) -> Result<()> {
+    if stamp["map_digest"].is_null()
+        || stamp["map_digest"] != project["component_impact"]["declaration_digest"]
+    {
+        return Err("REVIEW_MAP_BINDING stage=component_map: collected declaration differs from private checked proposal".into());
+    }
     Ok(())
 }
 pub fn schema() -> Value {
