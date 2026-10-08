@@ -299,6 +299,10 @@ fn publish_reference_expansion(home: &Path, store: &Store, state: &State, reques
     .unwrap();
     assert_eq!(published.documents[0].kind, "historical_deferral_anchor");
     assert_eq!(published.documents[0].text, "Whole original anchor.");
+    // A retained rejection belongs to the pre-expansion request digest.
+    // Later preparation/publication of this restored request needs no expansion.
+    kah_cli::observer_review::redelivery::prompt(home, store, state, &published, &request.id)
+        .unwrap();
     assert!(!store.directory.join("redelivery-notice.json").exists());
 }
 

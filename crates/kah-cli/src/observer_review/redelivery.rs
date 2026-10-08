@@ -2,6 +2,7 @@
 use super::state::Store;
 use crate::Result;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 mod correction;
 pub(crate) mod expansion_retry;
 mod parked;
@@ -40,8 +41,10 @@ pub fn prompt(
     super::workspace::prepare(home, state)?;
     let rejected: Option<Value> =
         super::state::read(&store.directory.join("validation-current.json"))?;
+    let request_digest = format!("{:x}", Sha256::digest(serde_json::to_vec(request)?));
     let expansion_required = rejected.as_ref().is_some_and(|r| {
         r["request"] == request.id
+            && r["request_digest"] == request_digest
             && r["error"]
                 .as_str()
                 .is_some_and(|e| e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET"))
