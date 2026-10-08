@@ -12,6 +12,7 @@ use std::{
 mod binding;
 mod project;
 pub use project::cli as project_cli;
+pub use project::cli_with_map as project_cli_with_map;
 pub mod controller_events;
 pub mod controller_receipts;
 pub mod historical;
@@ -255,6 +256,10 @@ pub fn project_context_with_baseline(
     let mut args = vec!["__review-project-context".to_owned()];
     if let Some(baseline) = baseline {
         args.extend(["--commit-baseline".into(), baseline.into()]);
+        let map = state.observer.workspace.join("component-map.json");
+        if map.exists() {
+            args.extend(["--component-map".into(), map.to_string_lossy().into_owned()]);
+        }
     }
     let output = if state.worker.project.starts_with(home.join("repos/mine")) {
         // Mine already authorizes native host tools. Keep run worktrees and
@@ -282,6 +287,10 @@ fn restricted_context(home: &Path, state: &State, args: &[String]) -> Result<std
     executor = executor
         .with_read_only_mounts(&[(binary.clone(), binary.clone())])?
         .read_only_project();
+    let map = state.observer.workspace.join("component-map.json");
+    if args.iter().any(|arg| arg == "--component-map") {
+        executor = executor.with_read_only_mounts(&[(map.clone(), map)])?;
+    }
     let mut command = vec![binary.to_string_lossy().into_owned()];
     command.extend_from_slice(args);
     Ok(executor.command(&project.root, &command)?.output()?)

@@ -6,6 +6,7 @@ pub mod capture;
 pub mod commit_context;
 pub mod commit_packet;
 pub mod completion_due;
+pub mod component_map;
 pub mod consume;
 pub mod control;
 pub mod decision_deferral_scope;
@@ -113,6 +114,22 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
         [name] if name == "__review-project-context" => Some(capture::project_cli(None)),
         [name, flag, head] if name == "__review-project-context" && flag == "--commit-baseline" => {
             Some(capture::project_cli(Some(head)))
+        }
+        [name, flag, path] if name == "__review-project-context" && flag == "--component-map" => {
+            Some(capture::project_cli_with_map(
+                None,
+                Some(std::path::Path::new(path)),
+            ))
+        }
+        [name, flag, head, map_flag, path]
+            if name == "__review-project-context"
+                && flag == "--commit-baseline"
+                && map_flag == "--component-map" =>
+        {
+            Some(capture::project_cli_with_map(
+                Some(head),
+                Some(std::path::Path::new(path)),
+            ))
         }
         [name] if name == "__review-artifact-baseline" => Some(artifact_collect::cli()),
         [name, worker] if name == "__review-history-repair" => {

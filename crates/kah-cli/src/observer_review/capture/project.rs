@@ -4,6 +4,9 @@ use serde_json::json;
 use std::{fs, path::Path, process::Command};
 /// Runs only in the read-only gVisor context collector. No model or credentials.
 pub fn cli(baseline: Option<&str>) -> Result<()> {
+    cli_with_map(baseline, None)
+}
+pub fn cli_with_map(baseline: Option<&str>, map: Option<&Path>) -> Result<()> {
     let root = std::env::current_dir()?;
     let head = git(&root, &["rev-parse", "--verify", "HEAD"])?;
     let committed = committed_snapshot(&root, head.as_deref())?;
@@ -49,6 +52,15 @@ pub fn cli(baseline: Option<&str>) -> Result<()> {
         }
         context["full_tree_files"] =
             serde_json::to_value(super::super::commit_context::tree(&root, head)?)?;
+    }
+    if let Some(path) = map {
+        let map: super::super::component_map::Map =
+            serde_json::from_slice(&super::super::consume::read_report(path)?)?;
+        let head = context["head"]
+            .as_str()
+            .ok_or("REVIEW_MAP_SHA stage=context")?;
+        let baseline = baseline.filter(|base| *base != "empty");
+        context["component_impact"] = map.collect(&root, head, baseline)?;
     }
     println!("{context}");
     Ok(())
