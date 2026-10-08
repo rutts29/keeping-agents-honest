@@ -14,6 +14,25 @@ fn sample(now: u64) -> Sample {
 }
 
 #[test]
+fn outside_packet_expansion_is_host_progress_not_observer_failure() {
+    for cause in [
+        "HOST EXPANSION: REVIEW_SOURCE_OUTSIDE_PACKET stage=report",
+        "VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET stage=report",
+    ] {
+        let mut current = sample(0);
+        current.cause = cause.into();
+        current.controller_active = true;
+        let previous = transition(None, &current);
+        current.now_ms = 3_600_000;
+        assert!(!transition(Some(&previous), &current).stalled);
+        assert_eq!(
+            kah_cli::observer_review::liveness::description(&current).0,
+            "host-expansion"
+        );
+    }
+}
+
+#[test]
 fn idle_hung_publish_crash_and_stuck_lock_become_stalls_without_a_review_deadline() {
     for cause in [
         "idle pane",

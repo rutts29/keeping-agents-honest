@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn same_failed_expansion_is_not_renotified_but_new_evidence_or_failed_delivery_is() {
+    let key = json!({"class":"failed_host_expansion","request_digest":"a","report_digest":"b"});
+    let prior =
+        json!({"request":"review-a","notice_state":key,"submitted":true,"cause":"old wording"});
+    assert!(already_notified(Some(&prior), "review-a", Some(&key)));
+    assert!(!already_notified(Some(&prior), "review-b", Some(&key)));
+    let changed = json!({"class":"failed_host_expansion","request_digest":"a","report_digest":"c"});
+    assert!(!already_notified(Some(&prior), "review-a", Some(&changed)));
+    let mut undelivered = prior;
+    undelivered["submitted"] = false.into();
+    assert!(!already_notified(
+        Some(&undelivered),
+        "review-a",
+        Some(&key)
+    ));
+}
+
+#[test]
 fn a_failed_sample_is_retained_and_visible_without_requiring_readable_review_state() {
     let worker = format!("watch-error-{}", std::process::id());
     let root = Store::directory(&worker).unwrap();

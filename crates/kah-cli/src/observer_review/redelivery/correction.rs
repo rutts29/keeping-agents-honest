@@ -13,6 +13,14 @@ pub fn bind_correction(store: &Store, request: &str, number: u64, gap: &Value) -
     crate::unattended_report::save(&store.directory, "redelivery.json", &log)
 }
 pub fn unchanged_correction(store: &Store, request: &str, gap: &Value) -> Result<bool> {
+    if gap["error"].as_str().is_some_and(|error| {
+        error.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET")
+            || error.starts_with("REVIEW_EXPANSION_PENDING")
+    }) {
+        // Host publication is not a thinker correction. Retained retries back
+        // off independently; an unchanged observer report cannot repair it.
+        return Ok(false);
+    }
     if gap["report_digest"].is_null() || gap["request_digest"].is_null() {
         return Ok(false);
     }

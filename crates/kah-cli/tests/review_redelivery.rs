@@ -223,6 +223,107 @@ fn context_redelivery_does_not_republish_unrelated_report_documents() {
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(home).unwrap();
 }
+#[test]
+fn restoring_a_reference_counts_as_expansion_without_increasing_document_count() {
+    use kah_cli::observer_review::{commit_packet, packet_references, source_store};
+    use kah_observer::review_evidence::Document;
+    let worker = format!("same-size-expansion-{}", kah_cli::relay_store::nonce());
+    let home = kah_core::run_store::RunStore::default_state_root()
+        .unwrap()
+        .join(&worker);
+    let state = setup(&worker, &home);
+    let store = Store::open(&worker).unwrap();
+    source_store::initialize(&store.directory, &state.observer.workspace).unwrap();
+    let mut request = Request {
+        id: "review-ref-expansion".into(),
+        worker: worker.clone(),
+        purpose: Purpose::Drift,
+        turn: "turn".into(),
+        head: None,
+        intent: json!({}),
+        trigger: json!({"packet_scope":"diff-v1"}),
+        documents: vec![Document::new(
+            "historical-original",
+            "historical_deferral_anchor",
+            "kah:old",
+            "Whole original anchor.",
+        )],
+        created_ms: 0,
+    };
+    packet_references::scope(&store.directory, &state.observer.workspace, &mut request).unwrap();
+    let mut expanded = request.clone();
+    commit_packet::expand(&mut expanded, &json!({"source":"historical-original"})).unwrap();
+    assert_eq!(request.documents.len(), expanded.documents.len());
+    assert!(kah_cli::observer_review::redelivery::expansion_changed(
+        &request, &expanded
+    ));
+    assert!(!kah_cli::observer_review::redelivery::expansion_changed(
+        &request, &request
+    ));
+    publish_reference_expansion(&home, &store, &state, &request);
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn publish_reference_expansion(home: &Path, store: &Store, state: &State, request: &Request) {
+    use sha2::{Digest, Sha256};
+    let bin = home.join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_kah"), bin.join("kah")).unwrap();
+    let outbox = state.observer.workspace.join("outbox");
+    fs::create_dir_all(&outbox).unwrap();
+    let report = outbox.join("outside.json");
+    let bytes = serde_json::to_vec(&json!({"source":"historical-original"})).unwrap();
+    fs::write(&report, &bytes).unwrap();
+    kah_cli::unattended_report::save(
+        &store.directory,
+        "validation-current.json",
+        &json!({
+            "request":request.id,
+            "request_digest":format!("{:x}",Sha256::digest(serde_json::to_vec(request).unwrap())),
+            "report_digest":format!("{:x}",Sha256::digest(&bytes)),
+            "report":report,"error":"REVIEW_SOURCE_OUTSIDE_PACKET stage=report"
+        }),
+    )
+    .unwrap();
+    kah_cli::observer_review::redelivery::prompt(home, store, state, request, &request.id).unwrap();
+    let published: Request = kah_cli::observer_review::source_store::read(
+        &state
+            .observer
+            .workspace
+            .join("inputs")
+            .join(&request.id)
+            .join("request.json"),
+    )
+    .unwrap();
+    assert_eq!(published.documents[0].kind, "historical_deferral_anchor");
+    assert_eq!(published.documents[0].text, "Whole original anchor.");
+    // A retained rejection belongs to the pre-expansion request digest.
+    // Later preparation/publication of this restored request needs no expansion.
+    kah_cli::observer_review::redelivery::prompt(home, store, state, &published, &request.id)
+        .unwrap();
+    assert!(!store.directory.join("redelivery-notice.json").exists());
+}
+
+#[test]
+fn host_expansion_never_parks_as_an_unchanged_thinker_correction() {
+    use kah_cli::observer_review::redelivery;
+    let worker = format!(
+        "host-expansion-correction-{}",
+        kah_cli::relay_store::nonce()
+    );
+    let store = Store::open(&worker).unwrap();
+    for error in ["REVIEW_SOURCE_OUTSIDE_PACKET", "REVIEW_EXPANSION_PENDING"] {
+        let gap = json!({"error":error,"request_digest":"a","report_digest":"b"});
+        let number = redelivery::begin_correction(&store, "request", &gap).unwrap();
+        redelivery::outcome(&store, "request", number, None).unwrap();
+        assert!(!redelivery::unchanged_correction(&store, "request", &gap).unwrap());
+    }
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+}
 
 #[test]
 fn repeated_failures_are_visible_without_limiting_or_dropping_attempts() {

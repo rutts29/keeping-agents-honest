@@ -38,9 +38,10 @@ fn service_outage(sample: &Sample) -> bool {
     sample.cause.starts_with("SERVICE OUTAGE: ")
 }
 fn host_expansion(sample: &Sample) -> bool {
-    sample
-        .cause
-        .starts_with("VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET")
+    sample.cause.starts_with("HOST EXPANSION: ")
+        || sample
+            .cause
+            .starts_with("VALIDATION BLOCKED: REVIEW_SOURCE_OUTSIDE_PACKET")
 }
 pub fn description(sample: &Sample) -> (&'static str, &'static str) {
     if host_expansion(sample) {
