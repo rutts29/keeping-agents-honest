@@ -21,7 +21,8 @@ pub fn executor(
     )?;
     let image = fs::read_to_string("/usr/local/share/sbx/image-ref")
         .map_err(|e| format!("SANDBOX_IMAGE_READ stage=setup: {e}"))?;
-    let mut mounts = kah_sandbox::global_setup_mounts(home)?;
+    let mut mounts =
+        kah_sandbox::global_setup_mounts_with_claude(home, &kah_claude::paths::config_root(home))?;
     for (source, target) in mounts.clone() {
         share(home, &source, uid)?;
         if let Ok(relative) = target.strip_prefix(home) {

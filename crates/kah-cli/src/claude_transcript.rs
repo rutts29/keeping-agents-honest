@@ -21,7 +21,7 @@ pub fn register_hook(project: &Path, input: &Value) -> Result<()> {
 }
 
 pub fn validate(home: &Path, session: &str, path: &Path) -> Result<()> {
-    let root = home.join(".claude/projects");
+    let root = kah_claude::paths::config_root(home).join("projects");
     if session.is_empty()
         || !session
             .bytes()

@@ -7,6 +7,12 @@ use std::{
 };
 
 pub fn global_setup_mounts(home: &Path) -> Result<Vec<(PathBuf, PathBuf)>, Error> {
+    global_setup_mounts_with_claude(home, &home.join(".claude"))
+}
+pub fn global_setup_mounts_with_claude(
+    home: &Path,
+    claude: &Path,
+) -> Result<Vec<(PathBuf, PathBuf)>, Error> {
     let mut mounts = BTreeMap::new();
     for relative in [
         ".agents/skills",
@@ -29,7 +35,9 @@ pub fn global_setup_mounts(home: &Path) -> Result<Vec<(PathBuf, PathBuf)>, Error
         ".codex/AGENTS.override.md",
         ".claude/CLAUDE.md",
     ] {
-        let target = home.join(relative);
+        let target = relative
+            .strip_prefix(".claude/")
+            .map_or_else(|| home.join(relative), |relative| claude.join(relative));
         if !target.try_exists().map_err(io_error)? {
             continue;
         }
@@ -38,8 +46,11 @@ pub fn global_setup_mounts(home: &Path) -> Result<Vec<(PathBuf, PathBuf)>, Error
     }
     // Installed skill aliases may point to a package outside these roots. Mount
     // that exact skill directory too, not its parent repository or home.
-    for relative in [".agents/skills", ".codex/skills", ".claude/skills"] {
-        let directory = home.join(relative);
+    for directory in [
+        home.join(".agents/skills"),
+        home.join(".codex/skills"),
+        claude.join("skills"),
+    ] {
         if !directory.is_dir() {
             continue;
         }

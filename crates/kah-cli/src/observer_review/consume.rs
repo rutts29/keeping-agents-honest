@@ -264,7 +264,7 @@ pub(super) fn tokens(home: &Path, store: &Store, state: &State) -> Result<u64> {
     .tokens()
 }
 pub fn claude_tokens(home: &Path, path: &Path, session: &str) -> Result<u64> {
-    if !path.starts_with(home.join(".claude/projects"))
+    if !path.starts_with(kah_claude::paths::config_root(home).join("projects"))
         || path.file_name().and_then(|n| n.to_str()) != Some(&format!("{session}.jsonl"))
     {
         return Err("REVIEW_TRANSCRIPT_SCOPE stage=usage".into());

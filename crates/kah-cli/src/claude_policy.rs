@@ -13,7 +13,8 @@ pub fn permissions(
     online: bool,
     git: Option<&Path>,
 ) -> Result<Value> {
-    let setup = kah_sandbox::global_setup_mounts(home)?;
+    let setup =
+        kah_sandbox::global_setup_mounts_with_claude(home, &kah_claude::paths::config_root(home))?;
     let mut allow = vec![
         "Bash".into(),
         "WebSearch".into(),
@@ -29,6 +30,7 @@ pub fn permissions(
         home.join(".ssh"),
         home.join(".config"),
         home.join(".claude.json"),
+        kah_claude::paths::global_config(home),
         home.join(".git-credentials"),
         home.join(".netrc"),
         home.join(".npmrc"),
@@ -36,7 +38,11 @@ pub fn permissions(
         home.join(".local/share/kah-eval"),
         private.into(),
     ];
-    for root in [home.join(".codex"), home.join(".claude")] {
+    for root in [
+        home.join(".codex"),
+        home.join(".claude"),
+        kah_claude::paths::config_root(home),
+    ] {
         for path in children(&root)? {
             if !setup.iter().any(|(_, target)| target == &path) {
                 protected.push(path);
