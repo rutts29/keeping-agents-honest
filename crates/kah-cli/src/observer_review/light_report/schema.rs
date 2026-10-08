@@ -38,5 +38,6 @@ pub fn schema() -> Value {
             "decisions":{"type":"array","minItems":1,"items":decision},
             "reminder":report["properties"]["reminder"],
             "proportion":units["properties"]["proportion"],
+            "component_map":super::super::component_map::producer::schema(),
             "steering":units["properties"]["steering"]}})
 }

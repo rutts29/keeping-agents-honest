@@ -15,8 +15,14 @@ and requirement links have typed validation errors. No contents are cut.
 
 Native co-change history is retained between the exact endpoints. Runtime test
 reads and failures in untouched components are currently marked **not captured**.
-The observer map producer, those validations and cache planning/carry are still
-unfinished. No C/KEEP-UP pass or cache-reuse claim is made by this slice.
+The working-tree producer accepts an optional declaration in the existing light
+report, validates its structure and exact requirement ids, and retains consumed
+request/worker/SHA provenance. It publishes native input in a separate read-only
+map directory, preserving the observer's writable outbox. Legacy map-free
+reports remain readable; heavy gates reject the light-only declaration.
+The earlier foundation does not yet include this producer. Runtime
+dependency validations, public/private digest binding and cache planning/carry
+remain unfinished. No C/KEEP-UP pass or cache-reuse claim is made.
 
 Official installed-version references:
 [pathspec glob](https://github.com/git/git/blob/v2.53.0/Documentation/glossary-content.adoc),

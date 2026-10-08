@@ -13,6 +13,8 @@ pub(super) struct Compact {
     proportion: Option<Proportion>,
     #[serde(default)]
     steering: Option<kah_observer::steering_proposal::Proposal>,
+    #[serde(default)]
+    component_map: Option<serde_json::Value>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -77,6 +79,7 @@ impl Compact {
             }),
             verification_risks: None,
             verification_contracts: None,
+            component_map: self.component_map,
         })
     }
 }

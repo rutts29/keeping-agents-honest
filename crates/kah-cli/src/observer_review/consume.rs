@@ -93,9 +93,7 @@ fn run_inner(worker: &str) -> Result<()> {
     persist_evidence(
         &store, &request, &report, &result, &input, &judgment, version,
     )?;
-    if needs_reminder(&assessment, &judgment) {
-        super::reminder::save(&store, &request, &report)?;
-    }
+    timed::record_effects(&store, &state, &request, &report, &result, &judgment)?;
     commit_result(&store, &mut state, &request, result, tokens.ok())?;
     if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(&request) {
         super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;

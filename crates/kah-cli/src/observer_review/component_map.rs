@@ -9,6 +9,7 @@ use std::{
     path::Path,
 };
 mod native;
+pub mod producer;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -111,7 +112,7 @@ impl Map {
                     &json!({"declaration":component,"files":current_files})
                 )?)
             );
-            components.push(json!({"name":component.name,"digest":digest,"files":files,
+            components.push(json!({"name":component.name,"path_globs":component.path_globs,"digest":digest,"files":files,
                 "changed_paths":touched,"requirements":component.requirements,
                 "tests":component.tests,"e2e_flows":component.e2e_flows}));
         }

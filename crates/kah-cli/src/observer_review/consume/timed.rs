@@ -1,4 +1,25 @@
 use super::*;
+pub(super) fn record_effects(
+    store: &Store,
+    state: &State,
+    request: &super::super::state::Request,
+    report: &Report,
+    result: &Value,
+    judgment: &judge::Judgment,
+) -> Result<()> {
+    if needs_reminder(&result["assessment"], judgment) {
+        super::super::reminder::save(store, request, report)?;
+    }
+    if result["jev_state"]["unconfirmed_context"].is_null() {
+        super::super::component_map::producer::record(
+            store,
+            request,
+            &state.observer.workspace,
+            report,
+        )?;
+    }
+    Ok(())
+}
 pub(super) fn evidence(
     state: &State,
     request: &super::super::state::Request,

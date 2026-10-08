@@ -104,6 +104,9 @@ pub struct Report {
     pub verification_risks: Option<Vec<VerificationRisk>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification_contracts: Option<Vec<crate::verification_contract::Item>>,
+    /// Declarative project metadata; the host validates its native impact map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_map: Option<Value>,
 }
 impl Report {
     pub fn verify_units(

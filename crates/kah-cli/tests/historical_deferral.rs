@@ -72,6 +72,7 @@ fn verified(request: &Request, citation: Citation) -> Vec<serde_json::Value> {
     let report = Report {
         verification_risks: None,
         verification_contracts: None,
+        component_map: None,
         request_id: request.id.clone(),
         findings: vec![Finding {
             topic: Topic::Deferral,

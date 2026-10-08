@@ -260,6 +260,7 @@ pub(crate) fn validate_report_bytes(request: &Request, bytes: &[u8]) -> Result<R
 }
 fn validate_report(request: &Request, bytes: &[u8]) -> Result<Report> {
     let report = super::light_report::decode(request, bytes)?;
+    super::component_map::producer::validate(request, &report)?;
     super::commit_packet::validate_report(request, &serde_json::to_value(&report)?)?;
     let findings = report.verify(&request.id, &request.documents)?;
     require_units(request, &report)?;
