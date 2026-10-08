@@ -1,5 +1,11 @@
+#[path = "claude_invocation.rs"]
+mod claude_invocation;
 #[path = "claude_login.rs"]
 mod claude_login;
+#[path = "claude_metadata.rs"]
+mod claude_metadata;
+#[path = "claude_trust.rs"]
+mod claude_trust;
 #[path = "config_audit.rs"]
 mod config_audit;
 pub fn claude_login_ready() {

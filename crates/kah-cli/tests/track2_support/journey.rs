@@ -341,7 +341,6 @@ fn prepare_native(
 ) -> std::process::Command {
     if provider == "claude" {
         let mut command = kah_cli::claude_launch::prepare_project(home, binding, args).unwrap();
-        command.env_remove("CLAUDE_CONFIG_DIR");
         super::claude_login::command_environment(&mut command);
         super::startup::claude_trace(command, root)
     } else {

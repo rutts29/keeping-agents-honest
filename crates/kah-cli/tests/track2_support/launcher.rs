@@ -9,6 +9,11 @@ pub fn launch(mode: &str) {
     );
     if claude_login::requires_claude(mode) {
         claude_login::require_ready();
+        assert_eq!(
+            std::env::var("CLAUDE_CONFIG_DIR").as_deref(),
+            Ok(claude_login::CONFIG_DIR),
+            "TRACK2_CONFIG_DIR stage=launch"
+        );
     }
     let fixture = fixture::Fixture::new(mode);
     let shell = prepare_shell(&fixture);
@@ -39,6 +44,9 @@ pub fn launch(mode: &str) {
         crate::pty::quote(fixture.root.join("helper.log").to_str().unwrap())
     ));
     let result = wait(&fixture, &mut terminal);
+    finish(&fixture, terminal, result, mode);
+}
+fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Value, mode: &str) {
     for action in ["stop", "delete"] {
         assert!(
             Command::new("herdr")
@@ -51,10 +59,16 @@ pub fn launch(mode: &str) {
         );
     }
     drop(terminal);
+    let trust = super::trust::cleanup_claude(&fixture.home);
+    fixture::save(&fixture.root.join("claude-trust-cleanup.json"), &trust);
     let audit = fixture.audit();
     fixture.publish(&json!({"mode":mode,"dry_run":fixture.dry,"result":result,
-        "audit":audit,"private_trace":fixture.root,"early_run":mode=="verify","final_acceptance":false,"gate_passed":mode!="verify" && !fixture.dry && result["passed"]==true && audit["passed"]==true}));
+        "audit":audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify","final_acceptance":false,"gate_passed":mode!="verify" && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
     assert_eq!(audit["passed"], true, "TRACK2_CLEANUP stage=audit: {audit}");
+    assert_eq!(
+        trust["passed"], true,
+        "TRACK2_CLAUDE_TRUST_CLEANUP stage=audit: {trust}"
+    );
     assert_eq!(
         result["passed"],
         true,
@@ -87,8 +101,8 @@ fn prepare_shell(fixture: &fixture::Fixture) -> std::path::PathBuf {
         .map(|key| format!("-u {key}"))
         .collect::<Vec<_>>()
         .join(" ");
-    fs::write(&shell, format!("#!/bin/sh\nexec env {} -u CLAUDE_CONFIG_DIR DISABLE_AUTOUPDATER=1 HOME={} XDG_STATE_HOME={} PS1=KAH_TRACK2_READY /bin/bash --noprofile --norc -i\n",
-        auth_unsets, crate::pty::quote(fixture.home.to_str().unwrap()),
+    fs::write(&shell, format!("#!/bin/sh\nexec env {} CLAUDE_CONFIG_DIR={} DISABLE_AUTOUPDATER=1 HOME={} XDG_STATE_HOME={} PS1=KAH_TRACK2_READY /bin/bash --noprofile --norc -i\n",
+        auth_unsets, crate::pty::quote(claude_login::CONFIG_DIR),crate::pty::quote(fixture.home.to_str().unwrap()),
         crate::pty::quote(fixture.home.join(".local/state").to_str().unwrap()))).unwrap();
     fixture::executable(&shell);
     shell

@@ -15,29 +15,17 @@ pub struct Fixture {
     protected: Vec<(PathBuf, String)>,
     logins: Vec<(PathBuf, PathBuf)>,
     config_before: Value,
+    operator_claude: PathBuf,
+    claude_before: Value,
 }
 impl Fixture {
     pub fn new(mode: &str) -> Self {
         let actual = PathBuf::from(std::env::var_os("HOME").unwrap());
         let name = format!("kah-gate-track2-{}", kah_observer::session::now_ms());
         let root = PathBuf::from("/mnt/kah-fixtures/cargo/test-fixtures").join(&name);
+        assert!(!root.exists(), "TRACK2_EXISTING_FIXTURE stage=prepare");
         kah_core::run_store::ensure_private_directory(&root).unwrap();
-        let uid = kah_run::access::service_uid().unwrap();
-        for parent in [&root, root.parent().unwrap()] {
-            kah_run::access::traverse(parent, uid).unwrap();
-        }
-        let home = root.join("home");
-        for dir in [
-            ".local/bin",
-            ".codex/sessions",
-            ".codex/archived_sessions",
-            ".claude/projects",
-            ".cache",
-            "repos/mine",
-            "repos/research",
-        ] {
-            fs::create_dir_all(home.join(dir)).unwrap();
-        }
+        let home = prepare_home(&root);
         let mut result = Self {
             root,
             home,
@@ -46,6 +34,8 @@ impl Fixture {
             protected: vec![],
             logins: vec![],
             config_before: config_snapshot(&actual.join(".config/kah")),
+            operator_claude: actual.join(".claude"),
+            claude_before: super::claude_metadata::snapshot(&actual.join(".claude")),
         };
         save(
             &result.root.join("config-before.json"),
@@ -53,7 +43,7 @@ impl Fixture {
         );
         result.native_setup(&actual);
         result.sources(&actual, mode);
-        result.seed();
+        result.seed(mode);
         if mode == "proofs" {
             super::proof_inputs::retain_source(&result.root, &actual);
         }
@@ -65,13 +55,12 @@ impl Fixture {
         result
     }
     fn native_setup(&mut self, actual: &Path) {
-        for provider in ["codex", "claude"] {
-            symlink(
-                actual.join(".local/bin").join(provider),
-                self.home.join(".local/bin").join(provider),
-            )
-            .unwrap();
-        }
+        symlink(
+            actual.join(".local/bin/codex"),
+            self.home.join(".local/bin/codex"),
+        )
+        .unwrap();
+        super::claude_invocation::install(&self.home, &actual.join(".local/bin/claude"));
         let binary = std::env::var_os("KAH_TRACK2_BINARY")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_kah")));
@@ -80,7 +69,6 @@ impl Fixture {
         let link = self.home.join(".codex/auth.json");
         symlink(&target, &link).unwrap();
         self.logins.push((link, target));
-        self.logins.push(super::claude_login::link(&self.home));
         // Existing Jev loader rejects a symlink final component. Link its config
         // directory, so native kah reads the original regular key; never copy it.
         fs::create_dir_all(self.home.join(".config")).unwrap();
@@ -99,14 +87,6 @@ impl Fixture {
             "model=\"gpt-6.1-sol\"\nmodel_reasoning_effort=\"low\"\nservice_tier=\"default\"\n",
         )
         .unwrap();
-        save(
-            &self.home.join(".claude/settings.json"),
-            &json!({"model":"claude-sonnet-5-5","effortLevel":"low","fastMode":false}),
-        );
-        save(
-            &self.home.join(".claude.json"),
-            &json!({"hasCompletedOnboarding":true,"theme":"dark","mcpServers":{}}),
-        );
         save(
             &self.root.join("binary.json"),
             &json!({"source":binary,"sha256":digest(&binary)}),
@@ -132,7 +112,11 @@ impl Fixture {
             }
             let source = PathBuf::from(row["path"].as_str().unwrap());
             assert!(
-                source.starts_with(actual),
+                source.starts_with(if row["provider"] == "claude" {
+                    PathBuf::from(super::claude_login::CONFIG_DIR).join("projects")
+                } else {
+                    actual.to_path_buf()
+                }),
                 "TRACK2_SOURCE_SCOPE stage=prepare"
             );
             assert!(
@@ -148,8 +132,8 @@ impl Fixture {
             let target = if row["provider"] == "codex" {
                 self.home.join(source.strip_prefix(actual).unwrap())
             } else {
-                self.home
-                    .join(".claude/projects")
+                PathBuf::from(super::claude_login::CONFIG_DIR)
+                    .join("projects")
                     .join(kah_claude::paths::project_key(
                         &self.home.join("repos/mine/fixture-claude"),
                     ))
@@ -165,7 +149,7 @@ impl Fixture {
         }
         save(&self.root.join("sources.json"), &json!(rows));
     }
-    fn seed(&self) {
+    fn seed(&self, mode: &str) {
         let repo = self.home.join("repos/mine/source");
         fs::create_dir(&repo).unwrap();
         git(&repo, &["init", "--quiet"]);
@@ -209,7 +193,9 @@ impl Fixture {
             );
             git(&worktree, &["config", "commit.gpgsign", "false"]);
         }
-        super::trust::preseed_claude(&self.home, &self.home.join("repos/mine/fixture-claude"));
+        if super::claude_login::requires_claude(mode) {
+            super::trust::preseed_claude(&self.home, &self.home.join("repos/mine/fixture-claude"));
+        }
     }
     pub fn audit(&self) -> Value {
         let protected = self
@@ -224,14 +210,17 @@ impl Fixture {
         let logins = self
             .logins
             .iter()
-            .map(|(link, target)| super::claude_login::audit_link(link, target))
+            .map(|(link, target)| json!({"path":link,"target":target,"symlink_unchanged":
+                fs::symlink_metadata(link).is_ok_and(|m|m.file_type().is_symlink()) && fs::read_link(link).is_ok_and(|p|p==*target)}))
             .collect::<Vec<_>>();
         let processes = crate::processes::list()
             .into_iter()
             .filter(|p| p.cwd.starts_with(self.root.to_str().unwrap()))
             .map(|p| json!({"pid":p.pid,"cwd":p.cwd}))
             .collect::<Vec<_>>();
+        let claude = self.claude_audit();
         let passed = processes.is_empty()
+            && claude["passed"] == true
             && super::proof_inputs::audit(&self.root)["passed"] == true
             && protected.iter().all(|r| r["unchanged"] == true)
             && logins.iter().all(|r| r["symlink_unchanged"] == true)
@@ -240,13 +229,67 @@ impl Fixture {
             "historical_replay_source":super::proof_inputs::audit(&self.root),
             "recorder":{"path":self.root.join("terminal.log"),"bytes":fs::metadata(self.root.join("terminal.log")).map(|m|m.len()).unwrap_or(0)},
             "config_before":self.config_before,"config_after":config_snapshot(&self.home.join(".config/kah")),
-            "operator_claude_files":{"accessed":false,"policy":"outside fixture scope"}})
+            "claude_login":claude})
     }
     pub fn publish(&self, value: &Value) {
         let evidence = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
         fs::create_dir_all(&evidence).unwrap();
         save(&evidence.join(format!("{}.json", self.name)), value);
     }
+    fn claude_audit(&self) -> Value {
+        let path = self.root.join("claude-trust-entries.json");
+        let trust: Value = if path.exists() {
+            serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+        } else {
+            json!({})
+        };
+        let projects = trust
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        let sessions = self.root.join("sessions.json");
+        let markers = if sessions.exists() {
+            serde_json::from_slice(&fs::read(sessions).unwrap()).unwrap()
+        } else {
+            vec![]
+        };
+        super::claude_metadata::audit(
+            std::slice::from_ref(&self.root),
+            &self.operator_claude,
+            &self.claude_before,
+            &markers,
+            &projects,
+        )
+    }
+}
+fn prepare_home(root: &Path) -> PathBuf {
+    let uid = kah_run::access::service_uid().unwrap();
+    for parent in [root, root.parent().unwrap()] {
+        kah_run::access::traverse(parent, uid).unwrap();
+    }
+    let home = root.join("home");
+    for dir in [
+        ".local/bin",
+        ".codex/sessions",
+        ".codex/archived_sessions",
+        ".claude/projects",
+        ".cache",
+        "repos/mine",
+        "repos/research",
+    ] {
+        fs::create_dir_all(home.join(dir)).unwrap();
+    }
+    assert!(
+        !home.join(".cache/kah-observers").exists(),
+        "TRACK2_EXISTING_OBSERVER stage=prepare"
+    );
+    save(
+        &root.join("observer-before.json"),
+        &json!({"base":home.join(".cache/kah-observers"),"existed":false}),
+    );
+    home
 }
 pub fn executable(path: &Path) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
