@@ -7,10 +7,35 @@ fn sample(now: u64) -> Sample {
         started_ms: 0,
         native_active: false,
         controller_active: false,
+        host_owned: false,
         transcript_version: None,
         report_version: None,
         cause: "idle pane".into(),
     }
+}
+
+#[test]
+fn acknowledged_host_work_needs_real_progress_and_never_requests_native_redelivery() {
+    let mut current = sample(0);
+    current.host_owned = true;
+    current.cause = "host consume waiting for a continuation".into();
+    current.report_version = Some((1, 0));
+    let first = transition(None, &current);
+    current.now_ms = 300_000;
+    let stalled = transition(Some(&first), &current);
+    assert!(stalled.stalled);
+    assert_eq!(
+        kah_cli::observer_review::liveness::description(&current).0,
+        "host-stalled"
+    );
+    assert!(
+        kah_cli::observer_review::liveness::description(&current)
+            .1
+            .contains("no native redelivery")
+    );
+    assert!(!transition(Some(&stalled), &current).changed);
+    current.report_version = Some((2, current.now_ms));
+    assert!(!transition(Some(&stalled), &current).stalled);
 }
 
 #[test]
@@ -323,13 +348,15 @@ fn acknowledged_report_handoff_never_stalls_or_redelivers_while_host_waits_for_l
     liveness::run(&worker).unwrap();
     let path = held.directory.join("liveness/progress.json");
     let mut prior: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    prior.last_progress_ms = 0;
+    // A recent ACK hands work to the host; the separate host-stall regression
+    // covers prolonged lack of actual result/decision progress after that ACK.
+    prior.last_progress_ms = prior.sample.now_ms;
     std::fs::write(&path, serde_json::to_vec(&prior).unwrap()).unwrap();
     liveness::run(&worker).unwrap();
     let after: Progress = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert!(
         !after.stalled,
-        "ACK transfers responsibility to host consumption"
+        "recent ACK transfers responsibility to host consumption"
     );
     assert!(liveness::notice(&worker).unwrap().is_none());
     assert!(!held.directory.join("redelivery.json").exists());

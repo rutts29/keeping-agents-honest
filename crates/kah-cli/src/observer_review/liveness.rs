@@ -21,6 +21,8 @@ pub struct Sample {
     pub started_ms: u64,
     pub native_active: bool,
     pub controller_active: bool,
+    #[serde(default)]
+    pub host_owned: bool,
     pub transcript_version: Option<(u64, u64)>,
     pub report_version: Option<(u64, u64)>,
     pub cause: String,
@@ -60,6 +62,11 @@ pub fn description(sample: &Sample) -> (&'static str, &'static str) {
             "validation-blocked",
             "The exact failed report still fails host validation; pending review retained for correction.",
         )
+    } else if sample.host_owned {
+        (
+            "host-stalled",
+            "Acknowledged review is awaiting host continuation without new decision/result evidence; no native redelivery or interruption.",
+        )
     } else if sample.native_active {
         (
             "possibly-hung",
@@ -98,7 +105,7 @@ pub fn transition(previous: Option<&Progress>, sample: &Sample) -> Progress {
     // notice/retry ONLY with no activity; it never cancels or fails a review.
     // Working alone may mean a hung native request. Five minutes of record
     // silence only notifies a human; this is never a review deadline.
-    let observation_ms = if sample.native_active {
+    let observation_ms = if sample.native_active || sample.host_owned {
         300_000
     } else {
         15_000

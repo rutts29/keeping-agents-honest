@@ -56,7 +56,7 @@ pub fn run(worker: &str) -> Result<()> {
     if !progress.stalled {
         return Ok(());
     }
-    if sample.native_active {
+    if sample.native_active || sample.host_owned {
         // Advisory only. A human decides whether to interrupt a Working pane.
         return notify(&state, &progress);
     }
@@ -140,8 +140,8 @@ fn sample(state: &State) -> Result<Sample> {
     // not record progress, but still must never be automatically interrupted
     // or re-prompted while a later request waits for that pane.
     let native_active = pane_working(state).unwrap_or(false);
-    let mut controller_active =
-        processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
+    let host_owned = super::awaiting_host(state)?;
+    let mut controller_active = processing_active(&root, &pending.id)? && !host_owned;
     let outbox = state.observer.workspace.join("outbox");
     let rejected = if super::super::preparation::pending(
         &state.worker.session,
@@ -176,6 +176,7 @@ fn sample(state: &State) -> Result<Sample> {
         started_ms: pending.created_ms,
         native_active,
         controller_active,
+        host_owned,
         transcript_version: state.observer.transcript.as_deref().and_then(version),
         report_version: super::host_progress::combined(&root, &outbox, &pending.id, &report)?,
         cause,
@@ -276,6 +277,8 @@ fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
         "service_unavailable"
     } else if validation_blocked(&p.sample) {
         "validation_blocked"
+    } else if p.stalled && p.sample.host_owned {
+        "host_stalled"
     } else if p.stalled && p.sample.native_active {
         "possibly_hung"
     } else if p.stalled {

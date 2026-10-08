@@ -64,6 +64,7 @@ fn batch_selection_ack_remains_host_work_after_all_individual_results_are_ready(
         started_ms: 0,
         native_active: false,
         controller_active: awaiting_host(&state).unwrap(),
+        host_owned: false,
         transcript_version: None,
         report_version: None,
         cause: "batch ACK; host consume pending".into(),

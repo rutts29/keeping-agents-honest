@@ -14,6 +14,7 @@ fn initial_host_expansion_is_recorded_without_a_user_notice() {
             started_ms: 0,
             native_active: false,
             controller_active: true,
+            host_owned: false,
             transcript_version: None,
             report_version: None,
             cause: "HOST EXPANSION: REVIEW_SOURCE_OUTSIDE_PACKET stage=report".into(),

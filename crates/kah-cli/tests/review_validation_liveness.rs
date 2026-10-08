@@ -7,6 +7,7 @@ fn sample(now_ms: u64, cause: &str) -> Sample {
         started_ms: 0,
         native_active: false,
         controller_active: false,
+        host_owned: false,
         transcript_version: None,
         report_version: None,
         cause: cause.into(),
