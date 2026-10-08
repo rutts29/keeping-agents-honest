@@ -28,6 +28,7 @@ pub fn consume(worker: &str) -> Result<()> {
         match result {
             Ok(receipt) => results.push(receipt),
             Err(error) if error.to_string().starts_with("JEV_PREPARATION_PENDING") => {
+                batch::packets::continue_job(&request, &job)?;
                 drop(store);
                 return crate::observer_review::runtime::prepare_context(worker);
             }

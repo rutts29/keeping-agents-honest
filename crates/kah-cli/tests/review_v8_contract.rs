@@ -63,7 +63,7 @@ fn native_contract_explains_typed_blockers_exact_questions_and_literal_timing() 
         // V10 contract keeps retained protocols and derives fresh submissions
         // from the captured request/schema, not a stale v8/v9 instruction.
         assert!(s.contains("exact const in this request's schema.json"));
-        assert!(s.contains("New captured requests use v11"));
+        assert!(s.contains("New captured requests use v12"));
         assert!(s.contains("retained earlier requests keep their recorded protocol"));
         assert!(s.contains("judgment.kind=controller_fact"));
         assert!(s.contains("future_implementation"));

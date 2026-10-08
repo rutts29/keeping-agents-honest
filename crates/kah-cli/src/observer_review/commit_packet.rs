@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 mod read;
 mod recovery;
 mod storage;
+pub(crate) use read::report as read_bound_report;
 pub use recovery::rejected as expand_rejected;
 pub use storage::persist;
 pub fn is_commit(request: &Request) -> bool {

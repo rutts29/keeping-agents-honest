@@ -67,32 +67,40 @@ pub fn expand(
         if document.kind != "lossless_reference" || !sources.contains(&document.id) {
             continue;
         }
-        if Document::new(&document.id, &document.kind, &document.uri, &document.text).digest
-            != document.digest
-        {
-            return Err("REVIEW_SOURCE_DIGEST stage=packet_reference".into());
-        }
-        let reference: Reference = serde_json::from_str(&document.text)?;
-        let stored: Value = source_store::read(&reference.full_source)?;
-        if format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(&stored["state"])?)
-        ) != reference.source_digest
-        {
-            return Err("REVIEW_SOURCE_DIGEST stage=packet_reference".into());
-        }
-        let original: Document = serde_json::from_value(stored["state"].clone())?;
-        if original.id != document.id
-            || original.uri != document.uri
-            || original.digest != reference.original_digest
-            || original.kind != reference.original_kind
-            || Document::new(&original.id, &original.kind, &original.uri, &original.text).digest
-                != original.digest
-        {
-            return Err("REVIEW_SOURCE_DIGEST stage=packet_reference".into());
-        }
+        let original = original(document)?;
         added.push(original.id.clone());
         *document = original;
     }
     Ok(added)
+}
+
+pub(crate) fn original(document: &Document) -> Result<Document> {
+    if document.kind != "lossless_reference" {
+        return Ok(document.clone());
+    }
+    if Document::new(&document.id, &document.kind, &document.uri, &document.text).digest
+        != document.digest
+    {
+        return Err("REVIEW_SOURCE_DIGEST stage=packet_reference".into());
+    }
+    let reference: Reference = serde_json::from_str(&document.text)?;
+    let stored: Value = source_store::read(&reference.full_source)?;
+    if format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&stored["state"])?)
+    ) != reference.source_digest
+    {
+        return Err("REVIEW_SOURCE_DIGEST stage=packet_reference".into());
+    }
+    let original: Document = serde_json::from_value(stored["state"].clone())?;
+    if original.id != document.id
+        || original.uri != document.uri
+        || original.digest != reference.original_digest
+        || original.kind != reference.original_kind
+        || Document::new(&original.id, &original.kind, &original.uri, &original.text).digest
+            != original.digest
+    {
+        return Err("REVIEW_SOURCE_DIGEST stage=packet_reference".into());
+    }
+    Ok(original)
 }

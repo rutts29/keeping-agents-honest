@@ -299,8 +299,15 @@ pub fn gap_error(worker: &str, error: &(dyn std::error::Error + 'static)) -> Res
     let mut gap = super::failure_snapshot::capture(worker, error)?;
     gap["at_ms"] = kah_observer::session::now_ms().into();
     let store = Store::open(worker)?;
-    crate::unattended_report::save(&store.directory, "gap.json", &gap)?;
+    if !super::failure_snapshot::gap::save(&store, &gap)? {
+        return Ok(());
+    }
     drop(store);
+    if kah_observer::judge::availability::outage(gap["error"].as_str().unwrap_or("")) {
+        // Native hooks must not wait for a service probe or Herdr notice.
+        spawn("__review-kick", worker)?;
+        return Ok(());
+    }
     let origin = serde_json::from_value(gap["origin"].clone()).unwrap_or_default();
     if super::failure::correctable(origin, gap["error"].as_str().unwrap_or("")) {
         // A post-ACK failure may arrive after the native Stop hook; preserve

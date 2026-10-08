@@ -31,6 +31,7 @@ pub fn read_report(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 pub(crate) mod outcome;
+pub mod supervision_failure;
 pub mod supervisor;
 mod timed;
 pub fn run(worker: &str) -> Result<()> {
@@ -263,7 +264,7 @@ pub(super) fn tokens(home: &Path, store: &Store, state: &State) -> Result<u64> {
     .tokens()
 }
 pub fn claude_tokens(home: &Path, path: &Path, session: &str) -> Result<u64> {
-    if !path.starts_with(home.join(".claude/projects"))
+    if !path.starts_with(kah_claude::paths::config_root(home).join("projects"))
         || path.file_name().and_then(|n| n.to_str()) != Some(&format!("{session}.jsonl"))
     {
         return Err("REVIEW_TRANSCRIPT_SCOPE stage=usage".into());
@@ -317,7 +318,8 @@ fn take_gap(store: &Store) -> Result<Option<Value>> {
     };
     if gap["error"]
         .as_str()
-        .is_some_and(|s| s.starts_with("REVIEW_PAUSED"))
+        // Outage notices use the service epoch, not raw per-job timestamps.
+        .is_some_and(|s| s.starts_with("REVIEW_PAUSED") || judge::availability::outage(s))
     {
         return Ok(None);
     }

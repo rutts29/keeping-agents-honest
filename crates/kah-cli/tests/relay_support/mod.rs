@@ -14,6 +14,7 @@ mod hosted_search;
 mod linked_steer;
 mod queue_order;
 mod replay;
+mod retained_light;
 mod review;
 mod review_drift;
 mod review_liveness;
@@ -53,6 +54,9 @@ pub fn run(root: &Path) -> Value {
     ordinary_run(root)
 }
 fn special_run() -> Option<fn(&Path) -> Value> {
+    if std::env::var_os("KAH_GATE_RETAINED_LIGHT").is_some() {
+        return Some(retained_light::run);
+    }
     if std::env::var_os("KAH_GATE_COMMIT_SCOPE").is_some() {
         return Some(commit_scope::run);
     }

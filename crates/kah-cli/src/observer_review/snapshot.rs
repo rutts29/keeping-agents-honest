@@ -23,7 +23,9 @@ pub(super) fn submit(worker: &str, value: &Value) -> Result<Value> {
         return Err("REVIEW_SNAPSHOT_BINDING stage=review".into());
     }
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=review")?);
-    let store = Store::open(worker)?;
+    // The detached admission owner retains this immutable snapshot while a
+    // short hook/consume transaction finishes; no new worker event is needed.
+    let store = Store::open_wait(worker)?;
     let state = match store.load()? {
         Some(state) => state,
         None => State::new(crate::relay_store::endpoint(worker)?, &home)?,

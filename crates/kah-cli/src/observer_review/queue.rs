@@ -148,7 +148,7 @@ pub fn drain(worker: &str) -> Result<Value> {
     memory::sample(worker, "entered")?;
     if super::service::blocked(worker)? {
         return Ok(
-            json!({"status":"service_unavailable","error":"Jev unavailable: payment required","queued_retained":true}),
+            json!({"status":"service_unavailable","error":"Jev unavailable; retained review resumes after recovery","queued_retained":true}),
         );
     }
     if let Some(state) = crate::observer_review::state::read_control(worker)?

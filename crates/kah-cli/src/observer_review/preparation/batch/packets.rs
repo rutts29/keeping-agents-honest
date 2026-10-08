@@ -50,6 +50,31 @@ pub fn packets(request: &Request) -> Option<&Vec<Value>> {
     request.trigger["preparation_packets"].as_array()
 }
 
+/// A later packet can need a retry after the active batch shrank to an earlier
+/// rejected packet. Its current staged reason/state, not the completed batch,
+/// owns the next native selection wake.
+pub(crate) fn continue_job(request: &Request, expected: &Job) -> Result<()> {
+    let root = crate::observer_review::state::Store::directory(&request.worker)?;
+    let job: Job = crate::observer_review::state::read(
+        &root.join(format!("preparation-{}.json", expected.decision)),
+    )?
+    .ok_or("PREPARATION_BATCH_JOB stage=context_preparation")?;
+    if job.worker != request.worker
+        || job.decision != expected.decision
+        || !preparation::matches_decision(&job, &expected.state, &expected.questions)?
+    {
+        return Err("PREPARATION_PACKET_CHANGED stage=context_preparation".into());
+    }
+    let active = preparation::active_decision(&request.worker, &request.id)?;
+    if let Some(batch) = super::load(&request.worker, &active)?
+        && batch.decisions.iter().any(|e| e.decision == job.decision)
+    {
+        return Ok(());
+    }
+    super::stage(&request.worker, &request.id, &[job])?;
+    Ok(())
+}
+
 pub fn job_for_packet(request: &Request, index: usize, packet: &Value) -> Result<Job> {
     let original = super::packet_refs::original(packet)?;
     let input = &original["trigger"]["preparation"];

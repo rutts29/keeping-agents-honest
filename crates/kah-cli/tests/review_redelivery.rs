@@ -264,6 +264,7 @@ fn restoring_a_reference_counts_as_expansion_without_increasing_document_count()
     let root = store.directory.parent().unwrap().to_owned();
     drop(store);
     fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(home).unwrap();
 }
 
 fn publish_reference_expansion(home: &Path, store: &Store, state: &State, request: &Request) {

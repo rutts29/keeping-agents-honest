@@ -104,9 +104,10 @@ fn uncertain_ticks_coalesce_at_snapshot_and_later_events_remain_queued() {
 }
 
 #[test]
-fn a_busy_startup_store_preserves_the_trigger_without_failing_the_wake() {
+fn a_busy_startup_store_preserves_the_trigger_and_continues_after_release() {
     let worker = format!("busy-wake-unit-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
+    save_unreachable_state(&store, &worker);
     queue::enqueue(
         &worker,
         Purpose::Drift,
@@ -114,11 +115,16 @@ fn a_busy_startup_store_preserves_the_trigger_without_failing_the_wake() {
         json!({"actions":[{"id":"first"}]}),
     )
     .unwrap();
-    let receipt = queue::drain(&worker).unwrap();
-    assert_eq!(receipt["status"], "queued");
+    let name = worker.clone();
+    let (thread, result) = blocked_admission(move || queue::drain(&name));
     assert_eq!(queue::entries(&worker).unwrap().len(), 1);
     let directory = store.directory.clone();
     drop(store);
+    assert!(
+        result.recv().unwrap().is_err(),
+        "must advance to transport after release, never stop as queued"
+    );
+    thread.join().unwrap();
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
 
@@ -127,6 +133,7 @@ fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
     use kah_cli::observer_review::{snapshot, state::Request};
     let worker = format!("snapshot-busy-unit-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
+    save_unreachable_state(&store, &worker);
     let request = Request {
         id: "review-original".into(),
         worker: worker.clone(),
@@ -138,8 +145,8 @@ fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
         documents: vec![],
         created_ms: 1,
     };
-    let receipt = snapshot::wake(&request).unwrap();
-    assert_eq!(receipt["status"], "queued");
+    let copied = request.clone();
+    let (thread, result) = blocked_admission(move || snapshot::wake(&copied));
     queue::enqueue(
         &worker,
         Purpose::Drift,
@@ -154,7 +161,51 @@ fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
     assert_eq!(jobs.len(), 2);
     let directory = store.directory.clone();
     drop(store);
+    assert!(
+        result.recv().unwrap().is_err(),
+        "captured admission must continue after release"
+    );
+    thread.join().unwrap();
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+}
+
+fn save_unreachable_state(store: &Store, worker: &str) {
+    let workspace = store.directory.join("observer");
+    let value = json!({"worker":{"provider":"codex","session":worker,"project":workspace,"pane":null,"socket":null},
+        "observer":{"session":null,"pane":"absent","name":"fixture","workspace":workspace,"model":"gpt-6.1-sol","effort":"low","transcript":null},
+        "pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false});
+    store.save(&serde_json::from_value(value).unwrap()).unwrap();
+}
+
+type AdmissionResult = Result<serde_json::Value, String>;
+fn blocked_admission(
+    run: impl FnOnce() -> kah_cli::Result<serde_json::Value> + Send + 'static,
+) -> (
+    std::thread::JoinHandle<()>,
+    std::sync::mpsc::Receiver<AdmissionResult>,
+) {
+    let (tid_send, tid_recv) = std::sync::mpsc::channel();
+    let (send, recv) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        // Linux fixture: observe actual flock waiting, not a timing assumption.
+        tid_send
+            .send(fs::read_link("/proc/thread-self").unwrap())
+            .unwrap();
+        send.send(run().map_err(|e| e.to_string())).unwrap();
+    });
+    let tid = tid_recv.recv().unwrap();
+    loop {
+        if let Ok(result) = recv.try_recv() {
+            panic!("admission returned while the store was still held: {result:?}");
+        }
+        let wait = fs::read_to_string(std::path::Path::new("/proc").join(&tid).join("wchan"))
+            .unwrap_or_default();
+        if wait.trim() == "locks_lock_inode_wait" {
+            break;
+        }
+        std::thread::yield_now();
+    }
+    (thread, recv)
 }
 
 #[test]

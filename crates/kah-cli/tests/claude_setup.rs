@@ -11,13 +11,14 @@ fn restricted_launch_uses_the_single_native_credential_store() {
         temporary: "/fixture/tmp".into(),
     };
     let mut command = Command::new("claude");
-    command.env("CLAUDE_CONFIG_DIR", "/obsolete/domain-profile");
+    // kah must preserve the
+    // user's native setting, and never substitute another credential store.
+    command.env("CLAUDE_CONFIG_DIR", "/native/test-template");
     setup.apply(&mut command);
-    assert!(
-        command
-            .get_envs()
-            .any(|(name, value)| { name == OsStr::new("CLAUDE_CONFIG_DIR") && value.is_none() })
-    );
+    assert!(command.get_envs().any(|(name, value)| {
+        name == OsStr::new("CLAUDE_CONFIG_DIR")
+            && value == Some(OsStr::new("/native/test-template"))
+    }));
     assert_eq!(
         command.get_args().collect::<Vec<_>>(),
         ["--setting-sources", "user"]

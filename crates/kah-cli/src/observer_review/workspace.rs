@@ -11,6 +11,9 @@ use std::{
 };
 mod instructions;
 mod preflight;
+pub(crate) fn instructions_version(request: &Request) -> Result<u32> {
+    instructions::protocol_version(request)
+}
 pub use instructions::{decision_instructions, require_units, schema};
 
 pub fn prepare(home: &Path, state: &State) -> Result<()> {
@@ -83,6 +86,11 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
     let mut report_schema = schema(&request.purpose);
     report_schema["properties"]["decision_units"]["properties"]["version"] =
         json!({"const":instructions::protocol_version(request)?});
+    if super::commit_packet::is_commit(request) {
+        report_schema = super::light_report::schema::schema();
+        super::indexed_sources::publish(&store.directory, &input, request)?;
+        super::indexed_sources::publish_input(&input, request)?;
+    }
     fs::write(
         input.join("schema.json"),
         serde_json::to_vec_pretty(&report_schema)?,
@@ -251,7 +259,7 @@ pub(crate) fn validate_report_bytes(request: &Request, bytes: &[u8]) -> Result<R
     })
 }
 fn validate_report(request: &Request, bytes: &[u8]) -> Result<Report> {
-    let report:Report=serde_json::from_slice(bytes).map_err(|_|"REVIEW_REPORT_JSON stage=report: use the provided schema; no probability or unknown fields")?;
+    let report = super::light_report::decode(request, bytes)?;
     super::commit_packet::validate_report(request, &serde_json::to_value(&report)?)?;
     let findings = report.verify(&request.id, &request.documents)?;
     require_units(request, &report)?;

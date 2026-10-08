@@ -4,7 +4,7 @@
 use super::*;
 use crate::judge::{Answer, Judgment, Question, Questions, questions as thresholds};
 
-pub const VERSION: u32 = 11;
+pub const VERSION: u32 = 12;
 pub fn questions(units: &ReviewUnits) -> Questions {
     let mut questions = Questions::new();
     for requirement in &units.requirements {

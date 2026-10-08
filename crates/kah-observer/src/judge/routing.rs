@@ -32,6 +32,10 @@ pub fn evaluate(
     state: &Value,
     questions: &Questions,
 ) -> Result<Judgment, Error> {
+    availability::recovery::check(home)?;
+    if availability::unavailable(home)? {
+        return Err(Error::new("JEV_SERVICE_UNAVAILABLE"));
+    }
     match backend {
         Backend::Jev => {
             let judge = jev::Jev {
@@ -41,8 +45,8 @@ pub fn evaluate(
             let result = retry(|| judge.evaluate(state, questions), std::thread::sleep);
             if result.is_ok() {
                 availability::record(home, None)?;
-            } else if result.as_ref().is_err_and(|e| e.status == Some(402)) {
-                availability::record(home, Some(402))?;
+            } else if let Err(error) = &result {
+                availability::record_error(home, &error.to_string())?;
             }
             result
         }

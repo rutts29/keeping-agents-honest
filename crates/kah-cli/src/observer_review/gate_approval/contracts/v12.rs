@@ -7,6 +7,7 @@ pub(super) fn prepare(
     report: &Report,
     input: &mut Value,
     questions: &mut Questions,
+    proof: Option<&DeliveryProof>,
 ) -> Result<()> {
     let Some(items) = &report.verification_contracts else {
         return Ok(());
@@ -17,7 +18,6 @@ pub(super) fn prepare(
         .ok_or("REVIEW_CONTRACT_UNITS stage=verification")?;
     let verified = super::super::super::decisions::verify_evidence(request, report)?
         .ok_or("REVIEW_CONTRACT_UNITS stage=verification")?;
-    let proof = captured(request)?;
     let mut seen = BTreeSet::new();
     input["verification_contracts"] = json!({});
     for item in items {
@@ -48,15 +48,7 @@ pub(super) fn prepare(
             }
             continue;
         }
-        one(
-            request,
-            item,
-            requirement,
-            checked,
-            proof.as_ref(),
-            input,
-            questions,
-        )?;
+        one(request, item, requirement, checked, proof, input, questions)?;
     }
     Ok(())
 }

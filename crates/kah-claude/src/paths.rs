@@ -1,6 +1,23 @@
 //! Claude Code 2.1.292 project keys, matching shipped uI/k/Le/_re functions.
 //! Native transcript path encoding follows the provider version named above.
 use std::path::{Path, PathBuf};
+use unicode_normalization::UnicodeNormalization;
+
+/// Claude2.1.292 we(): explicit native root or HOME/.claude, NFC-normalized.
+pub fn config_root(home: &Path) -> PathBuf {
+    let root = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".claude"));
+    root.to_string_lossy().nfc().collect::<String>().into()
+}
+/// Native production Gbr(): explicit config dir also owns .claude.json.
+pub fn global_config(home: &Path) -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.to_path_buf())
+        .join(".claude.json")
+}
 
 pub fn project_key(project: &Path) -> String {
     let text = project.to_string_lossy();
@@ -35,7 +52,8 @@ fn base36(mut value: u32) -> String {
     chars.into_iter().rev().collect()
 }
 pub fn transcript(home: &Path, project: &Path, session: &str) -> PathBuf {
-    home.join(".claude/projects")
+    config_root(home)
+        .join("projects")
         .join(project_key(project))
         .join(format!("{session}.jsonl"))
 }

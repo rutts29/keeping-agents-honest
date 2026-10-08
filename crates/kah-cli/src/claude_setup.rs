@@ -93,7 +93,6 @@ impl Setup {
     pub fn apply(&self, command: &mut Command) {
         command
             .args(["--setting-sources", "user"])
-            .env_remove("CLAUDE_CONFIG_DIR")
             .env("CLAUDE_CODE_SHELL_PREFIX", &self.prefix)
             .env("CLAUDE_CODE_TMPDIR", &self.temporary)
             .env_remove("KAH_SANDBOX_PROFILE");
@@ -103,7 +102,7 @@ impl Setup {
     }
 }
 pub fn mcp_configuration(home: &Path, policy: &SetupPolicy) -> Result<(Value, Vec<String>)> {
-    let original = read_json(&home.join(".claude.json"))?;
+    let original = read_json(&kah_claude::paths::global_config(home))?;
     let mut servers = original
         .get("mcpServers")
         .cloned()

@@ -6,16 +6,37 @@ use super::{
 use crate::Result;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+pub(crate) mod gap;
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+fn diagnostic(error: &dyn std::fmt::Display) -> String {
+    let text = error.to_string();
+    if text.contains(" stage=") {
+        text
+    } else {
+        format!("REVIEW_IO stage=review: {text}")
+    }
+}
 pub(crate) fn capture(worker: &str, error: &(dyn std::error::Error + 'static)) -> Result<Value> {
     let origin = failure::origin(error);
-    let mut result = json!({"origin":origin,"error":error.to_string()});
+    let mut result = json!({"origin":origin,"error":diagnostic(&error)});
+    if let Some(error) = error.downcast_ref::<super::consume::supervision_failure::Failure>() {
+        result["request"] = json!(error.request);
+        result["child_pid"] = error.child_pid.into();
+        return Ok(result);
+    }
     if !matches!(
         origin,
         Origin::ReportValidation | Origin::SelectionValidation
     ) {
+        result["request"] = json!(
+            Store::read(worker)
+                .ok()
+                .flatten()
+                .and_then(|s| s.pending)
+                .map(|p| p.id)
+        );
         return Ok(result);
     }
     let Some(state) = Store::read(worker)? else {

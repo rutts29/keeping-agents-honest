@@ -235,6 +235,7 @@ impl ReviewUnits {
         let mut ids = BTreeSet::new();
         let mut covered = BTreeSet::new();
         let mut requirements = vec![];
+        let sources = crate::review_evidence::VerifiedSources::new(documents);
         for requirement in &self.requirements {
             if !validation::id(&requirement.id) || !ids.insert(&requirement.id) {
                 return Err(format!(
@@ -245,6 +246,7 @@ impl ReviewUnits {
             let value = validation::verified_requirement(
                 requirement,
                 documents,
+                &sources,
                 self.version,
                 !active_items.is_empty(),
             )?;

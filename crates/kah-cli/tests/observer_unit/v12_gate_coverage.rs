@@ -30,7 +30,14 @@ fn fixture() -> (Request, Report, Value) {
 fn gate_uses_reasoned_coverage_on_checked_same_sha_receipt() {
     let (request, report, mut input) = fixture();
     let mut questions = Questions::new();
-    super::v12::prepare(&request, &report, &mut input, &mut questions).unwrap();
+    super::v12::prepare(
+        &request,
+        &report,
+        &mut input,
+        &mut questions,
+        captured(&request).unwrap().as_ref(),
+    )
+    .unwrap();
     assert!(questions.contains_key("coverage_decision.normalize"));
     assert!(!questions.contains_key("coverage_subject.normalize"));
     assert!(!questions.contains_key("coverage_assertion.normalize"));
@@ -60,16 +67,37 @@ fn missing_method_does_not_become_a_coverage_claim() {
     report.verification_contracts.as_mut().unwrap()[0].method = Method::NeedsCheck {
         why: "no known check".into(),
     };
-    super::v12::prepare(&request, &report, &mut input, &mut questions).unwrap();
+    super::v12::prepare(
+        &request,
+        &report,
+        &mut input,
+        &mut questions,
+        captured(&request).unwrap().as_ref(),
+    )
+    .unwrap();
     assert!(questions.is_empty());
 }
 
 #[test]
-#[ignore = "The report schema must support the coverage protocol before this integration can pass."]
 fn main_side_version_bump_enables_gate_dispatch() {
     let (request, mut report, mut input) = fixture();
     report.decision_units.as_mut().unwrap().version = Some(12);
     let mut questions = Questions::new();
     prepare(&request, &report, &mut input, &mut questions).unwrap();
     assert!(questions.contains_key("coverage_decision.normalize"));
+}
+#[test]
+fn gate_report_errors_keep_report_origin_while_host_receipts_stay_host_failures() {
+    use crate::observer_review::failure::{Origin, origin};
+    let (request, mut report, mut input) = fixture();
+    report.decision_units.as_mut().unwrap().version = Some(12);
+    report.verification_contracts.as_mut().unwrap()[0].evidence_citations = vec![99];
+    let error = prepare(&request, &report, &mut input, &mut Questions::new()).unwrap_err();
+    assert_eq!(origin(error.as_ref()), Origin::ReportValidation);
+    let (mut request, report, mut input) = fixture();
+    let mut report = report;
+    report.decision_units.as_mut().unwrap().version = Some(12);
+    request.trigger["events"][0]["verification"]["commit"] = "a".repeat(40).into();
+    let error = prepare(&request, &report, &mut input, &mut Questions::new()).unwrap_err();
+    assert_eq!(origin(error.as_ref()), Origin::Host);
 }

@@ -21,7 +21,9 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     require_active(worker)?;
     let started = kah_observer::session::now_ms();
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=wake")?);
-    let store = Store::open(worker)?;
+    // Queue admission has one detached owner. A transient hook/consume lock
+    // must not discard its only wake while the native worker becomes idle.
+    let store = Store::open_wait(worker)?;
     let state = match store.load()? {
         Some(state) => state,
         None => State::new(crate::relay_store::endpoint(worker)?, &home)?,

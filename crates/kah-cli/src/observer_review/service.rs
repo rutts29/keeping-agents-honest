@@ -1,4 +1,4 @@
-//! Retain account outages without turning them into thinker corrections.
+//! Retain provider outages without turning them into thinker corrections.
 use super::{
     reminder_queue,
     state::{State, Store},
@@ -12,10 +12,17 @@ pub fn payment_required(error: &str) -> bool {
     error.starts_with("JEV_") && error.split_whitespace().any(|v| v == "http_status=402")
 }
 pub fn cause(error: &str) -> String {
-    if payment_required(error) {
-        format!("SERVICE OUTAGE: Jev unavailable: payment required ({error})")
+    if availability::outage(error) {
+        format!("SERVICE OUTAGE: {} ({error})", message(error))
     } else {
         format!("VALIDATION BLOCKED: {error}")
+    }
+}
+pub fn message(error: &str) -> &'static str {
+    if payment_required(error) {
+        "Jev unavailable: payment required"
+    } else {
+        "Jev unavailable: temporary provider outage"
     }
 }
 pub fn blocked(worker: &str) -> Result<bool> {
@@ -26,15 +33,20 @@ pub fn blocked(worker: &str) -> Result<bool> {
     let root = Store::directory(worker)?;
     let _notice_lock = Store::delivery_at(&root.join("service"), true)?;
     let gap: Option<Value> = super::state::read(&root.join("gap.json"))?;
-    // Upgrade a retained pre-installation 402; a later recorded success wins.
-    if availability::snapshot(&home)?.is_none()
-        && gap
-            .as_ref()
-            .and_then(|g| g["error"].as_str())
-            .is_some_and(payment_required)
+    // Upgrade pre-installation provider gaps; a later recorded success wins.
+    let snapshot = availability::snapshot(&home)?;
+    if snapshot.as_ref().is_none_or(|v| {
+        gap.as_ref()
+            .and_then(|g| g["at_ms"].as_u64())
+            .is_some_and(|at| at > v["observed_ms"].as_u64().unwrap_or(0))
+    }) && gap
+        .as_ref()
+        .and_then(|g| g["error"].as_str())
+        .is_some_and(availability::outage)
     {
-        availability::record(&home, Some(402))?;
+        availability::record_error(&home, gap.as_ref().unwrap()["error"].as_str().unwrap())?;
     }
+    availability::recovery::check(&home)?;
     let blocked = availability::unavailable(&home)?;
     let prior: Option<Value> = super::state::read(&root.join("service-outage.json"))?;
     if blocked {
@@ -54,7 +66,7 @@ pub fn blocked(worker: &str) -> Result<bool> {
         if gap
             .as_ref()
             .and_then(|g| g["error"].as_str())
-            .is_some_and(payment_required)
+            .is_some_and(availability::outage)
         {
             std::fs::remove_file(root.join("gap.json"))?;
         }
@@ -70,13 +82,14 @@ pub fn blocked(worker: &str) -> Result<bool> {
 fn notice(state: &State, epoch: Value, prior: Option<&Value>) -> Result<()> {
     let root = Store::directory(&state.worker.session)?;
     let request = state.pending.as_ref().map(|p| p.id.as_str());
-    if prior.is_some_and(|p| {
-        p["blocked"] == true && p["epoch"] == epoch && p["request"] == json!(request)
-    }) {
+    if prior
+        .is_some_and(|p| p["blocked"] == true && p["epoch"]["observed_ms"] == epoch["observed_ms"])
+    {
         return Ok(());
     }
     let text = format!(
-        "Jev unavailable: payment required. Worker {} review {} is retained; no report correction or automatic review retry. A successful Jev judgment resumes it.",
+        "{}. Worker {} review {} is retained; no thinker correction or new review admission. Jev recovery resumes the retained report.",
+        message(epoch["error"].as_str().unwrap_or("http_status=402")),
         state.worker.session,
         request.unwrap_or("queued")
     );
@@ -104,9 +117,9 @@ fn notice(state: &State, epoch: Value, prior: Option<&Value>) -> Result<()> {
         "reviewer_error":sent.and_then(|r|r.err()).map(|e|e.to_string())}),
     )?;
     {
-        let mut gap = json!({"error":"JEV_SERVICE_UNAVAILABLE stage=review_service http_status=402","original_error":gap.as_ref().map(|g|&g["error"]),"request":request});
+        let mut gap = json!({"error":format!("JEV_SERVICE_UNAVAILABLE stage=review_service: {}",epoch["error"].as_str().unwrap_or("http_status=402")),"original_error":gap.as_ref().map(|g|&g["error"]),"request":request});
         gap["status"] = "service_unavailable".into();
-        gap["message"] = "Jev unavailable: payment required".into();
+        gap["message"] = message(epoch["error"].as_str().unwrap_or("http_status=402")).into();
         gap["origin"] = json!(super::failure::Origin::Host);
         crate::unattended_report::save(&root, "gap.json", &gap)?;
     }

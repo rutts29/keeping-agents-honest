@@ -192,10 +192,7 @@ fn transcript(input: &Value, binding: &Binding) -> Result<String, String> {
             .ok_or("CLAUDE_TRANSCRIPT stage=hook: path absent")?,
     );
     let home = env::var_os("HOME").ok_or("CLAUDE_HOME stage=hook")?;
-    let directory = env::var_os("CLAUDE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(home).join(".claude"))
-        .join("projects");
+    let directory = kah_claude::paths::config_root(Path::new(&home)).join("projects");
     if !path.starts_with(&directory)
         || path.file_stem().and_then(|s| s.to_str()) != Some(&binding.session)
     {

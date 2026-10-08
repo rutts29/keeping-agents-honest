@@ -7,6 +7,7 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
 };
+mod refresh;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -113,6 +114,7 @@ pub(crate) fn current(
     if request.worker != worker || request.id != id {
         return Ok(None);
     }
+    refresh::changed(outbox, &request)?;
     let status = verified(outbox, &request)?;
     if status.is_some() {
         let record: Rejection =

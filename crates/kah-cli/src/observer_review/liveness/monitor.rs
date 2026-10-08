@@ -1,8 +1,11 @@
 use super::*;
+#[path = "host_gap.rs"]
+mod host_gap;
 use crate::{
     Result,
     observer_review::state::{State, Store},
 };
+use host_gap::host_failure;
 use serde_json::{Value, json};
 use std::os::unix::fs::OpenOptionsExt;
 use std::{
@@ -56,7 +59,7 @@ pub fn run(worker: &str) -> Result<()> {
     if !progress.stalled {
         return Ok(());
     }
-    if sample.native_active {
+    if sample.native_active || sample.host_owned {
         // Advisory only. A human decides whether to interrupt a Working pane.
         return notify(&state, &progress);
     }
@@ -140,8 +143,8 @@ fn sample(state: &State) -> Result<Sample> {
     // not record progress, but still must never be automatically interrupted
     // or re-prompted while a later request waits for that pane.
     let native_active = pane_working(state).unwrap_or(false);
-    let mut controller_active =
-        processing_active(&root, &pending.id)? || super::awaiting_host(state)?;
+    let host_owned = super::awaiting_host(state)?;
+    let mut controller_active = processing_active(&root, &pending.id)? && !host_owned;
     let outbox = state.observer.workspace.join("outbox");
     let rejected = if super::super::preparation::pending(
         &state.worker.session,
@@ -176,22 +179,11 @@ fn sample(state: &State) -> Result<Sample> {
         started_ms: pending.created_ms,
         native_active,
         controller_active,
+        host_owned,
         transcript_version: state.observer.transcript.as_deref().and_then(version),
-        report_version: report_version(&outbox, &pending.id, &report),
+        report_version: super::host_progress::combined(&root, &outbox, &pending.id, &report)?,
         cause,
     })
-}
-fn host_failure(root: &Path, request: &str) -> Result<Option<String>> {
-    let gap: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
-    Ok(gap
-        .filter(|g| {
-            g["request"].as_str().is_none_or(|id| id == request)
-                && (super::super::failure::correctable(
-                    serde_json::from_value(g["origin"].clone()).unwrap_or_default(),
-                    g["error"].as_str().unwrap_or(""),
-                ) || !super::super::redelivery::gap_retryable(g))
-        })
-        .and_then(|g| g["error"].as_str().map(str::to_owned)))
 }
 fn pane_working(state: &State) -> Result<bool> {
     let (socket, _) = super::super::runtime::transport(state)?;
@@ -201,7 +193,7 @@ fn pane_working(state: &State) -> Result<bool> {
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
     Ok(view["result"]["pane"]["agent_status"] == "working")
 }
-fn version(path: &Path) -> Option<(u64, u64)> {
+pub(super) fn version(path: &Path) -> Option<(u64, u64)> {
     let meta = fs::metadata(path).ok()?;
     Some((
         meta.len(),
@@ -212,7 +204,7 @@ fn version(path: &Path) -> Option<(u64, u64)> {
             .as_millis() as u64,
     ))
 }
-fn report_version(outbox: &Path, request: &str, submitted: &Path) -> Option<(u64, u64)> {
+pub(super) fn report_version(outbox: &Path, request: &str, submitted: &Path) -> Option<(u64, u64)> {
     [
         submitted.to_path_buf(),
         outbox.join(format!("{request}.json")),
@@ -276,6 +268,8 @@ fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
         "service_unavailable"
     } else if validation_blocked(&p.sample) {
         "validation_blocked"
+    } else if p.stalled && p.sample.host_owned {
+        "host_stalled"
     } else if p.stalled && p.sample.native_active {
         "possibly_hung"
     } else if p.stalled {
@@ -289,11 +283,13 @@ fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
         p.sample.cause,
         p.sample.transcript_version.map(|(_, time)| time)
     );
-    crate::unattended_report::save(
-        root,
-        "notice.json",
-        &json!({"text":text,"request":p.sample.request,"state":state}),
-    )?;
+    if !host_expansion(&p.sample) {
+        crate::unattended_report::save(
+            root,
+            "notice.json",
+            &json!({"text":text,"request":p.sample.request,"state":state}),
+        )?;
+    }
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -370,10 +366,22 @@ fn validation_notice(state: &State, progress: &Progress) -> Result<()> {
     let root = Store::directory(&state.worker.session)?;
     let checked: Option<Value> = super::super::state::read(&root.join("validation-current.json"))?;
     let current: Option<Value> = super::super::state::read(&root.join("gap.json"))?;
-    let mut gap=current.filter(|v|v["request"]==progress.sample.request && v["error"].as_str()==progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")).or_else(||checked.filter(|v|v["request"]==progress.sample.request && v["error"].as_str()==progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")))
-            .unwrap_or_else(||json!({"error":progress.sample.cause.strip_prefix("VALIDATION BLOCKED: "),"origin":super::super::failure::Origin::Host}));
+    let Some(mut gap) = current
+        .filter(|v| {
+            v["request"] == progress.sample.request
+                && v["error"].as_str() == progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")
+        })
+        .or_else(|| {
+            checked.filter(|v| {
+                v["request"] == progress.sample.request
+                    && v["error"].as_str()
+                        == progress.sample.cause.strip_prefix("VALIDATION BLOCKED: ")
+            })
+        })
+    else {
+        return Ok(());
+    };
     gap["status"] = "validation_blocked".into();
-    gap["at_ms"] = progress.sample.now_ms.into();
     crate::unattended_report::save(&root, "gap.json", &gap)?;
     notify(state, progress)?;
     if super::super::redelivery::gap_retryable(&gap)

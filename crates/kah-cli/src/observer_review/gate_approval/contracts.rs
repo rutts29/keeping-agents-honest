@@ -13,19 +13,24 @@ pub(crate) fn prepare(
     input: &mut Value,
     questions: &mut Questions,
 ) -> Result<()> {
+    // Receipt corruption is host-owned; report selection/contract errors are
+    // correctable at the same report boundary for both captured protocols.
+    let proof = super::super::failure::validation(super::super::failure::Origin::Host, || {
+        captured(request)
+    })?;
     if report
         .decision_units
         .as_ref()
         .is_some_and(|u| u.version() >= 12)
     {
-        return v12::prepare(request, report, input, questions);
+        return super::super::failure::validation(
+            super::super::failure::Origin::ReportValidation,
+            || v12::prepare(request, report, input, questions, proof.as_ref()),
+        );
     }
-    // Controller receipts are host state; validate them outside the report boundary.
-    let commands = super::super::failure::validation(super::super::failure::Origin::Host, || {
-        captured(request)
-    })?
-    .map(|p| p.tests.into_iter().map(|t| t.command).collect::<Vec<_>>())
-    .unwrap_or_default();
+    let commands = proof
+        .map(|p| p.tests.into_iter().map(|t| t.command).collect::<Vec<_>>())
+        .unwrap_or_default();
     super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
         prepare_report(request, report, input, questions, &commands)
     })

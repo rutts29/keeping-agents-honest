@@ -1,4 +1,62 @@
 use super::*;
+
+#[test]
+fn a_later_packet_retry_outside_the_shrunken_batch_gets_its_own_continuation() {
+    use crate::observer_review::state::{Purpose, Request, State};
+    let worker = format!("later-packet-retry-{}", crate::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let workspace = store.directory.join("workspace");
+    std::fs::create_dir_all(workspace.join("outbox")).unwrap();
+    let state:State=serde_json::from_value(serde_json::json!({"worker":{"provider":"codex","session":worker,"project":workspace,"pane":null,"socket":null},"observer":{"session":null,"pane":null,"name":"fixture","workspace":workspace,"model":"gpt-6.1-sol","effort":"low","transcript":null},"pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    store.save(&state).unwrap();
+    let jobs = two_jobs(&worker);
+    let review = "review-packet-parent";
+    let old = stage(&worker, review, &jobs[..1]).unwrap();
+    let mut later = jobs[1].clone();
+    later.reason = "Provider rejected the old selection; rethink relevant whole items".into();
+    source_store::save(
+        &store.directory,
+        &format!("preparation-{}.json", later.decision),
+        &serde_json::to_value(&later).unwrap(),
+    )
+    .unwrap();
+    crate::unattended_report::save(
+        &store.directory,
+        &format!("preparation-woken-{}.json", old.id),
+        &serde_json::json!({"sent":true}),
+    )
+    .unwrap();
+    let request = Request {
+        id: review.into(),
+        worker: worker.clone(),
+        purpose: Purpose::Preparation,
+        turn: "t".into(),
+        head: None,
+        intent: serde_json::Value::Null,
+        trigger: serde_json::Value::Null,
+        documents: vec![],
+        created_ms: 0,
+    };
+    super::super::packets::continue_job(&request, &jobs[1]).unwrap();
+    let active = crate::observer_review::preparation::active_decision(&worker, review).unwrap();
+    let batch = load(&worker, &active).unwrap().unwrap();
+    assert_ne!(batch.id, old.id);
+    assert_eq!(batch.decisions.len(), 1);
+    assert_eq!(batch.decisions[0].decision, later.decision);
+    assert_eq!(
+        load_job(&worker, &batch.decisions[0]).unwrap().reason,
+        later.reason
+    );
+    assert!(
+        !store
+            .directory
+            .join(format!("preparation-woken-{}.json", batch.id))
+            .exists()
+    );
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}
 #[test]
 fn a_rejected_selection_reopens_only_that_decision_and_keeps_other_manifests() {
     use crate::observer_review::state::State;

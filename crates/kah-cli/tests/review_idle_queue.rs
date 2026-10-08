@@ -32,10 +32,15 @@ fn an_idle_observer_hook_wakes_a_trigger_left_by_a_busy_store_race() {
     )
     .unwrap();
     drop(store);
+    // Detached jobs must use this build, never the operator's installed binary.
+    let home = root.join("test-home");
+    std::fs::create_dir_all(home.join(".local/bin")).unwrap();
+    std::fs::copy(env!("CARGO_BIN_EXE_kah"), home.join(".local/bin/kah")).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_kah"))
         .args(["__review-hook", &worker])
         .env("HERDR_PANE_ID", "fixture")
         .env_remove("HERDR_SOCKET_PATH")
+        .env("HOME", &home)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()
@@ -52,9 +57,12 @@ fn an_idle_observer_hook_wakes_a_trigger_left_by_a_busy_store_race() {
         .unwrap();
     assert!(child.wait().unwrap().success());
     // The native invocation now persists and returns; dispatch is detached.
-    while !root.join("gap.json").exists() {
-        std::thread::yield_now();
-    }
+    // Without a pending request, a real failure is archived
+    // rather than becoming an unbound gap on the next admitted request.
+    let failure = archived_failure(&root);
+    assert_eq!(failure["current_request"], serde_json::Value::Null);
+    assert!(failure["gap"]["error"].as_str().unwrap().contains("stage="));
+    assert!(!root.join("gap.json").exists());
     assert!(
         root.join("job-__review-wake.log").exists(),
         "idle hook must wake the queued trigger"
@@ -65,4 +73,18 @@ fn an_idle_observer_hook_wakes_a_trigger_left_by_a_busy_store_race() {
         "invalid evidence must remain queued"
     );
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
+
+fn archived_failure(root: &std::path::Path) -> serde_json::Value {
+    loop {
+        if let Ok(files) = std::fs::read_dir(root.join("retired-gaps")) {
+            for file in files.flatten() {
+                // Atomic writers publish JSON by rename; temporary files are not receipts.
+                if file.path().extension().is_some_and(|v| v == "json") {
+                    return serde_json::from_slice(&std::fs::read(file.path()).unwrap()).unwrap();
+                }
+            }
+        }
+        std::thread::yield_now();
+    }
 }

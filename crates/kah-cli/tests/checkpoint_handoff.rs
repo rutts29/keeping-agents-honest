@@ -13,12 +13,15 @@ fn busy_checkpoint_transfer_is_queued_once_and_cannot_repeat_itself_after_review
     kah_core::run_store::ensure_private_directory(&root).unwrap();
     let whole = json!({"kind":"user_gate","at_ms":1,"meaning":"whole original event"});
     kah_cli::unattended_report::save(&root, "first.json", &whole).unwrap();
-    events::run(&worker).unwrap();
+    // P0 admission recovery: run() now waits in its detached admission phase.
+    // This held-lock test checks the independent durable transfer seam; both
+    // admission continuations are covered by review_queue's threaded regressions.
+    events::transfer(&worker).unwrap();
     assert!(
         !events::pending(&worker).unwrap(),
         "the event was already durable in the review queue"
     );
-    events::run(&worker).unwrap();
+    events::transfer(&worker).unwrap();
     let jobs = queue::entries(&worker).unwrap();
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].1.trigger["events"][0], whole);

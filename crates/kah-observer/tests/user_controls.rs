@@ -314,7 +314,7 @@ fn aside_survives_without_a_goal_and_user_can_promote_confirm_and_dismiss() {
     let aside = "aside:  Keep this exact note.\r\n";
     let first = f.observe(&[aside]);
     assert!(first.projection.is_none());
-    assert!(first.gap.is_none());
+    assert!(first.gap.is_none(), "aside intake gap: {:?}", first.gap);
     let pending = review::list(&f.binding.session).unwrap();
     assert_eq!(pending["items"][0]["text"], aside);
     let id = pending["items"][0]["id"].as_str().unwrap();
@@ -345,7 +345,9 @@ fn aside_survives_without_a_goal_and_user_can_promote_confirm_and_dismiss() {
 fn forced_steering_is_durable_and_replay_does_not_reactivate_dismissed_input() {
     let f = Fixture::new();
     let text = "steer: Preserve BETA exactly";
-    let p = f.observe(&[text]).projection.unwrap();
+    let first = f.observe(&[text]);
+    assert!(first.gap.is_none(), "forced intake gap: {:?}", first.gap);
+    let p = first.projection.unwrap();
     assert_eq!(p.goal.text, text);
     assert!(!p.needs_review());
     let id = p.frontier[0].id.to_string();
