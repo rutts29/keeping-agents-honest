@@ -104,3 +104,5 @@ pub(super) fn migrate(root: &Path) -> Result<usize> {
     }
     Ok(migrated)
 }
+
+pub(super) mod reader;

@@ -4,7 +4,7 @@ use super::*;
 use sha2::Digest;
 use std::{path::Path, process::Command};
 pub(super) fn publish(worker: &str, root: &Path, name: &str, mut incoming: Wake) -> Result<()> {
-    let state = Store::read(worker)?;
+    let state = crate::observer_review::state::read_control(worker)?;
     let project = state
         .as_ref()
         .map(|s| s.worker.project.clone())

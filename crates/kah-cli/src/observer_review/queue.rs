@@ -7,6 +7,7 @@ use std::{fs, path::PathBuf};
 mod drift;
 mod identity;
 pub mod lanes;
+mod memory;
 pub mod metadata;
 pub mod migration;
 mod ordering;
@@ -134,12 +135,21 @@ fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
     Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {
+    let root = Store::directory(worker)?;
+    let _owner = match Store::delivery_at(&root.join("admission-worker"), false) {
+        Ok(owner) => owner,
+        Err(error) if error.to_string().starts_with("REVIEW_BUSY") => {
+            return Ok(json!({"status":"queued","reason":"admission_inflight"}));
+        }
+        Err(error) => return Err(error),
+    };
+    memory::sample(worker, "entered")?;
     if super::service::blocked(worker)? {
         return Ok(
             json!({"status":"service_unavailable","error":"Jev unavailable: payment required","queued_retained":true}),
         );
     }
-    if let Some(state) = Store::read(worker)?
+    if let Some(state) = crate::observer_review::state::read_control(worker)?
         && state.pending.is_some()
     {
         if state.stopped {
@@ -148,17 +158,22 @@ pub fn drain(worker: &str) -> Result<Value> {
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
     preparation_coverage::run(worker)?;
+    memory::sample(worker, "coverage_complete")?;
     super::events::transfer(worker)?;
+    memory::sample(worker, "events_transferred")?;
     let claimed = claim_batch(worker)?;
+    memory::sample(worker, "selected")?;
     if let Some((job, paths)) = claimed {
-        return submit_batch(worker, job, paths);
+        let submitted = submit_batch(worker, job, paths);
+        memory::sample(worker, "submission_finished")?;
+        return submitted;
     }
     Ok(json!({"status":"idle"}))
 }
 pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
+    if crate::observer_review::state::read_control(worker)?.is_some_and(|s| s.pending.is_some()) {
         return Ok(None);
     }
     let mut jobs = entries_at(&root)?;
@@ -256,7 +271,7 @@ pub fn kick(worker: &str) -> Result<()> {
     {
         super::hook::spawn("__review-questions", worker)?;
     }
-    if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
+    if crate::observer_review::state::read_control(worker)?.is_some_and(|s| s.pending.is_some()) {
         super::liveness::start(worker)?;
         super::hook::spawn("__review-retry", worker)?;
         return Ok(());

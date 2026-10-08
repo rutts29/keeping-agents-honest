@@ -68,12 +68,15 @@ fn candidates(
     let completed: Option<Value> =
         super::super::super::state::read(&root.join("last-drift-review.json"))?;
     if let Some(id) = completed.as_ref().and_then(|c| c["request"].as_str()) {
-        let request: super::super::super::state::Request = super::super::super::source_store::read(
+        use crate::observer_review::source_store::read_selected;
+        let selection = coverage_fields();
+        let request = read_selected(
             &root.join("requests").join(format!("{id}.json")),
+            &selection,
         )?;
-        if request.worker == worker
+        if request["worker"] == worker
             && let (Some(authority), Some(ids)) = (
-                Authority::from_intent(&request.intent),
+                Authority::from_intent(&request["intent"]),
                 captured_actions(&request),
             )
         {
@@ -87,22 +90,25 @@ fn candidates(
     }
     Ok(result)
 }
-fn captured_actions(request: &super::super::super::state::Request) -> Option<BTreeSet<String>> {
-    let mut ids = actions(&request.trigger["actions"]).unwrap_or_default();
-    for document in request
-        .documents
-        .iter()
-        .filter(|d| d.kind == "worker_transcript")
+fn captured_actions(request: &Value) -> Option<BTreeSet<String>> {
+    let mut ids = actions(&request["trigger"]["actions"]).unwrap_or_default();
+    for document in request["documents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d["kind"] == "worker_transcript")
     {
         ids.extend(
-            document
-                .native_records
-                .iter()
-                .filter_map(|r| r.context["record_id"].as_str().map(str::to_owned)),
+            document["native_records"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|r| r["context"]["record_id"].as_str().map(str::to_owned)),
         );
     }
     (!ids.is_empty()).then_some(ids)
 }
+
 fn retire(root: &Path, path: &Path, by: &Coverage) -> Result<Value> {
     let bytes = fs::read(path)?;
     let name = path.file_name().unwrap().to_str().unwrap();
@@ -124,4 +130,30 @@ fn retire(root: &Path, path: &Path, by: &Coverage) -> Result<Value> {
     fs::File::open(archive)?.sync_all()?;
     fs::File::open(path.parent().unwrap())?.sync_all()?;
     Ok(row)
+}
+
+fn coverage_fields() -> crate::observer_review::source_store::Select {
+    use crate::observer_review::source_store::Select;
+    let record = Select::fields(&[("context", Select::fields(&[("record_id", Select::All)]))]);
+    let document = Select::fields(&[
+        ("kind", Select::All),
+        ("native_records", Select::Each(Box::new(record))),
+    ]);
+    let action = Select::fields(&[("id", Select::All)]);
+    Select::fields(&[
+        ("worker", Select::All),
+        (
+            "intent",
+            Select::fields(&[
+                ("goal", Select::All),
+                ("revision", Select::All),
+                ("items", Select::All),
+            ]),
+        ),
+        (
+            "trigger",
+            Select::fields(&[("actions", Select::Each(Box::new(action)))]),
+        ),
+        ("documents", Select::Each(Box::new(document))),
+    ])
 }

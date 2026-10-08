@@ -10,6 +10,8 @@ use std::{
 };
 
 mod segments;
+mod selection;
+pub use selection::{Select, read_selected};
 
 fn directory(path: &Path) -> Result<PathBuf> {
     path.ancestors()
@@ -50,7 +52,10 @@ fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
     // Nested delivery locks can create an empty sources directory. References
     // still identify immutable content in the containing review/workspace.
     // A present source must verify; never hide corruption using another copy.
-    let resolved = if path.exists() {
+    segments::recover(&resolved(path, digest), digest)
+}
+fn resolved(path: &Path, digest: &str) -> PathBuf {
+    if path.exists() {
         path.to_owned()
     } else {
         path.ancestors()
@@ -58,8 +63,7 @@ fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
             .map(|parent| parent.join("sources").join(digest))
             .find(|candidate| candidate.is_file())
             .unwrap_or_else(|| path.to_owned())
-    };
-    segments::recover(&resolved, digest)
+    }
 }
 fn read_bytes(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|e| {
