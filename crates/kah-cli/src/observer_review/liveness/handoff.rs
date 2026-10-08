@@ -12,6 +12,10 @@ pub(crate) fn awaiting_host(state: &State) -> Result<bool> {
     };
     let root = Store::directory(&state.worker.session)?;
     let decision = preparation::active_decision(&state.worker.session, &pending.id)?;
+    if let Some(batch) = preparation::batch::load(&state.worker.session, &decision)? {
+        // The ACK still covers host assembly after individual Jev results land.
+        return preparation::batch::accept(&state.worker.session, &batch);
+    }
     if preparation::pending(&state.worker.session, &decision)? {
         // The foreground selector validates before ACK. Recheck/copy that
         // exact manifest on the host; no Jev call and no native re-prompt.

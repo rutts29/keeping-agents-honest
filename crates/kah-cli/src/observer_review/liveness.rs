@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 mod failure;
 mod handoff;
+mod host_progress;
 mod monitor;
 pub(crate) mod selection_rejection;
 pub(crate) use handoff::awaiting_host;

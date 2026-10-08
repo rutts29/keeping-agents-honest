@@ -177,7 +177,7 @@ fn sample(state: &State) -> Result<Sample> {
         native_active,
         controller_active,
         transcript_version: state.observer.transcript.as_deref().and_then(version),
-        report_version: report_version(&outbox, &pending.id, &report),
+        report_version: super::host_progress::combined(&root, &outbox, &pending.id, &report)?,
         cause,
     })
 }
@@ -201,7 +201,7 @@ fn pane_working(state: &State) -> Result<bool> {
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
     Ok(view["result"]["pane"]["agent_status"] == "working")
 }
-fn version(path: &Path) -> Option<(u64, u64)> {
+pub(super) fn version(path: &Path) -> Option<(u64, u64)> {
     let meta = fs::metadata(path).ok()?;
     Some((
         meta.len(),
@@ -212,7 +212,7 @@ fn version(path: &Path) -> Option<(u64, u64)> {
             .as_millis() as u64,
     ))
 }
-fn report_version(outbox: &Path, request: &str, submitted: &Path) -> Option<(u64, u64)> {
+pub(super) fn report_version(outbox: &Path, request: &str, submitted: &Path) -> Option<(u64, u64)> {
     [
         submitted.to_path_buf(),
         outbox.join(format!("{request}.json")),
