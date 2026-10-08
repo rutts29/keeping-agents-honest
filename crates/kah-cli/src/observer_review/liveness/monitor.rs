@@ -289,11 +289,13 @@ fn event(root: &Path, worker: &str, p: &Progress) -> Result<()> {
         p.sample.cause,
         p.sample.transcript_version.map(|(_, time)| time)
     );
-    crate::unattended_report::save(
-        root,
-        "notice.json",
-        &json!({"text":text,"request":p.sample.request,"state":state}),
-    )?;
+    if !host_expansion(&p.sample) {
+        crate::unattended_report::save(
+            root,
+            "notice.json",
+            &json!({"text":text,"request":p.sample.request,"state":state}),
+        )?;
+    }
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)

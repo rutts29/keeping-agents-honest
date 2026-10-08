@@ -68,3 +68,64 @@ fn submit(root: &Path, request: &Request, report: &Path) -> Result<()> {
         report.to_str().unwrap().into(),
     ])
 }
+
+#[test]
+fn a_second_request_with_the_same_anchor_refreshes_a_changed_report_before_expansion() {
+    use crate::observer_review::{
+        commit_packet, packet_references, source_store,
+        state::{State, Store},
+    };
+    let worker = format!("changed-anchor-{}", crate::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let root = &store.directory;
+    let workspace = root.join("observer");
+    let outbox = workspace.join("outbox");
+    fs::create_dir_all(&outbox).unwrap();
+    source_store::initialize(root, &workspace).unwrap();
+    let state:State = serde_json::from_value(json!({"worker":{"provider":"codex","session":worker,"project":workspace,"pane":null,"socket":null},
+        "observer":{"session":null,"pane":null,"name":"fixture","workspace":workspace,"model":"gpt-6.1-sol","effort":"low","transcript":null},
+        "pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    let original = kah_observer::review_evidence::Document::new(
+        "historical-anchor",
+        "historical_deferral_anchor",
+        "native:worker",
+        "Whole historical requirement.",
+    );
+    fs::create_dir_all(root.join("requests")).unwrap();
+    for id in ["review-first", "review-second"] {
+        let mut request = Request {
+            id: id.into(),
+            worker: worker.clone(),
+            purpose: Purpose::Drift,
+            turn: "t".into(),
+            head: None,
+            intent: json!({}),
+            trigger: json!({"packet_scope":"diff-v1"}),
+            documents: vec![original.clone()],
+            created_ms: 0,
+        };
+        packet_references::scope(root, &workspace, &mut request).unwrap();
+        source_store::save(
+            &root.join("requests"),
+            &format!("{id}.json"),
+            &serde_json::to_value(&request).unwrap(),
+        )
+        .unwrap();
+        let file = outbox.join(format!("{id}.json"));
+        let mut report = json!({"request_id":id,"findings":[{"topic":"drift","claim":"Original finding","citations":[{"source":original.id,"digest":original.digest,"quote":original.text,"occurrence":0}]}]});
+        let bytes = serde_json::to_vec(&report).unwrap();
+        fs::write(&file, &bytes).unwrap();
+        let error = workspace::validate_report_bytes(&request, &bytes).unwrap_err();
+        record(&outbox, &request, &file, &bytes, error.as_ref()).unwrap();
+        report["findings"][0]["claim"] = "Corrected finding".into();
+        fs::write(&file, serde_json::to_vec(&report).unwrap()).unwrap();
+        assert!(current(root, &outbox, &worker, id).unwrap().is_some());
+        let restored = commit_packet::expand_rejected(&store, &state, &request).unwrap();
+        assert_eq!(restored.id, id);
+        assert_eq!(restored.documents[0].text, original.text);
+        assert_eq!(restored.documents[0].digest, original.digest);
+    }
+    let directory = root.parent().unwrap().to_owned();
+    drop(store);
+    fs::remove_dir_all(directory).unwrap();
+}

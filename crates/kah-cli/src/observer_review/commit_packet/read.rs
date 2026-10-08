@@ -7,7 +7,7 @@ use std::{
     os::{fd::AsRawFd, unix::fs::OpenOptionsExt},
     path::{Component, Path},
 };
-pub(super) fn report(root: &Path, path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn report(root: &Path, path: &Path) -> Result<Vec<u8>> {
     let canonical = root.canonicalize()?;
     let relative = path
         .strip_prefix(root)
