@@ -219,7 +219,7 @@ fn lifecycle(home: &Path, id: &str, provider: &str, panes: &mut Panes) -> Value 
     );
     confirm_resume(id, provider, panes, &before)
 }
-fn quiescent(id: &str, provider: &str) -> kah_cli::observer_review::state::State {
+pub(super) fn quiescent(id: &str, provider: &str) -> kah_cli::observer_review::state::State {
     loop {
         kah_cli::observer_review::queue::kick(id).unwrap();
         kah_cli::observer_review::uncertainty::schedule(id).unwrap();
