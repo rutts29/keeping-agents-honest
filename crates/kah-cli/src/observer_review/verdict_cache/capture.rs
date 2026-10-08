@@ -15,6 +15,9 @@ use kah_observer::{
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/cache_dependencies.rs"]
+mod dependency_tests;
 
 pub fn record(
     store: &Store,
@@ -61,7 +64,9 @@ fn entry(
     head: &str,
 ) -> Result<Entry> {
     let id = &requirement.id;
-    let confirmed = !outcome.needs_thinker.contains(id)
+    let (evidence, eligibility_gap) = snapshot(request, requirement)?;
+    let confirmed = eligibility_gap.is_none()
+        && !outcome.needs_thinker.contains(id)
         && !outcome.needs_user.contains(id)
         && !outcome.not_due.contains(id);
     let unconditional = requirement
@@ -87,7 +92,7 @@ fn entry(
         requirement: id.clone(),
         review: request.id.clone(),
         head: head.into(),
-        evidence: fingerprint(request, requirement)?,
+        evidence,
         confirmed,
         always: always(
             requirement.dimension,
@@ -96,7 +101,7 @@ fn entry(
             matches!(requirement.judgment, Thinking::NeedsUser { .. })
                 || requirement.existing_question_id.is_some(),
         ),
-        verdict: json!({"requirement":requirement,"answers":answers,"protocol":report.decision_units.as_ref().unwrap().version()}),
+        verdict: json!({"requirement":requirement,"answers":answers,"protocol":report.decision_units.as_ref().unwrap().version(),"eligibility_gap":eligibility_gap}),
     })
 }
 pub(super) fn fingerprint(request: &Request, r: &decision_units::Requirement) -> Result<Evidence> {
@@ -139,22 +144,9 @@ pub(super) fn fingerprint(request: &Request, r: &decision_units::Requirement) ->
         );
         blobs.insert(key, fingerprint);
     }
-    let plans = request
-        .documents
-        .iter()
-        .filter(|d| d.kind == "plan")
-        .map(|d| (d.uri.clone(), d.digest.clone()))
-        .collect();
-    let components = r
-        .components
-        .iter()
-        .map(|c| Ok((c.name.clone(), digest(&serde_json::to_value(c)?)?)))
-        .collect::<Result<_>>()?;
-    let tests = r
-        .checks
-        .iter()
-        .map(|c| Ok((c.name.clone(), digest(&serde_json::to_value(c)?)?)))
-        .collect::<Result<_>>()?;
+    let plans = super::dependencies::plans(request, r);
+    let components = super::dependencies::components(request, r)?;
+    let tests = super::dependencies::tests(r)?;
     Ok(Evidence {
         authority,
         blobs,
@@ -163,9 +155,26 @@ pub(super) fn fingerprint(request: &Request, r: &decision_units::Requirement) ->
         tests,
     })
 }
-fn digest(value: &Value) -> Result<String> {
+pub(super) fn digest(value: &Value) -> Result<String> {
     Ok(format!(
         "sha256:{:x}",
         Sha256::digest(serde_json::to_vec(value)?)
     ))
+}
+fn snapshot(
+    request: &Request,
+    r: &decision_units::Requirement,
+) -> Result<(Evidence, Option<String>)> {
+    match fingerprint(request, r) {
+        Ok(evidence) => Ok((evidence, None)),
+        Err(error) if error.to_string().starts_with("REVIEW_CACHE_COMPONENT") => {
+            let mut without_component = r.clone();
+            without_component.components.clear();
+            Ok((
+                fingerprint(request, &without_component)?,
+                Some(error.to_string()),
+            ))
+        }
+        Err(error) => Err(error),
+    }
 }

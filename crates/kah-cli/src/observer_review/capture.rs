@@ -279,9 +279,10 @@ pub fn project_context_with_baseline(
     } else {
         restricted_context(home, state, &args)?
     };
-    let project = decode_project(output)?;
+    let mut project = decode_project(output)?;
     if let Some(stamp) = &map_stamp {
         super::component_map::producer::check_collected(stamp, &project)?;
+        project["component_map_binding"] = stamp.clone();
     }
     Ok(project)
 }

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 mod capture;
+mod dependencies;
 pub use capture::record;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
