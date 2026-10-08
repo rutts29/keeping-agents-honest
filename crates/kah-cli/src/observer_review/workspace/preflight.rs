@@ -51,7 +51,8 @@ pub(super) fn validate(request: &Request, report: &Report, findings: Vec<Value>)
             .map(|v| json!({"evidence":v}))
             .collect::<Vec<_>>();
         let deferrals = super::super::deferrals::collect(request, &actions)?;
-        super::super::decisions::checkpoint_coverage(request, units, &deferrals)?;
+        let effective = super::super::verdict_cache::integration::units(request, report)?;
+        super::super::decisions::checkpoint_coverage(request, &effective, &deferrals)?;
     }
     Ok(())
 }

@@ -81,6 +81,10 @@ fn finish_request(state: &State, mut request: Request) -> Result<Request> {
         &super::state::Store::directory(&request.worker)?,
         &mut request,
     )?;
+    super::verdict_cache::plan::prepare(
+        &super::state::Store::directory(&request.worker)?,
+        &mut request,
+    )?;
     super::packet_references::scope(
         &super::state::Store::directory(&request.worker)?,
         &state.observer.workspace,

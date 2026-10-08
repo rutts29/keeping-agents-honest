@@ -30,12 +30,15 @@ pub fn validate(request: &Request, report: &Report) -> Result<Option<Map>> {
     }
     let map: Map = serde_json::from_value(value.clone())
         .map_err(|e| format!("REVIEW_MAP_JSON stage=component_map: {e}"))?;
-    let requirements = report
-        .decision_units
-        .iter()
-        .flat_map(|units| &units.requirements)
-        .map(|r| r.id.clone())
-        .collect::<Vec<_>>();
+    let requirements = if report.decision_units.is_some() {
+        crate::observer_review::verdict_cache::integration::units(request, report)?
+            .requirements
+            .iter()
+            .map(|r| r.id.clone())
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
     map.validate(&requirements)?;
     Ok(Some(map))
 }

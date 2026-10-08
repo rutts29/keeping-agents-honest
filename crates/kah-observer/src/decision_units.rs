@@ -224,6 +224,16 @@ impl ReviewUnits {
         )
     }
     pub fn verify(&self, documents: &[Document], active_items: &[String]) -> Result<Value, String> {
+        self.verify_scoped(documents, active_items, active_items)
+    }
+    /// Commit-cache callers retain the complete allowed authority set while
+    /// requiring fresh coverage only for items not covered by checked carries.
+    pub fn verify_scoped(
+        &self,
+        documents: &[Document],
+        active_items: &[String],
+        required_items: &[String],
+    ) -> Result<Value, String> {
         if self
             .version
             .is_some_and(|version| !(7..=VERSION).contains(&version))
@@ -263,7 +273,7 @@ impl ReviewUnits {
             covered.extend(requirement.authority_items.iter());
             requirements.push(value);
         }
-        for item in active_items {
+        for item in required_items {
             if !covered.contains(item) {
                 return Err(format!(
                     "REVIEW_REQUIREMENT_COVERAGE stage=decision_units: active item {item} has no named requirement"

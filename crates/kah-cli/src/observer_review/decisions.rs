@@ -40,9 +40,7 @@ fn verify_sources(request: &Request, report: &Report) -> Result<Option<Value>> {
     super::completion_due::bind(request, report)?;
     super::capture::controller_events::bind(request, report)?;
     super::capture::controller_receipts::bind(request, report)?;
-    report
-        .verify_units(&request.documents, &active_items(&request.intent))
-        .map_err(Into::into)
+    super::verdict_cache::integration::verify(request, report)
 }
 
 /// Validate every independent source selection before acknowledging a report.
@@ -104,18 +102,22 @@ pub fn evaluate(
     if super::preparation::pending(&request.worker, &request.id)? {
         super::preparation::accept(&request.worker, &request.id)?;
     }
-    let (judgment, prepared, archive) = if units.version() >= 8 {
+    let (mut judgment, prepared, archive) = if units.version() >= 8 {
         scoped::evaluate(home, request, &input, &questions)?
     } else {
         legacy(home, request, &input, &questions, units.version())?
     };
     if super::commit_packet::is_commit(request) {
+        let effective = super::verdict_cache::integration::units(request, report)?;
+        let mut carried = serde_json::json!({});
+        super::verdict_cache::integration::merge(request, report, &mut judgment, &mut carried)?;
         let mut result = super::light_commit::conclusion(
-            &assessment(request, units, &judgment, deferrals),
+            &assessment(request, &effective, &judgment, deferrals),
             archive,
             !questions.is_empty(),
         );
         super::light_commit::coverage(request, report, &mut result);
+        result["carried"] = carried["carried"].clone();
         return Ok((judgment, prepared, result));
     }
     match super::checkpoint_claim::assessment(&judgment) {

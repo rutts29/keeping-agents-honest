@@ -23,10 +23,18 @@ pub fn scope(private: &Path, workspace: &Path, request: &mut Request) -> Result<
     kah_core::run_store::ensure_private_directory(&archive)?;
     kah_core::run_store::ensure_private_directory(&public)?;
     for document in &mut request.documents {
-        if !matches!(
-            document.kind.as_str(),
-            "worker_transcript" | "prior_review" | "historical_deferral_anchor"
-        ) && !document.id.starts_with("historical-")
+        let cached_code = request.trigger["cache_source_ids"]
+            .as_array()
+            .is_some_and(|ids| ids.iter().any(|id| id == &document.id));
+        if !cached_code
+            && !matches!(
+                document.kind.as_str(),
+                "worker_transcript"
+                    | "prior_review"
+                    | "historical_deferral_anchor"
+                    | "controller_cached_verdicts"
+            )
+            && !document.id.starts_with("historical-")
         {
             continue;
         }

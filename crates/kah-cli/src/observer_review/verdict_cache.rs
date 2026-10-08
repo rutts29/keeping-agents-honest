@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 mod capture;
 mod dependencies;
+pub mod integration;
+pub mod plan;
 pub use capture::record;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

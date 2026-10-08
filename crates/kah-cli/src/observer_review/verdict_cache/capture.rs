@@ -35,12 +35,21 @@ pub fn record(
         return Ok(());
     };
     let outcome = decision_units::assess(units, judgment);
+    let verified = super::integration::verify(request, report)?
+        .ok_or("REVIEW_CACHE_VERIFIED stage=verdict_cache: checked units missing")?;
     let mut coverage = serde_json::to_value(&outcome)?;
     super::super::light_commit::coverage(request, report, &mut coverage);
     let root = store.directory.join("verdict-cache");
     kah_core::run_store::ensure_private_directory(&root)?;
     for requirement in &units.requirements {
         let mut entry = entry(request, report, judgment, &outcome, requirement, head)?;
+        entry.verdict["verified"] = verified["requirements"]
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["id"] == requirement.id))
+            .cloned()
+            .ok_or("REVIEW_CACHE_VERIFIED stage=verdict_cache: checked requirement missing")?;
+        entry.verdict["backend"] = json!(judgment.backend);
+        entry.verdict["model"] = json!(judgment.model);
         if coverage["needs_check"]
             .as_array()
             .is_some_and(|items| items.iter().any(|i| i == &requirement.id))
