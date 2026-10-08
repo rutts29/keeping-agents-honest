@@ -2,6 +2,44 @@ use super::*;
 use kah_observer::judge::Answer;
 
 #[test]
+fn decision_requests_keep_authority_and_parent_binding_without_cloning_full_sources() {
+    use crate::observer_review::state::Purpose;
+    let original = Request {
+        id: "review-whole-parent".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Drift,
+        turn: "turn".into(),
+        head: Some("a".repeat(40)),
+        intent: json!({"goal":"Whole user goal","items":[{"id":"user","text":"Never discard my words."}]}),
+        trigger: json!({"large_original":"Whole original event. ".repeat(1000)}),
+        documents: vec![kah_observer::review_evidence::Document::new(
+            "transcript",
+            "worker_transcript",
+            "native:worker",
+            "Whole original source. ".repeat(1000).as_str(),
+        )],
+        created_ms: 1,
+    };
+    let input = json!({"intent":original.intent,"event":{"head":original.head}});
+    let questions = Questions::from([(
+        "drift".into(),
+        kah_observer::judge::Question::Noul {
+            instructions: "Check trajectory".into(),
+        },
+    )]);
+    let local = request_for(&original, &input, &questions).unwrap();
+    assert_eq!(local.intent, original.intent);
+    assert_eq!(local.head, original.head);
+    assert_eq!(local.trigger["parent_review"], original.id);
+    assert!(local.documents.is_empty());
+    assert!(
+        original.documents[0]
+            .text
+            .ends_with("Whole original source. ")
+    );
+}
+
+#[test]
 fn post_ack_check_manifest_failure_keeps_report_origin_and_recovers_when_corrected() {
     use crate::observer_review::failure::{Origin, correctable, origin};
     // The thinker can select an assertion while omitting its

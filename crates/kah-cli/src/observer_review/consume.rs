@@ -115,6 +115,9 @@ fn persist_evidence(
     version: u32,
 ) -> Result<()> {
     archive(&store.directory, &request.id, result)?;
+    if !input["unconfirmed_context"].is_null() {
+        return Ok(());
+    }
     super::uncertainty::record(store, request, report, &result["assessment"], judgment)?;
     if request.purpose == Purpose::Drift {
         crate::unattended_report::save(
@@ -370,6 +373,9 @@ pub(super) fn commit_result(
     result: Value,
     tokens: Option<u64>,
 ) -> Result<()> {
+    if !result["jev_state"]["unconfirmed_context"].is_null() {
+        return super::preparation::rejection::park(store, state, request, &result);
+    }
     if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(request) {
         super::checkpoint::record(store, state, request, &result)?;
     }

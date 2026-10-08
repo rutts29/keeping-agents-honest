@@ -3,6 +3,7 @@ use super::state::{Request, Store};
 pub mod batch;
 mod calibration;
 mod job;
+pub mod rejection;
 pub use job::job;
 mod validation;
 use crate::Result;
@@ -334,6 +335,9 @@ fn retry(
     if let Err(error) = &result
         && error.code == "JEV_CONTEXT_LIMIT"
     {
+        if rejection::record(request, job, &manifest, &prepared, &error.to_string())? {
+            return Err(format!("PREPARATION_CONTEXT_UNCONFIRMED stage=context_preparation: {} repeated identical rejected context",request.id).into());
+        }
         revise(request, job, &error.to_string())?;
         return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
     }
