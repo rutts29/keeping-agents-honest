@@ -86,7 +86,7 @@ fn strings(value: &Value, root: &Path) -> Result<Value> {
         Value::Array(items) => Ok(Value::Array(
             items
                 .iter()
-                .map(|v| strings(v, root))
+                .map(|v| record(v, root))
                 .collect::<Result<_>>()?,
         )),
         Value::Object(items) => Ok(Value::Object(
@@ -96,6 +96,16 @@ fn strings(value: &Value, root: &Path) -> Result<Value> {
                 .collect::<Result<_>>()?,
         )),
         _ => Ok(value.clone()),
+    }
+}
+fn record(value: &Value, root: &Path) -> Result<Value> {
+    let encoded = strings(value, root)?;
+    if value.is_object() && value.get("$kah_source").is_none() {
+        // The complete native record (identity plus every field) owns its CAS
+        // digest. Snapshots keep ordered refs, not a reserialized full history.
+        reference(root, &serde_json::to_vec(&encoded)?, "json")
+    } else {
+        Ok(encoded)
     }
 }
 pub fn expand(value: Value, root: &Path) -> Result<Value> {
