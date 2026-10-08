@@ -277,6 +277,9 @@ pub fn native(
     prompt: &str,
     resume: Option<&str>,
 ) -> std::process::Command {
+    if provider == "claude" {
+        super::claude_login::require_ready();
+    }
     let mut args = Arguments::parse(vec![
         "--agent".into(),
         provider.into(),
@@ -327,9 +330,19 @@ pub fn native(
         relative_cwd: Default::default(),
         needs_creation: false,
     };
+    prepare_native(home, binding, args, provider, root)
+}
+fn prepare_native(
+    home: &Path,
+    binding: kah_sandbox::Project,
+    args: Arguments,
+    provider: &str,
+    root: &Path,
+) -> std::process::Command {
     if provider == "claude" {
         let mut command = kah_cli::claude_launch::prepare_project(home, binding, args).unwrap();
         command.env_remove("CLAUDE_CONFIG_DIR");
+        super::claude_login::command_environment(&mut command);
         super::startup::claude_trace(command, root)
     } else {
         Launch::prepare_project(home, binding, args)

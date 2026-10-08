@@ -1,4 +1,4 @@
-use super::fixture;
+use super::{claude_login, fixture};
 use serde_json::{Value, json};
 use std::{fs, process::Command, time::Duration};
 pub fn launch(mode: &str) {
@@ -7,13 +7,12 @@ pub fn launch(mode: &str) {
         Ok("1"),
         "TRACK2_GATE_ONLY stage=launch: use make gate"
     );
+    if claude_login::requires_claude(mode) {
+        claude_login::require_ready();
+    }
     let fixture = fixture::Fixture::new(mode);
-    let shell = fixture.root.join("shell");
+    let shell = prepare_shell(&fixture);
     let config = fixture.root.join("herdr.toml");
-    fs::write(&shell, format!("#!/bin/sh\nexec env HOME={} XDG_STATE_HOME={} PS1=KAH_TRACK2_READY /bin/bash --noprofile --norc -i\n",
-        crate::pty::quote(fixture.home.to_str().unwrap()),
-        crate::pty::quote(fixture.home.join(".local/state").to_str().unwrap()))).unwrap();
-    fixture::executable(&shell);
     fs::write(
         &config,
         format!(
@@ -79,4 +78,18 @@ fn wait(fixture: &fixture::Fixture, terminal: &mut crate::pty::Terminal) -> Valu
         }
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+fn prepare_shell(fixture: &fixture::Fixture) -> std::path::PathBuf {
+    let shell = fixture.root.join("shell");
+    let auth_unsets = claude_login::AUTH_ENV
+        .iter()
+        .map(|key| format!("-u {key}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    fs::write(&shell, format!("#!/bin/sh\nexec env {} -u CLAUDE_CONFIG_DIR DISABLE_AUTOUPDATER=1 HOME={} XDG_STATE_HOME={} PS1=KAH_TRACK2_READY /bin/bash --noprofile --norc -i\n",
+        auth_unsets, crate::pty::quote(fixture.home.to_str().unwrap()),
+        crate::pty::quote(fixture.home.join(".local/state").to_str().unwrap()))).unwrap();
+    fixture::executable(&shell);
+    shell
 }

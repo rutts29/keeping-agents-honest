@@ -1,4 +1,8 @@
+mod claude_login;
 mod config_audit;
+pub fn claude_login_ready() {
+    claude_login::require_ready();
+}
 mod fixture;
 mod journey;
 mod launcher;

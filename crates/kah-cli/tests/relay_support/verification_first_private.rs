@@ -4,6 +4,9 @@ use kah_observer::{judge::routing::Backend, session::Binding};
 use sha2::{Digest, Sha256};
 
 pub fn launch(home: &Path, project: &Path, provider: &str, task: &str, verify: &str) -> String {
+    if provider == "claude" {
+        crate::track2_support::claude_login_ready();
+    }
     let id = create(home, project, provider, task, verify);
     let output = Command::new(home.join(".local/bin/kah"))
         .args(["resume", &id])
