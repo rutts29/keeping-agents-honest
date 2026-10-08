@@ -62,6 +62,12 @@ fn unverified_legacy_and_disappeared_quote_never_become_clean() {
 #[test]
 fn request_planning_keeps_carries_on_demand_and_records_dirty_ids() {
     let (mut request, entry) = fixture();
+    request.documents.push(Document::new(
+        "git",
+        "controller_facts",
+        "git:project",
+        &json!({"component_impact":{"unmapped_paths":["new-area.rs"]}}).to_string(),
+    ));
     request.worker = format!("cache-plan-{}", crate::relay_store::nonce());
     let store = crate::observer_review::state::Store::open(&request.worker).unwrap();
     let root = store.directory.join("verdict-cache");
@@ -73,6 +79,10 @@ fn request_planning_keeps_carries_on_demand_and_records_dirty_ids() {
     )
     .unwrap();
     prepare(&store.directory, &mut request).unwrap();
+    assert_eq!(
+        request.trigger["cache_plan"]["unattributed_paths"],
+        json!(["new-area.rs"])
+    );
     assert_eq!(
         request.trigger["cache_plan"]["carried"][0]["id"],
         "behavior"
@@ -187,4 +197,31 @@ fn request_candidates_share_one_immutable_source_verifier() {
     let root = store.directory.parent().unwrap().to_owned();
     drop(store);
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn unmapped_diff_is_named_without_invalidating_unchanged_attributed_evidence() {
+    let (mut request, entry) = fixture();
+    request.documents.push(Document::new(
+        "git",
+        "controller_facts",
+        "git:project",
+        &json!({"component_impact":{"unmapped_paths":["new-area.rs"]}}).to_string(),
+    ));
+    assert!(candidate(&request, &entry).unwrap().is_some());
+}
+
+#[test]
+fn a_map_touched_requirement_is_fresh_even_when_its_old_quotes_still_match() {
+    let (mut request, entry) = fixture();
+    request.documents.push(Document::new(
+        "git",
+        "controller_facts",
+        "git:project",
+        &json!({"component_impact":{"unmapped_paths":[],"components":[{
+            "name":"behavior","requirements":["behavior"],"changed_paths":["behavior.rs"]
+        }]}})
+        .to_string(),
+    ));
+    assert!(candidate(&request, &entry).unwrap().is_none());
 }

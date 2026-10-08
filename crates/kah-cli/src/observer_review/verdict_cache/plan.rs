@@ -8,6 +8,7 @@ use kah_observer::{decision_units::Requirement, review_evidence::VerifiedSources
 use serde_json::Value;
 use serde_json::json;
 use std::path::Path;
+mod impact;
 pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
     if !commit_packet::is_commit(request) {
         return Ok(());
@@ -33,8 +34,9 @@ pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
     let mut carried = vec![];
     let mut dirty = vec![];
     let sources = VerifiedSources::new(&request.documents);
+    let impact = impact::read(request)?;
     for entry in saved {
-        match candidate_with_sources(request, &entry, &sources)? {
+        match candidate_with_sources(request, &entry, &sources, &impact)? {
             Some(value) => carried.push(value),
             None => dirty.push(entry.requirement),
         }
@@ -51,6 +53,7 @@ pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
     request.trigger["cache_plan"] = json!({"protocol":"commit-cache-v1","dirty":dirty,
         "carried":carried.iter().map(|v|json!({"id":v["requirement"],"review":v["carried_from_review"],"head":v["carried_from_sha"]})).collect::<Vec<_>>(),
         "record_source":id,"record_digest":record.digest,"source_digest_checks":sources.digest_checks(),"source_quote_checks":sources.quote_checks(),
+        "impacted_requirements":impact["requirements"],"unattributed_paths":impact["unattributed_paths"],
         "always":"intent overview,drift,prohibitions,claim_made,proportion,user waits"});
     request.documents.push(record);
     Ok(())
@@ -81,12 +84,13 @@ mod tests;
 
 pub fn candidate(request: &Request, entry: &Entry) -> Result<Option<Value>> {
     let sources = VerifiedSources::new(&request.documents);
-    candidate_with_sources(request, entry, &sources)
+    candidate_with_sources(request, entry, &sources, &impact::read(request)?)
 }
 fn candidate_with_sources(
     request: &Request,
     entry: &Entry,
     sources: &VerifiedSources<'_>,
+    impact: &Value,
 ) -> Result<Option<Value>> {
     if !commit_packet::is_commit(request)
         || !entry.confirmed
@@ -96,17 +100,11 @@ fn candidate_with_sources(
     {
         return Ok(None);
     }
-    if request
-        .documents
-        .iter()
-        .find(|d| d.id == "git")
-        .map(|d| serde_json::from_str::<Value>(&d.text))
-        .transpose()?
-        .is_some_and(|project| {
-            project["component_impact"]["unmapped_paths"]
-                .as_array()
-                .is_some_and(|paths| !paths.is_empty())
-        })
+    // An unmapped path needs its own fresh attribution; it does not change
+    // the evidence of every unrelated requirement. Mapped changes do.
+    if impact["requirements"]
+        .as_array()
+        .is_some_and(|ids| ids.iter().any(|id| id == &entry.requirement))
     {
         return Ok(None);
     }
