@@ -133,8 +133,35 @@ fn one(
     review::packet_references::scope(&directory, &state.observer.workspace, &mut request).unwrap();
     let started = kah_observer::session::now_ms();
     review::snapshot::wake(&request).unwrap();
-    let result = proof_replay::wait(worker, &request.id);
+    let result = wait(worker, &request.id);
     measurement(worker, head, baseline, started, native_before, result)
+}
+fn wait(worker: &Worker, id: &str) -> Value {
+    loop {
+        if telemetry::result_ids(&worker.id).iter().any(|r| r == id) {
+            return telemetry::result(&worker.id, id);
+        }
+        let root = Store::directory(&worker.id).unwrap();
+        let parked = root.join("parked-validation").join(format!("{id}.json"));
+        if parked.exists() {
+            let record: Value = review::state::read(&parked).unwrap().unwrap();
+            save(&worker.root.join("cache-terminal-failure.json"), &record);
+            panic!(
+                "CACHE_BENCH_VALIDATION_PARKED stage=wait: {id}; same unchanged report is not re-run"
+            );
+        }
+        review::queue::drain(&worker.id).unwrap();
+        if let Some(state) = Store::read(&worker.id).unwrap()
+            && let Some(pane) = state.observer.pane
+        {
+            super::journey::consent(
+                &kah_cli::run_pane::Pane { id: pane },
+                "codex",
+                &state.observer.workspace,
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
 }
 
 fn measurement(
