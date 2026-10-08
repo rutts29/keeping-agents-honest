@@ -5,8 +5,10 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 mod native_record;
 mod reminder;
+mod verified_sources;
 pub use native_record::NativeRecord;
 pub use reminder::{IntentQuote, Reminder};
+pub use verified_sources::VerifiedSources;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -127,11 +129,12 @@ impl Report {
         if self.findings.is_empty() {
             return Err("REVIEW_EVIDENCE_EMPTY stage=evidence".into());
         }
+        let sources = VerifiedSources::new(documents);
         self.findings.iter().map(|finding| {
             if finding.claim.trim().is_empty() || finding.citations.is_empty() {
                 return Err("REVIEW_FINDING_EMPTY stage=evidence".into());
             }
-            let citations = finding.citations.iter().map(|citation| verify_quote(citation, documents)).collect::<Result<Vec<_>,_>>()?;
+            let citations = finding.citations.iter().map(|citation| sources.quote(citation)).collect::<Result<Vec<_>,_>>()?;
             let mut value=json!({"topic":finding.topic,"model_claim_not_a_decision":finding.claim,"citations":citations});
             if let Some(scope) = &finding.checkpoint_scope {
                 if !matches!(finding.topic, Topic::Integration) || scope.phase.trim().is_empty()
@@ -168,47 +171,9 @@ impl Report {
     }
 }
 pub(crate) fn verify_quote(citation: &Citation, documents: &[Document]) -> Result<Value, String> {
-    let document = documents
-        .iter()
-        .find(|d| d.id == citation.source)
-        .ok_or_else(|| {
-            let aliases=documents.iter().filter(|d|d.uri==citation.source)
-                .map(|d|d.id.as_str()).collect::<Vec<_>>();
-            format!("REVIEW_SOURCE_UNKNOWN stage=evidence: citation.source={} is not a document id. Use manifest document ids, not URIs or paths. Matching URI document ids: {}",json!(citation.source),json!(aliases))
-        })?;
-    let digest = format!("sha256:{:x}", Sha256::digest(document.text.as_bytes()));
-    if citation.digest != document.digest || digest != document.digest {
-        return Err("REVIEW_SOURCE_CHANGED stage=evidence".into());
-    }
-    if citation.quote.is_empty() {
-        return Err("REVIEW_QUOTE_EMPTY stage=evidence".into());
-    }
-    let (start, _) = document
-        .text
-        .match_indices(&citation.quote)
-        .nth(citation.occurrence)
-        .ok_or("REVIEW_QUOTE_MISSING stage=evidence")?;
-    let end = start + citation.quote.len();
-    if joins_word(
-        document.text[..start].chars().next_back(),
-        citation.quote.chars().next(),
-    ) || joins_word(
-        citation.quote.chars().next_back(),
-        document.text[end..].chars().next(),
-    ) {
-        return Err("REVIEW_QUOTE_UNIT stage=evidence: the brain must select a complete meaningful unit, never part of a word".into());
-    }
-    let line = document.text[..start]
-        .bytes()
-        .filter(|b| *b == b'\n')
-        .count()
-        + 1;
-    // The brain chooses a complete meaningful span, including any nearby
-    // context it needs. Keep the full source in the immutable snapshot/CAS;
-    // repeating it here would undo evidence extraction and swamp Jev.
-    let evidence = json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"end_byte":end,"line":line});
-    Ok(with_native_records(evidence, document, start, end))
+    VerifiedSources::new(documents).quote(citation)
 }
+
 fn with_native_records(
     mut evidence: Value,
     document: &Document,

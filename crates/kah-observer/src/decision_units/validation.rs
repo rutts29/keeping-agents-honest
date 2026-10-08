@@ -3,11 +3,12 @@ use crate::review_evidence::verify_quote;
 pub(super) fn verified_requirement(
     r: &Requirement,
     documents: &[Document],
+    sources: &crate::review_evidence::VerifiedSources<'_>,
     version: Option<u32>,
     authority_required: bool,
 ) -> Result<Value, String> {
     (|| {
-        let value = requirement(r, documents, authority_required)?;
+        let value = requirement(r, documents, sources, authority_required)?;
         if version.is_some_and(|v| v >= 7) {
             super::blocker::require_typed(r)?;
         }
@@ -28,6 +29,7 @@ pub(super) fn id(id: &str) -> bool {
 pub(super) fn requirement(
     r: &Requirement,
     documents: &[Document],
+    sources: &crate::review_evidence::VerifiedSources<'_>,
     authority_required: bool,
 ) -> Result<Value, String> {
     required_fields(r, authority_required)?;
@@ -35,7 +37,7 @@ pub(super) fn requirement(
         .citations
         .iter()
         .enumerate()
-        .map(|(i, c)| verify_quote(c, documents).map_err(|e| format!("{e}; citations[{i}]")))
+        .map(|(i, c)| sources.quote(c).map_err(|e| format!("{e}; citations[{i}]")))
         .collect::<Result<Vec<_>, _>>()?;
     let indices = thinking(&r.judgment)?;
     super::blocker::validate(r, &citations)?;
