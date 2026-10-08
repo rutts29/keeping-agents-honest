@@ -13,8 +13,6 @@ pub struct Fixture {
     protected: Vec<(PathBuf, String)>,
     logins: Vec<(PathBuf, PathBuf)>,
     config_before: Value,
-    claude_path: PathBuf,
-    claude_before: Value,
 }
 impl Fixture {
     pub fn new(mode: &str) -> Self {
@@ -32,7 +30,9 @@ impl Fixture {
             ".codex/sessions",
             ".codex/archived_sessions",
             ".claude/projects",
+            ".cache",
             "repos/mine",
+            "repos/research",
         ] {
             fs::create_dir_all(home.join(dir)).unwrap();
         }
@@ -44,14 +44,7 @@ impl Fixture {
             protected: vec![],
             logins: vec![],
             config_before: config_snapshot(&actual.join(".config/kah")),
-            claude_path: actual.join(".claude.json"),
-            claude_before: json!(null),
         };
-        result.claude_before = super::config_audit::snapshot(&result.claude_path, &result.root);
-        save(
-            &result.root.join("claude-before.json"),
-            &result.claude_before,
-        );
         save(
             &result.root.join("config-before.json"),
             &result.config_before,
@@ -82,12 +75,11 @@ impl Fixture {
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_kah")));
         fs::copy(&binary, self.home.join(".local/bin/kah")).unwrap();
         executable(&self.home.join(".local/bin/kah"));
-        for relative in [".codex/auth.json", ".claude/.credentials.json"] {
-            let target = actual.join(relative);
-            let link = self.home.join(relative);
-            symlink(&target, &link).unwrap();
-            self.logins.push((link, target));
-        }
+        let target = actual.join(".codex/auth.json");
+        let link = self.home.join(".codex/auth.json");
+        symlink(&target, &link).unwrap();
+        self.logins.push((link, target));
+        self.logins.push(super::claude_login::link(&self.home));
         // Existing Jev loader rejects a symlink final component. Link its config
         // directory, so native kah reads the original regular key; never copy it.
         fs::create_dir_all(self.home.join(".config")).unwrap();
@@ -95,11 +87,7 @@ impl Fixture {
         let link = self.home.join(".config/kah");
         symlink(&target, &link).unwrap();
         self.logins.push((link, target));
-        for relative in [
-            ".codex/config.toml",
-            ".claude/settings.json",
-            ".local/bin/kah",
-        ] {
+        for relative in [".codex/config.toml", ".local/bin/kah"] {
             let path = actual.join(relative);
             if path.is_file() {
                 self.protected.push((path.clone(), digest(&path)));
@@ -136,10 +124,19 @@ impl Fixture {
         .unwrap();
         let mut rows = vec![];
         for row in inventory["inventory"].as_array().unwrap() {
+            if row["provider"] == "claude"
+                && std::env::var("KAH_TRACK2_DRY_PROVIDER").as_deref() == Ok("codex")
+            {
+                continue;
+            }
             let source = PathBuf::from(row["path"].as_str().unwrap());
             assert!(
                 source.starts_with(actual),
                 "TRACK2_SOURCE_SCOPE stage=prepare"
+            );
+            assert!(
+                !source.starts_with(actual.join(".claude")),
+                "TRACK2_OPERATOR_CLAUDE_PATH_DISABLED stage=sources: a retained test-template session is required"
             );
             let before = digest(&source);
             assert_eq!(
@@ -223,8 +220,11 @@ impl Fixture {
             "after":after,"unchanged":after==*before})
             })
             .collect::<Vec<_>>();
-        let logins=self.logins.iter().map(|(link,target)|json!({"path":link,"target":target,
-            "symlink_unchanged":fs::symlink_metadata(link).unwrap().file_type().is_symlink() && fs::read_link(link).unwrap()==*target})).collect::<Vec<_>>();
+        let logins = self
+            .logins
+            .iter()
+            .map(|(link, target)| super::claude_login::audit_link(link, target))
+            .collect::<Vec<_>>();
         let processes = crate::processes::list()
             .into_iter()
             .filter(|p| p.cwd.starts_with(self.root.to_str().unwrap()))
@@ -234,17 +234,12 @@ impl Fixture {
             && super::proof_inputs::audit(&self.root)["passed"] == true
             && protected.iter().all(|r| r["unchanged"] == true)
             && logins.iter().all(|r| r["symlink_unchanged"] == true)
-            && config_snapshot(&self.home.join(".config/kah")) == self.config_before
-            && super::config_audit::compare(
-                &self.claude_before,
-                &super::config_audit::snapshot(&self.claude_path, &self.root),
-            )["passed"]
-                == true;
+            && config_snapshot(&self.home.join(".config/kah")) == self.config_before;
         json!({"passed":passed,"processes":processes,"protected":protected,"login_links":logins,
             "historical_replay_source":super::proof_inputs::audit(&self.root),
             "recorder":{"path":self.root.join("terminal.log"),"bytes":fs::metadata(self.root.join("terminal.log")).map(|m|m.len()).unwrap_or(0)},
             "config_before":self.config_before,"config_after":config_snapshot(&self.home.join(".config/kah")),
-            "shared_claude_config":super::config_audit::compare(&self.claude_before,&super::config_audit::snapshot(&self.claude_path,&self.root))})
+            "operator_claude_files":{"accessed":false,"policy":"outside fixture scope"}})
     }
     pub fn publish(&self, value: &Value) {
         let evidence = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());

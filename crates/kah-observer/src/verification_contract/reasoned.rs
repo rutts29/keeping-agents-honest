@@ -23,6 +23,7 @@ pub fn prepare(
     }
     let mut r = requirement.clone();
     r.applicability = None;
+    r.checks.clear(); // Host receipts below carry their own binding; no native check is fabricated.
     r.name = format!(
         "Executed command {command} on {head} covers requirement: {}",
         requirement.name

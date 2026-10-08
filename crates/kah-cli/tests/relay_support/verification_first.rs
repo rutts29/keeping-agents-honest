@@ -7,6 +7,8 @@ use kah_run::store::Store as Runs;
 
 #[path = "verification_first_settings.rs"]
 mod native_settings;
+#[path = "verification_first_private.rs"]
+mod private;
 
 const TASK: &str = "Build a CommonJS numeric pipeline in this disposable worktree. normalize.cjs exports a function mapping finite numbers to Math.round(n*100)/100. serialize.cjs exports a function returning JSON.stringify of an array. pipeline.cjs exports a function composing normalize then serialize, in that order. Write verification.cjs with separate component and end-to-end assertions including [3.14159,0,-2.71828] becoming '[3.14,0,-2.72]', and write PLAN.md explaining the completed scope. Run verification.cjs. Commit code, tests and plan on this run branch, tag that same commit gate-pipeline-ready, and report. Preserve the existing guidance and .gitignore. Do not push or deploy. When the kah observer asks for evidence, answer once with its receipt marker and concrete existing check/source evidence on that same SHA; do not change files merely to answer.";
 const VERIFY: &str = "node verification.cjs && node -e \"const a=require('node:assert/strict'); const p=require('./pipeline.cjs'); a.equal(p([3.14159,0,-2.71828]),'[3.14,0,-2.72]'); a.equal(p([1.234,2.678]),'[1.23,2.68]'); console.log('INDEPENDENT_PIPELINE_PASS')\" && test -f PLAN.md";
@@ -22,38 +24,13 @@ pub fn run(root: &Path) -> Value {
     assert!(matches!(provider.as_str(), "codex" | "claude"));
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = runs::global_settings(&home);
-    let (launch, mut fixture) = crate::fixture::prepare(&home, "research", false);
-    let mut command = launch.command(false);
-    command
-        .args(["-c", "service_tier=\"default\"", "--no-alt-screen", COURIER])
-        .env_remove("CODEX_THREAD_ID");
-    let courier_args = command
-        .get_args()
-        .map(|v| v.to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-    let panes = Panes(vec![Pane::start(&command).unwrap()]);
-    fixture.sessions.push(ready(&panes.0[0], "codex"));
-    assert!(
-        Command::new("herdr")
-            .args(["agent", "rename", &panes.0[0].id, "kah-reviewer"])
-            .status()
-            .unwrap()
-            .success()
-    );
+    let (_fixture, panes, courier_args) = start_courier(&home);
     let project = runs::fixture_project(
         &home,
         &format!("kah-native-run-risk-{provider}-{}", std::process::id()),
         kah_sandbox::Domain::Mine,
     );
-    let output = runs::launch(
-        &home,
-        &project.root,
-        &provider,
-        runs::fixture_model(&provider),
-        TASK,
-        VERIFY,
-        &[],
-    );
+    let output = launch_worker(&home, &project.root, &provider);
     let id = output
         .lines()
         .find_map(|line| line.strip_prefix("Created "))
@@ -64,8 +41,14 @@ pub fn run(root: &Path) -> Value {
     )
     .unwrap();
     let mut observed = wait(root, &home, id, &provider, &panes.0[0]);
-    observed["nativeSettings"] =
-        native_settings::record(&home, &provider, id, &panes.0[0], &courier_args);
+    record_native_settings(
+        &mut observed,
+        &home,
+        &provider,
+        id,
+        &panes.0[0],
+        &courier_args,
+    );
     for (path, bytes) in before {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }
@@ -81,8 +64,27 @@ fn wait(root: &Path, home: &Path, id: &str, provider: &str, courier: &Pane) -> V
     let mut approvals = vec![];
     loop {
         let record = Runs::read(&base, id).unwrap();
-        runs::observer_consent(&record, &mut consents);
-        if !accepted
+        let private_run = std::env::var_os("KAH_TRACK2_ROOT").is_some();
+        if private_run
+            && !matches!(
+                record.published_status(),
+                RunStatus::Created | RunStatus::Running | RunStatus::Stopping
+            )
+            && record
+                .native
+                .as_ref()
+                .and_then(|n| n.session.as_ref())
+                .is_none()
+        {
+            return json!({"passed":false,"early_run":true,"reason":"TRACK2_NATIVE_START_FAILED","record":record});
+        }
+        if private_run {
+            private::dialogs(home, &record, provider);
+        } else {
+            runs::observer_consent(&record, &mut consents);
+        }
+        if !private_run
+            && !accepted
             && let Some(native) = &record.native
             && native.waiting.is_some()
             && let Some(pane) = &native.pane
@@ -96,15 +98,14 @@ fn wait(root: &Path, home: &Path, id: &str, provider: &str, courier: &Pane) -> V
             .and_then(|native| native.session.as_deref())
         {
             let directory = Reviews::directory(worker).unwrap();
-            for question in questions::pending(&directory)
-                .unwrap()
-                .into_iter()
-                .filter(|q| q["kind"] == "checkpoint_approval" && q["delivery"] == "submitted")
-            {
-                if answers.insert(question["id"].as_str().unwrap().to_owned()) {
-                    approvals.push(answer(home, worker, &question, courier));
-                }
-            }
+            answer_pending(
+                home,
+                worker,
+                courier,
+                &directory,
+                &mut answers,
+                &mut approvals,
+            );
             if !matches!(
                 record.published_status(),
                 RunStatus::Created | RunStatus::Running | RunStatus::Stopping
@@ -113,6 +114,28 @@ fn wait(root: &Path, home: &Path, id: &str, provider: &str, courier: &Pane) -> V
             }
         }
         std::thread::sleep(Duration::from_millis(300));
+    }
+}
+fn answer_pending(
+    home: &Path,
+    worker: &str,
+    courier: &Pane,
+    directory: &Path,
+    answers: &mut std::collections::BTreeSet<String>,
+    approvals: &mut Vec<Value>,
+) {
+    for question in questions::pending(directory)
+        .unwrap()
+        .into_iter()
+        .filter(|q| q["kind"] == "checkpoint_approval" && q["delivery"] == "submitted")
+    {
+        if answers.insert(question["id"].as_str().unwrap().to_owned()) {
+            assert!(
+                std::env::var_os("KAH_TRACK2_ROOT").is_none() || approvals.is_empty(),
+                "TRACK2_SECOND_RISK_QUESTION stage=verification: single question required"
+            );
+            approvals.push(answer(home, worker, &question, courier));
+        }
     }
 }
 fn answer(home: &Path, worker: &str, question: &Value, courier: &Pane) -> Value {
@@ -143,6 +166,11 @@ fn finish(
     record: &kah_run::store::Record,
     approvals: Vec<Value>,
 ) -> Value {
+    if std::env::var_os("KAH_TRACK2_ROOT").is_some()
+        && record.published_status() != RunStatus::Completed
+    {
+        return private::stopped(id, provider, record);
+    }
     let worker = record.native.as_ref().unwrap().session.as_deref().unwrap();
     let state = Reviews::read(worker).unwrap().unwrap();
     super::review_trace::archive(home, &state).unwrap();
@@ -160,7 +188,13 @@ fn finish(
     let complete = record.published_status() == RunStatus::Completed;
     let exercised = rounds > 0;
     let question_seen = !approvals.is_empty();
-    let result = json!({"passed":complete&&exercised,"provider":provider,"version":runs::version(home,provider),"model":runs::fixture_model(provider),"effort":"low",
+    let early = std::env::var_os("KAH_TRACK2_ROOT").is_some();
+    let round_proof = if early {
+        private::rounds(&round_root)
+    } else {
+        json!(null)
+    };
+    let result = json!({"passed":complete && (early || exercised),"early_run":early,"final_acceptance":false,"creation_path":if early {"typed volume fixture then public kah resume"} else {"public kah run"},"roundProof":round_proof,"provider":provider,"version":runs::version(home,provider),"model":runs::fixture_model(provider),"effort":"low",
         "run":id,"worker":worker,"status":record.published_status(),"observerSession":state.observer.session,"observerPane":state.observer.pane,
         "rounds":rounds,"questionSeen":question_seen,"approvals":approvals,"checkpoint":checkpoint,"pending":state.pending,
         "observedOutcome":if !complete {"run_not_completed"} else if !exercised {"completed_before_followup_needed"} else if question_seen {"user_risk_approved"} else {"all_verified_after_followup"},
@@ -274,4 +308,67 @@ fn last_turn_text(history: &mut kah_cli::native_history::History, user: bool) ->
             .map(|row| row.to_string())
             .unwrap_or_default(),
     }
+}
+
+fn launch_worker(home: &Path, project: &Path, provider: &str) -> String {
+    if std::env::var_os("KAH_TRACK2_ROOT").is_some() {
+        private::launch(home, project, provider, TASK, VERIFY)
+    } else {
+        runs::launch(
+            home,
+            project,
+            provider,
+            runs::fixture_model(provider),
+            TASK,
+            VERIFY,
+            &[],
+        )
+    }
+}
+fn courier_domain() -> &'static str {
+    if std::env::var_os("KAH_TRACK2_ROOT").is_some() {
+        "mine"
+    } else {
+        "research"
+    }
+}
+fn record_native_settings(
+    observed: &mut Value,
+    home: &Path,
+    provider: &str,
+    id: &str,
+    courier: &Pane,
+    args: &[String],
+) {
+    if observed["passed"] == true {
+        observed["nativeSettings"] = native_settings::record(home, provider, id, courier, args);
+    }
+}
+
+fn start_courier(home: &Path) -> (crate::fixture::Fixture, Panes, Vec<String>) {
+    let (launch, mut fixture) = crate::fixture::prepare(home, courier_domain(), false);
+    let mut command = launch.command(false);
+    command
+        .args(["-c", "service_tier=\"default\"", "--no-alt-screen", COURIER])
+        .env_remove("CODEX_THREAD_ID");
+    let courier_args = command
+        .get_args()
+        .map(|v| v.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let panes = Panes(vec![Pane::start(&command).unwrap()]);
+    fixture
+        .sessions
+        .push(if std::env::var_os("KAH_TRACK2_ROOT").is_some() {
+            private::courier(&panes.0[0], &fixture.project)
+        } else {
+            ready(&panes.0[0], "codex")
+        });
+    assert!(
+        Command::new("herdr")
+            .args(["agent", "rename", &panes.0[0].id, "kah-reviewer"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    (fixture, panes, courier_args)
 }

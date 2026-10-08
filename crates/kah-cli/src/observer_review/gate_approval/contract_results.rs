@@ -146,6 +146,10 @@ pub(crate) fn unchecked_final(
     let results = request.trigger["verification_followup"]["item_results"].as_array();
     let mut missing = vec![];
     for id in ids {
+        if named_terminal_risk(report, &id) {
+            // This is named uncertainty after the single round, not a pass.
+            continue;
+        }
         if !results.is_some_and(|items| items.iter().any(|i| i["requirement_id"] == id)) {
             let claim = report
                 .decision_units
@@ -171,4 +175,19 @@ pub(crate) fn unchecked_final(
         assessment["state"] = "checkpoint_needs_check".into();
     }
     Ok(())
+}
+fn named_terminal_risk(report: &Report, id: &Value) -> bool {
+    report.decision_units.as_ref().is_some_and(|u| {
+        u.version() >= 12
+            && u.requirements.iter().any(|r| {
+                id == &r.id
+                    && matches!(
+                        r.judgment,
+                        Thinking::Semantic {
+                            decision: SemanticDecision::Satisfied,
+                            ..
+                        }
+                    )
+            })
+    })
 }

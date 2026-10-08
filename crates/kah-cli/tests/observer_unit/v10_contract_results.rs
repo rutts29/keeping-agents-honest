@@ -170,7 +170,7 @@ fn named_send_back_result_releases_pending_without_creating_a_user_wait() {
 }
 
 #[test]
-fn new_final_item_is_named_builder_work_and_never_a_user_risk() {
+fn legacy_new_final_item_stays_builder_work_while_v12_names_unverified_risk() {
     let mut request = crate::observer_review::state::Request {
         id: "review-new-final".into(),
         worker: "worker".into(),
@@ -189,6 +189,12 @@ fn new_final_item_is_named_builder_work_and_never_a_user_risk() {
     assert_eq!(a["passed"], false);
     assert_eq!(a["needs_check"][0]["id"], "new-contract");
     assert!(a["needs_user"].as_array().unwrap().is_empty());
+    report.decision_units.as_mut().unwrap().version = Some(12);
+    let mut v12 =
+        json!({"passed":null,"needs_thinker":["new-contract"],"needs_user":[],"violations":[]});
+    unchecked_final(&request, &report, &mut v12).unwrap();
+    assert!(v12["passed"].is_null());
+    assert!(v12["needs_check"].as_array().is_none_or(Vec::is_empty));
     a = json!({"passed":false,"state":"checkpoint_failed","needs_thinker":["new-contract"],"needs_user":[],"violations":["scope"]});
     unchecked_final(&request, &report, &mut a).unwrap();
     assert_eq!(a["state"], "checkpoint_failed");

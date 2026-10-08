@@ -103,7 +103,7 @@ pub fn eligible_after_followup(
     if report
         .decision_units
         .as_ref()
-        .is_some_and(|u| u.version() >= 10)
+        .is_some_and(|u| (10..12).contains(&u.version()))
         && ids.iter().any(|id| {
             let Some(id) = id.as_str() else {
                 return true;
@@ -164,8 +164,10 @@ fn positive_uncertainty(
                             decision: SemanticDecision::Satisfied,
                             ..
                         } => true,
-                        Thinking::AtomicFact { .. } => true,
-                        Thinking::ArtifactPreservation { fact, .. } => fact.equal(),
+                        Thinking::AtomicFact { .. } => units.version() < 12,
+                        Thinking::ArtifactPreservation { fact, .. } => {
+                            units.version() < 12 && fact.equal()
+                        }
                         _ => false,
                     })
             })

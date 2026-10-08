@@ -25,7 +25,11 @@ pub(crate) fn begin(
     let Some(proof) = captured(request)? else {
         return Ok(false);
     };
-    if !request.trigger["reconsideration"].is_object()
+    if (!request.trigger["reconsideration"].is_object()
+        && report
+            .decision_units
+            .as_ref()
+            .is_none_or(|u| u.version() < 12))
         || !positive_uncertainty(request, report, assessment, &proof)
     {
         return Ok(false);

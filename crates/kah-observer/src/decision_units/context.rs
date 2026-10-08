@@ -9,7 +9,7 @@ pub fn decision(input: &Value, key: &str) -> Result<Value, String> {
     };
     if matches!(
         kind,
-        "coverage_subject" | "coverage_assertion" | "risk_admission"
+        "coverage_subject" | "coverage_assertion" | "coverage_decision" | "risk_admission"
     ) {
         let state = input["verification_contracts"][id].clone();
         return if state.is_object() {

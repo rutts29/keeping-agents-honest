@@ -1,3 +1,4 @@
+pub use super::trust::consent;
 use super::{
     fixture::{self, save},
     perturb, proof, telemetry,
@@ -276,6 +277,9 @@ pub fn native(
     prompt: &str,
     resume: Option<&str>,
 ) -> std::process::Command {
+    if provider == "claude" {
+        super::claude_login::require_ready();
+    }
     let mut args = Arguments::parse(vec![
         "--agent".into(),
         provider.into(),
@@ -326,9 +330,19 @@ pub fn native(
         relative_cwd: Default::default(),
         needs_creation: false,
     };
+    prepare_native(home, binding, args, provider, root)
+}
+fn prepare_native(
+    home: &Path,
+    binding: kah_sandbox::Project,
+    args: Arguments,
+    provider: &str,
+    root: &Path,
+) -> std::process::Command {
     if provider == "claude" {
         let mut command = kah_cli::claude_launch::prepare_project(home, binding, args).unwrap();
         command.env_remove("CLAUDE_CONFIG_DIR");
+        super::claude_login::command_environment(&mut command);
         super::startup::claude_trace(command, root)
     } else {
         Launch::prepare_project(home, binding, args)
@@ -413,40 +427,6 @@ pub fn ready(pane: &Pane, provider: &str, project: &Path) -> String {
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-}
-pub fn consent(pane: &Pane, provider: &str, project: &Path) {
-    let view = pane.inspect().unwrap();
-    let output = std::process::Command::new("herdr")
-        .args([
-            "pane", "read", &pane.id, "--source", "visible", "--format", "text",
-        ])
-        .output()
-        .unwrap();
-    let screen = String::from_utf8(output.stdout).unwrap();
-    if view["agent_status"] != "blocked" && !screen.contains("Quick safety check:") {
-        return;
-    }
-    let answer = super::trust::folder_dialog(provider, &screen, project);
-    if let Err(reason) = &answer {
-        let root = PathBuf::from(std::env::var_os("KAH_TRACK2_ROOT").unwrap());
-        save(
-            &root.join(format!("dialog-{}.json", pane.id.replace(':', "-"))),
-            &json!({
-            "reason":reason,"provider":provider,"pane":pane.id,"expected":project,"view":view,"screen":screen,"keys_sent":false}),
-        );
-    }
-    assert_eq!(
-        answer,
-        Ok(true),
-        "TRACK2_OTHER_DIALOG stage=startup: no keys sent"
-    );
-    assert!(
-        std::process::Command::new("herdr")
-            .args(["pane", "send-keys", &pane.id, "Enter"])
-            .status()
-            .unwrap()
-            .success()
-    );
 }
 pub fn register_session(root: &Path, id: &str) {
     let path = root.join("sessions.json");

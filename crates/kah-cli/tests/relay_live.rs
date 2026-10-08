@@ -17,10 +17,34 @@ mod processes;
 #[path = "terminal_support/pty.rs"]
 mod pty;
 mod relay_support;
+#[allow(dead_code)]
+#[path = "track2_support/verify.rs"]
+mod track2_support;
 #[path = "terminal_support/version.rs"]
 mod version;
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, process::Command, time::Duration};
+
+#[test]
+#[ignore = "early verify-first journey with private kah/HOME/Herdr; make gate only"]
+fn early_verification_first_private() {
+    track2_support::launch("verify");
+}
+#[test]
+fn early_verify_entrypoint() {
+    if std::env::var("KAH_TRACK2_ENTRYPOINT").as_deref() == Ok("verify") {
+        let root = PathBuf::from(std::env::var_os("KAH_TRACK2_ROOT").unwrap());
+        let run = std::panic::catch_unwind(|| relay_support::run(&root));
+        let mut result=run.unwrap_or_else(|_|json!({"passed":false,"reason":"TRACK2_VERIFY_PANIC","trace":root.join("helper.log")}));
+        result["early_run"] = true.into();
+        result["final_acceptance"] = false.into();
+        fs::write(
+            root.join("result.json"),
+            serde_json::to_vec_pretty(&result).unwrap(),
+        )
+        .unwrap();
+    }
+}
 
 #[test]
 #[ignore = "two-way native relay and both native worker dispatches in a private Herdr server"]

@@ -45,6 +45,7 @@ pub(super) fn execute(
             continue;
         }
         let mut coverage = assessment["contract_coverage"][&item.requirement_id].clone();
+        proposed_target(report, item, &mut coverage);
         if report.decision_units.as_ref().is_some_and(|u| {
             u.version() >= 10
                 && u.requirements.iter().any(|r| {
@@ -63,6 +64,7 @@ pub(super) fn execute(
         } else {
             one(&directory, state, round, &linked, coverage, proof, request)?
         };
+        terminal_coverage(report, assessment, &mut result);
         result.plan_digest = plan_digest(item)?;
         let mut tried =
             super::contract_evidence::attempts(request, report, &linked, round, assessment)?;
@@ -77,6 +79,55 @@ pub(super) fn execute(
         results.push(result);
     }
     Ok(results)
+}
+fn proposed_target(report: &Report, item: &Item, coverage: &mut Value) {
+    if report
+        .decision_units
+        .as_ref()
+        .is_some_and(|u| u.version() >= 12)
+        && matches!(item.method, Method::TargetedCheck { .. })
+    {
+        // Judge coverage against the real receipt after executing once.
+        if !coverage.is_object() {
+            *coverage = json!({});
+        }
+        coverage["execute_reasoned_check"] = true.into();
+    }
+}
+fn terminal_coverage(report: &Report, assessment: &Value, result: &mut ItemResult) {
+    if report
+        .decision_units
+        .as_ref()
+        .is_some_and(|u| u.version() >= 12)
+        && !result.verified
+        && result
+            .check
+            .as_ref()
+            .is_none_or(|c| passes(c, &result.binding.head))
+        && !exempted(assessment, &result.requirement_id)
+        && assessment["violations"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+        && report
+            .decision_units
+            .as_ref()
+            .unwrap()
+            .requirements
+            .iter()
+            .any(|r| {
+                r.id == result.requirement_id
+                    && matches!(
+                        r.judgment,
+                        Thinking::Semantic {
+                            decision: SemanticDecision::Satisfied,
+                            ..
+                        }
+                    )
+            })
+    {
+        result.semantic_risk_admissible = true;
+        result.needs_check = false;
+    }
 }
 pub(super) fn linked_item(report: &Report, item: &Item) -> Result<Item> {
     super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
@@ -143,12 +194,15 @@ fn one(
             result.tried.push(attempt(item, &check, round));
             result.check = Some(check);
         }
-        Method::TargetedCheck { command } if coverage["covered"] == true => {
+        Method::TargetedCheck { command }
+            if coverage["covered"] == true || coverage["execute_reasoned_check"] == true =>
+        {
             result.check = targeted(directory, state, round, item, command)?;
-            result.verified = result
-                .check
-                .as_ref()
-                .is_some_and(|c| passes(c, &round.binding.head));
+            result.verified = coverage["covered"] == true
+                && result
+                    .check
+                    .as_ref()
+                    .is_some_and(|c| passes(c, &round.binding.head));
             if let Some(check) = &result.check {
                 result.tried.push(attempt(item, check, round));
             }
@@ -324,3 +378,7 @@ mod recovery_tests;
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/controller_fact_coverage.rs"]
 mod controller_fact_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/v12_terminal_coverage.rs"]
+mod v12_tests;
