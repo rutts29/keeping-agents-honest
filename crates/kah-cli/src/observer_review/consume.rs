@@ -317,7 +317,8 @@ fn take_gap(store: &Store) -> Result<Option<Value>> {
     };
     if gap["error"]
         .as_str()
-        .is_some_and(|s| s.starts_with("REVIEW_PAUSED"))
+        // Outage notices use the service epoch, not raw per-job timestamps.
+        .is_some_and(|s| s.starts_with("REVIEW_PAUSED") || judge::availability::outage(s))
     {
         return Ok(None);
     }

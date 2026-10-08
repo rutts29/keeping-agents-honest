@@ -30,6 +30,18 @@ fn payment_liveness_is_a_service_outage_not_a_stall_or_report_correction() {
     let next = transition(Some(&prior), &sample);
     assert!(!next.stalled);
     assert!(!next.changed);
+    for error in [
+        "JEV_HTTP_TIMEOUT stage=judge",
+        "JEV_HTTP_STATUS stage=judge http_status=503",
+        "JEV_HTTP_STATUS stage=judge http_status=529",
+    ] {
+        sample.cause = service::cause(error);
+        assert!(sample.cause.starts_with("SERVICE OUTAGE:"));
+        let prior = transition(None, &sample);
+        sample.now_ms += 1000000;
+        assert!(!transition(Some(&prior), &sample).stalled);
+        assert!(!redelivery::retryable(Origin::ReportValidation, error));
+    }
     assert!(
         service::cause("REVIEW_REQUIREMENT_EMPTY stage=report").starts_with("VALIDATION BLOCKED")
     );
@@ -82,6 +94,16 @@ fn jev_payment_required_is_never_a_thinker_correction_even_in_a_report_boundary(
 
 #[test]
 fn payment_outage_keeps_queue_and_request_without_correction_and_recovers_on_success() {
+    for error in [
+        "JEV_HTTP_STATUS stage=judge_http http_status=402",
+        "JEV_HTTP_STATUS stage=judge_http http_status=503",
+        "JEV_HTTP_STATUS stage=judge_http http_status=529",
+        "JEV_HTTP_TIMEOUT stage=judge",
+    ] {
+        service_case(error);
+    }
+}
+fn service_case(error: &str) {
     let home = std::env::temp_dir().join(format!("kah-review-service-{}", std::process::id()));
     std::fs::create_dir(&home).unwrap();
     let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -94,6 +116,7 @@ fn payment_outage_keeps_queue_and_request_without_correction_and_recovers_on_suc
         .env("HOME", &home)
         .env_remove("XDG_STATE_HOME")
         .env("KAH_SERVICE_CHILD", "1")
+        .env("KAH_SERVICE_ERROR", error)
         .output()
         .unwrap();
     std::fs::remove_dir_all(home).unwrap();
@@ -125,7 +148,8 @@ fn service_child() {
     store.save(&state).unwrap();
     let root = store.directory.clone();
     kah_cli::unattended_report::save(&root,"config.json",&json!({"enabled":true,"provider":"codex","worker":worker,"turn":"t","pid":null,"process_stamp":null})).unwrap();
-    let legacy = json!({"request":"request-402","error":"JEV_HTTP_STATUS stage=judge_http http_status=402","origin":"report_validation"});
+    let error = std::env::var("KAH_SERVICE_ERROR").unwrap();
+    let legacy = json!({"request":"request-402","error":error,"origin":"report_validation"});
     kah_cli::unattended_report::save(&root, "gap.json", &legacy).unwrap();
     drop(store);
     queue::enqueue(
@@ -142,12 +166,17 @@ fn service_child() {
         .collect::<Vec<_>>();
     assert!(service::blocked(worker).unwrap());
     assert!(availability::unavailable(&home).unwrap());
+    // Changing transient symptoms and queued requests must not send another notice.
+    if !error.contains("402") {
+        availability::record_error(&home, "JEV_HTTP_TIMEOUT stage=judge").unwrap();
+    }
     assert!(service::blocked(worker).unwrap());
     assert_eq!(
         queue::drain(worker).unwrap()["status"],
         "service_unavailable"
     );
     assert_eq!(reminder_queue::pending(&root).unwrap().len(), 1);
+    assert_one_notice(worker, &root, &legacy);
     assert!(!root.join("redelivery.json").exists());
     for (path, bytes) in before {
         assert_eq!(std::fs::read(path).unwrap(), bytes);
@@ -171,5 +200,29 @@ fn assert_recovery(worker: &str, root: &std::path::Path, legacy: &serde_json::Va
     assert_eq!(
         Store::read(worker).unwrap().unwrap().pending.unwrap().id,
         "request-402"
+    );
+}
+
+fn assert_one_notice(worker: &str, root: &std::path::Path, legacy: &serde_json::Value) {
+    let notice = kah_cli::observer_review::consume::take(worker, "PostToolUse", "t")
+        .unwrap()
+        .unwrap();
+    assert!(
+        notice["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("Jev unavailable")
+    );
+    assert!(
+        kah_cli::observer_review::consume::take(worker, "PostToolUse", "t")
+            .unwrap()
+            .is_none()
+    );
+    // A later raw failure timestamp is retained, but cannot create a second notice.
+    kah_cli::unattended_report::save(root, "gap.json", legacy).unwrap();
+    assert!(
+        kah_cli::observer_review::consume::take(worker, "PostToolUse", "t")
+            .unwrap()
+            .is_none()
     );
 }

@@ -55,7 +55,7 @@ pub fn description(sample: &Sample) -> (&'static str, &'static str) {
     } else if service_outage(sample) {
         (
             "service",
-            "Jev unavailable: payment required; request retained, no thinker correction or review retry.",
+            "Jev service unavailable; request retained, no thinker correction or new review admission.",
         )
     } else if validation_blocked(sample) {
         (
