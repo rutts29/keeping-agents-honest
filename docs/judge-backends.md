@@ -95,3 +95,7 @@ or drift reminders. Later source records still advance. Replacement needs kind p
 >=0.70 and target
 probability >=0.90 and confidence >=0.85. API/validation errors record gaps; uncertain replacement preserves both exact messages. These are evaluated policy thresholds,
 not a general accuracy guarantee.
+
+## Backend scope
+
+Alternative backend integrations require separate validation.
