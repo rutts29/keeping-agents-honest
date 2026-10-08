@@ -77,7 +77,10 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
             hook::run(&args[1]);
             Ok(())
         }
-        "__review-consume" => consume::run(&args[1]),
+        "__review-consume" | "__review-consume-supervise" => {
+            consume::supervisor::supervise(&args[1])
+        }
+        "__review-consume-worker" => consume::run(&args[1]),
         "__gate-followup" => gate_approval::run_followups(&args[1]),
         "__gate-answers" => gate_approval::apply_answers(&args[1]),
         "__review-hook-events" => hook_queue::run(&args[1]),

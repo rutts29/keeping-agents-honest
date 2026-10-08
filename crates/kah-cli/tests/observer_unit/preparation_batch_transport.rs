@@ -1,5 +1,45 @@
 use super::*;
 #[test]
+fn a_rejected_selection_reopens_only_that_decision_and_keeps_other_manifests() {
+    use crate::observer_review::state::State;
+    let worker = format!("batch-selective-retry-{}", crate::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let workspace = store.directory.join("workspace");
+    std::fs::create_dir_all(workspace.join("outbox")).unwrap();
+    let state:State=serde_json::from_value(serde_json::json!({"worker":{"provider":"codex","session":worker,"project":workspace,"pane":null,"socket":null},"observer":{"session":null,"pane":null,"name":"fixture","workspace":workspace,"model":"gpt-6.1-sol","effort":"low","transcript":null},"pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
+    store.save(&state).unwrap();
+    let jobs = two_jobs(&worker);
+    stage(&worker, "review-retry-owner", &jobs).unwrap();
+    let manifest = all_selections(&jobs).remove(1);
+    let name = format!("selection-{}.json", jobs[1].decision);
+    source_store::save(
+        &store.directory,
+        &name,
+        &serde_json::to_value(&manifest).unwrap(),
+    )
+    .unwrap();
+    let before = std::fs::read(store.directory.join(&name)).unwrap();
+    super::super::reopen(&worker, &jobs[0].decision).unwrap();
+    let current: serde_json::Value = state::read(&store.directory.join("preparation-current.json"))
+        .unwrap()
+        .unwrap();
+    let batch = load(&worker, current["decision"].as_str().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.decisions.len(), 1);
+    assert_eq!(batch.decisions[0].decision, jobs[0].decision);
+    assert_eq!(std::fs::read(store.directory.join(&name)).unwrap(), before);
+    assert!(
+        store
+            .directory
+            .join(format!("preparation-{}.json", jobs[1].decision))
+            .exists()
+    );
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
 fn staging_round_trips_whole_jobs_and_digests_without_partial_acceptance() {
     let worker = format!("batch-store-{}", crate::relay_store::nonce());
     let store = Store::open(&worker).unwrap();

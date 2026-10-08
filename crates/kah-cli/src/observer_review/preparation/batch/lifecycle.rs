@@ -86,16 +86,26 @@ pub fn reopen(worker: &str, decision: &str) -> Result<()> {
             fs::rename(&path, archive.join(path.file_name().unwrap()))?;
         }
     }
-    let mut remaining = vec![];
+    let mut entries = vec![];
     for entry in &batch.decisions {
-        if preparation::pending(worker, &entry.decision)? {
-            let job: Job = state::read(&root.join(format!("preparation-{}.json", entry.decision)))?
-                .ok_or("PREPARATION_BATCH_JOB stage=context_preparation")?;
-            remaining.push(job);
+        if entry.decision == decision
+            || preparation::pending(worker, &entry.decision)?
+                && !root
+                    .join(format!("selection-{}.json", entry.decision))
+                    .is_file()
+        {
+            entries.push(entry);
         }
     }
-    if !remaining.is_empty() {
-        stage(worker, &batch.review, &remaining)?;
+    if !entries.is_empty() {
+        stage_iter(
+            worker,
+            &batch.review,
+            entries.into_iter().map(|entry| {
+                state::read::<Job>(&root.join(format!("preparation-{}.json", entry.decision)))?
+                    .ok_or_else(|| "PREPARATION_BATCH_JOB stage=context_preparation".into())
+            }),
+        )?;
     }
     Ok(())
 }

@@ -24,7 +24,18 @@ pub fn evaluate(
     input: &Value,
     questions: &Questions,
 ) -> Result<(Judgment, Value, Value)> {
-    if super::super::preparation::batch::plan(request, input, questions)? {
+    super::super::consume::outcome::stage(&request.worker, &request.id, "batch_plan_started")?;
+    let needs_preparation = super::super::preparation::batch::plan(request, input, questions)?;
+    super::super::consume::outcome::stage(
+        &request.worker,
+        &request.id,
+        if needs_preparation {
+            "batch_preparation_handoff"
+        } else {
+            "batch_plan_complete"
+        },
+    )?;
+    if needs_preparation {
         return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
     }
     let mut combined = Judgment {
@@ -37,11 +48,21 @@ pub fn evaluate(
     let mut states = serde_json::Map::new();
     let mut archives = serde_json::Map::new();
     for (key, question) in questions {
+        super::super::consume::outcome::stage(
+            &request.worker,
+            &request.id,
+            &format!("decision_started:{key}"),
+        )?;
         let mut state = report_context(input, key)?;
         crate::privacy::scrub(&mut state);
         let questions = Questions::from([(key.clone(), question.clone())]);
         let (decided, reused) = decide(home, request, &state, &questions)?;
         merge(&mut combined, &decided.judgment, reused)?;
+        super::super::consume::outcome::stage(
+            &request.worker,
+            &request.id,
+            &format!("decision_finished:{key}"),
+        )?;
         states.insert(key.clone(), decided.prepared);
         archives.insert(
             key.clone(),
