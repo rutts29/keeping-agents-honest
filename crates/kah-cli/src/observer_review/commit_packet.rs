@@ -136,7 +136,8 @@ pub fn validate_report(request: &Request, report: &Value) -> Result<()> {
     let mut sources = BTreeSet::new();
     collect_sources(report, &mut sources);
     for source in sources {
-        if source == "whole-tree-catalog"
+        if super::packet_references::outside(request, &source)
+            || source == "whole-tree-catalog"
             || source.starts_with("commit-file-")
                 && !request.documents.iter().any(|d| d.id == source)
         {
@@ -149,12 +150,15 @@ pub fn expand(request: &mut Request, report: &Value) -> Result<Vec<String>> {
     if !is_scoped(request) {
         return Ok(vec![]);
     }
+    let mut sources = BTreeSet::new();
+    collect_sources(report, &mut sources);
+    let mut added = super::packet_references::expand(request, &sources)?;
     let Some(catalog) = request
         .documents
         .iter()
         .find(|d| d.id == "whole-tree-catalog")
     else {
-        return Ok(vec![]);
+        return Ok(added);
     };
     if Document::new(&catalog.id, &catalog.kind, &catalog.uri, &catalog.text).digest
         != catalog.digest
@@ -166,9 +170,6 @@ pub fn expand(request: &mut Request, report: &Value) -> Result<Vec<String>> {
         return Err("REVIEW_COMMIT_HEAD_CHANGED stage=packet".into());
     }
     let files: Vec<Document> = serde_json::from_value(catalog["files"].clone())?;
-    let mut sources = BTreeSet::new();
-    collect_sources(report, &mut sources);
-    let mut added = vec![];
     for file in files {
         if sources.contains(&file.id) && !request.documents.iter().any(|d| d.id == file.id) {
             if Document::new(&file.id, &file.kind, &file.uri, &file.text).digest != file.digest {

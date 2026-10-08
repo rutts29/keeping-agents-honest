@@ -4,9 +4,12 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
+pub mod claim_migration;
 mod drift;
+mod headers;
 mod identity;
 pub mod lanes;
+pub(super) mod memory;
 pub mod metadata;
 pub mod migration;
 mod ordering;
@@ -40,8 +43,8 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
         return Ok(());
     }
     if purpose == Purpose::Checkpoint
-        && trigger["review_class"] == "commit"
-        && trigger["head"].as_str().is_some()
+        && (trigger["review_class"] == "commit" && trigger["head"].as_str().is_some()
+            || supersede::claim_trigger(&trigger) && supersede::trigger_head(&trigger).is_some())
     {
         return supersede::publish(
             worker,
@@ -134,12 +137,21 @@ fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
     Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {
+    let root = Store::directory(worker)?;
+    let _owner = match Store::delivery_at(&root.join("admission-worker"), false) {
+        Ok(owner) => owner,
+        Err(error) if error.to_string().starts_with("REVIEW_BUSY") => {
+            return Ok(json!({"status":"queued","reason":"admission_inflight"}));
+        }
+        Err(error) => return Err(error),
+    };
+    memory::sample(worker, "entered")?;
     if super::service::blocked(worker)? {
         return Ok(
             json!({"status":"service_unavailable","error":"Jev unavailable: payment required","queued_retained":true}),
         );
     }
-    if let Some(state) = Store::read(worker)?
+    if let Some(state) = crate::observer_review::state::read_control(worker)?
         && state.pending.is_some()
     {
         if state.stopped {
@@ -148,20 +160,36 @@ pub fn drain(worker: &str) -> Result<Value> {
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
     preparation_coverage::run(worker)?;
+    memory::sample(worker, "coverage_complete")?;
     super::events::transfer(worker)?;
+    memory::sample(worker, "events_transferred")?;
     let claimed = claim_batch(worker)?;
+    memory::sample(worker, "selected")?;
     if let Some((job, paths)) = claimed {
-        return submit_batch(worker, job, paths);
+        let submitted = submit_batch(worker, job, paths);
+        memory::sample(worker, "submission_finished")?;
+        return submitted;
     }
     Ok(json!({"status":"idle"}))
 }
 pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
+    if crate::observer_review::state::read_control(worker)?.is_some_and(|s| s.pending.is_some()) {
         return Ok(None);
     }
-    let mut jobs = entries_at(&root)?;
+    let mut jobs = headers::at(&root)?;
+    let mut pending_jobs = vec![];
+    for (path, job) in jobs {
+        if job.purpose == Purpose::Preparation
+            && job.trigger.get("captured_snapshot").is_none()
+            && super::preparation::batch::terminal_packets::retire(worker, &job, &path)?
+        {
+            continue;
+        }
+        pending_jobs.push((path, job));
+    }
+    jobs = pending_jobs;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
@@ -172,7 +200,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         }
         break;
     }
-    let Some((mut job, mut paths)) = batch(&jobs) else {
+    let Some((mut job, mut paths)) = headers::selected(worker, &jobs)? else {
         return Ok(None);
     };
     let stamps = metadata::stamps(&root, &jobs)?;
@@ -256,7 +284,7 @@ pub fn kick(worker: &str) -> Result<()> {
     {
         super::hook::spawn("__review-questions", worker)?;
     }
-    if Store::read(worker)?.is_some_and(|s| s.pending.is_some()) {
+    if crate::observer_review::state::read_control(worker)?.is_some_and(|s| s.pending.is_some()) {
         super::liveness::start(worker)?;
         super::hook::spawn("__review-retry", worker)?;
         return Ok(());
@@ -291,4 +319,15 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     metadata::queued(root, &name, wake)?;
     super::source_store::save(&directory, &name, &value)?;
     Ok(true)
+}
+
+/// Native hooks schedule host work without inspecting or waiting on admission.
+pub fn schedule(worker: &str) -> Result<()> {
+    super::hook::spawn("__review-kick", worker)
+}
+
+pub fn header_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
+    let root = Store::directory(worker)?;
+    let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    headers::at(&root)
 }

@@ -39,8 +39,7 @@ pub fn consume(worker: &str) -> Result<()> {
     );
     state.pending = None;
     store.save(&state)?;
-    drop(store);
-    crate::observer_review::queue::kick(worker)
+    super::finish(store, worker, &request.id)
 }
 fn one(
     home: &std::path::Path,
@@ -49,6 +48,9 @@ fn one(
     job: &preparation::Job,
 ) -> Result<Value> {
     let root = Store::directory(&request.worker)?;
+    if let Some(terminal) = batch::terminal_packets::lookup(&request.worker, packet)? {
+        return Ok(terminal["receipt"].clone());
+    }
     let name = format!("packet-result-{}.json", job.decision);
     let identity = kah_observer::context_selection::digest(
         &json!({"original":job.state,"questions":job.questions,"packet":packet}),
@@ -66,9 +68,54 @@ fn one(
         .ok_or("PREPARATION_PACKET_TURN stage=context_preparation")?
         .into();
     local.intent = job.state["intent"].clone();
-    let (judgment, input) = preparation::evaluate(home, &local, &job.state, &job.questions)?;
-    apply(&local, &packet["trigger"]["preparation"], &input, &judgment)?;
+    let (judgment, input) = match preparation::evaluate(home, &local, &job.state, &job.questions) {
+        Ok(result) => result,
+        Err(error)
+            if error
+                .to_string()
+                .starts_with("PREPARATION_CONTEXT_UNCONFIRMED") =>
+        {
+            return terminal(
+                &root,
+                &name,
+                &identity,
+                &local,
+                request,
+                packet,
+                error.as_ref(),
+            );
+        }
+        Err(error) => return Err(error),
+    };
+    let original = batch::packet_refs::original(packet)?;
+    apply(
+        &local,
+        &original["trigger"]["preparation"],
+        &input,
+        &judgment,
+    )?;
     let receipt = json!({"decision":job.decision,"original_digest":identity,"turn":local.turn,"original_queue_source":packet["source"],"judgment":judgment,"prepared_state":input});
     crate::observer_review::source_store::save(&root, &name, &receipt)?;
+    Ok(receipt)
+}
+fn terminal(
+    root: &std::path::Path,
+    name: &str,
+    identity: &str,
+    local: &Request,
+    parent: &Request,
+    packet: &Value,
+    error: &dyn std::error::Error,
+) -> Result<Value> {
+    let receipt = json!({"decision":local.id,"original_digest":identity,"turn":local.turn,
+        "original_queue_source":packet["source"],"terminal":"unconfirmed_context","passed":null,
+        "error":error.to_string(),"source":"context-rejections","no_automatic_reasks":true});
+    crate::observer_review::source_store::save(root, name, &receipt)?;
+    batch::terminal_packets::record(&local.worker, packet, &receipt)?;
+    crate::observer_review::reminder_queue::save(
+        root,
+        &json!({"request":local.id,"purpose":"uncertainty","turn":local.turn,"system_notice":true,
+        "text":format!("kah observer retained unconfirmed context for {} (review {}): {error}. No Jev decision/pass was fabricated; original state and selection remain archived. Other packets continue.",local.id,parent.id)}),
+    )?;
     Ok(receipt)
 }

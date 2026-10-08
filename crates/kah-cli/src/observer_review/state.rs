@@ -221,3 +221,6 @@ pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
         .map(Some)
         .map_err(|_| "REVIEW_STATE_JSON stage=review_state".into())
 }
+
+mod control;
+pub use control::{Control, read_control};

@@ -83,6 +83,22 @@ pub fn prepare(
     manifest: &Manifest,
     superseders: &BTreeMap<String, BTreeSet<String>>,
 ) -> Result<Value, String> {
+    validate(decision, items, manifest, superseders)?;
+    let selected = manifest
+        .selected
+        .iter()
+        .map(|s| s.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let atomic = items.iter().map(|i| i.id.as_str()).collect();
+    Ok(rebuild(original, "", &selected, &atomic).unwrap_or(Value::Null))
+}
+/// Accounting and authority checks do not need to allocate a prepared state.
+pub fn validate(
+    decision: &str,
+    items: &[Item],
+    manifest: &Manifest,
+    superseders: &BTreeMap<String, BTreeSet<String>>,
+) -> Result<(), String> {
     if manifest.decision != decision {
         return Err("CONTEXT_DECISION_MISMATCH stage=context_selection".into());
     }
@@ -121,9 +137,9 @@ pub fn prepare(
     if seen.len() != known.len() {
         return Err("CONTEXT_UNACCOUNTED_ITEMS stage=context_selection".into());
     }
-    let atomic = known.keys().copied().collect();
-    Ok(rebuild(original, "", &selected, &atomic).unwrap_or(Value::Null))
+    Ok(())
 }
+
 fn rebuild(
     value: &Value,
     pointer: &str,

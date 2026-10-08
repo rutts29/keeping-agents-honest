@@ -5,6 +5,11 @@ use serde_json::json;
 fn every_calibrated_over_budget_decision_is_staged_before_the_first_wake() {
     let worker = format!("batch-plan-{}", crate::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
+    // B preparation links whole originals through the bound observer workspace.
+    crate::unattended_report::save(&store.directory,"state.json",&json!({
+        "worker":{"provider":"codex","session":worker,"project":store.directory,"pane":null,"socket":null},
+        "observer":{"session":null,"pane":null,"name":"fixture","workspace":store.directory,"model":"gpt-6.1-sol","effort":"low","transcript":null},
+        "pending":null,"stopped":false})).unwrap();
     crate::unattended_report::save(
         &store.directory,
         "token-calibration.json",

@@ -31,16 +31,22 @@ pub fn prompt(
     // Preserve the request and refresh helper/schema/instructions. A commit
     // packet may add a verified whole outside file, retaining its prior scope.
     super::workspace::prepare(home, state)?;
-    let expanded = super::commit_packet::expand_rejected(store, state, request)?;
     let rejected: Option<Value> =
         super::state::read(&store.directory.join("validation-current.json"))?;
-    if rejected.as_ref().is_some_and(|r| {
+    let expansion_required = rejected.as_ref().is_some_and(|r| {
         r["request"] == request.id
             && r["error"]
                 .as_str()
                 .is_some_and(|e| e.starts_with("REVIEW_SOURCE_OUTSIDE_PACKET"))
-    }) && expanded.documents.len() == request.documents.len()
-    {
+    });
+    // A context-selection wake already has complete immutable input sources.
+    // Rebuilding the unrelated whole report packet held the review lock and
+    // allocated GiB before sending the actual preparation prompt.
+    if !expansion_required && super::preparation::pending(&request.worker, decision)? {
+        return super::preparation::prompt(&request.worker);
+    }
+    let expanded = super::commit_packet::expand_rejected(store, state, request)?;
+    if expansion_required && expanded.documents.len() == request.documents.len() {
         return Err("REVIEW_EXPANSION_PENDING stage=packet: rejected source was not added; host binding or source needs attention".into());
     }
     let report_prompt = super::workspace::publish(store, state, &expanded)?;

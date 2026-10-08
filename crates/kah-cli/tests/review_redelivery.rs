@@ -171,6 +171,60 @@ fn setup(worker: &str, home: &Path) -> State {
 }
 
 #[test]
+fn context_redelivery_does_not_republish_unrelated_report_documents() {
+    use kah_cli::observer_review::{preparation, redelivery};
+    let worker = format!("redelivery-context-only-{}", kah_cli::relay_store::nonce());
+    let home = kah_core::run_store::RunStore::default_state_root()
+        .unwrap()
+        .join(&worker);
+    let mut state = setup(&worker, &home);
+    fs::create_dir_all(home.join(".local/bin")).unwrap();
+    fs::copy(env!("CARGO_BIN_EXE_kah"), home.join(".local/bin/kah")).unwrap();
+    let request = Request {
+        id: "review-context-only".into(),
+        worker: worker.clone(),
+        purpose: Purpose::Drift,
+        turn: "original".into(),
+        head: None,
+        intent: json!({"goal":"Original whole authority."}),
+        trigger: json!({}),
+        documents: vec![kah_observer::review_evidence::Document::new(
+            "not/needed-for-selection",
+            "evidence",
+            "fixture",
+            "Whole retained report source.",
+        )],
+        created_ms: 1,
+    };
+    state.pending = Some(Pending::from(&request));
+    let store = Store::open(&worker).unwrap();
+    store.save(&state).unwrap();
+    let input = state.observer.workspace.join("inputs").join(&request.id);
+    fs::create_dir_all(&input).unwrap();
+    fs::write(input.join("request.json"), "retained report packet").unwrap();
+    let decision = "review-context-only-v8-one";
+    let mut local = request.clone();
+    local.id = decision.into();
+    let original = json!({"intent":request.intent,"evidence":"Whole selected evidence."});
+    preparation::stage(&local, &original, &Default::default(), "JEV_CONTEXT_LIMIT").unwrap();
+    let prompt = redelivery::prompt(&home, &store, &state, &request, decision).unwrap();
+    assert!(prompt.contains("Prepare context for ONE unchanged Jev decision"));
+    assert_eq!(
+        fs::read_to_string(input.join("request.json")).unwrap(),
+        "retained report packet"
+    );
+    let job: preparation::Job = kah_cli::observer_review::source_store::read(
+        &store.directory.join(format!("preparation-{decision}.json")),
+    )
+    .unwrap();
+    assert_eq!(job.state, original);
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn repeated_failures_are_visible_without_limiting_or_dropping_attempts() {
     use kah_cli::observer_review::redelivery;
     let worker = format!("redelivery-notices-{}", std::process::id());

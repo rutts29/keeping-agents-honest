@@ -52,6 +52,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         &format!("{}.json", request.id),
         &serde_json::to_value(request)?,
     )?;
+    super::queue::memory::sample_at(&store.directory, "submission_request_archived")?;
     let input = state.observer.workspace.join("inputs").join(&request.id);
     fs::create_dir_all(&input)?;
     if !fs::symlink_metadata(&input)?.is_dir() {
@@ -78,6 +79,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
             &document.text,
         )?;
     }
+    super::queue::memory::sample_at(&store.directory, "submission_documents_published")?;
     let mut report_schema = schema(&request.purpose);
     report_schema["properties"]["decision_units"]["properties"]["version"] =
         json!({"const":instructions::protocol_version(request)?});
@@ -85,18 +87,31 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         input.join("schema.json"),
         serde_json::to_vec_pretty(&report_schema)?,
     )?;
-    let manifest = json!({"request_id":request.id,"purpose":request.purpose,"worker":request.worker,"head":request.head,"trigger":request.trigger,"documents":request.documents.iter().map(|d|json!({"id":d.id,"kind":d.kind,"uri":d.uri,"digest":d.digest,"path":input.join(format!("{}.txt",d.id)),"bytes":d.text.len(),"in_packet":d.kind!="lossless_tree_catalog"})).collect::<Vec<_>>()});
+    let manifest = json!({"request_id":request.id,"purpose":request.purpose,"worker":request.worker,"head":request.head,"trigger":request.trigger,"documents":request.documents.iter().map(|d|json!({"id":d.id,"kind":d.kind,"uri":d.uri,"digest":d.digest,"path":input.join(format!("{}.txt",d.id)),"bytes":d.text.len(),"in_packet":!matches!(d.kind.as_str(),"lossless_tree_catalog"|"lossless_reference")})).collect::<Vec<_>>()});
     fs::write(
         input.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest)?,
     )?;
     write_delta(store, request, &input)?;
+    super::queue::memory::sample_at(&store.directory, "submission_delta_published")?;
     super::source_store::save(&input, "request.json", &serde_json::to_value(request)?)?;
+    super::queue::memory::sample_at(&store.directory, "submission_input_archived")?;
     super::source_store::share(&store.directory, &state.observer.workspace)?;
     kah_run::access::share_tree(&input, kah_run::access::service_uid()?, false)?;
     prompt(state, request, &input)
 }
 fn write_delta(store: &Store, request: &Request, input: &Path) -> Result<()> {
+    if request
+        .documents
+        .iter()
+        .any(|d| d.id == "transcript" && d.kind == "lossless_reference")
+    {
+        return super::source_store::text(
+            &store.directory,
+            &input.join("delta.txt"),
+            "Review the packet diff and linked decision IDs. The whole native transcript remains available through transcript.txt's full_source reference; it is not inlined into this change packet. Read the original source on demand and cite its original id/digest to request whole-source expansion.",
+        );
+    }
     let previous = store.directory.join("last-transcript.txt");
     let current = request
         .documents

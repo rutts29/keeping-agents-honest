@@ -33,6 +33,20 @@ pub fn consume(worker: &str) -> Result<()> {
         drop(store);
         return super::runtime::prepare_context(worker);
     }
+    if evaluated
+        .as_ref()
+        .is_err_and(|e| e.to_string().starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
+    {
+        let error = evaluated.as_ref().err().unwrap().to_string();
+        super::preparation::rejection::park(
+            &store,
+            &mut state,
+            &request,
+            &json!({"request":request.id,"purpose":"preparation","jev_state":{"unconfirmed_context":error},
+                "assessment":{"passed":null,"violations":[]}}),
+        )?;
+        return finish(store, worker, &request.id);
+    }
     let (judgment, input) = evaluated?;
     apply(&request, packet, &input, &judgment)?;
     state.latest = Some(
@@ -40,6 +54,22 @@ pub fn consume(worker: &str) -> Result<()> {
     );
     state.pending = None;
     store.save(&state)?;
+    finish(store, worker, &request.id)
+}
+fn finish(store: Store, worker: &str, request: &str) -> Result<()> {
+    super::redelivery::completed(&store, request)?;
+    for name in ["gap.json", "validation-current.json"] {
+        let path = store.directory.join(name);
+        if super::state::read::<Value>(&path)?.is_some_and(|v| {
+            v["request"] == request
+                && v["error"]
+                    .as_str()
+                    .is_some_and(|e| e.starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
+        }) {
+            std::fs::remove_file(path)?;
+        }
+    }
+    super::timing::now(worker, request, "completed")?;
     drop(store);
     super::queue::kick(worker)
 }

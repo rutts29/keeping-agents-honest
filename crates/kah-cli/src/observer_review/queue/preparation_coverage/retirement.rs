@@ -11,7 +11,7 @@ pub fn stamp(worker: &str, mut trigger: Value, intent: &Value) -> Value {
 pub fn run(worker: &str) -> Result<Value> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    let jobs = super::super::entries_at(&root)?;
+    let jobs = coverage_jobs(&root)?;
     if !jobs.iter().any(|(_, w)| {
         w.purpose == Purpose::Preparation && w.trigger["preparation"]["purpose"] == "drift"
     }) {
@@ -41,7 +41,7 @@ pub fn run(worker: &str) -> Result<Value> {
         }
     }
     Ok(
-        json!({"worker":worker,"before":jobs.len(),"after":super::super::entries_at(&root)?.len(),"retired":retired,"kept":kept}),
+        json!({"worker":worker,"before":jobs.len(),"after":coverage_jobs(&root)?.len(),"retired":retired,"kept":kept}),
     )
 }
 fn candidates(
@@ -68,12 +68,15 @@ fn candidates(
     let completed: Option<Value> =
         super::super::super::state::read(&root.join("last-drift-review.json"))?;
     if let Some(id) = completed.as_ref().and_then(|c| c["request"].as_str()) {
-        let request: super::super::super::state::Request = super::super::super::source_store::read(
+        use crate::observer_review::source_store::read_selected;
+        let selection = coverage_fields();
+        let request = read_selected(
             &root.join("requests").join(format!("{id}.json")),
+            &selection,
         )?;
-        if request.worker == worker
+        if request["worker"] == worker
             && let (Some(authority), Some(ids)) = (
-                Authority::from_intent(&request.intent),
+                Authority::from_intent(&request["intent"]),
                 captured_actions(&request),
             )
         {
@@ -87,22 +90,25 @@ fn candidates(
     }
     Ok(result)
 }
-fn captured_actions(request: &super::super::super::state::Request) -> Option<BTreeSet<String>> {
-    let mut ids = actions(&request.trigger["actions"]).unwrap_or_default();
-    for document in request
-        .documents
-        .iter()
-        .filter(|d| d.kind == "worker_transcript")
+fn captured_actions(request: &Value) -> Option<BTreeSet<String>> {
+    let mut ids = actions(&request["trigger"]["actions"]).unwrap_or_default();
+    for document in request["documents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d["kind"] == "worker_transcript")
     {
         ids.extend(
-            document
-                .native_records
-                .iter()
-                .filter_map(|r| r.context["record_id"].as_str().map(str::to_owned)),
+            document["native_records"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|r| r["context"]["record_id"].as_str().map(str::to_owned)),
         );
     }
     (!ids.is_empty()).then_some(ids)
 }
+
 fn retire(root: &Path, path: &Path, by: &Coverage) -> Result<Value> {
     let bytes = fs::read(path)?;
     let name = path.file_name().unwrap().to_str().unwrap();
@@ -124,4 +130,71 @@ fn retire(root: &Path, path: &Path, by: &Coverage) -> Result<Value> {
     fs::File::open(archive)?.sync_all()?;
     fs::File::open(path.parent().unwrap())?.sync_all()?;
     Ok(row)
+}
+
+fn coverage_fields() -> crate::observer_review::source_store::Select {
+    use crate::observer_review::source_store::Select;
+    let record = Select::fields(&[("context", Select::fields(&[("record_id", Select::All)]))]);
+    let document = Select::fields(&[
+        ("kind", Select::All),
+        ("native_records", Select::Each(Box::new(record))),
+    ]);
+    let action = Select::fields(&[("id", Select::All)]);
+    Select::fields(&[
+        ("worker", Select::All),
+        (
+            "intent",
+            Select::fields(&[
+                ("goal", Select::All),
+                ("revision", Select::All),
+                ("items", Select::All),
+            ]),
+        ),
+        (
+            "trigger",
+            Select::fields(&[("actions", Select::Each(Box::new(action)))]),
+        ),
+        ("documents", Select::Each(Box::new(document))),
+    ])
+}
+
+fn coverage_jobs(root: &Path) -> Result<Vec<(std::path::PathBuf, Wake)>> {
+    use crate::observer_review::source_store::{Select, read_selected};
+    let authority = Select::fields(&[
+        ("goal", Select::All),
+        ("revision", Select::All),
+        ("items", Select::All),
+    ]);
+    let ids = Select::Each(Box::new(Select::fields(&[("id", Select::All)])));
+    let state = Select::fields(&[
+        ("intent", authority),
+        ("event", Select::fields(&[("actions", ids.clone())])),
+    ]);
+    let prep = Select::fields(&[("purpose", Select::All), ("state", state)]);
+    let trigger = Select::fields(&[
+        ("preparation", prep),
+        ("coverage_worker", Select::All),
+        ("coverage_authority", Select::All),
+        ("actions", ids),
+    ]);
+    let selection = Select::fields(&[
+        ("purpose", Select::All),
+        ("turn", Select::All),
+        ("trigger", trigger),
+    ]);
+    let mut jobs = vec![];
+    let directory = root.join("queued");
+    if !directory.exists() {
+        return Ok(jobs);
+    }
+    for file in fs::read_dir(directory)? {
+        let path = file?.path();
+        if path.extension().is_some_and(|e| e == "json") {
+            jobs.push((
+                path.clone(),
+                serde_json::from_value(read_selected(&path, &selection)?)?,
+            ));
+        }
+    }
+    Ok(jobs)
 }

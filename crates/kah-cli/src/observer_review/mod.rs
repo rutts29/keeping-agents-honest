@@ -8,6 +8,7 @@ pub mod commit_packet;
 pub mod completion_due;
 pub mod consume;
 pub mod control;
+pub mod decision_deferral_scope;
 pub mod decisions;
 pub mod deferrals;
 pub mod dispatch;
@@ -17,6 +18,7 @@ pub mod hook_queue;
 pub mod launch;
 pub mod light_commit;
 pub mod liveness;
+pub mod packet_references;
 pub mod preparation;
 mod prepared_result;
 pub mod questions;
@@ -77,11 +79,15 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
             hook::run(&args[1]);
             Ok(())
         }
-        "__review-consume" => consume::run(&args[1]),
+        "__review-consume" | "__review-consume-supervise" => {
+            consume::supervisor::supervise(&args[1])
+        }
+        "__review-consume-worker" => consume::run(&args[1]),
         "__gate-followup" => gate_approval::run_followups(&args[1]),
         "__gate-answers" => gate_approval::apply_answers(&args[1]),
         "__review-hook-events" => hook_queue::run(&args[1]),
         "__review-wake" => dispatch::run(&args[1]),
+        "__review-kick" => queue::kick(&args[1]),
         "__checkpoint-worker" => events::run(&args[1]),
         "__checkpoint-claims" => claims::run(&args[1]),
         "__checkpoint-tags" => tags::run(&args[1]),
@@ -108,6 +114,9 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
         [name] if name == "__review-artifact-baseline" => Some(artifact_collect::cli()),
         [name, worker] if name == "__review-history-repair" => {
             Some(capture::historical::repair(worker).map(|value| println!("{value}")))
+        }
+        [name, worker, authorization] if name == "__review-claims-migrate" => {
+            Some(queue::claim_migration::cli(worker, authorization))
         }
         [name, worker, authorization] if name == "__review-light-migrate" => {
             Some(queue::migration::cli(worker, authorization))

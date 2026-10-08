@@ -24,9 +24,8 @@ pub fn evaluate(
     input: &Value,
     questions: &Questions,
 ) -> Result<(Judgment, Value, Value)> {
-    if super::super::preparation::batch::plan(request, input, questions)? {
-        return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
-    }
+    plan_context(request, input, questions)?;
+    let mut pending: Option<String> = None;
     let mut combined = Judgment {
         backend: "not_requested".into(),
         model: "none".into(),
@@ -37,22 +36,72 @@ pub fn evaluate(
     let mut states = serde_json::Map::new();
     let mut archives = serde_json::Map::new();
     for (key, question) in questions {
-        let mut state = report_context(input, key)?;
+        decision_stage(request, key, "started")?;
+        let mut state = super::super::decision_deferral_scope::decision(request, input, key)?;
         crate::privacy::scrub(&mut state);
         let questions = Questions::from([(key.clone(), question.clone())]);
-        let (decided, reused) = decide(home, request, &state, &questions)?;
+        let (decided, reused) = match decide(home, request, &state, &questions) {
+            Ok(value) => value,
+            Err(error)
+                if error.to_string().starts_with("JEV_PREPARATION_PENDING")
+                    || error
+                        .to_string()
+                        .starts_with("PREPARATION_CONTEXT_UNCONFIRMED") =>
+            {
+                if pending
+                    .as_ref()
+                    .is_none_or(|p| !p.starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
+                {
+                    pending = Some(format!("{error}; decision={key}"));
+                }
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         merge(&mut combined, &decided.judgment, reused)?;
+        decision_stage(request, key, "finished")?;
         states.insert(key.clone(), decided.prepared);
         archives.insert(
             key.clone(),
             json!({"capture":decided.archive,"reused":reused}),
         );
     }
+    let terminal = pending
+        .as_ref()
+        .filter(|e| e.starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
+        .cloned();
+    if terminal.is_none()
+        && let Some(error) = pending
+    {
+        return Err(error.into());
+    }
     Ok((
         combined,
-        json!({"independent_decisions":states}),
+        json!({"independent_decisions":states,"unconfirmed_context":terminal}),
         Value::Object(archives),
     ))
+}
+
+fn plan_context(request: &Request, input: &Value, questions: &Questions) -> Result<()> {
+    super::super::consume::outcome::stage(&request.worker, &request.id, "batch_plan_started")?;
+    let needs_preparation = super::super::preparation::batch::plan(request, input, questions)?;
+    super::super::consume::outcome::stage(
+        &request.worker,
+        &request.id,
+        if needs_preparation {
+            "batch_preparation_handoff"
+        } else {
+            "batch_plan_complete"
+        },
+    )?;
+    Ok(())
+}
+fn decision_stage(request: &Request, key: &str, stage: &str) -> Result<()> {
+    super::super::consume::outcome::stage(
+        &request.worker,
+        &request.id,
+        &format!("decision_{stage}:{key}"),
+    )
 }
 
 pub(crate) fn report_context(input: &Value, key: &str) -> Result<Value> {
@@ -144,7 +193,15 @@ pub(crate) fn request_for(
         Sha256::digest(serde_json::to_vec(&json!({
         "state":input,"questions":questions}))?)
     );
-    let mut request = original.clone();
-    request.id = format!("{}-v8-{digest}", original.id);
-    Ok(request)
+    Ok(Request {
+        id: format!("{}-v8-{digest}", original.id),
+        worker: original.worker.clone(),
+        purpose: original.purpose.clone(),
+        turn: original.turn.clone(),
+        head: original.head.clone(),
+        intent: original.intent.clone(),
+        trigger: json!({"parent_review":original.id}),
+        documents: vec![],
+        created_ms: original.created_ms,
+    })
 }

@@ -56,7 +56,7 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         kah_observer::session::now_ms(),
         std::process::id()
     );
-    let mut request = Request {
+    let request = Request {
         id,
         worker: state.worker.session.clone(),
         purpose,
@@ -67,6 +67,9 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
         documents,
         created_ms: kah_observer::session::now_ms(),
     };
+    finish_request(state, request)
+}
+fn finish_request(state: &State, mut request: Request) -> Result<Request> {
     super::completion_due::add(&mut request)?;
     controller_events::add(
         &super::state::Store::directory(&request.worker)?,
@@ -75,6 +78,11 @@ pub fn request(state: &State, purpose: Purpose, turn: &str, trigger: Value) -> R
     controller_receipts::add(&mut request)?;
     historical::add(
         &super::state::Store::directory(&request.worker)?,
+        &mut request,
+    )?;
+    super::packet_references::scope(
+        &super::state::Store::directory(&request.worker)?,
+        &state.observer.workspace,
         &mut request,
     )?;
     Ok(request)

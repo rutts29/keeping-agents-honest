@@ -30,15 +30,20 @@ pub fn read_report(path: &Path) -> Result<Vec<u8>> {
     file.read_to_end(&mut bytes)?;
     Ok(bytes)
 }
+pub(crate) mod outcome;
+pub mod supervisor;
+mod timed;
 pub fn run(worker: &str) -> Result<()> {
+    outcome::run(worker)
+}
+fn run_inner(worker: &str) -> Result<()> {
     super::runtime::require_active(worker)?;
     if super::service::blocked(worker)? {
         return Ok(());
     }
     // Register waiting host work as progress before taking its lock.
     let _waiting = super::liveness::waiting(worker)?;
-    let store = Store::open_wait(worker)?;
-    let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=consume")?;
+    let (store, mut state) = loaded(worker)?;
     if super::checkpoint_claim::release_waiting(&store, &mut state)? {
         drop(store);
         return super::queue::kick(worker);
@@ -47,26 +52,31 @@ pub fn run(worker: &str) -> Result<()> {
         return Ok(());
     };
     let _processing = super::liveness::processing(worker, &pending.id)?;
+    if pending.purpose == Purpose::Preparation {
+        // Consume an already selected/terminal context before considering a
+        // native helper refresh. A new wake refreshes its helper when needed.
+        drop(store);
+        return super::prepared_result::consume(worker);
+    }
     if super::preparation::pending(worker, &pending.id)? && super::runtime::helper_changed(&state)?
     {
         drop(store);
         return super::runtime::prepare_context(worker);
     }
-    if pending.purpose == Purpose::Preparation {
-        drop(store);
-        return super::prepared_result::consume(worker);
-    }
     let request = workspace::request(&store, &pending.id)?;
+    super::queue::memory::sample(worker, "consume_request_loaded")?;
     if super::gate_approval::release_stale(&store, &mut state, &request)? {
         drop(store);
         return super::queue::kick(worker);
     }
-    let (path, report, actions) = timed_evidence(&state, &request)?;
+    let (path, report, actions) = timed::evidence(&state, &request)?;
+    super::queue::memory::sample(worker, "consume_evidence_verified")?;
     if super::failure_snapshot::unchanged(&store.directory, &request, &path)? {
         return retry_correction(store, worker);
     }
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
-    let decision = timed_decision(&home, &request, &actions, &report);
+    let decision = timed::decision(&home, &request, &actions, &report);
+    super::queue::memory::sample(worker, "consume_decision_returned")?;
     if decision
         .as_ref()
         .is_err_and(|e| e.to_string().starts_with("JEV_PREPARATION_PENDING"))
@@ -91,6 +101,12 @@ pub fn run(worker: &str) -> Result<()> {
     }
     finish(store, &path, worker)
 }
+fn loaded(worker: &str) -> Result<(Store, State)> {
+    let store = Store::open_wait(worker)?;
+    let state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=consume")?;
+    super::queue::memory::sample(worker, "consume_state_loaded")?;
+    Ok((store, state))
+}
 fn persist_evidence(
     store: &Store,
     request: &super::state::Request,
@@ -101,6 +117,9 @@ fn persist_evidence(
     version: u32,
 ) -> Result<()> {
     archive(&store.directory, &request.id, result)?;
+    if !input["unconfirmed_context"].is_null() {
+        return Ok(());
+    }
     super::uncertainty::record(store, request, report, &result["assessment"], judgment)?;
     if request.purpose == Purpose::Drift {
         crate::unattended_report::save(
@@ -356,6 +375,9 @@ pub(super) fn commit_result(
     result: Value,
     tokens: Option<u64>,
 ) -> Result<()> {
+    if !result["jev_state"]["unconfirmed_context"].is_null() {
+        return super::preparation::rejection::park(store, state, request, &result);
+    }
     if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(request) {
         super::checkpoint::record(store, state, request, &result)?;
     }
@@ -370,27 +392,6 @@ pub(super) fn commit_result(
     super::commit_packet::reviewed(store, request)?;
     super::timing::now(&request.worker, &request.id, "completed")
 }
-fn timed_evidence(
-    state: &State,
-    request: &super::state::Request,
-) -> Result<(PathBuf, Report, Vec<Value>)> {
-    super::timing::now(&request.worker, &request.id, "validation_started")?;
-    let evidence = evidence(state, request)?;
-    super::timing::now(&request.worker, &request.id, "validated")?;
-    Ok(evidence)
-}
-fn timed_decision(
-    home: &Path,
-    request: &super::state::Request,
-    actions: &[Value],
-    report: &Report,
-) -> Result<(judge::Judgment, Value, Value)> {
-    super::timing::now(&request.worker, &request.id, "judgment_started")?;
-    let result = decide(home, request, actions, report)?;
-    super::timing::now(&request.worker, &request.id, "judged")?;
-    Ok(result)
-}
-
 fn retry_correction(store: Store, worker: &str) -> Result<()> {
     drop(store);
     super::hook::spawn("__review-retry", worker)

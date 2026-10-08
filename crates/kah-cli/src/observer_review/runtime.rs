@@ -26,6 +26,7 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
         Some(state) => state,
         None => State::new(crate::relay_store::endpoint(worker)?, &home)?,
     };
+    super::queue::memory::sample(worker, "submission_state_loaded")?;
     if state.stopped && state.pending.is_some() {
         drop(store);
         resume(worker)?;
@@ -41,6 +42,7 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     store.save(&state)?;
     workspace::prepare(&home, &state)?;
     let mut request = capture::request(&state, purpose, turn, trigger)?;
+    super::queue::memory::sample(worker, "submission_context_captured")?;
     request.created_ms = started;
     submit_snapshot(store, state, &request, &home)
 }
