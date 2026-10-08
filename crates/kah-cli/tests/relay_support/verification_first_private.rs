@@ -127,7 +127,8 @@ pub fn dialogs(home: &Path, record: &kah_run::store::Record, provider: &str) {
         let hash = format!("{:x}", Sha256::digest(worker));
         let path = home.join(".cache/kah-observers").join(&hash[..24]);
         let config: Value =
-            serde_json::from_slice(&fs::read(home.join(".claude.json")).unwrap()).unwrap();
+            serde_json::from_slice(&fs::read(kah_claude::paths::global_config(home)).unwrap())
+                .unwrap();
         if config["projects"][path.to_str().unwrap()]["hasTrustDialogAccepted"] != true {
             crate::track2_support::preseed_claude(home, &path);
         }

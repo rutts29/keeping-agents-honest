@@ -10,17 +10,46 @@ mod dialog;
 pub use dialog::folder_dialog;
 
 pub fn preseed_claude(home: &Path, project: &Path) {
-    let path = home.join(".claude.json");
+    let path = kah_claude::paths::global_config(home);
     assert!(
-        project.starts_with(home) && fs::symlink_metadata(&path).unwrap().is_file(),
+        std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()
+            == Some(std::ffi::OsStr::new(super::claude_login::CONFIG_DIR))
+            && path == Path::new(super::claude_login::CONFIG_DIR).join(".claude.json"),
         "TRACK2_CLAUDE_CONFIG_SCOPE stage=trust"
     );
-    let mut config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    if config["projects"].is_null() {
-        config["projects"] = json!({});
+    let root = home.parent().unwrap();
+    if project.starts_with(home.join(".cache/kah-observers")) {
+        let before: Value =
+            serde_json::from_slice(&fs::read(root.join("observer-before.json")).unwrap()).unwrap();
+        assert_eq!(
+            before["existed"], false,
+            "TRACK2_EXISTING_OBSERVER stage=trust"
+        );
+        assert!(project.is_dir(), "TRACK2_OBSERVER_CREATED stage=trust");
     }
-    config["projects"][project.to_str().unwrap()]["hasTrustDialogAccepted"] = true.into();
-    save(&path, &config);
+    super::claude_trust::add(
+        &path,
+        home,
+        project,
+        &root.join("claude-trust-entries.json"),
+    )
+    .unwrap();
+}
+pub fn cleanup_claude(home: &Path) -> Value {
+    let receipts = home.parent().unwrap().join("claude-trust-entries.json");
+    if !receipts.exists() {
+        return json!({"passed":true,"entries":[]});
+    }
+    let path = kah_claude::paths::global_config(home);
+    assert_eq!(
+        path,
+        Path::new(super::claude_login::CONFIG_DIR).join(".claude.json"),
+        "TRACK2_CLAUDE_CONFIG_SCOPE stage=cleanup"
+    );
+    match super::claude_trust::cleanup(&path, &receipts) {
+        Ok(value) => value,
+        Err(error) => json!({"passed":false,"error":error}),
+    }
 }
 
 pub fn consent(pane: &Pane, provider: &str, project: &Path) {

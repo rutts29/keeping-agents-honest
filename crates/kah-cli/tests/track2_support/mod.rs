@@ -1,4 +1,7 @@
+mod claude_invocation;
 mod claude_login;
+mod claude_metadata;
+mod claude_trust;
 mod config_audit;
 pub fn claude_login_ready() {
     claude_login::require_ready();

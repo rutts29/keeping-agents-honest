@@ -1,13 +1,13 @@
 //! Test-only Claude login boundary. Credential contents are never opened.
-use serde_json::{Value, json};
 use std::{
     fs,
-    os::unix::fs::{MetadataExt, PermissionsExt, symlink},
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
     process::Command,
 };
 
 pub const TEMPLATE_HOME: &str = "/mnt/kah-fixtures/cargo/claude-fixture-home";
+pub const CONFIG_DIR: &str = "/mnt/kah-fixtures/cargo/claude-fixture-home/.claude";
 pub const AUTH_ENV: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -51,23 +51,13 @@ pub fn require_ready() {
     ready_at(Path::new(TEMPLATE_HOME))
         .expect("Claude tests stay paused until the separate interactive login succeeds");
 }
-pub fn link(home: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
-    let target = Path::new(TEMPLATE_HOME).join(".claude/.credentials.json");
-    let path = home.join(".claude/.credentials.json");
-    symlink(&target, &path).unwrap();
-    (path, target)
-}
-pub fn audit_link(path: &Path, expected: &Path) -> Value {
-    let unchanged = fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
-        && fs::read_link(path).is_ok_and(|p| p == expected);
-    json!({"path":path,"target":expected,"symlink_unchanged":unchanged,
-        "reason":if unchanged {Value::Null} else {"TRACK2_LOGIN_LINK_CHANGED stage=login_audit".into()}})
-}
 pub fn command_environment(command: &mut Command) {
     for key in AUTH_ENV {
         command.env_remove(key);
     }
-    command.env("DISABLE_AUTOUPDATER", "1");
+    command
+        .env("DISABLE_AUTOUPDATER", "1")
+        .env("CLAUDE_CONFIG_DIR", CONFIG_DIR);
 }
 pub fn requires_claude(mode: &str) -> bool {
     if mode == "verify" {
