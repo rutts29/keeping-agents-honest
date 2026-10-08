@@ -5,6 +5,66 @@ use kah_cli::observer_review::{
 };
 use serde_json::{Value, json};
 #[test]
+fn every_admission_retains_its_own_receipt_when_latest_lane_is_replaced() {
+    use kah_cli::observer_review::state::Request;
+    let worker = format!("admission-receipt-{}", std::process::id());
+    // Real admission has already opened the session store and its source root.
+    drop(Store::open(&worker).unwrap());
+    for id in ["review-first", "review-second"] {
+        let request = Request {
+            id: id.into(),
+            worker: worker.clone(),
+            purpose: Purpose::Checkpoint,
+            turn: "t".into(),
+            head: None,
+            intent: Value::Null,
+            trigger: json!({"review_class":"commit"}),
+            documents: vec![],
+            created_ms: 1,
+        };
+        queue::metadata::admitted(&worker, &request).unwrap();
+    }
+    let root = Store::directory(&worker).unwrap();
+    for id in ["review-first", "review-second"] {
+        let receipt: Value = kah_cli::observer_review::source_store::read(
+            &root.join(format!("stage-timings/{id}.json")),
+        )
+        .unwrap();
+        assert!(receipt["at_ms"]["admitted"].is_u64());
+        assert!(root.join(format!("stage-timings/{id}.jsonl")).is_file());
+    }
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
+#[test]
+fn delayed_native_stop_records_its_own_request_and_original_host_receipt_time() {
+    use kah_cli::observer_review::{hook_queue, request_context::Context};
+    let worker = format!("native-end-timing-{}", std::process::id());
+    let mut event = hook_queue::Event::capture(
+        json!({"hook_event_name":"Stop","session_id":"observer"}),
+        None,
+    );
+    event.received_ms = Some(123);
+    event.context = Some(Context {
+        request: "review-old".into(),
+        preparation: false,
+    });
+    timing::native_end(&worker, &event).unwrap();
+    let root = Store::directory(&worker).unwrap();
+    let record: Value =
+        kah_cli::observer_review::source_store::read(&root.join("stage-timings/review-old.json"))
+            .unwrap();
+    assert_eq!(record["at_ms"]["native_done"], 123);
+    assert!(!root.join("stage-timings/review-new.json").exists());
+    event.context = Some(Context {
+        request: "review-legacy".into(),
+        preparation: false,
+    });
+    event.received_ms = None;
+    timing::native_end(&worker, &event).unwrap();
+    assert!(!root.join("stage-timings/review-legacy.json").exists());
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
+#[test]
 fn first_enqueue_time_survives_updates_and_snapshot_transfer_and_stages_do_not_reset() {
     let worker = format!("stage-timing-{}", std::process::id());
     let root = Store::directory(&worker).unwrap();
@@ -46,6 +106,17 @@ fn first_enqueue_time_survives_updates_and_snapshot_transfer_and_stages_do_not_r
     .unwrap();
     assert_eq!(stages["at_ms"]["acknowledged"], 10);
     assert_eq!(stages["at_ms"]["completed"], 30);
+    let history = std::fs::read_to_string(root.join("stage-timings/review-timing.jsonl")).unwrap();
+    let rows = history
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["at_ms"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        [10, 20, 30]
+    );
     assert!(timing::mark(&worker, "../escape", "acknowledged", 40).is_err());
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }

@@ -18,6 +18,9 @@ pub struct Event {
     /// Set only after receive validates the host event's original binding.
     #[serde(default)]
     pub validated_pane: Option<String>,
+    /// Host receipt time retained even when the validated event queues behind work.
+    #[serde(default)]
+    pub received_ms: Option<u64>,
 }
 impl Event {
     pub fn capture(input: Value, pid: Option<u32>) -> Self {
@@ -29,6 +32,7 @@ impl Event {
             context: None,
             transcript_end: None,
             validated_pane: None,
+            received_ms: Some(kah_observer::session::now_ms()),
         }
     }
     pub(super) fn retired_for(&self, state: &super::state::State) -> bool {

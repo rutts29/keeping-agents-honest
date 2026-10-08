@@ -135,6 +135,7 @@ pub fn admitted(worker: &str, request: &super::super::state::Request) -> Result<
         trigger: request.trigger.clone(),
     };
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
+    super::super::timing::now(worker, &request.id, "admitted")?;
     super::super::source_store::save(
         &root,
         "last-admitted-lane.json",

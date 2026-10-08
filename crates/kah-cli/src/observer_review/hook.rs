@@ -55,10 +55,13 @@ pub(super) fn apply_wait(worker: &str, event: &super::hook_queue::Event) -> Resu
 fn apply_store(worker: &str, event: &super::hook_queue::Event, store: Store) -> Result<()> {
     let input = &event.input;
     let mut state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=hook")?;
+    validate(&state, event)?;
+    if state.observer.session.as_deref() == input["session_id"].as_str() {
+        super::timing::native_end(worker, event)?;
+    }
     if event.retired_for(&state) {
         return retain_transport_event(worker, event, store, &state);
     }
-    validate(&state, event)?;
     let events = store.directory.join("hook-observations.jsonl");
     use std::io::Write;
     let mut journal = OpenOptions::new()

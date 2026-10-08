@@ -70,6 +70,7 @@ fn deferred_native_binding_keeps_original_identity_and_scope_after_contention() 
         pane: Some("observer-pane".into()),
         socket: Some("/private/herdr.sock".into()),
         validated_pane: None,
+        received_ms: None,
         context: None,
         transcript_end: None,
     };
@@ -132,6 +133,7 @@ fn idle_without_a_preparation_acknowledgement_keeps_the_request_and_shows_a_name
         pane: Some("observer-pane".into()),
         socket: Some("/private/herdr.sock".into()),
         validated_pane: None,
+        received_ms: None,
         context: None,
         transcript_end: None,
     };
@@ -181,6 +183,7 @@ fn a_deferred_stop_for_the_old_request_cannot_fault_the_new_review() {
         pane: Some("observer-pane".into()),
         socket: Some("/private/herdr.sock".into()),
         validated_pane: None,
+        received_ms: None,
         transcript_end: None,
         context: Some(Context {
             request: "review-old".into(),
