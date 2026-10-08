@@ -63,11 +63,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
             "REVIEW_INPUT_TYPE stage=publish: request input must be a real directory".into(),
         );
     }
-    super::source_store::text(
-        &store.directory,
-        &input.join("intent.json"),
-        &serde_json::to_string_pretty(&super::reminder::intent(request)?)?,
-    )?;
+    publish_intent(store, &input, request)?;
     for document in &request.documents {
         if !document
             .id
@@ -133,6 +129,27 @@ fn write_delta(store: &Store, request: &Request, input: &Path) -> Result<()> {
     super::source_store::text(&store.directory, &previous, current)?;
     Ok(())
 }
+fn publish_intent(store: &Store, input: &Path, request: &Request) -> Result<()> {
+    let complete_intent = super::reminder::intent(request)?;
+    let intent_record = input.join("intent-full.json");
+    if super::commit_packet::is_commit(request) {
+        super::source_store::text(
+            &store.directory,
+            &intent_record,
+            &serde_json::to_string_pretty(&complete_intent)?,
+        )?;
+    }
+    super::source_store::text(
+        &store.directory,
+        &input.join("intent.json"),
+        &serde_json::to_string_pretty(&super::verdict_cache::projection::intent(
+            request,
+            &intent_record,
+        )?)?,
+    )?;
+    Ok(())
+}
+
 pub(super) fn prompt(state: &State, request: &Request, input: &Path) -> Result<String> {
     let output = state
         .observer

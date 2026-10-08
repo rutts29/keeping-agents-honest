@@ -198,15 +198,46 @@ fn steering_scope_does_not_advance_the_last_code_reviewed_sha() {
     request.trigger = commit_packet::trigger(&request.purpose, json!({}));
     assert!(commit_packet::is_scoped(&request));
     assert!(!commit_packet::is_commit(&request));
-    commit_packet::reviewed(&store, &request).unwrap();
+    commit_packet::reviewed(&store, &request, &json!({"assessment":{"passed":true}})).unwrap();
     let baseline: serde_json::Value =
         source_store::read(&store.directory.join("last-reviewed-sha.json")).unwrap();
     assert_eq!(baseline["head"], "old-reviewed-sha");
     request.purpose = Purpose::Drift;
-    commit_packet::reviewed(&store, &request).unwrap();
+    commit_packet::reviewed(&store, &request, &json!({"assessment":{"passed":true}})).unwrap();
     let baseline: serde_json::Value =
         source_store::read(&store.directory.join("last-reviewed-sha.json")).unwrap();
     assert_eq!(baseline["head"], "old-reviewed-sha");
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn an_unproven_or_failed_review_never_advances_the_aligned_diff_baseline() {
+    use kah_cli::observer_review::{source_store, state::Store};
+    // User private-receipt-omitted: only the aligned reviewed commit is baseline.
+    let (mut request, _) = fixture("whole file");
+    request.worker = format!("aligned-baseline-{}", kah_cli::relay_store::nonce());
+    request.purpose = Purpose::Checkpoint;
+    request.trigger = json!({"review_class":"commit"});
+    let store = Store::open(&request.worker).unwrap();
+    let path = store.directory.join("last-reviewed-sha.json");
+    source_store::save(
+        &store.directory,
+        "last-reviewed-sha.json",
+        &json!({"head":"a".repeat(40),"aligned":true}),
+    )
+    .unwrap();
+    for passed in [serde_json::Value::Null, json!(false)] {
+        commit_packet::reviewed(&store, &request, &json!({"assessment":{"passed":passed}}))
+            .unwrap();
+        let baseline: serde_json::Value = source_store::read(&path).unwrap();
+        assert_eq!(baseline["head"], "a".repeat(40));
+    }
+    commit_packet::reviewed(&store, &request, &json!({"assessment":{"passed":true}})).unwrap();
+    let baseline: serde_json::Value = source_store::read(&path).unwrap();
+    assert_eq!(baseline["head"], request.head.unwrap());
+    assert_eq!(baseline["aligned"], true);
     let root = store.directory.parent().unwrap().to_owned();
     drop(store);
     std::fs::remove_dir_all(root).unwrap();

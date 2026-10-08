@@ -22,11 +22,13 @@ pub fn scope(private: &Path, workspace: &Path, request: &mut Request) -> Result<
     let public = workspace.join("packet-originals");
     kah_core::run_store::ensure_private_directory(&archive)?;
     kah_core::run_store::ensure_private_directory(&public)?;
+    let scoped_authority = scoped_ledger(request, workspace)?;
     for document in &mut request.documents {
         let cached_code = request.trigger["cache_source_ids"]
             .as_array()
             .is_some_and(|ids| ids.iter().any(|id| id == &document.id));
         if !cached_code
+            && !(scoped_authority && document.id == "ledger")
             && !matches!(
                 document.kind.as_str(),
                 "worker_transcript"
@@ -59,6 +61,28 @@ pub fn scope(private: &Path, workspace: &Path, request: &mut Request) -> Result<
     source_store::share(private, workspace)?;
     kah_run::access::share_tree(&public, kah_run::access::service_uid()?, false)?;
     Ok(())
+}
+fn scoped_ledger(request: &mut Request, workspace: &Path) -> Result<bool> {
+    let scoped_authority = commit_packet::is_commit(request)
+        && request.trigger["cache_plan"]["carried"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty());
+    if scoped_authority {
+        let intent = super::verdict_cache::projection::intent(
+            request,
+            &workspace
+                .join("inputs")
+                .join(&request.id)
+                .join("intent-full.json"),
+        )?;
+        request.documents.push(Document::new(
+            "ledger-fresh",
+            "ledger",
+            "kah:diff-scoped-user-authority",
+            &serde_json::to_string_pretty(&intent)?,
+        ));
+    }
+    Ok(scoped_authority)
 }
 pub fn outside(request: &Request, source: &str) -> bool {
     request

@@ -181,3 +181,45 @@ fn supported(original: &kah_observer::judge::Judgment) -> kah_observer::judge::J
     }
     judgment
 }
+
+#[test]
+fn confirmed_not_due_is_cached_but_unconfirmed_applicability_is_not() {
+    use kah_observer::{
+        judge::{Judgment, Metrics},
+        review_evidence::Report,
+    };
+    // USER C: every non-always verdict carries until its evidence changes/gate.
+    let (mut request, mut requirement) = request_and_requirement();
+    request.worker = format!("cache-not-due-{}", crate::relay_store::nonce());
+    requirement.applicability.as_mut().unwrap().due = false;
+    let store = crate::observer_review::state::Store::open(&request.worker).unwrap();
+    let report: Report = serde_json::from_value(json!({"request_id":request.id,"findings":[],
+        "decision_units":{"version":12,"requirements":[requirement]}}))
+    .unwrap();
+    let mut judgment = supported(&Judgment {
+        backend: "jev".into(),
+        model: "jev".into(),
+        answers: Default::default(),
+        metrics: Metrics::default(),
+        fallback_reason: None,
+    });
+    record(&store, &request, &report, &judgment).unwrap();
+    let path = std::fs::read_dir(store.directory.join("verdict-cache"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let entry: Entry = crate::observer_review::state::read(&path).unwrap().unwrap();
+    assert!(
+        entry.confirmed,
+        "a confirmed not-due verdict is not missing evidence"
+    );
+    judgment.answers.remove("applicability.parser");
+    record(&store, &request, &report, &judgment).unwrap();
+    let entry: Entry = crate::observer_review::state::read(&path).unwrap().unwrap();
+    assert!(!entry.confirmed);
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}

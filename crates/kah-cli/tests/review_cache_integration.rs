@@ -112,3 +112,15 @@ fn answers_are_carried_without_new_usage_and_lineage_is_visible() {
     assert_eq!(assessment["carried"][0]["review"], "review-old");
     assert_eq!(assessment["carried"][0]["head"], "a".repeat(40));
 }
+
+#[test]
+fn a_dirty_requirement_cannot_hide_behind_another_requirement_covering_its_authority() {
+    let (mut request, report) = fixture();
+    request.trigger["cache_plan"]["dirty"] = json!(["changed"]);
+    assert!(
+        integration::verify(&request, &report)
+            .unwrap_err()
+            .to_string()
+            .contains("changed")
+    );
+}

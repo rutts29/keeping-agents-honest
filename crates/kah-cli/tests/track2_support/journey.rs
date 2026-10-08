@@ -31,6 +31,9 @@ pub fn run(root: &Path, mode: &str) -> Value {
             .contains("kah-gate-track2-"),
         "TRACK2_SOCKET stage=scope"
     );
+    if mode == "cache" {
+        return super::cache_benchmark::run(root);
+    }
     if mode == "proofs" {
         return super::proof_journey::run(root);
     }

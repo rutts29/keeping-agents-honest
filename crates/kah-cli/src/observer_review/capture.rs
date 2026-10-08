@@ -192,13 +192,20 @@ fn scoped_project_context(home: &Path, state: &State, trigger: &Value) -> Result
     )?;
     let baseline = previous
         .as_ref()
+        .filter(|p| p["aligned"] == true)
         .and_then(|p| p["head"].as_str())
-        .or_else(|| state.checkpoint.as_ref().and_then(|r| r["head"].as_str()))
+        .or_else(|| {
+            state
+                .checkpoint
+                .as_ref()
+                .filter(|r| r["passed"] == true)
+                .and_then(|r| r["head"].as_str())
+        })
         .or_else(|| {
             state
                 .latest
                 .as_ref()
-                .filter(|r| r["purpose"] == "checkpoint")
+                .filter(|r| r["purpose"] == "checkpoint" && r["assessment"]["passed"] == true)
                 .and_then(|r| r["head"].as_str())
         })
         .unwrap_or("empty");

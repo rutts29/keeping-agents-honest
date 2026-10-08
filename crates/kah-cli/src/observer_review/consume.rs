@@ -390,7 +390,7 @@ pub(super) fn commit_result(
         state.native_tokens = tokens;
     }
     store.save(state)?;
-    super::commit_packet::reviewed(store, request)?;
+    super::commit_packet::reviewed(store, request, state.latest.as_ref().unwrap())?;
     super::timing::now(&request.worker, &request.id, "completed")
 }
 fn retry_correction(store: Store, worker: &str) -> Result<()> {

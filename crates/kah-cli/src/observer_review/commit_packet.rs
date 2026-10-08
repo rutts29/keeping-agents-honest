@@ -27,12 +27,18 @@ pub fn trigger(purpose: &Purpose, mut trigger: Value) -> Value {
     }
     trigger
 }
-pub fn reviewed(store: &super::state::Store, request: &Request) -> Result<()> {
-    if request.purpose == Purpose::Checkpoint && request.head.is_some() {
+pub fn reviewed(store: &super::state::Store, request: &Request, result: &Value) -> Result<()> {
+    if request.purpose == Purpose::Checkpoint
+        && request.head.is_some()
+        && result["assessment"]["passed"] == true
+        && !result["assessment"]["violations"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+    {
         super::source_store::save(
             &store.directory,
             "last-reviewed-sha.json",
-            &json!({"head":request.head,"request":request.id,"review_class":request.trigger["review_class"],"reviewed_not_necessarily_passed":true}),
+            &json!({"head":request.head,"request":request.id,"review_class":request.trigger["review_class"],"aligned":true}),
         )?;
     }
     Ok(())

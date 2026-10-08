@@ -13,10 +13,63 @@ pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
     if !commit_packet::is_commit(request) {
         return Ok(());
     }
+    let Some(saved) = entries(private)? else {
+        return Ok(());
+    };
+    expand_code_sources(request, &saved)?;
+    let mut carried = vec![];
+    let mut dirty = vec![];
+    let mut dirty_authority = std::collections::BTreeSet::new();
+    let mut retired = vec![];
+    let active: std::collections::BTreeSet<_> =
+        super::super::decisions::active_items(&request.intent)
+            .into_iter()
+            .collect();
+    let sources = VerifiedSources::new(&request.documents);
+    let impact = impact::read(request)?;
+    for entry in saved {
+        let linked = super::projection::authority(&entry.verdict["requirement"]);
+        if !linked.is_subset(&active) {
+            retired.push(
+                json!({"id":entry.requirement,"review":entry.review,"head":entry.head,
+                "reason":"linked authority is no longer active; original cached record retained"}),
+            );
+            continue;
+        }
+        match candidate_with_sources(request, &entry, &sources, &impact)? {
+            Some(value) => carried.push(value),
+            None => {
+                dirty_authority.extend(super::projection::authority(&entry.verdict["requirement"]));
+                dirty.push(entry.requirement);
+            }
+        }
+    }
+    let id = "cached-verdicts";
+    let authority = super::projection::scope(request, &carried, &dirty_authority);
+    let record = kah_observer::review_evidence::Document::new(
+        id,
+        "controller_cached_verdicts",
+        "kah:checked-cache",
+        &serde_json::to_string(
+            &json!({"protocol":"commit-cache-v1","worker":request.worker,"request":request.id,"carried":carried}),
+        )?,
+    );
+    request.trigger["cache_plan"] = json!({"protocol":"commit-cache-v1","dirty":dirty,"retired":retired,
+        "carried":carried.iter().map(|v|json!({"id":v["requirement"],"review":v["carried_from_review"],"head":v["carried_from_sha"],
+            "name":v["verdict"]["requirement"]["name"],"decision":v["verdict"]["requirement"]["judgment"]["decision"],
+            "due":v["verdict"]["requirement"]["applicability"]["due"],"record_source":id})).collect::<Vec<_>>(),
+        "record_source":id,"record_digest":record.digest,"source_digest_checks":sources.digest_checks(),"source_quote_checks":sources.quote_checks(),
+        "impacted_requirements":impact["requirements"],"unattributed_paths":impact["unattributed_paths"],
+        "carried_authority_items":authority["carried"],"fresh_authority_items":authority["fresh"],
+        "always":"intent overview,drift,prohibitions,claim_made,proportion,user waits"});
+    request.documents.push(record);
+    Ok(())
+}
+fn entries(private: &Path) -> Result<Option<Vec<Entry>>> {
     let root = private.join("verdict-cache");
     let entries = match std::fs::read_dir(&root) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
     let mut saved = vec![];
@@ -30,33 +83,7 @@ pub fn prepare(private: &Path, request: &mut Request) -> Result<()> {
         };
         saved.push(entry);
     }
-    expand_code_sources(request, &saved)?;
-    let mut carried = vec![];
-    let mut dirty = vec![];
-    let sources = VerifiedSources::new(&request.documents);
-    let impact = impact::read(request)?;
-    for entry in saved {
-        match candidate_with_sources(request, &entry, &sources, &impact)? {
-            Some(value) => carried.push(value),
-            None => dirty.push(entry.requirement),
-        }
-    }
-    let id = "cached-verdicts";
-    let record = kah_observer::review_evidence::Document::new(
-        id,
-        "controller_cached_verdicts",
-        "kah:checked-cache",
-        &serde_json::to_string(
-            &json!({"protocol":"commit-cache-v1","worker":request.worker,"request":request.id,"carried":carried}),
-        )?,
-    );
-    request.trigger["cache_plan"] = json!({"protocol":"commit-cache-v1","dirty":dirty,
-        "carried":carried.iter().map(|v|json!({"id":v["requirement"],"review":v["carried_from_review"],"head":v["carried_from_sha"]})).collect::<Vec<_>>(),
-        "record_source":id,"record_digest":record.digest,"source_digest_checks":sources.digest_checks(),"source_quote_checks":sources.quote_checks(),
-        "impacted_requirements":impact["requirements"],"unattributed_paths":impact["unattributed_paths"],
-        "always":"intent overview,drift,prohibitions,claim_made,proportion,user waits"});
-    request.documents.push(record);
-    Ok(())
+    Ok(Some(saved))
 }
 fn expand_code_sources(request: &mut Request, entries: &[Entry]) -> Result<()> {
     let sources: std::collections::BTreeSet<_> = entries

@@ -76,8 +76,7 @@ fn entry(
     let (evidence, eligibility_gap) = snapshot(request, requirement)?;
     let confirmed = eligibility_gap.is_none()
         && !outcome.needs_thinker.contains(id)
-        && !outcome.needs_user.contains(id)
-        && !outcome.not_due.contains(id);
+        && !outcome.needs_user.contains(id);
     let unconditional = requirement
         .applicability
         .as_ref()

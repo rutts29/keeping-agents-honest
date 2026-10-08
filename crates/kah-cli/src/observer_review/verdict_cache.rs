@@ -8,6 +8,7 @@ mod capture;
 mod dependencies;
 pub mod integration;
 pub mod plan;
+pub mod projection;
 pub mod receipts;
 pub use capture::record;
 

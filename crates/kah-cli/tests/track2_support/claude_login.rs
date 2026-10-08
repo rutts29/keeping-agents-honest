@@ -60,6 +60,9 @@ pub fn command_environment(command: &mut Command) {
         .env("CLAUDE_CONFIG_DIR", CONFIG_DIR);
 }
 pub fn requires_claude(mode: &str) -> bool {
+    if mode == "cache" {
+        return false;
+    }
     if mode == "verify" {
         return std::env::var("KAH_GATE_REVIEW_PROVIDER").as_deref() == Ok("claude");
     }

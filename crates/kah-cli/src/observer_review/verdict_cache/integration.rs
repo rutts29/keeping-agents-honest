@@ -57,6 +57,16 @@ pub fn verify(request: &Request, report: &Report) -> Result<Option<Value>> {
     let Some(units) = &report.decision_units else {
         return Ok(None);
     };
+    for id in request.trigger["cache_plan"]["dirty"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        if !units.requirements.iter().any(|r| r.id == id) {
+            return Err(format!("REVIEW_CACHE_DIRTY_MISSING stage=report: dirty requirement {id:?} needs a fresh decision; another item sharing its authority cannot cover it").into());
+        }
+    }
     let rows = carried(request, report)?;
     let active = crate::observer_review::decisions::active_items(&request.intent);
     let covered: BTreeSet<_> = rows

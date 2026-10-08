@@ -10,6 +10,12 @@ mod pty;
 mod track2_support;
 
 #[test]
+#[ignore = "ten real builder commits through the full native C observer; make gate only"]
+fn real_commit_cache_benchmark() {
+    track2_support::launch("cache");
+}
+
+#[test]
 #[ignore = "frozen detour/integration/deferral native proofs on both providers; final code only"]
 fn detour_integration_deferral() {
     track2_support::launch("proofs");
