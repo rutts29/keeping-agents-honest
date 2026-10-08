@@ -1,9 +1,30 @@
 //! Git v2.53.0 Documentation/git-merge-base.adoc --is-ancestor: 0=yes,1=no.
-//! Only queued light commits; gates and the active HEAD are never superseded.
+//! USER: queued claims may cover older ancestor claims; explicit gates/tags and
+//! the active HEAD are never superseded.
 use super::*;
 use sha2::Digest;
 use std::{path::Path, process::Command};
-pub(super) fn publish(worker: &str, root: &Path, name: &str, mut incoming: Wake) -> Result<()> {
+mod selection;
+pub use selection::{claim_only, claim_trigger, trigger_head};
+pub(super) fn publish(worker: &str, root: &Path, name: &str, incoming: Wake) -> Result<()> {
+    publish_from(worker, root, name, incoming, None)
+}
+pub(super) fn republish(
+    worker: &str,
+    root: &Path,
+    origin: &Path,
+    name: &str,
+    incoming: Wake,
+) -> Result<()> {
+    publish_from(worker, root, name, incoming, Some(origin))
+}
+fn publish_from(
+    worker: &str,
+    root: &Path,
+    name: &str,
+    mut incoming: Wake,
+    origin: Option<&Path>,
+) -> Result<()> {
     let state = crate::observer_review::state::read_control(worker)?;
     let project = state
         .as_ref()
@@ -14,8 +35,13 @@ pub(super) fn publish(worker: &str, root: &Path, name: &str, mut incoming: Wake)
         .as_ref()
         .and_then(|s| s.pending.as_ref())
         .and_then(|p| p.head.as_deref());
-    let jobs = super::entries_at(root)?;
-    let paths = merge(&project, &mut incoming, &jobs, active)?;
+    let mut headers = super::headers::at(root)?;
+    headers.retain(|(path, _)| origin != Some(path.as_path()));
+    let jobs = selection::selected(&project, &incoming, &headers, active)?;
+    let mut paths = merge(&project, &mut incoming, &jobs, active)?;
+    if let Some(origin) = origin {
+        paths.push(origin.to_owned());
+    }
     let record = root.join("queue-supersessions");
     kah_core::run_store::ensure_private_directory(&record)?;
     let rows=paths.iter().map(|p|Ok(json!({"original":p.file_name().unwrap().to_str().unwrap(),"replacement":name,"disposition":"covered_by","digest":format!("{:x}",sha2::Sha256::digest(fs::read(p)?))}))).collect::<Result<Vec<Value>>>()?;
@@ -41,10 +67,18 @@ pub fn recover(root: &Path) -> Result<()> {
 }
 fn finish(root: &Path, name: &str) -> Result<()> {
     let directory = root.join("queue-supersessions");
-    let mut record: Value = super::super::source_store::read(&directory.join(name))?;
-    if record["state"] == "complete" {
+    let path = directory.join(name);
+    let status = super::super::source_store::read_selected(
+        &path,
+        &super::super::source_store::Select::fields(&[(
+            "state",
+            super::super::source_store::Select::All,
+        )]),
+    )?;
+    if status["state"] == "complete" {
         return Ok(());
     }
+    let mut record: Value = super::super::source_store::read(&path)?;
     let incoming: Wake = serde_json::from_value(record["incoming"].clone())?;
     ordering::reserve(root, name)?;
     metadata::queued(root, name, &incoming)?;
@@ -83,10 +117,11 @@ pub fn merge(
     jobs: &[(PathBuf, Wake)],
     active_head: Option<&str>,
 ) -> Result<Vec<PathBuf>> {
-    if incoming.trigger["review_class"] != "commit" {
+    if incoming.trigger["review_class"] != "commit" && !claim_only(incoming) {
         return Ok(vec![]);
     }
     let new = head(incoming)?.to_owned();
+    incoming.trigger["head"] = json!(new);
     let mut covered = vec![];
     let mut inherited = incoming.trigger["superseded_triggers"]
         .as_array()
@@ -104,10 +139,10 @@ pub fn merge(
         authority.push(change.clone());
     }
     for (path, job) in jobs {
-        if job.trigger["review_class"] != "commit" || job.trigger["head"].is_null() {
+        if !selection::compatible(incoming, job) {
             continue;
         }
-        let old = head(job)?;
+        let Ok(old) = head(job) else { continue };
         if active_head == Some(old) || !ancestor(project, old, &new)? {
             continue;
         }
@@ -143,8 +178,7 @@ pub fn merge(
     Ok(covered)
 }
 pub fn head(wake: &Wake) -> Result<&str> {
-    wake.trigger["head"]
-        .as_str()
+    trigger_head(&wake.trigger)
         .filter(|s| matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit()))
         .ok_or("REVIEW_COMMIT_HEAD stage=supersession".into())
 }

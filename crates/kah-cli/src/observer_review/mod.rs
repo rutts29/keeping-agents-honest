@@ -110,6 +110,9 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
         [name, worker] if name == "__review-history-repair" => {
             Some(capture::historical::repair(worker).map(|value| println!("{value}")))
         }
+        [name, worker, authorization] if name == "__review-claims-migrate" => {
+            Some(queue::claim_migration::cli(worker, authorization))
+        }
         [name, worker, authorization] if name == "__review-light-migrate" => {
             Some(queue::migration::cli(worker, authorization))
         }

@@ -4,6 +4,7 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
+pub mod claim_migration;
 mod drift;
 mod headers;
 mod identity;
@@ -42,8 +43,8 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
         return Ok(());
     }
     if purpose == Purpose::Checkpoint
-        && trigger["review_class"] == "commit"
-        && trigger["head"].as_str().is_some()
+        && (trigger["review_class"] == "commit" && trigger["head"].as_str().is_some()
+            || supersede::claim_trigger(&trigger) && supersede::trigger_head(&trigger).is_some())
     {
         return supersede::publish(
             worker,

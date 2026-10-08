@@ -2,6 +2,7 @@
 use super::*;
 use crate::observer_review::source_store::{Select, read_selected};
 pub fn at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
+    claim_migration::recover(root)?;
     supersede::recover(root)?;
     let directory = root.join("queued");
     if !directory.exists() {
@@ -36,7 +37,11 @@ pub fn at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
     Ok(jobs)
 }
 fn fields() -> Select {
-    let event = Select::fields(&[("kind", Select::All), ("head", Select::All)]);
+    let event = Select::fields(&[
+        ("kind", Select::All),
+        ("head", Select::All),
+        ("question_set", Select::All),
+    ]);
     let trigger = Select::fields(&[
         ("review_class", Select::All),
         ("head", Select::All),
