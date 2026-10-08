@@ -30,6 +30,18 @@ pub fn run(root: &Path) -> Value {
         home: home.clone(),
         worker: worker.clone(),
     };
+    // An idle transport with no tools has no tripwire trigger yet. Initialize
+    // the normal binding, without creating an observer turn or synthetic work.
+    let store = Reviews::open_wait(&worker).unwrap();
+    if store.load().unwrap().is_none() {
+        let state = kah_cli::observer_review::state::State::new(
+            kah_cli::relay_store::endpoint(&worker).unwrap(),
+            &home,
+        )
+        .unwrap();
+        store.save(&state).unwrap();
+    }
+    drop(store);
     let state = super::review::quiescent(&worker, "codex");
     let (original, packet_bytes) = scoped(&worker, state);
     let id = original.id.clone();
