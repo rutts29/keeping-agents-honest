@@ -38,6 +38,7 @@ pub mod state;
 pub mod tags;
 pub mod timing;
 pub mod uncertainty;
+pub mod verdict_cache;
 pub mod workspace;
 
 pub fn command(args: &[String]) -> Option<crate::Result<()>> {

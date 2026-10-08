@@ -121,6 +121,7 @@ fn persist_evidence(
     if !input["unconfirmed_context"].is_null() {
         return Ok(());
     }
+    super::verdict_cache::record(store, request, report, judgment)?;
     super::uncertainty::record(store, request, report, &result["assessment"], judgment)?;
     if request.purpose == Purpose::Drift {
         crate::unattended_report::save(
