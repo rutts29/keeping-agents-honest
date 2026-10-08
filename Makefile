@@ -4,7 +4,7 @@ export CARGO_TARGET_DIR ?= $(CURDIR)/target
 check: size
 	cargo fmt --check
 	cargo clippy --workspace --all-targets -- -D warnings
-	cargo test --workspace
+	bash demos/check-tests.sh
 	cargo audit
 
 size:

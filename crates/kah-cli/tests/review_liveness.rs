@@ -261,6 +261,12 @@ fn cleanup_jobs(worker: &str) {
         }
     }
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    let home = kah_core::run_store::RunStore::default_state_root()
+        .unwrap()
+        .join(worker);
+    if home.exists() {
+        std::fs::remove_dir_all(home).unwrap();
+    }
 }
 
 fn setup(worker: &str) -> kah_cli::observer_review::state::State {
