@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod roundtrip;
 mod segments;
 mod selection;
 pub use selection::{Select, read_selected};
@@ -24,7 +25,8 @@ fn reference(root: &Path, bytes: &[u8], encoding: &str) -> Result<Value> {
     if !root.join(&digest).exists() {
         segments::store(root, bytes, &digest)?;
     }
-    verify(&root.join(&digest), &digest)?;
+    let mut reader = segments::reader::open(&root.join(&digest), &digest)?;
+    std::io::copy(&mut reader, &mut std::io::sink())?;
     Ok(json!({"$kah_source":digest,"encoding":encoding}))
 }
 fn write_once(target: &Path, bytes: &[u8]) -> Result<()> {
@@ -128,41 +130,51 @@ fn compact(value: &Value, root: &Path) -> Result<Value> {
     if value.get("$kah_source").is_some() {
         return Ok(value.clone());
     }
-    let mut result = value.clone();
-    if let Some(object) = result.as_object_mut() {
-        for (key, source) in object.iter_mut() {
-            if [
-                "state",
-                "original",
-                "prepared_state",
-                "jev_state",
-                "trigger",
-            ]
-            .contains(&key.as_str())
-            {
-                if source.get("$kah_source").is_some() {
-                    continue;
-                }
-                let encoded = strings(source, root)?;
-                *source = reference(root, &serde_json::to_vec(&encoded)?, "json")?;
-            } else if key != "documents" {
-                *source = compact(source, root)?;
+    match value {
+        Value::Object(object) => {
+            let mut result = serde_json::Map::new();
+            for (key, source) in object {
+                let encoded = if [
+                    "state",
+                    "original",
+                    "prepared_state",
+                    "jev_state",
+                    "trigger",
+                ]
+                .contains(&key.as_str())
+                {
+                    compact_source(source, root)?
+                } else if key == "documents" && source.is_array() {
+                    Value::Array(
+                        source
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|document| compact_source(document, root))
+                            .collect::<Result<_>>()?,
+                    )
+                } else {
+                    compact(source, root)?
+                };
+                result.insert(key.clone(), encoded);
             }
+            Ok(Value::Object(result))
         }
-        if let Some(documents) = object.get_mut("documents").and_then(Value::as_array_mut) {
-            for document in documents {
-                if document.get("$kah_source").is_none() {
-                    let encoded = strings(document, root)?;
-                    *document = reference(root, &serde_json::to_vec(&encoded)?, "json")?;
-                }
-            }
-        }
-    } else if let Some(array) = result.as_array_mut() {
-        for value in array {
-            *value = compact(value, root)?;
-        }
+        Value::Array(array) => Ok(Value::Array(
+            array
+                .iter()
+                .map(|v| compact(v, root))
+                .collect::<Result<_>>()?,
+        )),
+        _ => Ok(value.clone()),
     }
-    Ok(result)
+}
+fn compact_source(value: &Value, root: &Path) -> Result<Value> {
+    if value.get("$kah_source").is_some() {
+        return Ok(value.clone());
+    }
+    let encoded = strings(value, root)?;
+    reference(root, &serde_json::to_vec(&encoded)?, "json")
 }
 pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
     let root = if let Some(parent) = directory
@@ -174,7 +186,7 @@ pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
         self::directory(directory)?
     };
     let stored = compact(value, &root)?;
-    if expand(stored.clone(), &root)? != *value {
+    if !roundtrip::matches(&stored, value, &root)? {
         return Err("REVIEW_SOURCE_ROUNDTRIP stage=source_store".into());
     }
     crate::unattended_report::save(directory, name, &stored)

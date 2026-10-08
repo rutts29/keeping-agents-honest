@@ -8,7 +8,7 @@ mod drift;
 mod headers;
 mod identity;
 pub mod lanes;
-mod memory;
+pub(super) mod memory;
 pub mod metadata;
 pub mod migration;
 mod ordering;

@@ -52,6 +52,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         &format!("{}.json", request.id),
         &serde_json::to_value(request)?,
     )?;
+    super::queue::memory::sample_at(&store.directory, "submission_request_archived")?;
     let input = state.observer.workspace.join("inputs").join(&request.id);
     fs::create_dir_all(&input)?;
     if !fs::symlink_metadata(&input)?.is_dir() {
@@ -78,6 +79,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
             &document.text,
         )?;
     }
+    super::queue::memory::sample_at(&store.directory, "submission_documents_published")?;
     let mut report_schema = schema(&request.purpose);
     report_schema["properties"]["decision_units"]["properties"]["version"] =
         json!({"const":instructions::protocol_version(request)?});
@@ -91,7 +93,9 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         serde_json::to_vec_pretty(&manifest)?,
     )?;
     write_delta(store, request, &input)?;
+    super::queue::memory::sample_at(&store.directory, "submission_delta_published")?;
     super::source_store::save(&input, "request.json", &serde_json::to_value(request)?)?;
+    super::queue::memory::sample_at(&store.directory, "submission_input_archived")?;
     super::source_store::share(&store.directory, &state.observer.workspace)?;
     kah_run::access::share_tree(&input, kah_run::access::service_uid()?, false)?;
     prompt(state, request, &input)

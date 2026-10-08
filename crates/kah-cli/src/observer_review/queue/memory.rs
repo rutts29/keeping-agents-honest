@@ -3,6 +3,9 @@ use super::*;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 pub fn sample(worker: &str, stage: &str) -> Result<()> {
+    sample_at(&Store::directory(worker)?, stage)
+}
+pub fn sample_at(root: &std::path::Path, stage: &str) -> Result<()> {
     let status = fs::read_to_string("/proc/self/status")?;
     let mut memory = serde_json::Map::new();
     for (name, line) in [
@@ -17,8 +20,7 @@ pub fn sample(worker: &str, stage: &str) -> Result<()> {
             .and_then(|s| s.parse::<u64>().ok());
         memory.insert(name.into(), json!(value));
     }
-    let root = Store::directory(worker)?;
-    kah_core::run_store::ensure_private_directory(&root)?;
+    kah_core::run_store::ensure_private_directory(root)?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
