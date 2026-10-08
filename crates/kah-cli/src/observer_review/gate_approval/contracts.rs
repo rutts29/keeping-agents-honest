@@ -5,6 +5,7 @@ use kah_observer::{
     verification_contract::{Item, Method},
 };
 use std::collections::BTreeSet;
+mod v12;
 
 pub(crate) fn prepare(
     request: &Request,
@@ -12,6 +13,13 @@ pub(crate) fn prepare(
     input: &mut Value,
     questions: &mut Questions,
 ) -> Result<()> {
+    if report
+        .decision_units
+        .as_ref()
+        .is_some_and(|u| u.version() >= 12)
+    {
+        return v12::prepare(request, report, input, questions);
+    }
     // Controller receipts are host state; validate them outside the report boundary.
     let commands = super::super::failure::validation(super::super::failure::Origin::Host, || {
         captured(request)
@@ -119,7 +127,7 @@ pub(crate) fn outcome(request: &Request, report: &Report, judgment: &Judgment) -
             .flatten()
             .map(|i| (
                 &i.requirement_id,
-                json!({"covered":covered(i,judgment) && match &i.method {Method::ControllerReceipt{facts}=>proof.as_ref().is_some_and(|p|super::contract_facts::verified(request,p,facts)),_=>true},"semantic_risk_admissible":matches!(i.method,Method::SemanticRisk{..}) && kah_observer::decision_units::confirmed(judgment,&format!("risk_admission.{}",i.requirement_id),"supported"),"method":i.method,"claim":i.claim})
+                json!({"covered":if report.decision_units.as_ref().is_some_and(|u|u.version()>=12) {kah_observer::verification_contract::reasoned::covered(judgment,&i.requirement_id)} else {covered(i,judgment)} && match &i.method {Method::ControllerReceipt{facts}=>proof.as_ref().is_some_and(|p|super::contract_facts::verified(request,p,facts)),_=>true},"semantic_risk_admissible":matches!(i.method,Method::SemanticRisk{..}) && kah_observer::decision_units::confirmed(judgment,&format!("risk_admission.{}",i.requirement_id),"supported"),"method":i.method,"claim":i.claim})
             ))
             .collect::<std::collections::BTreeMap<_, _>>()
     ))
@@ -158,3 +166,7 @@ fn selected(item: &Item, value: &Value) -> Result<Vec<Value>> {
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/contract_claim_binding.rs"]
 mod claim_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/v12_gate_coverage.rs"]
+mod v12_tests;

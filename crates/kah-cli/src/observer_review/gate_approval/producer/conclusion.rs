@@ -142,6 +142,7 @@ fn items(
                 explanation,
                 receipt,
                 units.version(),
+                original.is_none(),
             )?);
         }
     }
@@ -302,8 +303,16 @@ fn checked_risk(
     explanation: &kah_observer::review_evidence::VerificationRisk,
     receipt: &EvidencePointer,
     version: u32,
+    new_requirement: bool,
 ) -> Result<UnverifiedRisk> {
     let mut value = risk(round, id, explanation, receipt);
+    if version >= 12 && new_requirement {
+        value.tried.push(Attempt {
+            what: "This requirement was identified in the final review after the one verification round; no item-specific covering check was verified.".into(),
+            receipt: receipt.receipt.clone(),
+        });
+        return Ok(value);
+    }
     if version >= 10 {
         let result = contract_attempts(round, id, receipt)?;
         if !result.semantic_risk_admissible {
