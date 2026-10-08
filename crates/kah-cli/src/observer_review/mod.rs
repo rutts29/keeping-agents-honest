@@ -82,6 +82,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         "__gate-answers" => gate_approval::apply_answers(&args[1]),
         "__review-hook-events" => hook_queue::run(&args[1]),
         "__review-wake" => dispatch::run(&args[1]),
+        "__review-kick" => queue::kick(&args[1]),
         "__checkpoint-worker" => events::run(&args[1]),
         "__checkpoint-claims" => claims::run(&args[1]),
         "__checkpoint-tags" => tags::run(&args[1]),

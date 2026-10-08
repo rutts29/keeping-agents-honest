@@ -292,3 +292,8 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     super::source_store::save(&directory, &name, &value)?;
     Ok(true)
 }
+
+/// Native hooks schedule host work without inspecting or waiting on admission.
+pub fn schedule(worker: &str) -> Result<()> {
+    super::hook::spawn("__review-kick", worker)
+}

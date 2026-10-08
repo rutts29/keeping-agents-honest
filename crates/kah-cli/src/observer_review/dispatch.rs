@@ -46,7 +46,7 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
     if super::events::pending(&binding.session)? {
         hook::spawn("__checkpoint-worker", &binding.session)?;
     }
-    super::queue::kick(&binding.session)?;
+    super::queue::schedule(&binding.session)?;
     if let Some(notice) = super::liveness::notice(&binding.session)? {
         return Ok(Some(notice));
     }

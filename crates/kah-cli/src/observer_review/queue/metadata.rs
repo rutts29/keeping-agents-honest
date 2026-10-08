@@ -40,57 +40,79 @@ pub(super) fn renamed(root: &Path, old: &str, new: &str) -> Result<()> {
 }
 pub(super) fn stamps(root: &Path, jobs: &[(PathBuf, Wake)]) -> Result<Metadata> {
     let mut map = load(root)?;
+    let repaired = repair_ages(root)?;
+    let mut changed = false;
     for (path, wake) in jobs {
         let name = path.file_name().unwrap().to_str().unwrap();
         if !map.contains_key(name) {
-            let at = legacy_at(root, name, path)?;
+            let at = modified(path)?;
             map.insert(
                 name.into(),
                 Stamp {
-                    at_ms: at,
+                    at_ms: repaired.get(name).copied().map_or(at, |old| old.min(at)),
                     lane: Lane::of(wake),
                 },
             );
+            changed = true;
         }
-        if let Some(original) = repair_age(root, name)? {
+        if let Some(original) = repaired.get(name) {
             let stamp = map.get_mut(name).unwrap();
-            stamp.at_ms = stamp.at_ms.min(original);
+            if *original < stamp.at_ms {
+                stamp.at_ms = *original;
+                changed = true;
+            }
         }
     }
-    save(root, &map)?;
+    if changed {
+        save(root, &map)?;
+    }
     Ok(map)
 }
+
 fn legacy_at(root: &Path, name: &str, path: &Path) -> Result<u64> {
     let at = modified(path)?;
     Ok(repair_age(root, name)?.map_or(at, |original| original.min(at)))
 }
 fn repair_age(root: &Path, name: &str) -> Result<Option<u64>> {
-    let mut at: Option<u64> = None;
+    Ok(repair_ages(root)?.get(name).copied())
+}
+fn repair_ages(root: &Path) -> Result<BTreeMap<String, u64>> {
+    let mut result = BTreeMap::new();
     let repairs = root.join("queue-repairs");
-    if repairs.exists() {
-        for entry in fs::read_dir(repairs)? {
-            let file = entry?.path();
-            if file.extension().is_some_and(|s| s == "json") {
-                let raw: Value = serde_json::from_slice(&fs::read(&file)?)?;
-                let rows =
-                    super::super::source_store::expand(raw["rows"].clone(), &root.join("sources"))?;
-                for row in rows
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|row| row["replacement"] == name)
-                {
-                    let original = row["original"]
-                        .as_str()
-                        .ok_or("REVIEW_QUEUE_ORIGINAL stage=timing")?;
-                    let old = modified(&root.join("queue-retired").join(original))?;
-                    at = Some(at.map_or(old, |current| current.min(old)));
-                }
-            }
+    if !repairs.exists() {
+        return Ok(result);
+    }
+    for entry in fs::read_dir(repairs)? {
+        let file = entry?.path();
+        if file.extension().is_none_or(|s| s != "json") {
+            continue;
+        }
+        let raw: Value = serde_json::from_slice(&fs::read(&file)?)?;
+        for row in raw["rows"].as_array().into_iter().flatten() {
+            // Only link metadata is needed. Never decode the archived wake/state
+            // or every replacement payload while holding the admission lock.
+            let replacement = super::super::source_store::expand(
+                row["replacement"].clone(),
+                &root.join("sources"),
+            )?;
+            let original =
+                super::super::source_store::expand(row["original"].clone(), &root.join("sources"))?;
+            let name = replacement
+                .as_str()
+                .ok_or("REVIEW_QUEUE_REPLACEMENT stage=timing")?;
+            let original = original
+                .as_str()
+                .ok_or("REVIEW_QUEUE_ORIGINAL stage=timing")?;
+            let at = modified(&root.join("queue-retired").join(original))?;
+            result
+                .entry(name.to_owned())
+                .and_modify(|old: &mut u64| *old = (*old).min(at))
+                .or_insert(at);
         }
     }
-    Ok(at)
+    Ok(result)
 }
+
 fn modified(path: &Path) -> Result<u64> {
     Ok(fs::metadata(path)?
         .modified()?
