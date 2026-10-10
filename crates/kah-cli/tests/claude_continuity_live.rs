@@ -1,11 +1,16 @@
 #[allow(dead_code)]
 mod claude_support;
+#[path = "claude_support/native_private.rs"]
+mod native_subagent_private;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
 mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[allow(dead_code, unused_imports)]
+#[path = "track2_support/verify.rs"]
+mod track2_support;
 
 use claude_support::Fixture;
 use kah_observer::{engine, session::Store};
@@ -96,6 +101,9 @@ fn compact(f: &Fixture, terminal: &mut pty::Terminal) {
 #[test]
 #[ignore = "one native Claude subagent, explicitly requested by the fixture user"]
 fn mine_claude_native_subagent() {
+    if native_subagent_private::selected() {
+        return;
+    }
     let f = Fixture::new();
     let version = version();
     let mut terminal = f.start(false);

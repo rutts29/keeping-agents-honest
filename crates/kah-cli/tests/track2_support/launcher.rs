@@ -2,9 +2,9 @@ use super::{claude_login, fixture};
 use serde_json::{Value, json};
 use std::{fs, process::Command, time::Duration};
 pub fn launch(mode: &str) {
-    assert_eq!(
-        std::env::var("KAH_TRACK2_MAKE_GATE").as_deref(),
-        Ok("1"),
+    assert!(
+        std::env::var("KAH_TRACK2_MAKE_GATE").as_deref() == Ok("1")
+            || (mode == "native5e" && std::env::var("KAH_5E_NATIVE_ONLY").as_deref() == Ok("1")),
         "TRACK2_GATE_ONLY stage=launch: use make gate"
     );
     if claude_login::requires_claude(mode) {
@@ -36,11 +36,12 @@ pub fn launch(mode: &str) {
     terminal.wait_for("KAH_TRACK2_READY");
     let entry = entrypoint_test(mode);
     terminal.submit(&format!(
-        "KAH_TRACK2_ROOT={} KAH_TRACK2_ENTRYPOINT={} {} --exact {} --nocapture > {} 2>&1",
+        "KAH_TRACK2_ROOT={} KAH_TRACK2_ENTRYPOINT={} {} --exact {} {} --nocapture > {} 2>&1",
         crate::pty::quote(fixture.root.to_str().unwrap()),
         crate::pty::quote(mode),
         crate::pty::quote(std::env::current_exe().unwrap().to_str().unwrap()),
         entry,
+        if mode == "native5e" { "--ignored" } else { "" },
         crate::pty::quote(fixture.root.join("helper.log").to_str().unwrap())
     ));
     let result = wait(&fixture, &mut terminal);
@@ -62,8 +63,18 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
     let trust = super::trust::cleanup_claude(&fixture.home);
     fixture::save(&fixture.root.join("claude-trust-cleanup.json"), &trust);
     let audit = fixture.audit();
+    let published_audit = if mode == "native5e" {
+        let retained = retain_native_exit(fixture, &audit);
+        json!({"passed":audit["passed"],"processes":audit["processes"],
+            "credential_contents_opened":audit["claude_login"]["credential_contents_opened"],
+            "fixture_claude_credentials_absent":audit["claude_login"]["fixture_claude_credentials_absent"],
+            "fixture_attributed_operator_entries":audit["claude_login"]["fixture_attributed_operator_entries"],
+            "violations":audit["claude_login"]["violations"],"full_audit":retained.join("cleanup-audit.json")})
+    } else {
+        audit.clone()
+    };
     fixture.publish(&json!({"mode":mode,"dry_run":fixture.dry,"result":result,
-        "audit":audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify","final_acceptance":false,"gate_passed":mode!="verify" && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
+        "audit":published_audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify","final_acceptance":false,"gate_passed":!matches!(mode,"verify"|"native5e") && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
     assert_eq!(audit["passed"], true, "TRACK2_CLEANUP stage=audit: {audit}");
     assert_eq!(
         trust["passed"], true,
@@ -77,11 +88,29 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
     );
 }
 
+fn retain_native_exit(fixture: &fixture::Fixture, audit: &Value) -> std::path::PathBuf {
+    let target = std::path::PathBuf::from("/mnt/kah-fixtures/cargo/test-fixtures")
+        .join(&fixture.name);
+    assert!(!target.exists(), "TRACK2_EXISTING_EVIDENCE stage=retain");
+    assert!(
+        Command::new("cp")
+            .args(["-a", "--"])
+            .arg(&fixture.root)
+            .arg(&target)
+            .status()
+            .unwrap()
+            .success(),
+        "TRACK2_RETAIN stage=native_exit"
+    );
+    fixture::save(&target.join("cleanup-audit.json"), audit);
+    target
+}
+
 fn entrypoint_test(mode: &str) -> &'static str {
-    if mode == "verify" {
-        "early_verify_entrypoint"
-    } else {
-        "private_entrypoint"
+    match mode {
+        "verify" => "early_verify_entrypoint",
+        "native5e" => "mine_claude_native_subagent",
+        _ => "private_entrypoint",
     }
 }
 fn wait(fixture: &fixture::Fixture, terminal: &mut crate::pty::Terminal) -> Value {
