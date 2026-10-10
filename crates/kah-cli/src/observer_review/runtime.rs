@@ -85,6 +85,13 @@ pub fn submit_snapshot(
     if request.purpose == Purpose::Preparation {
         return begin_preparation(store, state, request);
     }
+    let decision = super::preparation::active_decision(worker, &request.id)?;
+    if super::preparation::pending(worker, &decision)? {
+        store.save(&state)?;
+        drop(store);
+        prepare_context(worker)?;
+        return Ok(json!({"request":request.id,"status":"preparation_submitted"}));
+    }
     state.wakes += 1;
     state.stopped = false;
     let existing = state.observer.pane.is_some();

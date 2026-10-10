@@ -33,8 +33,16 @@ pub fn finished(
     result: &Result<()>,
 ) -> Result<()> {
     let after = pending(worker)?;
+    let gate_handoff = if let Some(request) = &before {
+        super::super::gate_host::jobs(worker)?
+            .iter()
+            .any(|root| root.file_name().and_then(|name| name.to_str()) == Some(request.as_str()))
+    } else {
+        false
+    };
     let reason=match result {
         Err(e)=>e.to_string(),
+        Ok(()) if gate_handoff=>"REVIEW_CONSUME_HANDOFF stage=consume: durable gate host owns evaluation".into(),
         Ok(()) if before.is_some() && before==after=>"REVIEW_CONSUME_HANDOFF stage=consume: pending request retained for host/preparation continuation".into(),
         Ok(())=>"REVIEW_CONSUME_COMPLETED stage=consume".into(),
     };

@@ -1,5 +1,5 @@
 use super::*;
-pub(super) fn record_effects(
+pub(crate) fn record_effects(
     store: &Store,
     state: &State,
     request: &super::super::state::Request,

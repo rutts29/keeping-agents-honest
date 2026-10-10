@@ -1,7 +1,7 @@
 //! No-progress observation, never a deadline on an active native/model review.
 use serde::{Deserialize, Serialize};
 mod failure;
-mod handoff;
+pub(crate) mod handoff;
 mod host_progress;
 mod monitor;
 pub(crate) mod selection_rejection;

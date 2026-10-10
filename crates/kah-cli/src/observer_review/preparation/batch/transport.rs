@@ -35,11 +35,10 @@ pub fn stage_iter(
         &format!("preparation-batch-{}.json", batch.id),
         &serde_json::to_value(&batch)?,
     )?;
-    crate::unattended_report::save(
-        &root,
-        "preparation-current.json",
-        &json!({"review":review,"decision":batch.id}),
-    )?;
+    for entry in &batch.decisions {
+        super::super::cursors::activate(worker, review, &entry.decision)?;
+    }
+    super::super::cursors::activate(worker, review, &batch.id)?;
     Ok(batch)
 }
 pub fn load(worker: &str, id: &str) -> Result<Option<Batch>> {

@@ -6,34 +6,22 @@ use crate::{Result, native_history::History};
 use kah_observer::{judge, review_evidence::Report};
 use serde_json::{Value, json};
 use std::{
-    env,
-    fs::{self, OpenOptions},
-    io::Read,
-    os::unix::fs::OpenOptionsExt,
+    env, fs,
     path::{Path, PathBuf},
 };
 #[cfg(test)]
 #[path = "../../tests/observer_unit/light_commit_ownership.rs"]
 mod light_ownership_tests;
 
-/// Open first, then inspect the descriptor: no symlinks, devices or FIFO waits.
-pub fn read_report(path: &Path) -> Result<Vec<u8>> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
-    let meta = file.metadata()?;
-    if !meta.is_file() {
-        return Err("REVIEW_REPORT_TYPE stage=consume".into());
-    }
-    let mut bytes = vec![];
-    file.read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
+mod report_io;
+pub use report_io::read_report;
+mod gate;
+mod native;
+pub(crate) use gate::{finish_gate_host, gate_decision};
 pub(crate) mod outcome;
 pub mod supervision_failure;
 pub mod supervisor;
-mod timed;
+pub(crate) mod timed;
 pub fn run(worker: &str) -> Result<()> {
     outcome::run(worker)
 }
@@ -76,37 +64,21 @@ fn run_inner(worker: &str) -> Result<()> {
         return retry_correction(store, worker);
     }
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
-    let decision = timed::decision(&home, &request, &actions, &report);
-    super::queue::memory::sample(worker, "consume_decision_returned")?;
-    if decision
-        .as_ref()
-        .is_err_and(|e| e.to_string().starts_with("JEV_PREPARATION_PENDING"))
-    {
+    if gate::handoff_locked(&store, &mut state, &request, &report, &actions, &path)? {
         drop(store);
-        return super::runtime::prepare_context(worker);
+        super::hook::spawn("__gate-host", worker)?;
+        return super::queue::kick(worker);
     }
-    let (judgment, input, mut assessment) = decision?;
-    super::gate_approval::guard_report(&store.directory, &request, &report, &mut assessment)?;
-    let version = question_version(&request, &report);
-    let tokens = tokens(&home, &store, &state);
-    let result = json!({"request":request.id,"purpose":request.purpose,"head":request.head,"observer_session":state.observer.session,"pane":state.observer.pane,"report":report,"jev_state":input,"judgment":judgment,"verified_question_set":version,"assessment":assessment,"native_tokens":tokens.as_ref().ok().zip(pending.native_tokens_before).map(|(n,before)|n.saturating_sub(before)),"usage_gap":tokens.as_ref().err().map(ToString::to_string).or_else(||pending.native_tokens_before.is_none().then(||"REVIEW_USAGE_BASELINE_MISSING".into())),"elapsed_ms":kah_observer::session::now_ms().saturating_sub(pending.created_ms)});
-    persist_evidence(
-        &store, &request, &report, &result, &input, &judgment, version,
-    )?;
-    timed::record_effects(&store, &state, &request, &report, &result, &judgment)?;
-    commit_result(&store, &mut state, &request, result, tokens.ok())?;
-    if request.purpose == Purpose::Checkpoint && !super::commit_packet::is_commit(&request) {
-        super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
-    }
-    finish(store, &path, worker)
+    native::finish(store, state, request, path, report, actions, &home)
 }
+
 fn loaded(worker: &str) -> Result<(Store, State)> {
     let store = Store::open_wait(worker)?;
     let state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=consume")?;
     super::queue::memory::sample(worker, "consume_state_loaded")?;
     Ok((store, state))
 }
-fn persist_evidence(
+pub(crate) fn persist_evidence(
     store: &Store,
     request: &super::state::Request,
     report: &Report,
@@ -357,6 +329,12 @@ fn record(
     let mut source = primary
         .load()?
         .ok_or("REVIEW_PRIMARY_STATE stage=consume")?;
+    if !source
+        .prepared_decisions
+        .insert(format!("verified-review:{}", request.id))
+    {
+        return Ok(());
+    }
     primary.append(&json!({"kind":"judgment","source":"verified_observer","purpose":request.purpose,"review_request":request.id,"prepared":super::preparation::pending(worker,&request.id)?,"judgment":judgment,"question_set":version,"at_ms":session::now_ms(),"state_digest":kah_observer::context_selection::digest(input)}))?;
     source.judgments.push(judgment.clone());
     source.usage.calls += judgment.metrics.calls;
@@ -384,10 +362,12 @@ pub(super) fn commit_result(
     }
     state.latest = Some(result);
     super::redelivery::completed(store, &request.id)?;
-    state.pending = None;
+    if state.pending.as_ref().is_some_and(|p| p.id == request.id) {
+        state.pending = None;
+    }
     state.last_verified_turn = Some(request.turn.clone());
     if let Some(tokens) = tokens {
-        state.native_tokens = tokens;
+        state.native_tokens = state.native_tokens.max(tokens);
     }
     store.save(state)?;
     super::commit_packet::reviewed(store, request, state.latest.as_ref().unwrap())?;

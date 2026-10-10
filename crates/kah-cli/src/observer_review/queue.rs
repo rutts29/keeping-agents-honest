@@ -256,6 +256,9 @@ pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
     Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
 }
 pub fn kick(worker: &str) -> Result<()> {
+    if super::gate_host::runnable(worker)? {
+        super::hook::spawn("__gate-host", worker)?;
+    }
     if super::gate_approval::pending_followups(worker)? {
         super::hook::spawn("__gate-followup", worker)?;
     }

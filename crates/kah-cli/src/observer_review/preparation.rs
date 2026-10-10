@@ -2,6 +2,7 @@
 use super::state::{Request, Store};
 pub mod batch;
 mod calibration;
+pub mod cursors;
 mod job;
 pub mod rejection;
 pub use job::job;
@@ -42,12 +43,7 @@ pub fn pending(worker: &str, decision: &str) -> Result<bool> {
         && !root.join(format!("prepared-{decision}.json")).exists())
 }
 pub fn active_decision(worker: &str, review: &str) -> Result<String> {
-    let active: Option<Value> =
-        super::state::read(&Store::directory(worker)?.join("preparation-current.json"))?;
-    Ok(active
-        .filter(|v| v["review"] == review)
-        .and_then(|v| v["decision"].as_str().map(str::to_owned))
-        .unwrap_or_else(|| review.into()))
+    cursors::active(worker, review)
 }
 pub fn evaluate(
     home: &Path,
@@ -147,14 +143,8 @@ pub fn stage(request: &Request, input: &Value, questions: &Questions, reason: &s
         &format!("preparation-{}.json", request.id),
         &serde_json::to_value(job)?,
     )?;
-    let review = Store::read(&request.worker)?
-        .and_then(|s| s.pending.map(|p| p.id))
-        .unwrap_or_else(|| request.id.clone());
-    crate::unattended_report::save(
-        &Store::directory(&request.worker)?,
-        "preparation-current.json",
-        &json!({"review":review,"decision":request.id}),
-    )
+    let review = cursors::review(request)?;
+    cursors::activate(&request.worker, &review, &request.id)
 }
 pub fn prompt(worker: &str) -> Result<String> {
     let state = Store::read(worker)?.ok_or("PREPARATION_STATE stage=context_preparation")?;

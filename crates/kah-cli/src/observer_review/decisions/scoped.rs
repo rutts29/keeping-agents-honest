@@ -116,29 +116,52 @@ fn decide(
     input: &Value,
     questions: &Questions,
 ) -> Result<(Decided, bool)> {
+    let ((judgment, prepared, archive), reused) =
+        decide_with(original, input, questions, |request| {
+            if super::super::preparation::pending(&request.worker, &request.id)? {
+                super::super::preparation::accept(&request.worker, &request.id)?;
+            }
+            let (judgment, prepared) =
+                super::super::preparation::evaluate(home, request, input, questions)?;
+            let archive = super::capture(home, request, &judgment, &prepared, questions, 8)?;
+            Ok((judgment, prepared, serde_json::to_value(archive)?))
+        })?;
+    Ok((
+        Decided {
+            judgment,
+            prepared,
+            archive,
+        },
+        reused,
+    ))
+}
+
+pub(crate) type Evaluation = (Judgment, Value, Value);
+/// Production and recorded transport share the exact-input durable decision cache.
+pub(crate) fn decide_with(
+    original: &Request,
+    input: &Value,
+    questions: &Questions,
+    evaluate: impl FnOnce(&Request) -> Result<Evaluation>,
+) -> Result<(Evaluation, bool)> {
     let request = request_for(original, input, questions)?;
     let root = super::super::state::Store::directory(&request.worker)?.join("decisions");
     kah_core::run_store::ensure_private_directory(&root)?;
     let name = format!("{}.json", request.id);
-    if let Some(saved) = super::super::state::read(&root.join(&name))? {
-        return Ok((saved, true));
+    if let Some(saved) = super::super::state::read::<Decided>(&root.join(&name))? {
+        return Ok(((saved.judgment, saved.prepared, saved.archive), true));
     }
-    if super::super::preparation::pending(&request.worker, &request.id)? {
-        super::super::preparation::accept(&request.worker, &request.id)?;
-    }
-    let (judgment, prepared) =
-        super::super::preparation::evaluate(home, &request, input, questions)?;
-    let archive = super::capture(home, &request, &judgment, &prepared, questions, 8)?;
+    let (judgment, prepared, archive) = evaluate(&request)?;
     let decided = Decided {
         judgment,
         prepared,
-        archive: serde_json::to_value(archive)?,
+        archive,
     };
     super::super::source_store::save(&root, &name, &serde_json::to_value(&decided)?)?;
-    Ok((decided, false))
+    Ok(((decided.judgment, decided.prepared, decided.archive), false))
 }
 
-fn merge(combined: &mut Judgment, part: &Judgment, reused: bool) -> Result<()> {
+pub(crate) fn merge(combined: &mut Judgment, part: &Judgment, reused: bool) -> Result<()> {
     if combined.backend == "not_requested" {
         combined.backend = part.backend.clone();
         combined.model = part.model.clone();
