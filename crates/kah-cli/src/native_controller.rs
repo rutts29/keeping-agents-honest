@@ -22,6 +22,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod completion;
+mod contention;
 mod sync;
 
 pub fn run_cli(arguments: &[String]) -> Result<()> {
@@ -321,7 +322,7 @@ impl<'a> Run<'a> {
     fn work(&mut self, child: &mut NativeChild) -> Result<()> {
         loop {
             let pane = self.pane.inspect()?;
-            let state = self.synchronize(&pane)?;
+            let state = contention::poll(|| self.synchronize(&pane))?.flatten();
             if self.record()?.control.status() != RunStatus::Running {
                 return Ok(());
             }
@@ -353,7 +354,7 @@ impl<'a> Run<'a> {
                     crate::observer_review::hook::spawn("__gate-followup", &state.binding.session)?;
                     self.followup_sample = state.action_digest.clone();
                 }
-                self.assess(&state)?;
+                contention::poll(|| self.assess(&state))?;
             }
             if self.record()?.control.status() != RunStatus::Running {
                 return Ok(());
