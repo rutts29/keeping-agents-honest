@@ -1,6 +1,7 @@
 //! Retained native evidence, never recast as new native work or Jev answers.
 use super::*;
-use kah_observer::commit_check::{Authority, CodeFile, Hunk, Rule};
+use kah_core::intent_history::{Event, GoalRevision, History, IntentItem, IntentKind, SourceRef};
+use kah_observer::commit_check::{CodeFile, Hunk, Rule};
 pub(super) fn coverage(repo: &Path, output: &Path) -> Result<Vec<Value>> {
     let home = std::env::var_os("HOME").ok_or("MEASURE_HOME stage=corpus")?;
     let root = std::path::PathBuf::from(home).join(".local/share/kah-eval/coverage-decisions");
@@ -22,25 +23,13 @@ pub(super) fn coverage(repo: &Path, output: &Path) -> Result<Vec<Value>> {
         let original: Value =
             serde_json::from_slice(&fs::read(archive.join(format!("{id}.json")))?)?;
         let state = &original["state"];
-        let requirement = state["decision"]["requirements"]
-            .as_object()
-            .and_then(|m| m.values().next())
-            .ok_or("MEASURE_COVERAGE_REQUIREMENT stage=corpus")?;
-        let goal = state["intent"]["goal"]
-            .as_str()
-            .ok_or("MEASURE_COVERAGE_GOAL stage=corpus")?;
-        let mut bundle = snapshot(
-            goal,
-            id,
-            "coverage-native-evidence",
-            state,
-            requirement["name"].as_str().unwrap_or(id),
-        )?;
+        let mut bundle = snapshot(state)?;
         bundle.input.code_changed = true;
         bundle.matrix_source = "retained_v12_reasoning; matrix quote adaptation pending".into();
         let head = state["event"]["head"].as_str().unwrap_or("retained-native");
         bundle.input.revision = head.into();
         bundle.input.files = super::code::coverage(state, head)?;
+        code_only(&mut bundle);
         bundle.calibration = Some(super::calibration()?);
         let row = super::record(
             output,
@@ -66,23 +55,15 @@ pub(super) fn drift(repo: &Path, output: &Path) -> Result<Vec<Value>> {
         ));
         let original: Value = serde_json::from_slice(&fs::read(&path)?)?;
         let state = &original["fullVerifier"]["jev_state"];
-        let goal = state["intent"]["goal"]
-            .as_str()
-            .ok_or("MEASURE_DRIFT_GOAL stage=corpus")?;
-        let mut bundle = snapshot(
-            goal,
-            "finite_numbers",
-            &format!("planted-{provider}"),
-            state,
-            goal,
-        )?;
+        let mut bundle = snapshot(state)?;
         bundle.input.files = super::code::drift(&original, &bundle.input.revision)?;
+        code_only(&mut bundle);
         bundle.calibration = Some(super::calibration()?);
         let row = super::record(
             output,
             &format!("drift-{provider}"),
             "planted_drift",
-            json!({"requirement":"finite_numbers","expected":"violated","source":path,"fault_injection":original["faultInjection"]}),
+            json!({"expected":"violated","source":path,"fault_injection":original["faultInjection"]}),
             &bundle,
         )?;
         fs::write(
@@ -93,41 +74,43 @@ pub(super) fn drift(repo: &Path, output: &Path) -> Result<Vec<Value>> {
     }
     Ok(cases)
 }
-fn snapshot(goal: &str, id: &str, source: &str, state: &Value, name: &str) -> Result<Bundle> {
-    let history = corpus::history(goal, "recorded-user-goal", source)?;
-    let mut intent = commit_check::CurrentIntent::resolve(&history, BTreeMap::new())?;
-    // Named decomposition remains evidence, not newly invented user authority.
-    let authority = Authority {
-        text: name.into(),
-        origin: "quality".into(),
-        sources: json!({"retained_source":source,"authority":"recorded-user-goal","name_is_decomposition":true}),
-    };
-    intent.items.insert(id.into(), authority.clone());
+fn snapshot(state: &Value) -> Result<Bundle> {
+    let history = retained_history(state)?;
+    let intent = commit_check::CurrentIntent::resolve(&history, BTreeMap::new())?;
+    let impacted = intent.items.keys().cloned().collect();
+    let rules = intent
+        .items
+        .keys()
+        .map(|id| {
+            (
+                id.clone(),
+                Rule {
+                    authority: id.clone(),
+                    unconditional_prohibition: false,
+                    prohibition: false,
+                    literal_check: true,
+                    hunks: BTreeSet::from(["retained-actions".into()]),
+                },
+            )
+        })
+        .collect();
     let revision = format!(
         "retained:{}",
         commit_check::digest(serde_json::to_vec(state)?.as_slice())
     );
     let text = serde_json::to_string_pretty(state)?;
     Ok(Bundle {
+        historical: None,
         records: history.records().to_vec(),
-        quality: BTreeMap::from([(id.into(), authority)]),
+        quality: BTreeMap::new(),
         input: Input {
             revision: revision.clone(),
             baseline: None,
             checkpoint: false,
             code_changed: true,
             intent,
-            impacted: BTreeSet::from([id.into()]),
-            rules: BTreeMap::from([(
-                id.into(),
-                Rule {
-                    authority: id.into(),
-                    unconditional_prohibition: false,
-                    prohibition: false,
-                    literal_check: false,
-                    hunks: BTreeSet::from(["retained-actions".into()]),
-                },
-            )]),
+            impacted,
+            rules,
             hunks: BTreeMap::from([(
                 "retained-actions".into(),
                 Hunk {
@@ -140,10 +123,63 @@ fn snapshot(goal: &str, id: &str, source: &str, state: &Value, name: &str) -> Re
                 CodeFile::new(&revision, &text),
             )]),
             matrix: vec![],
-            carried: json!({"original_state":source,"not_a_new_commit":true}),
+            carried: json!({"original_state_digest":commit_check::digest(text.as_bytes()),"not_a_new_commit":true,"authority":"All verbatim active archived intent items, with original native SourceRefs; no label or decomposition rule injected"}),
         },
         matrix_source: "fresh_native_required_from_retained_evidence".into(),
         native_usage: None,
         calibration: None,
     })
+}
+
+fn retained_history(state: &Value) -> Result<History> {
+    let goal = state["intent"]["goal"]
+        .as_str()
+        .ok_or("MEASURE_RETAINED_GOAL stage=corpus")?;
+    let items = state["intent"]["items"]
+        .as_array()
+        .ok_or("MEASURE_RETAINED_ITEMS stage=corpus")?;
+    let goal_item = items
+        .iter()
+        .find(|i| i["text"] == goal)
+        .ok_or("MEASURE_RETAINED_GOAL_SOURCE stage=corpus")?;
+    let sources: Vec<SourceRef> = serde_json::from_value(goal_item["source"].clone())?;
+    let mut history = History::new(GoalRevision::new(1, goal, sources))?;
+    for item in items {
+        let id = item["id"]
+            .as_str()
+            .ok_or("MEASURE_RETAINED_ITEM_ID stage=corpus")?;
+        let text = item["text"]
+            .as_str()
+            .ok_or("MEASURE_RETAINED_ITEM_TEXT stage=corpus")?;
+        let source = serde_json::from_value(item["source"].clone())?;
+        // The archived projection already resolved activity. Its stripped
+        // category is unknown; do not infer a prohibition or new permission.
+        history.append(Event::RequirementAdded {
+            item: IntentItem::new(id, IntentKind::Outcome, text, source),
+            approval: None,
+        })?;
+    }
+    Ok(history)
+}
+
+fn code_only(bundle: &mut Bundle) {
+    bundle.input.hunks = bundle
+        .input
+        .files
+        .iter()
+        .map(|(path, file)| {
+            (
+                commit_check::key(path),
+                Hunk {
+                    file: path.clone(),
+                    text: file.text.clone(),
+                },
+            )
+        })
+        .collect();
+    let keys: BTreeSet<_> = bundle.input.hunks.keys().cloned().collect();
+    for rule in bundle.input.rules.values_mut() {
+        rule.hunks = keys.clone();
+    }
+    // Original reports/answers remain archived for audit, outside thinker input.
 }

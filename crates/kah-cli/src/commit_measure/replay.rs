@@ -21,21 +21,27 @@ pub fn run(repo: &Path, labels_path: &Path, output: &Path) -> Result<()> {
             .as_str()
             .ok_or("MEASURE_LABEL_SHA stage=replay")?;
         let id = format!("real-{sha}");
-        let mut bundle = corpus::real_commit(repo, sha, &labels)?;
-        bundle.calibration = Some(calibration.clone());
-        cases.push(record(output, &id, "real_positive", row.clone(), &bundle)?);
+        cases.push(real_case(
+            repo,
+            output,
+            &id,
+            "real_positive",
+            row.clone(),
+            sha,
+            &calibration,
+        )?);
     }
     let controls = corpus::controls(repo, &labels)?;
     for sha in &controls {
         let id = format!("control-{sha}");
-        let mut bundle = corpus::real_commit(repo, sha, &labels)?;
-        bundle.calibration = Some(calibration.clone());
-        cases.push(record(
+        cases.push(real_case(
+            repo,
             output,
             &id,
             "normal_control",
             json!({"commit":sha,"expected":"no violated row; satisfied or unclear"}),
-            &bundle,
+            sha,
+            &calibration,
         )?);
     }
     cases.extend(extras::coverage(repo, output)?);
@@ -43,7 +49,7 @@ pub fn run(repo: &Path, labels_path: &Path, output: &Path) -> Result<()> {
     let report = json!({"mode":"count_only","cases":cases,"controls":controls,
         "sampling":"SHA-sorted, evenly spaced first-parent main commits Oct2–8, exclusions from reviewer labels; at least4x real positives",
         "calibration":calibration,"actual_jev_calls":0,"actual_jev_cost_usd":0.0,"false_flags":null,"misses":null,
-        "matrix_accuracy":null,"quality":"not_run; missing native matrices are explicit, no synthetic predictions",
+        "matrix_accuracy":null,"jev_false_flags":null,"post_confirmation_false_flags":null,"confirmation":"same persistent native session; actual typed flags required; not run","quality":"not_run; missing native matrices are explicit, no synthetic predictions",
         "cost_is_pass_fail":false,"caps":false});
     save_text(
         output,
@@ -75,6 +81,10 @@ pub fn summarize(cases: &[Value]) -> Value {
     let mut scored = 0;
     let mut pending = BTreeSet::new();
     for case in cases {
+        if case["label_derivability"]["status"] == "not derivable from intent" {
+            pending.insert(format!("{}:not_derivable_from_intent", case["id"]));
+            continue;
+        }
         let Some(rows) = case["matrix_rows"].as_array() else {
             pending.insert(case["id"].clone().to_string());
             continue;
@@ -86,10 +96,7 @@ pub fn summarize(cases: &[Value]) -> Value {
                 scored += 1;
             }
             Some("real_positive" | "planted_drift") => {
-                let target = case["label"]["requirement"].as_str();
-                let caught = rows.iter().any(|r| {
-                    r["status"] == "violated" && target.is_none_or(|id| r["requirement"] == id)
-                });
+                let caught = rows.iter().any(|row| label_caught(row, &case["label"]));
                 misses += usize::from(!caught);
                 scored += 1;
             }
@@ -112,4 +119,68 @@ pub(super) fn calibration() -> Result<estimate::Calibration> {
         dirs.first()
             .ok_or("MEASURE_CALIBRATION_MISSING stage=estimate")?,
     )
+}
+
+fn real_case(
+    repo: &Path,
+    output: &Path,
+    id: &str,
+    kind: &str,
+    label: Value,
+    sha: &str,
+    calibration: &estimate::Calibration,
+) -> Result<Value> {
+    let mut bundle = match corpus::real_commit(repo, sha) {
+        Ok(bundle) => bundle,
+        Err(error)
+            if error
+                .to_string()
+                .starts_with("MEASURE_HISTORICAL_INTENT_MISSING ") =>
+        {
+            let case = json!({"id":id,"kind":kind,"label":label,"status":"historical_intent_unavailable","reason":error.to_string(),"rule_count":null,"actual_jev_calls":0,"quality":"not derivable from recovered intent; never inject label authority"});
+            save_text(
+                output,
+                &format!("{id}-unavailable.json"),
+                &serde_json::to_string_pretty(&case)?,
+            )?;
+            return Ok(case);
+        }
+        Err(error) => return Err(error),
+    };
+    bundle.calibration = Some(calibration.clone());
+    let mut case = record(output, id, kind, label.clone(), &bundle)?;
+    // Scoring eligibility is recorded AFTER independent request construction.
+    // F19 was a reviewer quality finding, not a contemporaneous user rule.
+    if label["category"] == "quality" {
+        case["label_derivability"] = json!({"status":"not derivable from intent","reason":"Reviewer quality finding; no equivalent literal-question user rule in the retained active ledger. No rule injected."});
+    }
+    Ok(case)
+}
+
+fn label_caught(row: &Value, label: &Value) -> bool {
+    if row["status"] != "violated" {
+        return false;
+    }
+    let Some(file) = label["evidence"]["file"].as_str() else {
+        return true;
+    };
+    row["quotes"].as_array().into_iter().flatten().any(|quote| {
+        if quote["file"] != file {
+            return false;
+        }
+        let text = quote["text"].as_str().unwrap_or("");
+        if let Some(line) = label["evidence"]["added_line"]
+            .as_str()
+            .or_else(|| label["evidence"]["added_line_contains"].as_str())
+        {
+            return text.contains(line);
+        }
+        label["evidence"]["added_lines"]
+            .as_array()
+            .is_none_or(|lines| {
+                lines
+                    .iter()
+                    .any(|line| line.as_str().is_some_and(|line| text.contains(line)))
+            })
+    })
 }

@@ -4,6 +4,7 @@ use kah_observer::commit_check::{self, Input, Plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
+pub mod historical;
 pub mod replay;
 pub mod retained;
 mod source;
@@ -13,6 +14,8 @@ pub use source::collect;
 #[serde(deny_unknown_fields)]
 pub struct Bundle {
     pub records: Vec<kah_core::intent_history::EventRecord>,
+    #[serde(default)]
+    pub historical: Option<historical::Snapshot>,
     pub quality: BTreeMap<String, commit_check::Authority>,
     pub input: Input,
     pub matrix_source: String,
@@ -21,10 +24,16 @@ pub struct Bundle {
     pub calibration: Option<estimate::Calibration>,
 }
 pub fn resolve(bundle: &Bundle) -> Result<Input> {
-    let history = kah_core::intent_history::History::replay(bundle.records.clone())?;
     let mut input = bundle.input.clone();
-    input.intent =
-        commit_check::CurrentIntent::resolve(&history, input.intent.permissions.clone())?;
+    input.intent = if let Some(snapshot) = &bundle.historical {
+        if !bundle.records.is_empty() || !bundle.quality.is_empty() {
+            return Err("MEASURE_HISTORICAL_AUTHORITY stage=resolve: historical snapshots cannot mix injected records or quality rules".into());
+        }
+        snapshot.intent()?
+    } else {
+        let history = kah_core::intent_history::History::replay(bundle.records.clone())?;
+        commit_check::CurrentIntent::resolve(&history, input.intent.permissions.clone())?
+    };
     for (id, item) in &bundle.quality {
         if item.origin != "quality" || input.intent.items.contains_key(id) {
             return Err(format!("MEASURE_QUALITY_AUTHORITY stage=resolve: {id}").into());
@@ -61,6 +70,8 @@ pub fn count(bundle: &Bundle, output: &Path) -> Result<Value> {
         "touched":plan.touched,"carried":plan.carried,"matrix_pending":plan.matrix_pending,
         "absence_rows":plan.absence_rows,"correction_signals":plan.correction_signals,
         "matrix_source":bundle.matrix_source,"native_usage":bundle.native_usage,
+        "rule_count":bundle.input.rules.len(),"authority_item_count":bundle.input.intent.items.len(),
+        "historical_authority":bundle.historical.as_ref().map(|s| &s.audit),
         "actual_jev_calls":0,"actual_jev_input_tokens":0,"actual_jev_cost_usd":0.0,
         "planned_jev_input_tokens":null,"planned_jev_cost_usd":null,
         "estimate_note":"No official tokenizer. Exact serialized sizes are measured; calibrated estimates can be attached separately, never used as caps.",

@@ -3,7 +3,7 @@ use super::*;
 use kah_core::intent_history::{
     Event, GoalRevision, History, IntentItem, IntentKind, SourceProvider, SourceRef, SourceRole,
 };
-use kah_observer::commit_check::{Authority, CurrentIntent, Rule};
+use kah_observer::commit_check::Rule;
 use std::collections::BTreeSet;
 pub fn history(text: &str, id: &str, origin: &str) -> Result<History> {
     let source = SourceRef::new(
@@ -20,88 +20,77 @@ pub fn history(text: &str, id: &str, origin: &str) -> Result<History> {
     })?;
     Ok(history)
 }
-pub fn real_commit(repo: &Path, sha: &str, labels: &Value) -> Result<Bundle> {
+pub fn real_commit(repo: &Path, sha: &str) -> Result<Bundle> {
     let head = source::git(repo, &["rev-parse", "--verify", sha])?
         .trim()
         .to_owned();
+    let snapshot = historical::load(repo, &head)?;
+    real_commit_with_snapshot(repo, &head, snapshot)
+}
+pub fn real_commit_with_snapshot(
+    repo: &Path,
+    sha: &str,
+    snapshot: historical::Snapshot,
+) -> Result<Bundle> {
+    let head = source::git(repo, &["rev-parse", "--verify", sha])?
+        .trim()
+        .to_owned();
+    let at = source::git(repo, &["show", "-s", "--format=%ct", &head])?
+        .trim()
+        .parse::<u64>()?
+        * 1000;
+    if snapshot.audit["commit_at_ms"].as_u64() != Some(at) {
+        return Err(
+            "MEASURE_HISTORICAL_COMMIT stage=corpus: snapshot belongs to another commit time"
+                .into(),
+        );
+    }
     let parent = source::git(repo, &["rev-parse", "--verify", &format!("{head}^1")])?
         .trim()
         .to_owned();
+    let intent = snapshot.intent()?;
     let (hunks, files) = collect(repo, &parent, &head)?;
-    let text = labels["requirements"]["no_caps"]["text"]
-        .as_str()
-        .ok_or("MEASURE_LABEL_RULE stage=corpus")?;
-    let history = history(text, "no_caps", "reviewer-labels:no_caps:user-standing")?;
-    let mut intent = CurrentIntent::resolve(&history, BTreeMap::new())?;
-    let quality = Authority {
-        text: labels["requirements"]["jev_literal_questions"]["text"]
-            .as_str()
-            .ok_or("MEASURE_LABEL_RULE stage=corpus")?
-            .into(),
-        origin: "quality".into(),
-        sources: json!({"source":"reviewer finding F19; not user authority"}),
-    };
-    intent
+    // No retrospectively invented component map. All authority is selected
+    // when a historical map cannot attribute it; the fallback is explicit.
+    let impacted = intent.items.keys().cloned().collect();
+    let all_hunks: BTreeSet<String> = hunks.keys().cloned().collect();
+    let rules = intent
         .items
-        .insert("jev_literal_questions".into(), quality.clone());
-    let code_changed = hunks
-        .values()
-        .any(|h| h.file.starts_with("crates/") || h.file.starts_with("demos/"));
-    let impacted = impact(repo, &head, &parent)?;
-    let rules = rules(&hunks);
+        .keys()
+        .map(|id| {
+            (
+                id.clone(),
+                Rule {
+                    authority: id.clone(),
+                    unconditional_prohibition: snapshot.always_checked(id),
+                    prohibition: snapshot.always_checked(id),
+                    literal_check: true,
+                    hunks: all_hunks.clone(),
+                },
+            )
+        })
+        .collect();
     Ok(Bundle {
-        records: history.records().to_vec(),
-        quality: BTreeMap::from([("jev_literal_questions".into(), quality)]),
+        records: vec![],
+        historical: Some(snapshot),
+        quality: BTreeMap::new(),
         input: Input {
             revision: head,
             baseline: Some(parent),
             checkpoint: false,
-            code_changed,
+            code_changed: !hunks.is_empty(),
             intent,
             impacted,
             rules,
             hunks,
             files,
             matrix: vec![],
-            carried: json!({"source":"step C component impact","records":[],"reason":"Independent labelled case has no eligible prior verdict; no carry invented"}),
+            carried: json!({"source":"historical ledger","records":[],"reason":"Historical requirement map unavailable; all active authority selected, including all prohibitions. No carry invented.","permission_context":"All active authority supplied; permissions require explicit authorization in original text."}),
         },
         matrix_source: "fresh_native_required".into(),
         native_usage: None,
         calibration: None,
     })
-}
-fn quality_path(path: &str) -> bool {
-    matches!(
-        path,
-        "crates/kah-cli/src/observer_review/checkpoint.rs"
-            | "crates/kah-observer/src/checkpoint.rs"
-    ) || path.starts_with("crates/kah-observer/src/checkpoint/")
-}
-fn impact(repo: &Path, head: &str, parent: &str) -> Result<BTreeSet<String>> {
-    use crate::observer_review::component_map::{Component, Map};
-    let map = Map {
-        version: 1,
-        components: vec![Component {
-            name: "jev-questions".into(),
-            path_globs: vec![
-                "crates/kah-cli/src/observer_review/checkpoint.rs".into(),
-                "crates/kah-observer/src/checkpoint.rs".into(),
-                "crates/kah-observer/src/checkpoint/**".into(),
-            ],
-            requirements: vec!["jev_literal_questions".into()],
-            tests: vec![],
-            e2e_flows: vec![],
-        }],
-    };
-    let current = map.collect(repo, head, Some(parent))?;
-    Ok(current["components"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|c| c["changed_paths"].as_array().is_some_and(|p| !p.is_empty()))
-        .flat_map(|c| c["requirements"].as_array().into_iter().flatten())
-        .filter_map(|id| id.as_str().map(str::to_owned))
-        .collect())
 }
 pub fn controls(repo: &Path, labels: &Value) -> Result<Vec<String>> {
     let mut excluded = BTreeSet::new();
@@ -145,39 +134,4 @@ pub fn controls(repo: &Path, labels: &Value) -> Result<Vec<String>> {
     Ok((0..required)
         .map(|i| normal[i * normal.len() / required].clone())
         .collect())
-}
-
-fn rules(hunks: &BTreeMap<String, commit_check::Hunk>) -> BTreeMap<String, Rule> {
-    let all_hunks = hunks
-        .iter()
-        .filter(|(_, h)| h.file.starts_with("crates/") || h.file.starts_with("demos/"))
-        .map(|(id, _)| id.clone())
-        .collect();
-    let quality_hunks = hunks
-        .iter()
-        .filter(|(_, h)| quality_path(&h.file))
-        .map(|(id, _)| id.clone())
-        .collect();
-    BTreeMap::from([
-        (
-            "no_caps".into(),
-            Rule {
-                authority: "no_caps".into(),
-                unconditional_prohibition: true,
-                prohibition: true,
-                literal_check: true,
-                hunks: all_hunks,
-            },
-        ),
-        (
-            "jev_literal_questions".into(),
-            Rule {
-                authority: "jev_literal_questions".into(),
-                unconditional_prohibition: false,
-                prohibition: false,
-                literal_check: true,
-                hunks: quality_hunks,
-            },
-        ),
-    ])
 }
