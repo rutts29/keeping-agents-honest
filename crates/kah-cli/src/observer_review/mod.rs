@@ -54,6 +54,9 @@ pub fn command(args: &[String]) -> Option<crate::Result<()>> {
     })
 }
 fn route(args: &[String]) -> Option<crate::Result<()>> {
+    if args.first().is_some_and(|s| s == "measure") {
+        return Some(crate::commit_measure::command(&args[1..]));
+    }
     if args.first().is_some_and(|s| s == "gate") {
         return Some(events::cli(args));
     }

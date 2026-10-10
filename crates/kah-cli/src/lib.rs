@@ -60,3 +60,5 @@ pub mod native_resume;
 pub mod run_pane;
 
 pub mod native_billing;
+
+pub mod commit_measure;
