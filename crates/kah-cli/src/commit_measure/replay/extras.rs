@@ -32,6 +32,7 @@ pub(super) fn coverage(repo: &Path, output: &Path) -> Result<Vec<Value>> {
         code_only(&mut bundle);
         bundle.calibration = Some(super::calibration()?);
         let row = super::record(
+            repo,
             output,
             &format!("coverage-{id}"),
             "frozen_coverage",
@@ -60,6 +61,7 @@ pub(super) fn drift(repo: &Path, output: &Path) -> Result<Vec<Value>> {
         code_only(&mut bundle);
         bundle.calibration = Some(super::calibration()?);
         let row = super::record(
+            repo,
             output,
             &format!("drift-{provider}"),
             "planted_drift",
@@ -88,7 +90,7 @@ fn snapshot(state: &Value) -> Result<Bundle> {
                     authority: id.clone(),
                     unconditional_prohibition: false,
                     prohibition: false,
-                    literal_check: true,
+                    literal_check: false,
                     hunks: BTreeSet::from(["retained-actions".into()]),
                 },
             )
@@ -152,10 +154,22 @@ fn retained_history(state: &Value) -> Result<History> {
             .as_str()
             .ok_or("MEASURE_RETAINED_ITEM_TEXT stage=corpus")?;
         let source = serde_json::from_value(item["source"].clone())?;
-        // The archived projection already resolved activity. Its stripped
-        // category is unknown; do not infer a prohibition or new permission.
+        // The initial goal is an Outcome, as production intake types
+        // initial_task/goal_change; other stripped categories need typing.
+        if item["text"] != goal && item.get("kind").is_none() {
+            return Err(format!("MEASURE_RETAINED_TYPING_REQUIRED stage=corpus: {id}").into());
+        }
         history.append(Event::RequirementAdded {
-            item: IntentItem::new(id, IntentKind::Outcome, text, source),
+            item: IntentItem::new(
+                id,
+                if item.get("kind").is_some() {
+                    serde_json::from_value(item["kind"].clone())?
+                } else {
+                    IntentKind::Outcome
+                },
+                text,
+                source,
+            ),
             approval: None,
         })?;
     }

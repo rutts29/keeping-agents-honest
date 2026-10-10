@@ -4,6 +4,7 @@ use kah_observer::commit_check::{self, Input, Plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
+pub mod comparison;
 pub mod historical;
 pub mod replay;
 pub mod retained;
@@ -40,6 +41,7 @@ pub fn resolve(bundle: &Bundle) -> Result<Input> {
         }
         input.intent.items.insert(id.clone(), item.clone());
     }
+    literal_typing(bundle, &mut input)?;
     Ok(input)
 }
 pub fn prepare(bundle: &Bundle) -> Result<Plan> {
@@ -70,7 +72,9 @@ pub fn count(bundle: &Bundle, output: &Path) -> Result<Value> {
         "touched":plan.touched,"carried":plan.carried,"matrix_pending":plan.matrix_pending,
         "absence_rows":plan.absence_rows,"correction_signals":plan.correction_signals,
         "matrix_source":bundle.matrix_source,"native_usage":bundle.native_usage,
-        "rule_count":bundle.input.rules.len(),"authority_item_count":bundle.input.intent.items.len(),
+        "rule_count":resolve(bundle)?.rules.values().filter(|r|r.literal_check).count(),
+        "matrix_requirement_count":plan.touched.len(),"literal_typing":"Stored intake IntentKind Constraint/Invariant; Goal/Outcome/Scope/Validation/StopCondition are matrix requirements",
+        "authority_item_count":bundle.input.intent.items.len(),
         "historical_authority":bundle.historical.as_ref().map(|s| &s.audit),
         "actual_jev_calls":0,"actual_jev_input_tokens":0,"actual_jev_cost_usd":0.0,
         "planned_jev_input_tokens":null,"planned_jev_cost_usd":null,
@@ -118,3 +122,34 @@ pub mod corpus;
 pub mod estimate;
 
 pub mod step_c;
+
+fn literal_typing(bundle: &Bundle, input: &mut Input) -> Result<()> {
+    use kah_core::intent_history::{History, IntentKind};
+    let ids = if let Some(snapshot) = &bundle.historical {
+        snapshot
+            .projection
+            .preserve
+            .iter()
+            .chain(&snapshot.projection.frontier)
+            .chain(&snapshot.projection.validation)
+            .filter(|i| matches!(i.kind, IntentKind::Constraint | IntentKind::Invariant))
+            .map(|i| i.id.to_string())
+            .collect::<std::collections::BTreeSet<_>>()
+    } else {
+        History::replay(bundle.records.clone())?
+            .snapshot()
+            .intents
+            .values()
+            .filter(|i| {
+                i.is_active() && matches!(i.kind, IntentKind::Constraint | IntentKind::Invariant)
+            })
+            .map(|i| i.id.to_string())
+            .collect()
+    };
+    for rule in input.rules.values_mut() {
+        rule.literal_check = ids.contains(&rule.authority);
+        rule.unconditional_prohibition = rule.literal_check;
+        rule.prohibition = rule.literal_check;
+    }
+    Ok(())
+}
