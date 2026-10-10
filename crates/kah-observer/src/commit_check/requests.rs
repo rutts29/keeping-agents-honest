@@ -1,6 +1,8 @@
 use super::*;
 pub(super) fn literal(input: &Input, touched: &BTreeSet<String>) -> Result<Prepared, String> {
     let mut checks = BTreeMap::new();
+    let mut shared_hunks = BTreeMap::new();
+    let mut permissions = BTreeMap::new();
     let mut questions = BTreeMap::new();
     for id in touched {
         let rule = &input.rules[id];
@@ -8,27 +10,29 @@ pub(super) fn literal(input: &Input, touched: &BTreeSet<String>) -> Result<Prepa
             continue;
         }
         let authority = &input.intent.items[&rule.authority];
-        let hunks = rule
-            .hunks
-            .iter()
-            .map(|id| {
-                input
-                    .hunks
-                    .get(id)
-                    .map(|h| (id.clone(), h.clone()))
-                    .ok_or_else(|| format!("MEASURE_HUNK_MISSING stage=literal: {id}"))
-            })
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        if hunks.is_empty() {
+        if rule.hunks.is_empty() {
             continue;
         }
+        for id in &rule.hunks {
+            let hunk = input
+                .hunks
+                .get(id)
+                .ok_or_else(|| format!("MEASURE_HUNK_MISSING stage=literal: {id}"))?;
+            shared_hunks.insert(id.clone(), hunk.clone());
+        }
+        let related = input.intent.permissions_for(&rule.authority)?;
+        let permission_ids: BTreeSet<_> = related.keys().cloned().collect();
+        permissions.extend(related);
         let name = key(id);
-        checks.insert(name.clone(), json!({"requirement":id,"rule":authority.text,"rule_origin":authority.origin,
-            "source_ids":authority.sources,"diff_hunks":hunks,"current_permissions":input.intent.permissions_for(&rule.authority)?}));
-        questions.insert(format!("rule.{name}"), Query::Noul { instructions: format!("Does the added or changed code in `checks.{name}.diff_hunks` do what `checks.{name}.rule` forbids or contradict that rule? Unfinished or not-yet-implemented work is not a violation. A change explicitly authorized by `checks.{name}.current_permissions` is not a violation.") });
+        checks.insert(
+            name.clone(),
+            json!({"requirement":id,"rule":authority.text,"rule_origin":authority.origin,
+            "source_ids":authority.sources,"hunk_ids":rule.hunks,"permission_ids":permission_ids}),
+        );
+        questions.insert(format!("rule.{name}"), Query::Noul { instructions: format!("Does the added or changed code in shared `diff_hunks`, identified by `checks.{name}.hunk_ids`, do what `checks.{name}.rule` forbids or contradict that rule? Unfinished or not-yet-implemented work is not a violation. A change explicitly authorized by the `current_permissions` named in `checks.{name}.permission_ids` is not a violation.") });
     }
     Ok(Prepared {
-        state: json!({"checks":checks}),
+        state: json!({"diff_hunks":shared_hunks,"checks":checks,"current_permissions":permissions}),
         questions,
     })
 }

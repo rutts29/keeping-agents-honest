@@ -63,6 +63,7 @@ pub fn run(repo: &Path, labels_path: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 pub(super) fn record(
+    repo: &Path,
     output: &Path,
     id: &str,
     kind: &str,
@@ -70,9 +71,10 @@ pub(super) fn record(
     bundle: &Bundle,
 ) -> Result<Value> {
     let directory = output.join(id);
-    let measured = count(bundle, &directory)?;
+    let compared = comparison::count_both(repo, bundle, &directory)?;
+    let measured = &compared["all_changed_files"];
     Ok(
-        json!({"id":id,"kind":kind,"label":label,"measurement":measured,"matrix_source":bundle.matrix_source,"directory":directory}),
+        json!({"id":id,"kind":kind,"label":label,"measurement":measured,"comparison":compared,"matrix_source":bundle.matrix_source,"directory":directory}),
     )
 }
 pub fn summarize(cases: &[Value]) -> Value {
@@ -148,7 +150,7 @@ fn real_case(
         Err(error) => return Err(error),
     };
     bundle.calibration = Some(calibration.clone());
-    let mut case = record(output, id, kind, label.clone(), &bundle)?;
+    let mut case = record(repo, output, id, kind, label.clone(), &bundle)?;
     // Scoring eligibility is recorded AFTER independent request construction.
     // F19 was a reviewer quality finding, not a contemporaneous user rule.
     if label["category"] == "quality" {

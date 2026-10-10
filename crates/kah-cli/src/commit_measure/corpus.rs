@@ -64,7 +64,7 @@ pub fn real_commit_with_snapshot(
                     authority: id.clone(),
                     unconditional_prohibition: snapshot.always_checked(id),
                     prohibition: snapshot.always_checked(id),
-                    literal_check: true,
+                    literal_check: snapshot.always_checked(id),
                     hunks: all_hunks.clone(),
                 },
             )

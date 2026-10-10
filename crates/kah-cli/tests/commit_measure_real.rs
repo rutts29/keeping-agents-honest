@@ -188,3 +188,121 @@ fn scoring_matches_labelled_code_evidence_not_injected_authority_aliases() {
         1
     );
 }
+
+#[test]
+fn real_request_shares_changed_code_once_and_uses_stored_literal_typing() {
+    let bundle = retained_commit();
+    let plan = commit_measure::prepare(&bundle).unwrap();
+    assert_eq!(plan.literal.state["diff_hunks"], json!(bundle.input.hunks));
+    assert!(
+        plan.literal.state["checks"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|rule| rule.get("diff_hunks").is_none())
+    );
+    let literal_ids: std::collections::BTreeSet<_> = plan.literal.state["checks"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|rule| rule["requirement"].as_str().unwrap().to_owned())
+        .collect();
+    assert!(!literal_ids.contains("goal"));
+    let expected: std::collections::BTreeSet<_> = bundle
+        .historical
+        .as_ref()
+        .unwrap()
+        .projection
+        .frontier
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.kind,
+                kah_core::intent_history::IntentKind::Constraint
+                    | kah_core::intent_history::IntentKind::Invariant
+            )
+        })
+        .map(|item| item.id.to_string())
+        .collect();
+    assert_eq!(literal_ids, expected);
+    assert!(plan.touched.contains("goal"));
+}
+
+#[test]
+fn actual_archive_copy_comparison_retains_full_inputs_and_records_git_identity() {
+    let mut bundle = retained_commit();
+    let head = git_value(&["rev-parse", "824cdf6"]);
+    let base = git_value(&["rev-parse", "824cdf6^1"]);
+    let (hunks, files) = commit_measure::collect(&repo(), &base, &head).unwrap();
+    bundle.input.revision = head;
+    bundle.input.baseline = Some(base);
+    bundle.input.hunks = hunks;
+    bundle.input.files = files;
+    let original_paths: std::collections::BTreeSet<_> = bundle
+        .input
+        .hunks
+        .values()
+        .map(|h| h.file.clone())
+        .collect();
+    let omissions = commit_measure::comparison::omitted(&repo(), &bundle.input).unwrap();
+    assert!(
+        omissions
+            .values()
+            .any(|v| v["native_status"] == "C100" || v["native_status"] == "R100")
+    );
+    let compared = commit_measure::comparison::input(&bundle, &omissions).unwrap();
+    assert_eq!(
+        bundle
+            .input
+            .hunks
+            .values()
+            .map(|h| h.file.clone())
+            .collect::<std::collections::BTreeSet<_>>(),
+        original_paths
+    );
+    assert!(compared.input.hunks.len() < bundle.input.hunks.len());
+    assert!(compared.input.carried["full_input_retained"] == true);
+}
+fn git_value(args: &[&str]) -> String {
+    let out = std::process::Command::new("/usr/bin/git")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .args(args)
+        .current_dir(repo())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    String::from_utf8(out.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn whole_file_decomposition_keeps_every_rule_and_all_source_hunks() {
+    let plan = commit_measure::prepare(&retained_commit()).unwrap();
+    let pieces = plan.literal.whole_hunks();
+    let mut ids = std::collections::BTreeSet::new();
+    for piece in pieces {
+        assert_eq!(
+            serde_json::to_value(&piece.questions).unwrap(),
+            serde_json::to_value(&plan.literal.questions).unwrap()
+        );
+        assert_eq!(
+            piece.state["current_permissions"],
+            plan.literal.state["current_permissions"]
+        );
+        let hunks = piece.state["diff_hunks"].as_object().unwrap();
+        assert_eq!(hunks.len(), 1);
+        for (id, hunk) in hunks {
+            assert_eq!(hunk, &plan.literal.state["diff_hunks"][id]);
+            ids.insert(id.clone());
+        }
+    }
+    assert_eq!(
+        ids,
+        plan.literal.state["diff_hunks"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect()
+    );
+}

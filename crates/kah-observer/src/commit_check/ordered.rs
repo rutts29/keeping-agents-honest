@@ -32,39 +32,30 @@ impl Prepared {
         })
         .map_err(|e| format!("MEASURE_SERIALIZE stage=request: {e}"))
     }
-    /// Decompose a literal rule into complete hunk questions, never text slices.
-    /// Used when the real provider requires more requests; no size cap here.
+    /// Split by whole source hunks/files, retaining every applicable rule.
+    /// Used only for lossless request construction, never as a byte cap.
     pub fn whole_hunks(&self) -> Vec<Self> {
-        let mut results = vec![];
-        for (id, query) in &self.questions {
-            let Some((_, old_key)) = id.split_once('.') else {
-                continue;
-            };
-            let Query::Noul { instructions } = query else {
-                continue;
-            };
-            let context = &self.state["checks"][old_key];
-            for (hunk_id, hunk) in context["diff_hunks"]
-                .as_object()
-                .into_iter()
-                .flat_map(|m| m.iter())
-            {
-                let name = key(&format!("{old_key}:{hunk_id}"));
-                let mut local = context.clone();
-                local["diff_hunks"] = json!({hunk_id:hunk});
-                results.push(Self {
-                    state: json!({"checks":{&name:local}}),
-                    questions: BTreeMap::from([(
-                        format!("rule.{name}"),
-                        Query::Noul {
-                            instructions: instructions
-                                .replace(&format!("checks.{old_key}"), &format!("checks.{name}")),
-                        },
-                    )]),
-                });
-            }
-        }
-        results
+        self.state["diff_hunks"]
+            .as_object()
+            .into_iter()
+            .flat_map(|hunks| hunks.iter())
+            .map(|(id, hunk)| {
+                let mut state = self.state.clone();
+                state["diff_hunks"] = json!({id:hunk});
+                if let Some(checks) = state["checks"].as_object_mut() {
+                    for rule in checks.values_mut() {
+                        let applies = rule["hunk_ids"]
+                            .as_array()
+                            .is_some_and(|ids| ids.iter().any(|old| old == id));
+                        rule["hunk_ids"] = if applies { json!([id]) } else { json!([]) };
+                    }
+                }
+                Self {
+                    state,
+                    questions: self.questions.clone(),
+                }
+            })
+            .collect()
     }
     pub fn separate(&self) -> Vec<Self> {
         self.questions
@@ -72,6 +63,11 @@ impl Prepared {
             .map(|(id, q)| {
                 let key = id.split_once('.').map(|(_, key)| key).unwrap_or(id);
                 let mut state = json!({});
+                for shared in ["diff_hunks", "current_permissions"] {
+                    if let Some(value) = self.state.get(shared) {
+                        state[shared] = value.clone();
+                    }
+                }
                 for group in ["checks", "rows"] {
                     if let Some(value) = self.state[group].get(key) {
                         state[group] = json!({key:value});
