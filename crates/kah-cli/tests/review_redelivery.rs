@@ -12,6 +12,8 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+#[path = "review_support/retained_restoration.rs"]
+mod retained_restoration;
 
 #[test]
 fn failed_native_redelivery_retains_the_pending_review_and_visible_gap() {
@@ -225,6 +227,10 @@ fn context_redelivery_does_not_republish_unrelated_report_documents() {
 }
 #[test]
 fn restoring_a_reference_counts_as_expansion_without_increasing_document_count() {
+    if let Some(path) = std::env::var_os("KAH_RETAINED_REFERENCE_CASE") {
+        retained_restoration::run(Path::new(&path));
+        return;
+    }
     use kah_cli::observer_review::{commit_packet, packet_references, source_store};
     use kah_observer::review_evidence::Document;
     let worker = format!("same-size-expansion-{}", kah_cli::relay_store::nonce());
