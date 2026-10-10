@@ -72,12 +72,8 @@ fn reconcile(
     if state.binding.project != record.worktree {
         return Err("RUN_OBSERVER_SCOPE stage=resume".into());
     }
-    let outcome = kah_observer::engine::observe_snapshot(
-        &state.binding,
-        "run:resume",
-        false,
-        history.snapshot()?,
-    )?;
+    let outcome =
+        crate::observer_intake::snapshot(&state.binding, "run:resume", false, history.snapshot()?)?;
     if let Some(gap) = outcome.gap {
         return Err(format!("RUN_OBSERVER_GAP stage=resume: {gap}").into());
     }

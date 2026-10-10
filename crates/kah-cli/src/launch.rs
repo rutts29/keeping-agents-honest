@@ -200,6 +200,8 @@ fn configure_observation(
         ("SessionStart", "sessionStart", 120),
         ("UserPromptSubmit", "userPromptSubmit", 2),
         ("Stop", "stop", 120),
+        // Mine/Research route this event only to commit/tag/relay metadata.
+        // The handler retains completed-tool Jev checks only for Untrusted.
         ("PostToolUse", "postToolUse", 120),
         ("PreToolUse", "preToolUse", 120),
     ]

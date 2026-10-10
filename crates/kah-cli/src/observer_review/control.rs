@@ -44,7 +44,7 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<()> 
     kah_core::run_store::ensure_private_directory(&directory)?;
     crate::unattended_report::save(&directory, "config.json", &serde_json::to_value(config)?)
 }
-fn enabled(binding: &Binding) -> Result<bool> {
+pub(crate) fn enabled(binding: &Binding) -> Result<bool> {
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=scope")?);
     if binding.project.starts_with(home.join("repos/untrusted")) {
         return Ok(false);

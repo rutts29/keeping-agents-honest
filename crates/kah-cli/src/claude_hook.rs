@@ -105,7 +105,7 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
         snapshot.action_digest = format!("sha256:{:x}", Sha256::digest(b"[]"));
     }
     let turn = input["prompt_id"].as_str().unwrap_or("session");
-    engine::observe_snapshot(
+    crate::observer_intake::snapshot(
         binding,
         turn,
         input["hook_event_name"] == "Stop" && input["stop_hook_active"] != true,
@@ -115,7 +115,7 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
 
 fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
-    let tool = if crate::in_turn::event(input) {
+    let tool = if crate::in_turn::event(input) && crate::observer_intake::legacy_checks(binding)? {
         Some(crate::in_turn::claude(binding, input)?)
     } else {
         None
@@ -137,6 +137,9 @@ fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
     crate::dispatch::receive(binding, input, "claude").map_err(|e| e.to_string())?;
     if tool.is_some() {
         return Ok(tool);
+    }
+    if crate::in_turn::event(input) {
+        return Ok(Some(json!({})));
     }
     crate::in_turn_worker::pending(binding, input)
 }

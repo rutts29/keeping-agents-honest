@@ -203,7 +203,7 @@ impl Run<'_> {
         // Native writers may append the final assistant record after Stop.
         // Once idle, refresh the existing observer from provider-owned history;
         // its intake remains the only authority and its Jev questions are unchanged.
-        let outcome = kah_observer::engine::observe_snapshot(
+        let outcome = crate::observer_intake::snapshot(
             &state.binding,
             "run:idle",
             false,

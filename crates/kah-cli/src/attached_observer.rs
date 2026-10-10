@@ -4,7 +4,6 @@ use crate::Result;
 use kah_codex::{control::Control, source};
 use kah_core::run_store::RunStore;
 use kah_observer::{
-    engine,
     judge::routing::Backend,
     session::{Binding, Store},
 };
@@ -84,7 +83,7 @@ fn watch_loop(binding: &Binding) -> Result<()> {
         }
         let snapshot = source::observe(&mut client, &binding.project, session)?;
         let turn = snapshot.action_digest.clone();
-        let outcome = engine::observe_snapshot(binding, &turn, true, snapshot)?;
+        let outcome = crate::observer_intake::snapshot(binding, &turn, true, snapshot)?;
         if let Some(gap) = outcome.gap {
             eprintln!("kah observer gap: {gap}");
             gaps += 1;
