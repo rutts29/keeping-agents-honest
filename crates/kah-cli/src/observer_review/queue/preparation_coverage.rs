@@ -2,8 +2,6 @@
 use super::*;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-mod retirement;
-pub use retirement::{run, stamp};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Authority {

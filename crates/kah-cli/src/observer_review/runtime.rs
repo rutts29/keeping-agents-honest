@@ -338,12 +338,6 @@ fn startup_notice(state: &State) -> Result<()> {
 }
 
 fn begin_preparation(store: Store, state: State, request: &super::state::Request) -> Result<Value> {
-    if super::preparation::batch::packets::stage_packets(request)? {
-        store.save(&state)?;
-        drop(store);
-        prepare_context(&request.worker)?;
-        return Ok(json!({"request":request.id,"status":"preparation_batch_submitted"}));
-    }
     let packet = &request.trigger["preparation"];
     let questions = serde_json::from_value(packet["questions"].clone())?;
     super::preparation::stage(

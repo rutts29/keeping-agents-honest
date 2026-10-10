@@ -25,3 +25,5 @@ pub mod verification;
 pub mod verified_judgment;
 
 pub mod verification_contract;
+
+pub mod commit_check;
