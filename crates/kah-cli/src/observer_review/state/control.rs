@@ -10,11 +10,13 @@ pub struct Control {
     pub stopped: bool,
 }
 pub fn read_control(worker: &str) -> Result<Option<Control>> {
-    let path = Store::directory(worker)?.join("state.json");
+    read_at(&Store::directory(worker)?.join("state.json"))
+}
+pub(super) fn read_at(path: &Path) -> Result<Option<Control>> {
     let file = match OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(&path)
+        .open(path)
     {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),

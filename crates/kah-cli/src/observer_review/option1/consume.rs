@@ -61,7 +61,6 @@ pub fn run(store: Store, mut state: State, request: Request) -> Result<()> {
     )?;
     state.pending = None;
     store.save(&state)?;
-    super::super::source_store::finish_source_view(&state.observer.workspace, &request.id)?;
     fs::remove_file(path)?;
     drop(store);
     super::super::timing::now(&request.worker, &request.id, "consumed")?;

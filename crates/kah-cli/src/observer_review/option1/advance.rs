@@ -12,7 +12,6 @@ pub fn selection(
 ) -> Result<()> {
     let job = request.trigger["option1"].clone();
     let root = store.directory.clone();
-    let workspace = state.observer.workspace.clone();
     super::super::consume::archive(
         &root,
         &request.id,
@@ -22,7 +21,6 @@ pub fn selection(
         std::path::PathBuf::from(std::env::var_os("HOME").ok_or("COMMIT_HOME stage=consume")?);
     let result =
         super::selection::continue_review(store, state, &home, &request.turn, &job, manifests)?;
-    super::super::source_store::finish_source_view(&workspace, &request.id)?;
     std::fs::remove_file(path)?;
     crate::unattended_report::save(
         &root,

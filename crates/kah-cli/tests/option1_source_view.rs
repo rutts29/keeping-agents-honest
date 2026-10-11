@@ -91,3 +91,45 @@ fn state(worker: &str, root: &Path, request: &Request) -> State {
     state.pending = Some(Pending::from(request));
     state
 }
+
+#[test]
+fn every_pending_transition_releases_only_the_previous_view() {
+    std::env::var_os("XDG_STATE_HOME").expect("run through demos/check-tests.sh");
+    let worker = format!("pending-view-test-{}", std::process::id());
+    let store = Store::open(&worker).unwrap();
+    let root = std::env::temp_dir().join(&worker);
+    fs::create_dir_all(&root).unwrap();
+    source_store::initialize(&store.directory, &root).unwrap();
+    let mut old = request(&worker);
+    old.purpose = Purpose::Preparation;
+    let mut state = state(&worker, &root, &old);
+    store.save(&state).unwrap();
+    let old_view = root.join("inputs/review-1/sources");
+    let new_view = root.join("inputs/review-2/sources");
+    fs::create_dir_all(&old_view).unwrap();
+    fs::create_dir_all(&new_view).unwrap();
+    store.save(&state).unwrap();
+    assert!(
+        old_view.exists(),
+        "active request stays readable on unrelated state writes"
+    );
+    let mut next = old.clone();
+    next.id = "review-2".into();
+    state.pending = Some(Pending::from(&next));
+    store.save(&state).unwrap();
+    assert!(
+        !old_view.exists(),
+        "superseded slot releases its previous view"
+    );
+    assert!(new_view.exists(), "successor view must survive the handoff");
+    state.pending = None;
+    store.save(&state).unwrap();
+    assert!(
+        !new_view.exists(),
+        "preparation completion also releases the view"
+    );
+    let private = store.directory.clone();
+    drop(store);
+    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(private.parent().unwrap()).unwrap();
+}
