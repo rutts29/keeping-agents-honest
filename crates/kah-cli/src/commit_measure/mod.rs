@@ -7,6 +7,10 @@ use std::{collections::BTreeMap, fs, path::Path};
 pub mod atomization;
 pub mod comparison;
 pub mod confirmation;
+pub mod decisive;
+pub mod decisive_bookkeeping;
+pub mod decisive_packing;
+pub mod decisive_selection;
 pub mod decomposition;
 pub mod historical;
 pub mod live;
@@ -105,6 +109,9 @@ fn save_text(root: &Path, name: &str, text: &str) -> Result<()> {
 }
 pub fn command(args: &[String]) -> Result<()> {
     match args {
+        [mode, repo, items, rules, cases, output] if mode == "decisive" => {
+            decisive::construct(Path::new(repo), Path::new(items), Path::new(rules), Path::new(cases), Path::new(output))?;
+        }
         [mode, repo, run, output] if mode == "atomize-input" => {
             println!("{}", atomization::input(Path::new(repo),run,Path::new(output))?);
         }
