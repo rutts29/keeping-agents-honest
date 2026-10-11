@@ -46,12 +46,14 @@ fn confirm(f: &fixture::Fixture, id: &str, records: &[Value], pane: &mut Option<
         output.display()
     );
     let before = usage::snapshot(&f.home, &f.project);
-    if let Some(pane) = pane.as_ref() {
-        herdr(&["agent", "prompt", pane, &prompt]);
-    } else {
-        *pane = Some(journey::start(f, &prompt));
+    if !output.exists() {
+        if let Some(pane) = pane.as_ref() {
+            herdr(&["agent", "prompt", pane, &prompt]);
+        } else {
+            *pane = Some(journey::start(f, &prompt));
+        }
+        journey::wait(f, pane.as_deref().unwrap(), &output);
     }
-    journey::wait(f, pane.as_deref().unwrap(), &output);
     let after = usage::snapshot(&f.home, &f.project);
     assert_eq!(
         after["session"],

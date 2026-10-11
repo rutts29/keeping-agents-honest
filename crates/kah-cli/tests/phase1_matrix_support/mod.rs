@@ -9,7 +9,7 @@ mod confirmation;
 mod fixture;
 mod journey;
 mod real;
-mod usage;
+pub(super) mod usage;
 pub fn launch() {
     assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
     let fixture = fixture::Fixture::new();

@@ -1,5 +1,9 @@
 use super::*;
 pub fn snapshot(home: &Path, project: &Path) -> Value {
+    let expected = std::env::var("KAH_PHASE1_RESUME_SESSION").ok();
+    snapshot_for(home, project, expected.as_deref())
+}
+pub fn snapshot_for(home: &Path, project: &Path, expected: Option<&str>) -> Value {
     let mut files = vec![];
     collect(&home.join(".codex/sessions"), &mut files);
     for path in files {
@@ -27,7 +31,7 @@ pub fn snapshot(home: &Path, project: &Path) -> Value {
                 usage = row["payload"]["info"]["total_token_usage"].clone();
             }
         }
-        if matches && id.is_some() {
+        if matches && id.is_some() && expected.is_none_or(|want| id.as_deref() == Some(want)) {
             return json!({"session":id,"transcript":path,"usage":usage,"model":model,"effort":effort});
         }
     }
