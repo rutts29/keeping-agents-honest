@@ -7,11 +7,7 @@ use kah_core::intent_history::SourceRole;
 /// callers must retain delivery provenance or use the named-agent prefix.
 pub fn classify(text: &str, delivered_by_agent: bool) -> SourceRole {
     let text = text.trim_start();
-    if delivered_by_agent
-        || kah_core::intent_history::KAH_DELEGATE_PREFIXES
-            .iter()
-            .any(|p| starts(text, p))
-    {
+    if delivered_by_agent || kah_core::intent_history::is_kah_delegate_message(text) {
         return SourceRole::Delegate;
     }
     if starts(text, "<send_user_message_question_reply>") {

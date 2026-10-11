@@ -96,6 +96,9 @@ fn only_native_human_text_has_authority_and_is_preserved_verbatim() {
         delegate,
         tool,
         row("u2", "[kah-reviewer] steer: not the user"),
+        row("builder2", "[kah-builder2] measured result, not authority"),
+        row("stalled", "[kah-observer-host-stalled] diagnostic notice"),
+        row("future", "[kah-builder3] future agent"),
     ])
     .unwrap();
     let users = result.users.unwrap();

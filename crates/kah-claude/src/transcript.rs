@@ -183,10 +183,7 @@ fn role(row: &Value, text: &str) -> SourceRole {
     let text = crate::paste::content_start(text)
         .trim_start()
         .to_ascii_lowercase();
-    if kah_core::intent_history::KAH_DELEGATE_PREFIXES
-        .iter()
-        .any(|prefix| text.starts_with(prefix))
-    {
+    if kah_core::intent_history::is_kah_delegate_message(&text) {
         SourceRole::Delegate
     } else if text.starts_with("<system-reminder>")
         || text.starts_with("<local-command-")
