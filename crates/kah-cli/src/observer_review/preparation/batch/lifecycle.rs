@@ -5,7 +5,6 @@ use crate::observer_review::{
     state::{self, Store},
 };
 use serde_json::json;
-use std::fs;
 pub fn pending(worker: &str, batch: &Batch) -> Result<bool> {
     for entry in &batch.decisions {
         if preparation::pending(worker, &entry.decision)? {
@@ -98,7 +97,7 @@ pub fn reopen(worker: &str, decision: &str) -> Result<()> {
             .join(format!("selected-{id}.json")),
     ] {
         if path.exists() {
-            fs::rename(&path, archive.join(path.file_name().unwrap()))?;
+            source_store::access_repair::archive(&path, &archive.join(path.file_name().unwrap()))?;
         }
     }
     let mut entries = vec![];

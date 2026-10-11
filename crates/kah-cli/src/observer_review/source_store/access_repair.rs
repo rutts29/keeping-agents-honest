@@ -8,6 +8,9 @@ use std::{
     path::Path,
     process::{Command, Stdio},
 };
+mod residual;
+pub use residual::{archive, private_copy, retire_inputs};
+
 pub fn repair(worker: &str) -> Result<Value> {
     let store = super::super::state::Store::open_wait(worker)?;
     let state = store
@@ -29,12 +32,15 @@ pub fn repair(worker: &str) -> Result<Value> {
     inspect(&store.directory, uid, &mut before, &mut after)?;
     before.sync_all()?;
     let retired = super::retire_shared_sources(&store.directory, &state.observer.workspace)?;
+    let retired_inputs = retire_inputs(&store.directory, &state.observer.workspace)?;
+    let privatized =
+        residual::privatize_foreign(&store.directory, &archive.join("foreign-ownership.jsonl"))?;
     kah_run::access::revoke_tree(&store.directory, kah_run::access::service_uid()?)?;
     for (path, mode) in &after {
         fs::set_permissions(path, fs::Permissions::from_mode(*mode))?;
     }
     capture_acl(&store.directory, &archive.join("after.acl"))?;
-    let result = json!({"worker":worker,"retirement":retired,"restored_owned_paths":after.len(),"manifest":archive,"copied_cas_bytes":0});
+    let result = json!({"worker":worker,"retirement":retired,"retired_inputs":retired_inputs,"privatized":privatized,"restored_owned_paths":after.len(),"manifest":archive,"copied_cas_bytes":0});
     crate::unattended_report::save(&archive, "result.json", &result)?;
     Ok(result)
 }
