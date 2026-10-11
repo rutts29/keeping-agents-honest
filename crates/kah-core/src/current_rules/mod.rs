@@ -54,7 +54,7 @@ pub struct RuleSet {
 }
 /// Only validation can construct this type; callers cannot adopt raw model output.
 #[derive(Clone, Debug)]
-pub struct ValidatedSet(RuleSet);
+pub struct ValidatedSet(RuleSet, u64);
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct Question<'a> {
     pub rule_id: &'a str,
@@ -75,6 +75,9 @@ pub struct SetDiff {
 impl ValidatedSet {
     pub fn as_set(&self) -> &RuleSet {
         &self.0
+    }
+    pub fn revision(&self) -> u64 {
+        self.1
     }
     pub fn digest(&self) -> Result<String, String> {
         digest(&self.0)

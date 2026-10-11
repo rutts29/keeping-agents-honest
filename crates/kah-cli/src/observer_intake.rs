@@ -16,7 +16,8 @@ pub fn observe(
     if legacy_checks(binding)? {
         engine::observe(binding, turn, allow_reminder)
     } else {
-        engine::synchronize(binding, turn)
+        let outcome = engine::synchronize(binding, turn)?;
+        stage_rules(binding, outcome)
     }
 }
 
@@ -29,6 +30,14 @@ pub fn snapshot(
     if legacy_checks(binding)? {
         engine::observe_snapshot(binding, turn, allow_reminder, snapshot)
     } else {
-        engine::synchronize_snapshot(binding, turn, snapshot)
+        let outcome = engine::synchronize_snapshot(binding, turn, snapshot)?;
+        stage_rules(binding, outcome)
     }
+}
+
+fn stage_rules(binding: &Binding, outcome: engine::Outcome) -> Result<engine::Outcome, String> {
+    // Durable staging only. The controller resumes the SAME native observer;
+    // it must use direct review until current_rules::current returns a set.
+    kah_observer::current_rules::stage(binding)?;
+    Ok(outcome)
 }

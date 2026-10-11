@@ -50,7 +50,7 @@ impl RuleSet {
                 }
             }
         }
-        Ok(ValidatedSet(self.clone()))
+        Ok(ValidatedSet(self.clone(), input.revision))
     }
 }
 fn unique<T>(items: &[T], key: impl Fn(&T) -> &String) -> Result<BTreeMap<&String, &T>, String> {

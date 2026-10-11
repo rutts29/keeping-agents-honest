@@ -79,7 +79,7 @@ impl Input {
         for source in &self.sources {
             if source.id.is_empty()
                 || !ids.insert(&source.id)
-                || source.text.is_empty()
+                || (source.text.is_empty() && source.origin["kind"] != "standing_file")
                 || source.content_digest
                     != format!("sha256:{:x}", Sha256::digest(source.text.as_bytes()))
             {
