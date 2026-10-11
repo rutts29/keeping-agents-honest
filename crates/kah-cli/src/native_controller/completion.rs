@@ -213,6 +213,7 @@ impl Run<'_> {
             "run:idle",
             kah_core::observation::ObservationSnapshot {
                 users: snapshot.users.clone(),
+                native_candidates: snapshot.native_candidates.clone(),
                 actions: snapshot.actions.clone(),
                 action_digest: snapshot.action_digest.clone(),
             },

@@ -143,6 +143,9 @@ impl ContextInjection {
 /// Only `users` carries authority; actions are evidence about agent behavior.
 pub struct ObservationSnapshot {
     pub users: Option<crate::session_bundle::NeutralSessionBundle>,
+    /// Native user envelopes before authority filtering. Intake restores each
+    /// historical record's stored classification before checking continuity.
+    pub native_candidates: Option<crate::session_bundle::NeutralSessionBundle>,
     pub actions: Vec<serde_json::Value>,
     pub action_digest: String,
 }

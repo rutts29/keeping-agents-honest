@@ -6,6 +6,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+mod classification;
+pub use classification::CLASSIFIER_VERSION;
 mod inherited;
 mod sources;
 mod storage;

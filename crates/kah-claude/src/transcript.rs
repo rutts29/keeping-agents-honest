@@ -39,7 +39,7 @@ pub fn parse_turn(
                 if additions.iter().any(BundleRecord::is_authoritative) {
                     actions.clear();
                 }
-                for record in additions.into_iter().filter(BundleRecord::is_authoritative) {
+                for record in additions {
                     append(&mut records, &mut seen, record)?;
                 }
                 if row.get("toolUseResult").is_some() {
@@ -64,7 +64,7 @@ fn snapshot(
     records: Vec<BundleRecord>,
     actions: Vec<Value>,
 ) -> Result<ObservationSnapshot, String> {
-    let users = if records.is_empty() {
+    let native_candidates = if records.is_empty() {
         None
     } else {
         Some(
@@ -80,12 +80,36 @@ fn snapshot(
             .map_err(|e| format!("CLAUDE_SOURCE_BUNDLE stage=transcript: {e}"))?,
         )
     };
+    let users = native_candidates
+        .as_ref()
+        .map(|bundle| {
+            let records = bundle
+                .records()
+                .iter()
+                .filter(|r| r.is_authoritative())
+                .cloned()
+                .collect::<Vec<_>>();
+            if records.is_empty() {
+                return Ok(None);
+            }
+            NeutralSessionBundle::from_records(
+                SourceProvider::Claude,
+                session,
+                bundle.source().repository_digest(),
+                records,
+            )
+            .map(Some)
+            .map_err(|e| format!("CLAUDE_SOURCE_BUNDLE stage=transcript: {e}"))
+        })
+        .transpose()?
+        .flatten();
     let action_digest = format!(
         "sha256:{:x}",
         Sha256::digest(serde_json::to_vec(&actions).unwrap())
     );
     Ok(ObservationSnapshot {
         users,
+        native_candidates,
         actions,
         action_digest,
     })

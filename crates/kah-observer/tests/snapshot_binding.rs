@@ -31,6 +31,7 @@ fn supplied_worker_evidence_cannot_be_attached_to_another_session() {
         &binding,
         "turn",
         ObservationSnapshot {
+            native_candidates: None,
             users: Some(users),
             actions: vec![],
             action_digest: String::new(),

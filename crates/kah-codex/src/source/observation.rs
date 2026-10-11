@@ -44,6 +44,7 @@ pub fn observe(
     };
     let imported = parse_imported_session(response, root, &id, goal.clone(), false, None)?;
     let users = user_bundle(&imported)?;
+    let native_candidates = candidate_bundle(&imported, &entries)?;
     let actions = action_evidence(&entries);
     let action_digest = format!(
         "sha256:{:x}",
@@ -51,6 +52,7 @@ pub fn observe(
     );
     Ok(ObservationSnapshot {
         users,
+        native_candidates,
         actions,
         action_digest,
     })
@@ -163,6 +165,42 @@ fn whole_action(item: &Value) -> Option<Value> {
 
 fn rpc_error(error: ControlError) -> SourceError {
     SourceError::new(error.code, "codex_control", error.detail)
+}
+
+fn candidate_bundle(
+    imported: &ImportedSession,
+    entries: &[Value],
+) -> Result<Option<NeutralSessionBundle>, SourceError> {
+    let mut candidates = vec![];
+    for entry in entries
+        .iter()
+        .filter(|e| e["item"]["type"] == "userMessage")
+    {
+        parse_user_message(&entry["item"], "source_observation", &mut candidates)?;
+    }
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    let records = candidates
+        .into_iter()
+        .map(|r| BundleRecord::new(r.id, r.role, r.content))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| {
+            SourceError::new(
+                "CODEX_OBSERVER_USER_RECORD",
+                "source_observation",
+                e.to_string(),
+            )
+        })?;
+    NeutralSessionBundle::from_records_with_native_goal(
+        SourceProvider::Codex,
+        &imported.session_id,
+        &imported.repository_digest,
+        imported.native_goal.clone(),
+        records,
+    )
+    .map(Some)
+    .map_err(|e| SourceError::new("CODEX_OBSERVER_BUNDLE", "source_observation", e.to_string()))
 }
 
 pub(super) fn user_bundle(

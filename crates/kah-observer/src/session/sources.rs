@@ -69,7 +69,7 @@ impl Store {
         Ok(inputs)
     }
     pub fn add_source(&mut self, input: &Input) -> Result<(), String> {
-        self.append(&json!({"kind":"user_source_v1","input":input}))
+        self.append(&json!({"kind":"user_source_v1","classifier_version":super::CLASSIFIER_VERSION,"input":input}))
     }
     pub fn source_decision(&mut self, record: &str, decision: &Decision) -> Result<(), String> {
         self.append(&json!({"kind":"source_decision_v1","record":record,"decision":decision}))

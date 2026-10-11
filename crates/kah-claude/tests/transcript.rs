@@ -171,4 +171,10 @@ fn observer_evidence_requests_never_become_user_intent() {
     // kah's observer sender is a delegate, exactly like reviewer/builder.
     let value=snapshot(&[row("evidence-ask","[kah-observer] kah evidence request followup-example-builder: answer with the existing same-SHA evidence.")]).unwrap();
     assert!(value.users.is_none());
+    let candidates = value.native_candidates.unwrap();
+    assert_eq!(candidates.records().len(), 1);
+    assert_eq!(
+        candidates.records()[0].role(),
+        kah_core::intent_history::SourceRole::Delegate
+    );
 }

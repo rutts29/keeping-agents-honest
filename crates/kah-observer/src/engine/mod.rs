@@ -108,6 +108,13 @@ fn update(
     store: &mut Store,
     mut snapshot: ObservationSnapshot,
 ) -> Result<Outcome, String> {
+    if let Some(native) = snapshot
+        .native_candidates
+        .as_ref()
+        .or(snapshot.users.as_ref())
+    {
+        snapshot.users = store.classified_users(native)?;
+    }
     snapshot.users = crate::inherited::merge(&state.binding, store, snapshot.users)?;
     let Some(users) = &snapshot.users else {
         return Ok(Outcome::default());
@@ -175,7 +182,11 @@ fn read_source(binding: &Binding) -> Result<ObservationSnapshot, String> {
 
 fn validate_snapshot(binding: &Binding, snapshot: &ObservationSnapshot) -> Result<(), String> {
     use sha2::{Digest, Sha256};
-    if let Some(users) = &snapshot.users {
+    for users in snapshot
+        .users
+        .iter()
+        .chain(snapshot.native_candidates.iter())
+    {
         if users.source().session_ref_private() != binding.session {
             return Err(
                 "OBSERVER_SOURCE_SESSION stage=worker_intake: source belongs to another session"
