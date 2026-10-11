@@ -71,7 +71,19 @@ fn confirm(f: &fixture::Fixture, id: &str, records: &[Value], pane: &mut Option<
 }
 fn request_prompt(f: &fixture::Fixture, id: &str, packet: &Path) -> (PathBuf, String) {
     let correction = std::env::var("KAH_PHASE1_CORRECTION_CASE").as_deref() == Ok(id);
-    let suffix = if correction {
+    let label = std::env::var("KAH_PHASE1_CONFIRM_LABEL").ok();
+    if let Some(label) = &label {
+        assert!(
+            !label.is_empty()
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_')),
+            "PHASE1_CONFIRM_LABEL stage=fixture"
+        );
+    }
+    let suffix = if let Some(label) = label.as_deref() {
+        label
+    } else if correction {
         "corrected-confirmation"
     } else {
         "confirmation"

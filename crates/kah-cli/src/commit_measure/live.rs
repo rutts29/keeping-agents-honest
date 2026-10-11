@@ -15,6 +15,19 @@ pub struct Manifest {
     pub jobs: Vec<Job>,
     #[serde(default)]
     pub option1: Option<Option1>,
+    #[serde(default)]
+    pub approved_money_stop_usd: Option<f64>,
+}
+impl Manifest {
+    pub fn money_stop(&self) -> Result<f64> {
+        let stop = self
+            .approved_money_stop_usd
+            .unwrap_or_else(|| self.option1.as_ref().map_or(0.46, |p| 4.0 * p.estimate_usd));
+        if !stop.is_finite() || stop <= 0.0 {
+            return Err("MEASURE_SPEND_STOP_INVALID stage=live".into());
+        }
+        Ok(stop)
+    }
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -61,6 +74,7 @@ pub fn run(manifest: &Manifest, output: &Path) -> Result<Value> {
     }
     kah_core::run_store::ensure_private_directory(output)?;
     validate_policy(manifest)?;
+    let approved_stop = manifest.money_stop()?;
     save_text(output, "manifest.json", &serde_json::to_string(manifest)?)?;
     let home = std::env::var_os("HOME").ok_or("MEASURE_HOME stage=live")?;
     let client = HttpClient::from_home(Path::new(&home))?;
@@ -76,12 +90,7 @@ pub fn run(manifest: &Manifest, output: &Path) -> Result<Value> {
             &serde_json::to_string(&record)?,
         )?;
         records.push(record.clone());
-        if spend
-            > manifest
-                .option1
-                .as_ref()
-                .map_or(0.46, |p| 4.0 * p.estimate_usd)
-        {
+        if spend > approved_stop {
             stop = Some("APPROVED_SPEND_STOP");
         } else if record["host_stop"] == true {
             stop = Some("PROVIDER_OR_RESPONSE_FAILURE");
@@ -93,7 +102,7 @@ pub fn run(manifest: &Manifest, output: &Path) -> Result<Value> {
     }
     Ok(
         json!({"records":records,"cost_from_actual_usage_usd":spend,"stop":stop,
-        "planned_calls":manifest.jobs.len(),"actual_calls":records.len(),"no_retries":true,
+        "planned_calls":manifest.jobs.len(),"actual_calls":records.len(),"no_retries":true,"approved_money_stop_usd":approved_stop,
         "authority":manifest.option1.as_ref().map_or("Explicit approval for one replay with an actual-spend safeguard",|p|p.authority.as_str()),"option1":manifest.option1}),
     )
 }
