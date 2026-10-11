@@ -31,6 +31,7 @@ pub fn release(store: &Store, request: &str, gap: &Value) -> Result<()> {
     }
     state.pending = None;
     store.save(&state)?;
+    super::super::source_store::finish_source_view(&state.observer.workspace, request)?;
     let path = store.directory.join("gap.json");
     if super::super::state::read::<Value>(&path)?.as_ref() == Some(gap) {
         std::fs::remove_file(path)?;

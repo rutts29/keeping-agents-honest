@@ -360,7 +360,8 @@ pub(super) fn commit_result(
     }
     store.save(state)?;
     super::commit_packet::reviewed(store, request, state.latest.as_ref().unwrap())?;
-    super::timing::now(&request.worker, &request.id, "completed")
+    super::timing::now(&request.worker, &request.id, "completed")?;
+    super::source_store::finish_source_view(&state.observer.workspace, &request.id)
 }
 fn retry_correction(store: Store, worker: &str) -> Result<()> {
     drop(store);

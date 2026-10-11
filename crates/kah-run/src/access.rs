@@ -9,14 +9,13 @@ pub fn share_tree(root: &Path, service_uid: u32, writable: bool) -> Result<(), S
     let operator = kah_sandbox::current_uid().map_err(|e| e.to_string())?;
     let access = if writable { "rwX" } else { "r-X" };
     owned(root, &format!("u:{service_uid}:{access}"), operator, false)?;
-    if writable {
-        owned(
-            root,
-            &format!("d:u:{operator}:rwx,d:u:{service_uid}:rwx,d:o::---"),
-            operator,
-            true,
-        )?;
-    }
+    let inherited = if writable { "rwx" } else { "r-x" };
+    owned(
+        root,
+        &format!("d:u:{operator}:rwx,d:u:{service_uid}:{inherited},d:o::---"),
+        operator,
+        true,
+    )?;
     Ok(())
 }
 
@@ -30,6 +29,21 @@ pub fn traverse(root: &Path, service_uid: u32) -> Result<(), String> {
 // Native programs replace files under a different mapped UID. Their inherited
 // ACL already grants operator access; only owners may edit the ACL itself.
 fn owned(root: &Path, entries: &str, operator: u32, directories_only: bool) -> Result<(), String> {
+    operate(root, entries, operator, directories_only, "-m")
+}
+/// Revoke only the sandbox account's named access/default ACLs on owned data.
+pub fn revoke_tree(root: &Path, service_uid: u32) -> Result<(), String> {
+    let operator = kah_sandbox::current_uid().map_err(|e| e.to_string())?;
+    operate(root, &format!("u:{service_uid}"), operator, false, "-x")?;
+    operate(root, &format!("d:u:{service_uid}"), operator, true, "-x")
+}
+fn operate(
+    root: &Path,
+    entries: &str,
+    operator: u32,
+    directories_only: bool,
+    action: &str,
+) -> Result<(), String> {
     let mut command = Command::new("/usr/bin/find");
     command
         .arg("-P")
@@ -45,7 +59,7 @@ fn owned(root: &Path, entries: &str, operator: u32, directories_only: bool) -> R
             "-execdir",
             "/usr/bin/setfacl",
             "-P",
-            "-m",
+            action,
             entries,
             "--",
             "{}",

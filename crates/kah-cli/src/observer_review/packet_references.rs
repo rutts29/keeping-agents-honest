@@ -58,7 +58,6 @@ pub fn scope(private: &Path, workspace: &Path, request: &mut Request) -> Result<
             &serde_json::to_string(&reference)?,
         );
     }
-    source_store::share(private, workspace)?;
     kah_run::access::share_tree(&public, kah_run::access::service_uid()?, false)?;
     Ok(())
 }

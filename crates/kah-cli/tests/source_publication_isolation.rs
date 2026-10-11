@@ -1,0 +1,177 @@
+//! Sandbox evidence is read-only;
+//! fixture/publication ACLs must never reach private evidence through an inode.
+use kah_cli::observer_review::source_store;
+use std::{
+    fs,
+    os::unix::fs::{MetadataExt, PermissionsExt},
+    path::Path,
+    process::Command,
+};
+fn acl(path: &Path) -> String {
+    let output = Command::new("/usr/bin/getfacl")
+        .args(["-cpn"])
+        .arg(path)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).unwrap()
+}
+#[test]
+fn publishing_and_republishing_evidence_never_share_private_inodes_or_acls() {
+    let fixture_service_uid = kah_run::access::service_uid().unwrap();
+    let root = std::env::temp_dir().join(format!(
+        "source-publication-isolation-{}",
+        std::process::id()
+    ));
+    let private = root.join("private");
+    let public = root.join("observer");
+    fs::create_dir_all(&private).unwrap();
+    source_store::initialize(&private, &public).unwrap();
+    fs::create_dir(public.join("outbox")).unwrap();
+    let (input, secret, digest) = catalogue_fixture(&private, &public);
+    fs::set_permissions(&secret, fs::Permissions::from_mode(0o600)).unwrap();
+    let before = acl(&secret);
+    fs::create_dir(input.join("sources")).unwrap();
+    let alias = input.join("sources").join(&digest);
+    // A legacy alias reproduces the installed migration boundary.
+    fs::hard_link(&secret, &alias).unwrap();
+    for _ in 0..2 {
+        source_store::share(&private, &input).unwrap();
+        kah_cli::observer_review::workspace::share_access(&public, fixture_service_uid).unwrap();
+        assert_ne!(
+            fs::metadata(&secret).unwrap().ino(),
+            fs::metadata(&alias).unwrap().ino(),
+            "sandbox source must be an independent inode"
+        );
+        assert_eq!(
+            acl(&secret),
+            before,
+            "publishing may not grant any private-store ACL"
+        );
+        assert!(acl(&alias).contains(format!("user:{fixture_service_uid}:r--").as_str()));
+        assert!(!acl(&alias).contains(format!("user:{fixture_service_uid}:rw").as_str()));
+        assert!(acl(&public.join("outbox")).contains(format!("user:{fixture_service_uid}:rwx").as_str()));
+        assert!(!input.join("sources/unreferenced-record").exists());
+    }
+    fs::write(&alias, b"fixture changed its copy").unwrap();
+    assert_eq!(fs::read(&secret).unwrap(), b"whole original evidence");
+    assert_eq!(fs::metadata(&secret).unwrap().nlink(), 1);
+    source_store::finish_source_view(&public, "current").unwrap();
+    assert!(!input.join("sources").exists());
+    assert_eq!(
+        source_store::load_text(&input.join("record.txt")).unwrap(),
+        "whole original evidence"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn read_only_publication_replaces_legacy_writable_default_acl() {
+    let root = std::env::temp_dir().join(format!("source-readonly-default-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    kah_run::access::share_tree(&root, 42420, true).unwrap();
+    kah_run::access::share_tree(&root, 42420, false).unwrap();
+    let record = root.join("new-record");
+    fs::write(&record, b"whole evidence").unwrap();
+    let permissions = acl(&record);
+    assert!(permissions.contains("user:42420:r-x"));
+    assert!(!permissions.contains("user:42420:rw"));
+    assert!(acl(&root).contains("default:user:42420:r-x"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn legacy_link_retirement_preserves_private_bytes_without_copying() {
+    let root = std::env::temp_dir().join(format!("source-link-retirement-{}", std::process::id()));
+    let private = root.join("private");
+    let workspace = root.join("observer");
+    fs::create_dir_all(&private).unwrap();
+    source_store::initialize(&private, &workspace).unwrap();
+    let source = private.join("sources/legacy");
+    let alias = workspace.join("sources/legacy");
+    fs::write(&source, b"complete preserved record").unwrap();
+    fs::hard_link(&source, &alias).unwrap();
+    kah_run::access::share_tree(&workspace, 42420, true).unwrap();
+    assert!(acl(&source).contains("user:42420:rw"));
+    let result = source_store::retire_shared_sources(&private, &workspace).unwrap();
+    assert_eq!(result["retired"], 1);
+    assert_eq!(result["copied_bytes"], 0);
+    kah_run::access::revoke_tree(&private, 42420).unwrap();
+    assert!(!acl(&source).contains("user:42420:"));
+    assert_eq!(fs::metadata(&source).unwrap().nlink(), 1);
+    assert_eq!(fs::read(&source).unwrap(), b"complete preserved record");
+    assert!(!alias.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_catalogue_view_recovers_nested_json_and_segmented_text_without_unrelated_sources() {
+    let fixture_service_uid = kah_run::access::service_uid().unwrap();
+    let root = std::env::temp_dir().join(format!("source-view-graph-{}", std::process::id()));
+    let private = root.join("private");
+    let workspace = root.join("observer");
+    let input = workspace.join("inputs/current");
+    fs::create_dir_all(&private).unwrap();
+    source_store::initialize(&private, &workspace).unwrap();
+    fs::create_dir_all(&input).unwrap();
+    let original = serde_json::json!({"state":{"rows":[{"encoding":"plain","text":"Whole unicode record 🦀.\n".repeat(12000)}]}});
+    source_store::save(&input, "request.json", &original).unwrap();
+    fs::write(private.join("sources/unrelated"), b"unrelated old snapshot").unwrap();
+    fs::write(
+        input.join("context-input.json"),
+        serde_json::json!({"full_request":input.join("request.json"),"sources":[]}).to_string(),
+    )
+    .unwrap();
+    source_store::share(&private, &input).unwrap();
+    assert!(!input.join("sources/unrelated").exists());
+    assert_eq!(
+        source_store::read::<serde_json::Value>(&input.join("request.json")).unwrap(),
+        original
+    );
+    for entry in fs::read_dir(input.join("sources")).unwrap() {
+        let entry = entry.unwrap();
+        let original = private.join("sources").join(entry.file_name());
+        assert_ne!(
+            entry.metadata().unwrap().ino(),
+            fs::metadata(original).unwrap().ino()
+        );
+        assert!(!acl(&entry.path()).contains(format!("user:{fixture_service_uid}:rw").as_str()));
+    }
+    source_store::finish_source_view(&workspace, "current").unwrap();
+    assert!(!input.join("sources").exists());
+    assert_eq!(
+        source_store::read::<serde_json::Value>(&input.join("request.json")).unwrap(),
+        original
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn catalogue_fixture(
+    private: &Path,
+    public: &Path,
+) -> (std::path::PathBuf, std::path::PathBuf, String) {
+    let input = public.join("inputs/current");
+    fs::create_dir_all(&input).unwrap();
+    source_store::text(
+        private,
+        &input.join("record.txt"),
+        "whole original evidence",
+    )
+    .unwrap();
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&fs::read(input.join("record.txt")).unwrap()).unwrap();
+    let digest = envelope["$kah_source"].as_str().unwrap().to_owned();
+    let secret = private.join("sources").join(&digest);
+    fs::write(
+        private.join("sources/unreferenced-record"),
+        b"not in this request catalogue",
+    )
+    .unwrap();
+    fs::write(
+        input.join("context-input.json"),
+        serde_json::json!({"sources":[{"path":input.join("record.txt"),"kind":"ledger"}]})
+            .to_string(),
+    )
+    .unwrap();
+    (input, secret, digest)
+}

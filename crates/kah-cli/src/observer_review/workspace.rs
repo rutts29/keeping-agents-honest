@@ -41,8 +41,17 @@ pub fn prepare(home: &Path, state: &State) -> Result<()> {
     for parent in root.ancestors().take_while(|p| p.starts_with(home)) {
         kah_run::access::traverse(parent, uid)?;
     }
-    kah_run::access::share_tree(root, uid, true)?;
-    super::source_store::share(&Store::directory(&state.worker.session)?, root)?;
+    // Retire verified legacy aliases before any recursive ACL operation.
+    super::source_store::retire_shared_sources(&Store::directory(&state.worker.session)?, root)?;
+    // Source views are published per request; never share the complete CAS.
+    share_access(root, uid)?;
+    Ok(())
+}
+
+/// Evidence stays read-only; only structured report output is sandbox-writable.
+pub fn share_access(root: &Path, uid: u32) -> Result<()> {
+    kah_run::access::share_tree(root, uid, false)?;
+    kah_run::access::share_tree(&root.join("outbox"), uid, true)?;
     Ok(())
 }
 
@@ -102,7 +111,7 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
     super::queue::memory::sample_at(&store.directory, "submission_delta_published")?;
     super::source_store::save(&input, "request.json", &serde_json::to_value(request)?)?;
     super::queue::memory::sample_at(&store.directory, "submission_input_archived")?;
-    super::source_store::share(&store.directory, &state.observer.workspace)?;
+    super::source_store::share(&store.directory, &input)?;
     kah_run::access::share_tree(&input, kah_run::access::service_uid()?, false)?;
     prompt(state, request, &input)
 }

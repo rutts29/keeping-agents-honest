@@ -115,5 +115,6 @@ fn archive(store: &Store, state: &mut State, request: &str, result: &Value) -> R
     if state.pending.as_ref().is_some_and(|p| p.id == request) {
         state.pending = None;
     }
-    store.save(state)
+    store.save(state)?;
+    super::super::source_store::finish_source_view(&state.observer.workspace, request)
 }
