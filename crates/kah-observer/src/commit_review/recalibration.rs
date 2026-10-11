@@ -6,7 +6,8 @@ pub fn report(reviews: &[Review], line: f64) -> Result<Value, String> {
     }
     let mut rows = vec![];
     for review in reviews {
-        let would_wake = review.maximum.as_ref().is_some_and(|m| m.noul >= line);
+        let would_wake =
+            !review.gaps.is_empty() || review.maximum.as_ref().is_some_and(|m| m.noul >= line);
         let native = review.native.as_ref().map(|n| {
             n.rows
                 .iter()
@@ -20,7 +21,8 @@ pub fn report(reviews: &[Review], line: f64) -> Result<Value, String> {
         rows.push(
             serde_json::json!({"worker":review.worker,"head":review.head,
             "registered_line":review.policy.line,"maximum":review.maximum,
-            "actual_wake":review.woke,"would_wake":would_wake,
+            "actual_wake":review.requires_native() || review.native.is_some(),"would_wake":would_wake,
+            "gap_wake":!review.gaps.is_empty(),
             "native_violations":native,"later_checkpoints":later,
             "unknown_label":review.native.is_none()&&review.checkpoints.is_empty()}),
         );

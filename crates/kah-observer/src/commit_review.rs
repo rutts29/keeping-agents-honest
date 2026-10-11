@@ -51,6 +51,14 @@ pub struct NativeVerdict {
     pub files: BTreeMap<String, String>,
     pub rows: Vec<crate::commit_check::Row>,
 }
+pub fn authority(input: &crate::commit_check::Input) -> String {
+    input.carried["authority_digest"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            crate::context_selection::digest(&serde_json::to_value(&input.intent).unwrap())
+        })
+}
 pub fn classify(
     worker: &str,
     head: &str,
@@ -94,8 +102,7 @@ impl Review {
     ) -> Result<(), String> {
         if input.revision != self.head
             || verdict.observer_session.is_empty()
-            || verdict.authority_digest
-                != crate::context_selection::digest(&serde_json::to_value(&input.intent).unwrap())
+            || verdict.authority_digest != authority(input)
         {
             return Err("COMMIT_NATIVE_BINDING stage=commit_review".into());
         }
