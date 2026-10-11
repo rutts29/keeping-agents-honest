@@ -64,6 +64,12 @@ pub fn submit(
     )
 }
 pub fn resolve(worker: &str, observer: &str, head: &str) -> Result<Option<Resolved>> {
+    match resolve_ready(worker, observer, head) {
+        Err(e) if e.to_string().starts_with("STORE_BUSY") => Ok(None),
+        other => other,
+    }
+}
+fn resolve_ready(worker: &str, observer: &str, head: &str) -> Result<Option<Resolved>> {
     let b = binding(worker)?;
     if !settled(&b)? {
         return Ok(None);

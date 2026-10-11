@@ -78,13 +78,20 @@ fn wait_set(f: &fixture::Fixture, worker: &str, prior: Option<&str>) -> Resolved
     loop {
         if let Some(s) = Store::read(worker).unwrap()
             && let Some(observer) = s.observer.session
-            && let Some(r) = current_set::resolve(worker, &observer, &"a".repeat(40)).unwrap()
+            && let Some(r) = ready_set(worker, &observer)
             && prior != Some(r.source_digest.as_str())
             && s.pending.is_none()
         {
             return r;
         }
         progress(f);
+    }
+}
+fn ready_set(worker: &str, observer: &str) -> Option<Resolved> {
+    match current_set::resolve(worker, observer, &"a".repeat(40)) {
+        Ok(r) => r,
+        Err(e) if e.to_string().starts_with("STORE_BUSY") => None,
+        Err(e) => panic!("current-rule poll failed: {e}"),
     }
 }
 fn progress(f: &fixture::Fixture) {

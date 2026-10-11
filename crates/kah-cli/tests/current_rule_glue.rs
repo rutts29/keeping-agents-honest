@@ -338,3 +338,21 @@ fn append(f: &mut Fixture, id: &str, text: &str) {
     )
     .unwrap();
 }
+#[test]
+fn held_run_writer_is_pending_at_current_set_boundary_and_recovers_after_release() {
+    let f = fixture();
+    let r = rebuild(&f);
+    adopt(&f, &r);
+    let held = RunStore::open_default(&f.binding.project, "run").unwrap();
+    assert!(
+        current_set::resolve(&f.binding.session, "same-observer", &"a".repeat(40))
+            .unwrap()
+            .is_none()
+    );
+    drop(held);
+    assert!(
+        current_set::resolve(&f.binding.session, "same-observer", &"a".repeat(40))
+            .unwrap()
+            .is_some()
+    );
+}
