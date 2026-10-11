@@ -41,6 +41,7 @@ pub fn write(
         "checkpoint":record.control.last_checkpoint(),"deliveredCommit":record.control.last_checkpoint(),"diffStats":tree.diff_stat()?,
         "tests":tests.filter(|t| Some(t.commit.as_str())==record.control.last_checkpoint()),"openQuestion":record.control.external_question(),"error":problem,
         "ledgerSummary":projection.map(|p|p.rendered_prompt()),"observerGap":observer.and_then(|s|s.gap),
+        "untrustedCommitChecks":crate::observer_review::untrusted::host::summary(session)?,
         "tokensReported":record.control.tokens_used(),"elapsedMs":record.control.elapsed_ms(),
         "handoff":"Review the local branch diff and merge it yourself. Only the agent's captured HEAD is delivered; uncommitted files remain in the worktree. kah did not author a commit, push or deploy."
     });

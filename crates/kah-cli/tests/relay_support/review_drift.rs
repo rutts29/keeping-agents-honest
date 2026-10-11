@@ -234,7 +234,8 @@ fn evidence(
     let tripwire: kah_observer::judge::Judgment =
         serde_json::from_value(request.trigger["tripwire"].clone()).unwrap();
     let actions = request.trigger["actions"].as_array().unwrap();
-    let baseline = kah_observer::judge::decision::assessment(&tripwire, actions, 0);
+    let baseline =
+        json!({"retired_tripwire":tripwire,"actions":actions,"read_only":true,"new_judgments":0});
     let worker = Store::read(&RunStore::default_state_root().unwrap(), id)
         .unwrap()
         .unwrap();

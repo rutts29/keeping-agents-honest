@@ -61,73 +61,39 @@ fn identical_steering_is_one_entry_across_turns_and_after_delivery() {
 }
 
 #[test]
-fn drift_merges_at_enqueue_and_post_snapshot_actions_get_a_followup() {
-    let worker = format!("drift-enqueue-{}", std::process::id());
+fn commit_metadata_remains_separate_and_post_snapshot_work_is_retained() {
+    let worker = format!("commit-recovery-{}", std::process::id());
     let root = Store::directory(&worker).unwrap();
     for id in ["a", "b"] {
         queue::enqueue(
             &worker,
-            Purpose::Drift,
+            Purpose::Checkpoint,
             id,
             json!({"actions":[{"id":id,"output":"Whole output.\n".repeat(10000)}]}),
         )
         .unwrap();
     }
-    let before = queue::entries(&worker).unwrap();
-    assert_eq!(
-        before.len(),
-        1,
-        "coalescing happens even while checkpoints block draining"
-    );
-    assert_eq!(before[0].1.trigger["actions"].as_array().unwrap().len(), 2);
-    // Simulate a crash after durable pending publication, before original archive.
-    let missing = lose_original(&root);
+    assert_eq!(queue::entries(&worker).unwrap().len(), 2);
     let (snapshot, paths) = queue::claim_batch(&worker).unwrap().unwrap();
-    assert!(
-        missing.exists(),
-        "claim restores the whole missing original from the durable packet"
-    );
-    assert!(!paths[0].ends_with("drift-pending.json"));
+    assert_eq!(paths.len(), 1);
+    assert_eq!(snapshot.trigger["actions"].as_array().unwrap().len(), 1);
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "after",
         json!({"actions":[{"id":"after"}]}),
     )
     .unwrap();
+    for path in paths {
+        std::fs::remove_file(path).unwrap();
+    }
     let jobs = queue::entries(&worker).unwrap();
-    assert_eq!(
-        jobs.len(),
-        2,
-        "the claimed review and post-snapshot pending packet stay distinct"
-    );
-    assert_eq!(snapshot.trigger["actions"].as_array().unwrap().len(), 2);
-    assert_eq!(
+    assert_eq!(jobs.len(), 2);
+    assert!(
         jobs.iter()
-            .find(|(p, _)| p.ends_with("drift-pending.json"))
-            .unwrap()
-            .1
-            .trigger["actions"][0]["id"],
-        "after"
-    );
-    assert_eq!(
-        std::fs::read_dir(root.join("drift-events"))
-            .unwrap()
-            .count(),
-        3,
-        "every original flag is retained"
+            .any(|(_, w)| w.trigger["actions"][0]["id"] == "after")
     );
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
-}
-fn lose_original(root: &std::path::Path) -> std::path::PathBuf {
-    let path = std::fs::read_dir(root.join("drift-events"))
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
-    std::fs::remove_file(&path).unwrap();
-    path
 }
 
 #[test]
@@ -171,7 +137,7 @@ fn one_time_backlog_repair_keeps_every_original_and_is_idempotent() {
     };
     let repaired = queue::repair::backlog(&worker, "user-authorized-once", latest.clone()).unwrap();
     assert_eq!(repaired["before"], 6);
-    assert_eq!(repaired["after"], 3);
+    assert_eq!(repaired["after"], 2);
     assert_eq!(
         std::fs::read_dir(root.join("queue-retired"))
             .unwrap()

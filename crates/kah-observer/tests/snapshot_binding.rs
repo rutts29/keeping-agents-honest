@@ -27,10 +27,9 @@ fn supplied_worker_evidence_cannot_be_attached_to_another_session() {
         vec![BundleRecord::new("u0", SourceRole::User, "task").unwrap()],
     )
     .unwrap();
-    let result = engine::observe_snapshot(
+    let result = engine::synchronize_snapshot(
         &binding,
         "turn",
-        true,
         ObservationSnapshot {
             users: Some(users),
             actions: vec![],

@@ -49,29 +49,25 @@ fn handle(input: &Value) -> Result<Value, String> {
         kind,
         turn,
     )?;
-    Ok(crate::in_turn::merge(
-        observe_event(&binding, input, event, name, turn)?,
+    let output = crate::hook_output::merge(
+        observe_event(&binding, event, name, turn)?,
         notice.unwrap_or(json!({})),
-    ))
+    );
+    let commit = crate::observer_review::untrusted::host::take(&binding, input)
+        .map_err(|e| e.to_string())?;
+    Ok(crate::hook_output::merge(output, commit))
 }
 
 fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     initialize(&base, binding)?;
-    let tool = if crate::in_turn::event(input) && crate::observer_intake::legacy_checks(binding)? {
-        Some(crate::in_turn::codex(binding, input)?)
-    } else {
-        None
-    };
     crate::relay_hook::handle(binding, input, "codex").map_err(|e| e.to_string())?;
+    crate::observer_review::untrusted::host::schedule(binding, input).map_err(|e| e.to_string())?;
     if let Some(output) = crate::observer_review::dispatch::register(binding, input, "codex")
         .map_err(|e| e.to_string())?
     {
-        return Ok(Some(crate::in_turn::merge(
-            output,
-            tool.unwrap_or(json!({})),
-        )));
+        return Ok(Some(output));
     }
     if let Some(context) =
         crate::dispatch::startup_context(binding, input, "codex").map_err(|e| e.to_string())?
@@ -82,7 +78,7 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
         crate::dispatch::receive(binding, input, "codex").map_err(|e| e.to_string())?;
     if input["hook_event_name"] == "PreToolUse" {
         return if dispatched {
-            let outcome = crate::observer_intake::observe(binding, "dispatch", false)?;
+            let outcome = crate::observer_intake::observe(binding, "dispatch")?;
             Ok(Some(output(
                 "PreToolUse",
                 &outcome
@@ -92,18 +88,15 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
                 outcome.gap.as_deref(),
             )))
         } else {
-            Ok(Some(
-                crate::in_turn_worker::pending(binding, input)?.unwrap_or_else(|| json!({})),
-            ))
+            Ok(Some(json!({})))
         };
     }
-    if tool.is_some() {
-        return Ok(tool);
+    if crate::hook_output::post_tool(input) {
+        return crate::observer_review::untrusted::host::take(binding, input)
+            .map(Some)
+            .map_err(|e| e.to_string());
     }
-    if crate::in_turn::event(input) {
-        return Ok(Some(json!({})));
-    }
-    crate::in_turn_worker::pending(binding, input)
+    Ok(None)
 }
 
 pub(crate) fn is_notice(output: &Value) -> bool {
@@ -125,7 +118,6 @@ mod notice_tests;
 
 fn observe_event(
     binding: &Binding,
-    input: &Value,
     event: SessionEvent,
     name: &str,
     turn: Option<&str>,
@@ -135,11 +127,7 @@ fn observe_event(
         event.kind,
         EventKind::TurnEnded | EventKind::Compacted | EventKind::Resumed
     ) {
-        let mut outcome = crate::observer_intake::observe(
-            binding,
-            turn.unwrap_or("continuity"),
-            event.kind == EventKind::TurnEnded && input["stop_hook_active"] != true,
-        )?;
+        let mut outcome = crate::observer_intake::observe(binding, turn.unwrap_or("continuity"))?;
         crate::observer_review::dispatch::outcome(binding, &mut outcome)
             .map_err(|e| e.to_string())?;
         if matches!(event.kind, EventKind::TurnEnded | EventKind::Resumed)

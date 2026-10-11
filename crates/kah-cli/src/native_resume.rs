@@ -73,7 +73,7 @@ fn reconcile(
         return Err("RUN_OBSERVER_SCOPE stage=resume".into());
     }
     let outcome =
-        crate::observer_intake::snapshot(&state.binding, "run:resume", false, history.snapshot()?)?;
+        crate::observer_intake::snapshot(&state.binding, "run:resume", history.snapshot()?)?;
     if let Some(gap) = outcome.gap {
         return Err(format!("RUN_OBSERVER_GAP stage=resume: {gap}").into());
     }

@@ -6,13 +6,13 @@ use serde_json::json;
 use std::fs;
 
 #[test]
-fn busy_reviews_preserve_every_trigger_and_whole_preparation_packet_across_turns() {
+fn busy_reviews_preserve_each_commit_and_whole_preparation_across_turns() {
     let worker = format!("queued-unit-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
     let whole = json!({"state":{"user_text":"Whole relayed instruction.\n".repeat(10000)}});
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "same-turn",
         json!({"marker":"first"}),
     )
@@ -20,84 +20,55 @@ fn busy_reviews_preserve_every_trigger_and_whole_preparation_packet_across_turns
     queue::enqueue(&worker, Purpose::Preparation, "same-turn", whole.clone()).unwrap();
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "later-turn",
         json!({"marker":"latest"}),
     )
     .unwrap();
     let jobs = queue::entries(&worker).unwrap();
-    // Merge drift at enqueue while preserving all content.
-    assert_eq!(jobs.len(), 2);
-    assert_eq!(jobs[0].1.turn, "later-turn");
-    assert_eq!(
-        jobs[0].1.trigger["coalesced_triggers"][0]["marker"],
-        "first"
-    );
-    assert_eq!(
-        jobs[0].1.trigger["coalesced_triggers"][1]["marker"],
-        "latest"
-    );
-    assert_eq!(jobs[1].1.trigger, whole);
+    assert_eq!(jobs.len(), 3);
+    for expected in [json!({"marker":"first"}), json!({"marker":"latest"}), whole] {
+        assert!(jobs.iter().any(|(_, j)| j.trigger == expected));
+    }
     let directory = store.directory.clone();
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
 
 #[test]
-fn uncertain_steering_cannot_discard_a_simultaneous_drift_trigger() {
-    let drift = json!({"verified_actions":["whole drift evidence"]});
+fn uncertain_steering_cannot_discard_simultaneous_source_preparation() {
+    let preparation = json!({"preparation":{"state":{"user_text":"whole user words"}}});
     let steering = json!({"uncertain_user_input":{"text":"whole user instruction"}});
-    let triggers =
-        kah_cli::observer_review::dispatch::triggers(Some(drift.clone()), Some(steering.clone()));
-    assert_eq!(triggers.len(), 2);
-    assert_eq!(triggers[0], (Purpose::Steering, steering));
-    assert_eq!(triggers[1], (Purpose::Drift, drift));
+    let triggers = kah_cli::observer_review::dispatch::triggers(
+        Some(preparation.clone()),
+        Some(steering.clone()),
+    );
+    assert_eq!(
+        triggers,
+        vec![
+            (Purpose::Steering, steering),
+            (Purpose::Preparation, preparation)
+        ]
+    );
 }
 
 #[test]
-fn uncertain_ticks_coalesce_at_snapshot_and_later_events_remain_queued() {
-    let worker = format!("coalesced-unit-{}", std::process::id());
+fn commit_snapshots_keep_their_own_work_and_later_events_remain_queued() {
+    let worker = format!("commit-queue-unit-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
-    queue::enqueue(
-        &worker,
-        Purpose::Drift,
-        "turn-one",
-        json!({"actions":[{"id":"a"}],"tripwire":{"assessment":"uncertain"}}),
-    )
-    .unwrap();
-    queue::enqueue(
-        &worker,
-        Purpose::Drift,
-        "turn-two",
-        json!({"actions":[{"id":"b"}],"tripwire":{"assessment":"uncertain"}}),
-    )
-    .unwrap();
-    let snapshot = queue::entries(&worker).unwrap();
-    // Same user rule: claiming detaches the single pending aggregate.
+    queue::enqueue(&worker, Purpose::Checkpoint, "one", json!({"marker":"a"})).unwrap();
+    queue::enqueue(&worker, Purpose::Checkpoint, "two", json!({"marker":"b"})).unwrap();
     let (job, paths) = queue::claim_batch(&worker).unwrap().unwrap();
     assert_eq!(paths.len(), 1);
-    assert_eq!(job.trigger["actions"].as_array().unwrap().len(), 2);
-    assert_eq!(
-        snapshot[0].1.trigger["coalesced_triggers"]
-            .as_array()
-            .unwrap()
-            .len(),
-        2
-    );
-    queue::enqueue(
-        &worker,
-        Purpose::Drift,
-        "turn-three",
-        json!({"actions":[{"id":"c"}]}),
-    )
-    .unwrap();
+    assert_eq!(job.trigger["marker"], "a");
+    queue::enqueue(&worker, Purpose::Checkpoint, "three", json!({"marker":"c"})).unwrap();
     for path in paths {
         fs::remove_file(path).unwrap();
     }
-    assert_eq!(
-        queue::entries(&worker).unwrap()[0].1.trigger["actions"][0]["id"],
-        "c"
-    );
+    let remaining = queue::entries(&worker).unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining.iter().any(|(_, j)| j.trigger["marker"] == "b"));
+    assert!(remaining.iter().any(|(_, j)| j.trigger["marker"] == "c"));
     let directory = store.directory.clone();
     drop(store);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
@@ -110,7 +81,7 @@ fn a_busy_startup_store_preserves_the_trigger_and_continues_after_release() {
     save_unreachable_state(&store, &worker);
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "startup",
         json!({"actions":[{"id":"first"}]}),
     )
@@ -137,7 +108,7 @@ fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
     let request = Request {
         id: "review-original".into(),
         worker: worker.clone(),
-        purpose: Purpose::Drift,
+        purpose: Purpose::Checkpoint,
         turn: "historical".into(),
         head: None,
         intent: json!({"goal":"Original whole user words."}),
@@ -149,7 +120,7 @@ fn captured_snapshots_are_queued_whole_and_never_coalesced_away() {
     let (thread, result) = blocked_admission(move || snapshot::wake(&copied));
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "next",
         json!({"actions":[{"id":"next"}]}),
     )
@@ -209,33 +180,64 @@ fn blocked_admission(
 }
 
 #[test]
-fn explicit_checkpoint_precedes_rechecks_without_discarding_or_reordering_the_rest() {
+fn gate_precedes_fair_lane_service_with_every_item_and_sha_delivered_once() {
     let worker = format!("priority-checkpoint-unit-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
-    for (purpose, id) in [
-        (Purpose::Steering, "steering-first"),
-        (Purpose::Drift, "drift-second"),
-        (Purpose::Checkpoint, "gate-third"),
-        (Purpose::Steering, "steering-last"),
-    ] {
-        queue::enqueue(&worker, purpose, "turn", json!({"id":id})).unwrap();
+    let cases = [
+        (Purpose::Steering, "intent-a", ""),
+        (
+            Purpose::Checkpoint,
+            "commit-a",
+            "63700d34fd9fe967b1bed5b7f9a2971aaa1db5a7",
+        ),
+        (Purpose::Checkpoint, "gate", ""),
+        (Purpose::Steering, "intent-b", ""),
+        (
+            Purpose::Checkpoint,
+            "commit-b",
+            "d15e9f532a44948fe842e01e239a068d0367a80a",
+        ),
+    ];
+    for (purpose, id, sha) in &cases {
+        let mut trigger = json!({"id":id,"whole":"Whole exact source.\n","commit_sha":sha});
+        if id.starts_with("commit") {
+            trigger["review_class"] = json!("commit");
+        }
+        queue::enqueue(&worker, purpose.clone(), "turn", trigger).unwrap();
     }
-    let jobs = queue::entries(&worker).unwrap();
-    assert_eq!(jobs.len(), 4);
-    assert_eq!(jobs[0].1.purpose, Purpose::Checkpoint);
-    assert_eq!(jobs[1].1.trigger["id"], "steering-first");
-    assert_eq!(jobs[2].1.trigger["id"], "drift-second");
-    assert_eq!(jobs[3].1.trigger["id"], "steering-last");
-    let (next, paths) = queue::batch(&jobs).unwrap();
-    assert_eq!(next.trigger["id"], "gate-third");
-    assert_eq!(paths.len(), 1);
-    std::fs::remove_file(&paths[0]).unwrap();
-    let remaining = queue::entries(&worker).unwrap();
-    assert_eq!(remaining.len(), 3);
-    assert_eq!(remaining[0].1.trigger["id"], "steering-first");
+    // Cross-lane FIFO belonged to the deleted Drift/Intent lane. Keep gate-first,
+    // FIFO within each current lane, exact content/SHA and no starvation instead.
+    let mut served = vec![];
+    while let Some((job, paths)) = queue::batch(&queue::entries(&worker).unwrap()) {
+        assert_eq!(paths.len(), 1);
+        assert_eq!(job.trigger["whole"], "Whole exact source.\n");
+        served.push(job.trigger.clone());
+        for path in paths {
+            fs::remove_file(path).unwrap();
+        }
+    }
+    assert_eq!(served[0]["id"], "gate");
+    assert_eq!(served.len(), cases.len());
+    for (_, id, sha) in &cases {
+        let rows = served.iter().filter(|v| v["id"] == *id).collect::<Vec<_>>();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["commit_sha"], *sha);
+    }
+    for lane in ["intent", "commit"] {
+        let ids = served
+            .iter()
+            .filter_map(|v| v["id"].as_str())
+            .filter(|id| id.starts_with(lane))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            vec![format!("{lane}-a"), format!("{lane}-b")],
+            "both lanes served in the same run, each FIFO"
+        );
+    }
     let directory = store.directory.clone();
     drop(store);
-    std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+    fs::remove_dir_all(directory.parent().unwrap()).unwrap();
 }
 
 #[test]

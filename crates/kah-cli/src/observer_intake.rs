@@ -1,43 +1,27 @@
-//! Mine/Research synchronize intent; Untrusted keeps its legacy action checks.
+//! All domains synchronize intent; only Mine/Research queue native rule rebuilds.
 use kah_core::observation::ObservationSnapshot;
 use kah_observer::{engine, session::Binding};
-
-pub fn legacy_checks(binding: &Binding) -> Result<bool, String> {
-    crate::observer_review::control::enabled(binding)
-        .map(|enabled| !enabled)
-        .map_err(|e| e.to_string())
+pub fn observe(binding: &Binding, turn: &str) -> Result<engine::Outcome, String> {
+    after_sync(binding, engine::synchronize(binding, turn)?)
 }
-
-pub fn observe(
-    binding: &Binding,
-    turn: &str,
-    allow_reminder: bool,
-) -> Result<engine::Outcome, String> {
-    if legacy_checks(binding)? {
-        engine::observe(binding, turn, allow_reminder)
-    } else {
-        let outcome = engine::synchronize(binding, turn)?;
-        after_sync(binding, outcome)
-    }
-}
-
 pub fn snapshot(
     binding: &Binding,
     turn: &str,
-    allow_reminder: bool,
     snapshot: ObservationSnapshot,
 ) -> Result<engine::Outcome, String> {
-    if legacy_checks(binding)? {
-        engine::observe_snapshot(binding, turn, allow_reminder, snapshot)
-    } else {
-        let outcome = engine::synchronize_snapshot(binding, turn, snapshot)?;
-        after_sync(binding, outcome)
-    }
+    after_sync(
+        binding,
+        engine::synchronize_snapshot(binding, turn, snapshot)?,
+    )
 }
-
 pub fn after_sync(binding: &Binding, outcome: engine::Outcome) -> Result<engine::Outcome, String> {
     // A detached UserPromptSubmit intake has no guaranteed later Stop dispatch.
     // Publish its distinct intent wake at successful sync, with no inference.
+    if outcome.gap.is_some()
+        || crate::observer_review::untrusted::host::scope(binding).map_err(|e| e.to_string())?
+    {
+        return Ok(outcome);
+    }
     let staged = kah_observer::current_rules::stage(binding)?;
     let config =
         crate::observer_review::control::config(&binding.session).map_err(|e| e.to_string())?;

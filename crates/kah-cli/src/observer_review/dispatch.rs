@@ -100,11 +100,7 @@ pub fn triggers(verification: Option<Value>, steering: Option<Value>) -> Vec<(Pu
         triggers.push((Purpose::Steering, steering));
     }
     if let Some(verification) = verification {
-        let purpose = if verification.get("preparation").is_some() {
-            Purpose::Preparation
-        } else {
-            Purpose::Drift
-        };
+        let purpose = Purpose::Preparation;
         triggers.push((purpose, verification));
     }
     triggers

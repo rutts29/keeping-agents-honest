@@ -3,7 +3,6 @@ pub mod engine;
 pub mod hook_event_store;
 pub mod inspect_state;
 pub mod session;
-pub mod tool_watch;
 
 pub mod judge;
 
@@ -23,7 +22,6 @@ pub mod review_evidence;
 pub mod steering_proposal;
 pub mod verbatim;
 pub mod verification;
-pub mod verified_judgment;
 pub mod whole_preparation;
 
 pub mod verification_contract;

@@ -64,10 +64,9 @@ impl Fixture {
             records,
         )
         .unwrap();
-        engine::observe_snapshot(
+        engine::synchronize_snapshot(
             &self.binding,
             "fixture",
-            false,
             ObservationSnapshot {
                 users: Some(users),
                 actions: vec![],
@@ -234,10 +233,9 @@ fn a_verified_quote_can_seed_a_delegate_only_session_without_promoting_delegate_
         )
         .unwrap();
     }
-    let result = engine::observe_snapshot(
+    let result = engine::synchronize_snapshot(
         &f.binding,
         "relay",
-        false,
         ObservationSnapshot {
             users: None,
             actions: vec![],
@@ -426,7 +424,7 @@ fn explicit_session_pause_prevents_source_reads_and_inference() {
     drop(Store::open(&base, &f.binding.session, std::time::Duration::ZERO).unwrap());
     let marker = Store::directory(&base, &f.binding.session).join("observer-paused");
     fs::write(&marker, b"usage pause").unwrap();
-    let result = engine::observe(&f.binding, "paused", true).unwrap();
+    let result = engine::synchronize(&f.binding, "paused").unwrap();
     assert!(
         result.gap.is_none(),
         "paused observer tried its deliberately unavailable source"

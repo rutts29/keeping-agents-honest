@@ -118,7 +118,7 @@ fn completion_requirements(history: &kah_core::intent_history::History, input: &
     }
 }
 
-fn files(
+pub(crate) fn files(
     context: &Value,
     head: &str,
 ) -> Result<(BTreeMap<String, Hunk>, BTreeMap<String, CodeFile>)> {

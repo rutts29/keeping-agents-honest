@@ -216,97 +216,25 @@ fn pre_tool_hooks_sync_intent_without_judging_unexecuted_actions() {
 }
 
 #[test]
-fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
+fn post_tool_hooks_never_judge_before_a_commit() {
     let f = Fixture::domain("untrusted");
-    for (n, id) in ["one", "two", "three", "one"].into_iter().enumerate() {
+    for n in 0..5 {
         let mut input = f.input();
         input["hook_event_name"] = "PostToolUse".into();
-        input["tool_use_id"] = id.into();
+        input["tool_use_id"] = n.to_string().into();
         input["tool_name"] = "Bash".into();
-        input["tool_input"] = json!({"command":"true"});
-        input["tool_response"] = json!({"stdout":"","exit_code":0});
+        input["tool_response"] = json!({"exit_code":0});
         let output = f.run(input);
-        if n == 0 {
-            assert!(
-                output["systemMessage"]
-                    .as_str()
-                    .unwrap()
-                    .contains("observer idle")
-            );
-        } else {
-            assert_eq!(output, json!({}));
-        }
+        assert!(output.get("decision").is_none());
     }
-    let mut input = f.input();
-    input["hook_event_name"] = "PostToolUse".into();
-    input["tool_use_id"] = "four".into();
-    input["tool_name"] = "Bash".into();
-    input["tool_response"] = json!({"exit_code":0});
-    complete_batch(&f, input.clone());
-    input["tool_use_id"] = "five".into();
-    let output = f.run(input);
-    let message = output["systemMessage"].as_str().unwrap();
-    assert!(
-        message.contains("JEV_KEY_UNAVAILABLE") && message.contains("kah observer active"),
-        "{output}"
-    );
     let state = Store::read(&f.home.join("state/kah"), "session")
         .unwrap()
         .unwrap();
-    assert!(state.gap.is_some());
-}
-
-fn complete_batch(f: &Fixture, input: Value) {
-    use std::os::unix::fs::OpenOptionsExt;
-    let directory = Store::directory(&f.home.join("state/kah"), "session");
-    // Keep the detached worker out of this hook-output assertion. Otherwise it
-    // can record intent before annotate() and legitimately emit an active notice.
-    let lock = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(directory.join("tool-worker.lock"))
-        .unwrap();
-    lock.lock().unwrap();
-    assert_eq!(f.run(input), json!({}));
-    let jobs = directory.join("tool-jobs");
-    assert_eq!(fs::read_dir(&jobs).unwrap().count(), 1);
-    let state = Store::read(&f.home.join("state/kah"), "session")
-        .unwrap()
-        .unwrap();
-    assert!(state.run_id.is_none() && state.gap.is_none());
-    assert_eq!(state.usage.incomplete_calls, 0);
     assert_eq!(state.usage.calls, 0);
-    drop(lock);
-    assert!(
-        f.command()
-            .arg("__in-turn-worker")
-            .arg(&directory)
-            .status()
-            .unwrap()
-            .success()
-    );
-    wait_worker(f);
-}
-
-fn wait_worker(f: &Fixture) {
+    assert!(state.gap.is_none());
     let directory = Store::directory(&f.home.join("state/kah"), "session");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
-        let busy = fs::File::open(directory.join("tool-worker.lock"))
-            .is_ok_and(|lock| lock.try_lock().is_err());
-        let jobs = directory.join("tool-jobs");
-        if !busy && (!jobs.exists() || fs::read_dir(jobs).unwrap().next().is_none()) {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "worker did not finish"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
+    assert!(!directory.join("tool-progress.json").exists());
+    assert!(!directory.join("tool-jobs").exists());
 }
 
 #[test]
@@ -329,7 +257,6 @@ fn empty_native_history_never_judges_drift() {
             assert_eq!(output, json!({}));
         }
     }
-    wait_worker(&f);
     let state = Store::read(&f.home.join("state/kah"), "session")
         .unwrap()
         .unwrap();
@@ -339,11 +266,11 @@ fn empty_native_history_never_judges_drift() {
 }
 
 #[test]
-fn busy_worker_does_not_block_hooks_or_start_another_worker() {
+fn busy_commit_worker_does_not_block_hooks_or_start_tool_judgments() {
     let f = Fixture::domain("untrusted");
     f.run(f.input());
-    let directory = Store::directory(&f.home.join("state/kah"), "session");
-    let lock = fs::File::create(directory.join("tool-worker.lock")).unwrap();
+    let directory = Store::directory(&f.home.join("state/kah"), "session").join("review");
+    let lock = fs::File::create(directory.join("job-__untrusted-commits.lock")).unwrap();
     use std::os::unix::fs::PermissionsExt;
     lock.set_permissions(fs::Permissions::from_mode(0o600))
         .unwrap();
@@ -351,77 +278,67 @@ fn busy_worker_does_not_block_hooks_or_start_another_worker() {
     for event in ["PreToolUse", "PostToolUse", "Stop"] {
         let mut input = f.input();
         input["hook_event_name"] = event.into();
-        input["tool_use_id"] = "initial-busy-tool".into();
         let started = std::time::Instant::now();
-        assert_eq!(f.run(input), json!({}));
+        assert!(f.run(input).get("decision").is_none());
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
-    assert!(!directory.join("tool-job.json").exists());
-    for n in 0..4 {
-        let mut input = f.input();
-        input["hook_event_name"] = "PostToolUse".into();
-        input["tool_use_id"] = format!("busy-{n}").into();
-        assert_eq!(f.run(input), json!({}));
-    }
-    let events = fs::read_to_string(directory.join("tool-events.jsonl")).unwrap();
-    for n in 0..4 {
-        assert!(events.contains(&format!("busy-{n}")));
-    }
-    assert_eq!(
-        fs::read_dir(directory.join("tool-jobs")).unwrap().count(),
-        1
-    );
+    let state = Store::read(&f.home.join("state/kah"), "session")
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.usage.calls, 0);
+    assert!(!directory.parent().unwrap().join("tool-jobs").exists());
 }
 
 #[test]
-fn queued_reminder_is_delivered_once_and_new_user_input_preserves_it_as_context() {
+fn queued_commit_flag_is_advisory_once_and_preserves_user_intake() {
     let f = Fixture::domain("untrusted");
     f.run(f.input());
-    let directory = Store::directory(&f.home.join("state/kah"), "session");
-    let queued = json!({"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"fixture reminder"}});
-    kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
+    queue_commit_notice(&f);
     let mut input = f.input();
-    input["hook_event_name"] = "PreToolUse".into();
+    input["hook_event_name"] = "PostToolUse".into();
     let output = f.run(input.clone());
-    assert_eq!(
-        output["hookSpecificOutput"]["additionalContext"],
-        "fixture reminder"
-    );
-    assert_eq!(output["hookSpecificOutput"]["hookEventName"], "PreToolUse");
-    assert_ne!(
-        f.run(input)["hookSpecificOutput"]["additionalContext"],
-        "fixture reminder"
-    );
-    kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
     assert!(
-        f.run(f.input())["hookSpecificOutput"]["additionalContext"]
+        output["hookSpecificOutput"]["additionalContext"]
             .as_str()
             .unwrap()
-            .contains("fixture reminder")
+            .contains("Jev flag, not confirmed by an LLM")
     );
-    assert!(!directory.join("tool-result.json").exists());
+    assert!(output.get("decision").is_none());
+    assert_eq!(f.run(input), json!({}));
+    queue_commit_notice(&f);
+    let output = f.run(f.input());
+    assert!(
+        output["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .contains("not user steering")
+    );
+    let state = Store::read(&f.home.join("state/kah"), "session")
+        .unwrap()
+        .unwrap();
+    assert!(state.run_id.is_some());
+    assert_eq!(state.usage.calls, 0);
 }
 
 #[test]
-fn user_input_while_worker_is_busy_retains_its_finding_as_previous_turn_context() {
+fn user_input_while_commit_worker_is_busy_retains_sha_bound_flag_as_context() {
     let f = Fixture::domain("untrusted");
     f.run(f.input());
-    let directory = Store::directory(&f.home.join("state/kah"), "session");
-    let lock = fs::File::open(directory.join("tool-worker.lock")).unwrap();
+    let directory = Store::directory(&f.home.join("state/kah"), "session").join("review");
+    let lock = fs::File::create(directory.join("job-__untrusted-commits.lock")).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    lock.set_permissions(fs::Permissions::from_mode(0o600))
+        .unwrap();
     lock.lock().unwrap();
-    assert_eq!(f.run(f.input()), json!({}));
-    let queued = json!({"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"stale reminder"}});
-    kah_cli::unattended_report::save(&directory, "tool-result.json", &queued).unwrap();
-    drop(lock);
-    let mut input = f.input();
-    input["hook_event_name"] = "PreToolUse".into();
-    let context = f.run(input)["hookSpecificOutput"]["additionalContext"]
+    queue_commit_notice(&f);
+    let output = f.run(f.input());
+    let context = output["hookSpecificOutput"]["additionalContext"]
         .as_str()
-        .unwrap()
-        .to_owned();
-    assert!(context.contains("stale reminder"));
-    assert!(context.contains("previous turn"));
-    assert!(!directory.join("tool-result.json").exists());
+        .unwrap();
+    assert!(context.contains("Jev flag, not confirmed by an LLM"));
+    assert!(context.contains("SHA"));
+    assert!(context.contains("not user steering"));
+    assert!(output.get("decision").is_none());
 }
 
 fn receipt(f: &Fixture) -> kah_cli::relay::Receipt {
@@ -527,4 +444,19 @@ fn forged_relay_prefix_is_delegate_even_without_a_valid_receipt() {
         .unwrap();
     assert!(state.run_id.is_none());
     assert_eq!(state.usage.calls, 0);
+}
+
+fn queue_commit_notice(f: &Fixture) {
+    let mut report: kah_cli::observer_review::untrusted::Report =
+        serde_json::from_str(include_str!("fixtures/untrusted-flag.json")).unwrap();
+    report.record.worker = "session".into();
+    let root = Store::directory(&f.home.join("state/kah"), "session").join("review/untrusted");
+    let notices = root.join("notices");
+    kah_core::run_store::ensure_private_directory(&notices).unwrap();
+    kah_cli::unattended_report::save(
+        &notices,
+        &format!("{}.json", kah_cli::relay_store::nonce()),
+        &json!(report),
+    )
+    .unwrap();
 }

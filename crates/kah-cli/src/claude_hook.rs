@@ -58,28 +58,7 @@ pub fn handle(input: &Value) -> Result<Value, String> {
         Err(error) => Err(error),
     };
     match outcome {
-        Ok(mut outcome) => {
-            crate::observer_review::dispatch::outcome(&binding, &mut outcome)
-                .map_err(|e| e.to_string())?;
-            if let Some(reminder) = outcome.reminder {
-                return Ok(json!({"decision":"block","reason":reminder.text}));
-            }
-            let mut output = json!({});
-            if let Some(projection) = outcome.projection
-                && input["hook_event_name"] != "Stop"
-            {
-                output["hookSpecificOutput"] = json!({"hookEventName":input["hook_event_name"],
-                    "additionalContext":crate::observer_hook::context(&projection.rendered_prompt())});
-            }
-            if let Some(gap) = outcome.gap {
-                output["systemMessage"] = format!("kah observer gap: {gap}").into();
-            }
-            if let Err(error) = crate::interactive_name::claude(&base, &binding, input, &mut output)
-            {
-                eprintln!("{error}");
-            }
-            Ok(crate::in_turn::merge(output, notice.unwrap_or(json!({}))))
-        }
+        Ok(outcome) => observed(input, &binding, &base, outcome, notice),
         Err(error) => {
             let mut store = Store::open(&base, &binding.session, Duration::from_secs(2))?;
             let mut state = store.load()?.unwrap_or_else(|| State::new(binding));
@@ -105,29 +84,17 @@ fn observe(input: &Value, binding: &Binding) -> Result<engine::Outcome, String> 
         snapshot.action_digest = format!("sha256:{:x}", Sha256::digest(b"[]"));
     }
     let turn = input["prompt_id"].as_str().unwrap_or("session");
-    crate::observer_intake::snapshot(
-        binding,
-        turn,
-        input["hook_event_name"] == "Stop" && input["stop_hook_active"] != true,
-        snapshot,
-    )
+    crate::observer_intake::snapshot(binding, turn, snapshot)
 }
 
 fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
-    let tool = if crate::in_turn::event(input) && crate::observer_intake::legacy_checks(binding)? {
-        Some(crate::in_turn::claude(binding, input)?)
-    } else {
-        None
-    };
     crate::relay_hook::handle(binding, input, "claude").map_err(|e| e.to_string())?;
+    crate::observer_review::untrusted::host::schedule(binding, input).map_err(|e| e.to_string())?;
     if let Some(output) = crate::observer_review::dispatch::register(binding, input, "claude")
         .map_err(|e| e.to_string())?
     {
-        return Ok(Some(crate::in_turn::merge(
-            output,
-            tool.unwrap_or(json!({})),
-        )));
+        return Ok(Some(output));
     }
     if let Some(context) =
         crate::dispatch::startup_context(binding, input, "claude").map_err(|e| e.to_string())?
@@ -135,13 +102,12 @@ fn early(input: &Value, binding: &Binding) -> Result<Option<Value>, String> {
         return Ok(Some(context));
     }
     crate::dispatch::receive(binding, input, "claude").map_err(|e| e.to_string())?;
-    if tool.is_some() {
-        return Ok(tool);
+    if crate::hook_output::post_tool(input) {
+        return crate::observer_review::untrusted::host::take(binding, input)
+            .map(Some)
+            .map_err(|e| e.to_string());
     }
-    if crate::in_turn::event(input) {
-        return Ok(Some(json!({})));
-    }
-    crate::in_turn_worker::pending(binding, input)
+    Ok(None)
 }
 
 pub(crate) fn validate_cwd(input: &Value, binding: &Binding) -> Result<(), String> {
@@ -225,4 +191,34 @@ fn transcript(input: &Value, binding: &Binding) -> Result<String, String> {
         .read_to_string(&mut text)
         .map_err(|e| format!("CLAUDE_TRANSCRIPT_READ stage=hook: {e}"))?;
     Ok(text)
+}
+
+fn observed(
+    input: &Value,
+    binding: &Binding,
+    base: &Path,
+    mut outcome: engine::Outcome,
+    notice: Option<Value>,
+) -> Result<Value, String> {
+    crate::observer_review::dispatch::outcome(binding, &mut outcome).map_err(|e| e.to_string())?;
+    if let Some(reminder) = outcome.reminder {
+        return Ok(json!({"decision":"block","reason":reminder.text}));
+    }
+    let mut output = json!({});
+    if let Some(projection) = outcome.projection
+        && input["hook_event_name"] != "Stop"
+    {
+        output["hookSpecificOutput"] = json!({"hookEventName":input["hook_event_name"],
+                    "additionalContext":crate::observer_hook::context(&projection.rendered_prompt())});
+    }
+    if let Some(gap) = outcome.gap {
+        output["systemMessage"] = format!("kah observer gap: {gap}").into();
+    }
+    if let Err(error) = crate::interactive_name::claude(base, binding, input, &mut output) {
+        eprintln!("{error}");
+    }
+    let output = crate::hook_output::merge(output, notice.unwrap_or(json!({})));
+    let commit =
+        crate::observer_review::untrusted::host::take(binding, input).map_err(|e| e.to_string())?;
+    Ok(crate::hook_output::merge(output, commit))
 }
