@@ -6,6 +6,9 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
+mod http;
+mod scalar;
+pub use http::HttpClient;
 
 pub trait Client {
     fn post(&self, body: &Value) -> Result<Value, Error>;
@@ -21,143 +24,61 @@ impl<C: Client> Judge for Jev<C> {
         let response = self
             .client
             .post(&serde_json::json!({"model":self.model,"state":state,"questions":questions}))?;
-        let answers = serde_json::from_value(response["answers"].clone())
-            .map_err(|_| Error::new("JEV_RESPONSE_SCHEMA"))?;
-        validate_response(questions, &answers)?;
-        let model = response["model"]
-            .as_str()
-            .filter(|s| s.starts_with("jev-") && s.len() < 100)
-            .ok_or(Error::new("JEV_RESPONSE_MODEL"))?
-            .to_owned();
-        let input = response["usage"]["input_tokens"]
-            .as_u64()
-            .ok_or(Error::new("JEV_RESPONSE_USAGE"))?;
-        let output = response["usage"]["output_tokens"]
-            .as_u64()
-            .ok_or(Error::new("JEV_RESPONSE_USAGE"))?;
-        // Published 2026-09-29 price for 1.13.0: $0.042/M input, output free.
-        // An alias may change models; do not silently apply an old price then.
-        let cost = (model == "jev-1.13.0").then_some(input as f64 * 0.042 / 1_000_000.0);
-        Ok(Judgment {
-            backend: "jev".into(),
-            model,
-            answers,
-            metrics: Metrics {
-                input_utf8_bytes: Some(
-                    (state.to_string().len()
-                        + serde_json::to_vec(questions)
-                            .expect("question serialization")
-                            .len()) as u64,
-                ),
-                calls: 1,
-                input_tokens: input,
-                output_tokens: output,
-                elapsed_ms: started.elapsed().as_millis() as u64,
-                estimated_cost_usd: cost,
-                ..Metrics::default()
-            },
-            fallback_reason: None,
-        })
+        parse_response(
+            state,
+            questions,
+            &response,
+            started.elapsed().as_millis() as u64,
+        )
     }
+}
+/// Shared scalar/batch decoder. Timing is telemetry, never judgment content.
+pub fn parse_response(
+    state: &Value,
+    questions: &Questions,
+    response: &Value,
+    elapsed_ms: u64,
+) -> Result<Judgment, Error> {
+    let answers = serde_json::from_value(response["answers"].clone())
+        .map_err(|_| Error::new("JEV_RESPONSE_SCHEMA"))?;
+    validate_response(questions, &answers)?;
+    let model = response["model"]
+        .as_str()
+        .filter(|s| s.starts_with("jev-") && s.len() < 100)
+        .ok_or(Error::new("JEV_RESPONSE_MODEL"))?
+        .to_owned();
+    let input = response["usage"]["input_tokens"]
+        .as_u64()
+        .ok_or(Error::new("JEV_RESPONSE_USAGE"))?;
+    let output = response["usage"]["output_tokens"]
+        .as_u64()
+        .ok_or(Error::new("JEV_RESPONSE_USAGE"))?;
+    // Published 2026-09-29 price for 1.13.0: $0.042/M input, output free.
+    // An alias may change models; do not silently apply an old price then.
+    let cost = (model == "jev-1.13.0").then_some(input as f64 * 0.042 / 1_000_000.0);
+    Ok(Judgment {
+        backend: "jev".into(),
+        model,
+        answers,
+        metrics: Metrics {
+            input_utf8_bytes: Some(
+                (state.to_string().len()
+                    + serde_json::to_vec(questions)
+                        .expect("question serialization")
+                        .len()) as u64,
+            ),
+            calls: 1,
+            input_tokens: input,
+            output_tokens: output,
+            elapsed_ms,
+            estimated_cost_usd: cost,
+            ..Metrics::default()
+        },
+        fallback_reason: None,
+    })
 }
 
-pub struct HttpClient {
-    agent: ureq::Agent,
-    authorization: ureq::http::HeaderValue,
-    error_response: std::cell::RefCell<Option<Value>>,
-}
-impl HttpClient {
-    /// Diagnostic callers can privately archive a real response; errors printed
-    /// by the application still contain only a stable code and HTTP status.
-    pub fn last_error_response(&self) -> Option<Value> {
-        self.error_response.borrow().clone()
-    }
-    pub fn from_home(home: &Path) -> Result<Self, Error> {
-        let path = home.join(".config/kah/typesafe.key");
-        let metadata =
-            fs::symlink_metadata(&path).map_err(|_| Error::new("JEV_KEY_UNAVAILABLE"))?;
-        if !metadata.is_file()
-            || metadata.permissions().mode() & 0o777 != 0o600
-            || metadata.len() > 8192
-            || metadata.uid()
-                != home
-                    .metadata()
-                    .map_err(|_| Error::new("JEV_KEY_OWNER"))?
-                    .uid()
-        {
-            return Err(Error::new("JEV_KEY_PERMISSIONS"));
-        }
-        let key = fs::read_to_string(path).map_err(|_| Error::new("JEV_KEY_READ"))?;
-        let key = key.trim();
-        if key.is_empty() || !key.bytes().all(|b| b.is_ascii_graphic()) {
-            return Err(Error::new("JEV_KEY_FORMAT"));
-        }
-        let mut authorization = ureq::http::HeaderValue::from_str(&format!("Bearer {key}"))
-            .map_err(|_| Error::new("JEV_KEY_FORMAT"))?;
-        authorization.set_sensitive(true);
-        let config = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(20)))
-            .http_status_as_error(false)
-            .max_redirects(0)
-            .build();
-        Ok(Self {
-            agent: ureq::Agent::new_with_config(config),
-            authorization,
-            error_response: std::cell::RefCell::new(None),
-        })
-    }
-}
-impl Client for HttpClient {
-    fn post(&self, body: &Value) -> Result<Value, Error> {
-        self.post_raw(&body.to_string())
-    }
-}
-impl HttpClient {
-    /// Preserve the reviewed wire bytes, including Choice criterion order.
-    pub fn post_raw(&self, body: &str) -> Result<Value, Error> {
-        *self.error_response.borrow_mut() = None;
-        // Fixed TLS origin and no redirects: neither project data nor config can
-        // route this host-only credential to another endpoint.
-        let mut response = self
-            .agent
-            .post("https://api.typesafe.ai/v1/systemone")
-            .header("Authorization", self.authorization.clone())
-            .header("Content-Type", "application/json")
-            .send(body.as_bytes())
-            .map_err(http_error)?;
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let body = response
-                .body_mut()
-                .with_config()
-                .limit(1024 * 1024)
-                .read_to_string()
-                .ok()
-                .map(|text| serde_json::from_str::<Value>(&text).unwrap_or(Value::String(text)));
-            *self.error_response.borrow_mut() = body
-                .clone()
-                .map(|body| serde_json::json!({"status":status,"body":body}));
-            return Err(Error {
-                code: if status == 413 || body.as_ref().is_some_and(context_rejection) {
-                    "JEV_CONTEXT_LIMIT"
-                } else {
-                    "JEV_HTTP_STATUS"
-                }
-                .into(),
-                stage: "judge_http",
-                status: Some(status),
-                numeric_detail: None,
-            });
-        }
-        response
-            .body_mut()
-            .with_config()
-            .limit(1024 * 1024)
-            .read_json()
-            .map_err(|_| Error::new("JEV_RESPONSE_READ"))
-    }
-}
-fn context_rejection(body: &Value) -> bool {
+pub(crate) fn context_rejection(body: &Value) -> bool {
     match body {
         Value::String(text) => {
             let text = text.to_ascii_lowercase();

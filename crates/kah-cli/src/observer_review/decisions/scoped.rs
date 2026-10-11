@@ -25,61 +25,7 @@ pub fn evaluate(
     questions: &Questions,
 ) -> Result<(Judgment, Value, Value)> {
     plan_context(request, input, questions)?;
-    let mut pending: Option<String> = None;
-    let mut combined = Judgment {
-        backend: "not_requested".into(),
-        model: "none".into(),
-        answers: Default::default(),
-        metrics: Metrics::default(),
-        fallback_reason: None,
-    };
-    let mut states = serde_json::Map::new();
-    let mut archives = serde_json::Map::new();
-    for (key, question) in questions {
-        decision_stage(request, key, "started")?;
-        let mut state = super::super::decision_deferral_scope::decision(request, input, key)?;
-        crate::privacy::scrub(&mut state);
-        let questions = Questions::from([(key.clone(), question.clone())]);
-        let (decided, reused) = match decide(home, request, &state, &questions) {
-            Ok(value) => value,
-            Err(error)
-                if error.to_string().starts_with("JEV_PREPARATION_PENDING")
-                    || error
-                        .to_string()
-                        .starts_with("PREPARATION_CONTEXT_UNCONFIRMED") =>
-            {
-                if pending
-                    .as_ref()
-                    .is_none_or(|p| !p.starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
-                {
-                    pending = Some(format!("{error}; decision={key}"));
-                }
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
-        merge(&mut combined, &decided.judgment, reused)?;
-        decision_stage(request, key, "finished")?;
-        states.insert(key.clone(), decided.prepared);
-        archives.insert(
-            key.clone(),
-            json!({"capture":decided.archive,"reused":reused}),
-        );
-    }
-    let terminal = pending
-        .as_ref()
-        .filter(|e| e.starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
-        .cloned();
-    if terminal.is_none()
-        && let Some(error) = pending
-    {
-        return Err(error.into());
-    }
-    Ok((
-        combined,
-        json!({"independent_decisions":states,"unconfirmed_context":terminal}),
-        Value::Object(archives),
-    ))
+    super::scoped_batch::run(home, request, input, questions)
 }
 
 fn plan_context(request: &Request, input: &Value, questions: &Questions) -> Result<()> {
@@ -96,7 +42,7 @@ fn plan_context(request: &Request, input: &Value, questions: &Questions) -> Resu
     )?;
     Ok(())
 }
-fn decision_stage(request: &Request, key: &str, stage: &str) -> Result<()> {
+pub(super) fn decision_stage(request: &Request, key: &str, stage: &str) -> Result<()> {
     super::super::consume::outcome::stage(
         &request.worker,
         &request.id,
@@ -110,33 +56,14 @@ pub(crate) fn report_context(input: &Value, key: &str) -> Result<Value> {
     })
 }
 
-fn decide(
-    home: &Path,
-    original: &Request,
-    input: &Value,
-    questions: &Questions,
-) -> Result<(Decided, bool)> {
-    let ((judgment, prepared, archive), reused) =
-        decide_with(original, input, questions, |request| {
-            if super::super::preparation::pending(&request.worker, &request.id)? {
-                super::super::preparation::accept(&request.worker, &request.id)?;
-            }
-            let (judgment, prepared) =
-                super::super::preparation::evaluate(home, request, input, questions)?;
-            let archive = super::capture(home, request, &judgment, &prepared, questions, 8)?;
-            Ok((judgment, prepared, serde_json::to_value(archive)?))
-        })?;
-    Ok((
-        Decided {
-            judgment,
-            prepared,
-            archive,
-        },
-        reused,
-    ))
-}
-
 pub(crate) type Evaluation = (Judgment, Value, Value);
+pub(super) fn load_decision(request: &Request) -> Result<Option<Evaluation>> {
+    let path = super::super::state::Store::directory(&request.worker)?
+        .join("decisions")
+        .join(format!("{}.json", request.id));
+    let saved: Option<Decided> = super::super::state::read(&path)?;
+    Ok(saved.map(|s| (s.judgment, s.prepared, s.archive)))
+}
 /// Production and recorded transport share the exact-input durable decision cache.
 pub(crate) fn decide_with(
     original: &Request,
