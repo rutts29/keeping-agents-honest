@@ -8,6 +8,7 @@ pub mod commit_packet;
 pub mod completion_due;
 pub mod component_map;
 pub mod consume;
+pub mod context_input;
 pub mod control;
 pub mod decision_deferral_scope;
 pub mod decisions;
