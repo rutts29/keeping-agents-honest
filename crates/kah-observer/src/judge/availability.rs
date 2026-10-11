@@ -22,7 +22,7 @@ pub fn outage(error: &str) -> bool {
                     s.strip_prefix("http_status=")
                         .and_then(|s| s.parse::<u16>().ok())
                 })
-                .is_some_and(|s| s == 402 || (500..600).contains(&s)))
+                .is_some_and(|s| matches!(s, 402 | 408) || (500..600).contains(&s)))
 }
 pub fn record_error(home: &Path, error: &str) -> Result<(), Error> {
     if !outage(error) {

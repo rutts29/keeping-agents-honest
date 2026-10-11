@@ -97,6 +97,7 @@ fn payment_outage_keeps_queue_and_request_without_correction_and_recovers_on_suc
     for error in [
         "JEV_HTTP_STATUS stage=judge_http http_status=402",
         "JEV_HTTP_STATUS stage=judge_http http_status=503",
+        "JEV_HTTP_STATUS stage=judge_http http_status=408",
         "JEV_HTTP_STATUS stage=judge_http http_status=529",
         "JEV_HTTP_TIMEOUT stage=judge",
     ] {

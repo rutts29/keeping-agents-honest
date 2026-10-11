@@ -15,6 +15,12 @@ pub struct Stub {
 }
 impl Stub {
     pub fn start(corpus: &Corpus, lower: bool) -> Self {
+        Self::configured(corpus, lower, None)
+    }
+    pub fn outage(corpus: &Corpus, status: u16) -> Self {
+        Self::configured(corpus, false, Some(status))
+    }
+    fn configured(corpus: &Corpus, lower: bool, outage: Option<u16>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let replies = Arc::new(corpus.replies.clone());
@@ -40,7 +46,7 @@ impl Stub {
                 let failures = failures.clone();
                 std::thread::spawn(move || {
                     if std::panic::catch_unwind(|| {
-                        serve(stream, &replies, &requests, &trace, &window, lower)
+                        serve(stream, &replies, &requests, &trace, &window, lower, outage)
                     })
                     .is_err()
                     {
@@ -90,6 +96,7 @@ fn serve(
     trace: &Trace,
     window: &Mutex<Vec<(Instant, u64)>>,
     lower: bool,
+    outage: Option<u16>,
 ) {
     let Some((reader, headers, wire)) = incoming(stream) else {
         return;
@@ -98,6 +105,9 @@ fn serve(
     assert_eq!(&wire, &requests[id]);
     let (status, body, tokens, latency) = &replies[id];
     let now = Instant::now();
+    let outage = outage.filter(|_| {
+        id == "phase1-1" && !trace.lock().unwrap().iter().any(|(key, _, _, _)| key == id)
+    });
     let mut active = window.lock().unwrap();
     active.retain(|(at, _)| now.duration_since(*at) < Duration::from_secs(1));
     let forced = lower
@@ -116,7 +126,13 @@ fn serve(
         .lock()
         .unwrap()
         .push((id.clone(), now, limited, delay));
-    let (status, body, extra) = if limited {
+    let (status, body, extra) = if let Some(status) = outage {
+        (
+            status,
+            "{\"error\":\"service unavailable\"}".into(),
+            String::new(),
+        )
+    } else if limited {
         let retry = if id == "phase1-0" {
             "retry-after: 1\r\n".into()
         } else {

@@ -57,8 +57,8 @@ fn answered(
     response: &RawResponse,
     elapsed: u64,
 ) -> Result<Receipt> {
-    if response.status == 408 || response.status >= 500 {
-        // A transient HTTP failure is not an answered judgment or reusable receipt.
+    if matches!(response.status, 402 | 408) || response.status >= 500 {
+        // A service HTTP failure is not an answered judgment or reusable receipt.
         store::event(
             &batch.root,
             &serde_json::json!({"kind":"http_error",

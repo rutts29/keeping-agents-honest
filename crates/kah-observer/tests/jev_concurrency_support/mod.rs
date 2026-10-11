@@ -5,6 +5,7 @@ use kah_observer::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, path::PathBuf};
+mod outage;
 mod stub;
 pub use stub::Stub;
 pub struct Corpus {
