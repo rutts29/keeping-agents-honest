@@ -96,6 +96,9 @@ fn only_native_human_text_has_authority_and_is_preserved_verbatim() {
         delegate,
         tool,
         row("u2", "[kah-reviewer] steer: not the user"),
+        row("builder2", "[kah-builder2] measured result, not authority"),
+        row("stalled", "[kah-observer-host-stalled] diagnostic notice"),
+        row("future", "[kah-builder3] future agent"),
     ])
     .unwrap();
     let users = result.users.unwrap();
@@ -168,4 +171,10 @@ fn observer_evidence_requests_never_become_user_intent() {
     // kah's observer sender is a delegate, exactly like reviewer/builder.
     let value=snapshot(&[row("evidence-ask","[kah-observer] kah evidence request followup-example-builder: answer with the existing same-SHA evidence.")]).unwrap();
     assert!(value.users.is_none());
+    let candidates = value.native_candidates.unwrap();
+    assert_eq!(candidates.records().len(), 1);
+    assert_eq!(
+        candidates.records()[0].role(),
+        kah_core::intent_history::SourceRole::Delegate
+    );
 }

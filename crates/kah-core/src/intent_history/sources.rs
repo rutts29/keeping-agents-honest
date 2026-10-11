@@ -10,6 +10,25 @@ pub const KAH_DELEGATE_PREFIXES: &[&str] = &[
     "[kah-user]",
 ];
 
+/// Agent notices are context, including future kah agent names. Host-validated
+/// user relays promote their body through the separate receipted intake path.
+#[must_use]
+pub fn is_kah_delegate_message(text: &str) -> bool {
+    let text = text.trim_start();
+    KAH_DELEGATE_PREFIXES.iter().any(|prefix| {
+        text.get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    }) || text
+        .strip_prefix("[kah-")
+        .and_then(|rest| rest.split_once(']'))
+        .is_some_and(|(name, _)| {
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+}
+
 /// The exact event schema accepted by this history implementation.
 pub const HISTORY_SCHEMA_VERSION: u32 = 2;
 

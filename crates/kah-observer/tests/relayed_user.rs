@@ -10,7 +10,7 @@ impl Drop for Fixture {
 
 #[test]
 fn host_relay_is_verbatim_user_provenance_and_does_not_force_a_steering_kind() {
-    let text = "Change the output to RED instead of BLUE.\nKeep the existing parser.";
+    let text = "[kah-builder2] This quoted text is an explicit user decision through the receipted channel.\nChange the output to RED instead of BLUE; keep the parser.";
     let message = Message::new("kah-reviewer", "receipt-1", text).unwrap();
     let decoded = Message::parse(&message.wire()).unwrap().unwrap();
     assert_eq!(decoded.text, text);

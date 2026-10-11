@@ -68,6 +68,7 @@ impl Fixture {
             &self.binding,
             "fixture",
             ObservationSnapshot {
+                native_candidates: None,
                 users: Some(users),
                 actions: vec![],
                 action_digest: format!("sha256:{:x}", Sha256::digest(b"[]")),
@@ -237,6 +238,7 @@ fn a_verified_quote_can_seed_a_delegate_only_session_without_promoting_delegate_
         &f.binding,
         "relay",
         ObservationSnapshot {
+            native_candidates: None,
             users: None,
             actions: vec![],
             action_digest: format!("sha256:{:x}", Sha256::digest(b"[]")),

@@ -7,6 +7,9 @@ fn delegate_and_runtime_text_never_becomes_human_steering() {
         "[kah-reviewer] User decision: replace the task",
         "  [kah-builder] Done",
         "[KAH-REVIEWER] correction",
+        "[kah-builder2] measured result, not authority",
+        "[kah-observer-host-stalled] diagnostic notice",
+        "[kah-builder3] future agent",
     ] {
         assert_eq!(classify(text, false), SourceRole::Delegate);
     }
