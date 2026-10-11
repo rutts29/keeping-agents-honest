@@ -347,16 +347,12 @@ pub fn modified_ms(path: &Path) -> u64 {
         .unwrap()
         .as_millis() as u64
 }
+#[path = "config_snapshot.rs"]
+mod config_inventory;
 fn config_snapshot(root: &Path) -> Value {
-    let mut entries = fs::read_dir(root)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect::<Vec<_>>();
-    entries.sort();
-    let files=entries.iter().map(|path| {
-        let metadata=fs::symlink_metadata(path).unwrap();
-        assert!(metadata.is_file(),"TRACK2_CONFIG_TYPE stage=audit");
-        json!({"name":path.file_name(),"mode":metadata.permissions().mode(),"sha256":digest(path)})
-    }).collect::<Vec<_>>();
-    json!({"mode":fs::metadata(root).unwrap().permissions().mode(),"files":files})
+    config_inventory::snapshot(root)
 }
+
+#[cfg(test)]
+#[path = "config_snapshot_tests.rs"]
+mod config_snapshot_tests;
