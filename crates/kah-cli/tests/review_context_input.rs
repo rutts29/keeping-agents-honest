@@ -66,3 +66,36 @@ fn measure_retained_context_catalogues() {
     )
     .unwrap();
 }
+
+#[test]
+fn old_pending_request_gets_catalogue_without_expanding_history() {
+    use kah_cli::observer_review::source_store;
+    let root = std::env::temp_dir().join(format!("context-old-{}", kah_cli::relay_store::nonce()));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("inputs");
+    std::fs::create_dir_all(&input).unwrap();
+    source_store::initialize(&root, &input).unwrap();
+    let request = request(&"whole history\n".repeat(100000));
+    source_store::save(
+        &input,
+        "request.json",
+        &serde_json::to_value(&request).unwrap(),
+    )
+    .unwrap();
+    source_store::save(
+        &input,
+        "manifest.json",
+        &json!({"documents":[{"id":"transcript","bytes":request.documents[0].text.len()}]}),
+    )
+    .unwrap();
+    context_input::ensure(&input).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(input.join("context-input.json")).unwrap()).unwrap();
+    assert_eq!(
+        value["sources"][0]["bytes"],
+        request.documents[0].text.len()
+    );
+    assert_eq!(value["sources"][0]["digest"], request.documents[0].digest);
+    assert!(!value.to_string().contains("whole history"));
+    std::fs::remove_dir_all(root).unwrap();
+}

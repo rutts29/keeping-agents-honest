@@ -121,6 +121,7 @@ pub fn prompt(worker: &str) -> Result<String> {
         .as_ref()
         .ok_or("PREPARATION_PENDING stage=context_preparation")?;
     let decision = active_decision(worker, &pending.id)?;
+    super::context_input::ensure(&state.observer.workspace.join("inputs").join(&pending.id))?;
     if let Some(batch) = batch::load(worker, &decision)? {
         return batch::prompt(worker, &batch);
     }
