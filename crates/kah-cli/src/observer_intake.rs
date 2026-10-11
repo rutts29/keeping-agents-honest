@@ -1,27 +1,45 @@
-//! All domains synchronize intent; only Mine/Research stage native rule rebuilds.
+//! All domains synchronize intent; only Mine/Research queue native rule rebuilds.
 use kah_core::observation::ObservationSnapshot;
 use kah_observer::{engine, session::Binding};
-
 pub fn observe(binding: &Binding, turn: &str) -> Result<engine::Outcome, String> {
-    stage_rules(binding, engine::synchronize(binding, turn)?)
+    after_sync(binding, engine::synchronize(binding, turn)?)
 }
-
 pub fn snapshot(
     binding: &Binding,
     turn: &str,
     snapshot: ObservationSnapshot,
 ) -> Result<engine::Outcome, String> {
-    stage_rules(
+    after_sync(
         binding,
         engine::synchronize_snapshot(binding, turn, snapshot)?,
     )
 }
-
-fn stage_rules(binding: &Binding, outcome: engine::Outcome) -> Result<engine::Outcome, String> {
-    // Durable staging only. The controller resumes the SAME native observer;
-    // it must use direct review until current_rules::current returns a set.
-    if crate::observer_review::control::enabled(binding).map_err(|e| e.to_string())? {
-        kah_observer::current_rules::stage(binding)?;
+pub fn after_sync(binding: &Binding, outcome: engine::Outcome) -> Result<engine::Outcome, String> {
+    // A detached UserPromptSubmit intake has no guaranteed later Stop dispatch.
+    // Publish its distinct intent wake at successful sync, with no inference.
+    if outcome.gap.is_some()
+        || crate::observer_review::untrusted::host::scope(binding).map_err(|e| e.to_string())?
+    {
+        return Ok(outcome);
+    }
+    let staged = kah_observer::current_rules::stage(binding)?;
+    let config =
+        crate::observer_review::control::config(&binding.session).map_err(|e| e.to_string())?;
+    let base = kah_core::run_store::RunStore::default_state_root().map_err(|e| e.to_string())?;
+    if config.is_some_and(|c| c.enabled)
+        && !kah_observer::session::paused(&base, &binding.session)
+        && let Some(kah_core::run_store::RuleSync::Rebuild(r)) = staged
+    {
+        let trigger =
+            crate::observer_review::option1::current_set::trigger(&r).map_err(|e| e.to_string())?;
+        crate::observer_review::queue::enqueue(
+            &binding.session,
+            crate::observer_review::state::Purpose::Steering,
+            "intent-sync",
+            trigger,
+        )
+        .map_err(|e| e.to_string())?;
+        crate::observer_review::queue::schedule(&binding.session).map_err(|e| e.to_string())?;
     }
     Ok(outcome)
 }

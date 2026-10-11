@@ -3,7 +3,9 @@ use super::*;
 pub fn check(f: &fixture::Fixture) -> Value {
     let (batch_tokens, physical) = batch_usage(&f.home.join(".local/state/kah"));
     let primary = primary_usage(&f.home.join(".local/state/kah/observer-sessions"));
-    let tokens = batch_tokens + primary.input_tokens;
+    // Scalar intake also uses the shared Batch events; primary usage is a
+    // subset/diagnostic, never an additional physical charge.
+    let tokens = batch_tokens;
     let usd = tokens as f64 * 0.042 / 1_000_000.0;
     let estimate: Value = serde_json::from_slice(
         &fs::read(std::env::var_os("KAH_OPTION1_ESTIMATE").unwrap()).unwrap(),
@@ -11,7 +13,7 @@ pub fn check(f: &fixture::Fixture) -> Value {
     .unwrap();
     let stop = estimate["estimated_usd"].as_f64().unwrap() * 4.0;
     let prior = estimate["prior_actual_usd"].as_f64().unwrap_or(0.0);
-    let result = json!({"exact_input_tokens":tokens,"batch_input_tokens":batch_tokens,"intake_usage":primary,"actual_usd":usd,"prior_actual_usd":prior,"aggregate_actual_usd":usd+prior,"batch_physical_starts":physical,"stop_usd":stop,"unknown_usage":"rejected/unfinished calls have no reported input-token usage; batch and primary direct-intake transports are distinct"});
+    let result = json!({"exact_input_tokens":tokens,"batch_input_tokens":batch_tokens,"intake_usage_subset":primary,"actual_usd":usd,"prior_actual_usd":prior,"aggregate_actual_usd":usd+prior,"batch_physical_starts":physical,"stop_usd":stop,"unknown_usage":"rejected/unfinished calls have no reported input-token usage; scalar intake is already included in Batch events"});
     save(&f.evidence.join("jev-spend-current.json"), &result);
     assert!(
         usd + prior <= stop,
