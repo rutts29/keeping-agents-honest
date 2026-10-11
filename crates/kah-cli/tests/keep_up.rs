@@ -3,6 +3,100 @@ mod support;
 use serde_json::json;
 
 #[test]
+fn recorder_cursor_reuses_old_metadata_and_observes_changed_and_new_records() {
+    let root =
+        std::env::temp_dir().join(format!("keep-up-cursor-{}", kah_cli::relay_store::nonce()));
+    for name in ["requests", "results", "stage-timings", "queued"] {
+        std::fs::create_dir_all(root.join(name)).unwrap();
+    }
+    std::fs::write(
+        root.join("state.json"),
+        json!({"pending":null,"observer":{},"worker":{}}).to_string(),
+    )
+    .unwrap();
+    let first = root.join("requests/review-one.json");
+    std::fs::write(&first,json!({"id":"review-one","purpose":"checkpoint","head":"a","trigger":{"review_class":"gate"},"unrelated":"whole source".repeat(10000)}).to_string()).unwrap();
+    let mut cursor = support::Cursor::default();
+    let a = support::sample_cursor(&root, &root, &mut cursor);
+    let decoded = cursor.decoded;
+    let b = support::sample_cursor(&root, &root, &mut cursor);
+    assert_eq!(a["reviews"], b["reviews"]);
+    assert_eq!(cursor.decoded, decoded, "no unchanged source decoded twice");
+    std::fs::write(
+        root.join("stage-timings/review-one.json"),
+        json!({"at_ms":{"completed":123}}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("results/review-one.json"),
+        json!({"assessment":{"passed":true}}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("requests/review-two.json"),
+        json!({"id":"review-two","purpose":"checkpoint","trigger":{"review_class":"gate"}})
+            .to_string(),
+    )
+    .unwrap();
+    let c = support::sample_cursor(&root, &root, &mut cursor);
+    assert_eq!(c["reviews"].as_array().unwrap().len(), 2);
+    assert_eq!(c["reviews"][0]["at_ms"]["consumed"], 123);
+    assert_eq!(c["reviews"][0]["assessment"]["passed"], true);
+    assert!(cursor.decoded > decoded);
+    let before = std::fs::read(first).unwrap();
+    support::sample_cursor(&root, &root, &mut cursor);
+    assert_eq!(
+        std::fs::read(root.join("requests/review-one.json")).unwrap(),
+        before
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn recorder_event_cursor_preserves_partial_tail_and_reads_only_appended_rows() {
+    let root =
+        std::env::temp_dir().join(format!("keep-up-events-{}", kah_cli::relay_store::nonce()));
+    for name in ["liveness", "requests", "queued"] {
+        std::fs::create_dir_all(root.join(name)).unwrap();
+    }
+    std::fs::write(
+        root.join("state.json"),
+        json!({"pending":null,"observer":{},"worker":{}}).to_string(),
+    )
+    .unwrap();
+    let mut cursor = support::Cursor::default();
+    let journal = root.join("liveness/events.jsonl");
+    std::fs::write(&journal, "{\"state\":\"one\"}\n{\"state\":").unwrap();
+    let first = support::sample_cursor(&root, &root, &mut cursor);
+    assert_eq!(
+        first["counters"]["liveness_events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&journal)
+        .unwrap()
+        .write_all(b"\"two\"}\n")
+        .unwrap();
+    let second = support::sample_cursor(&root, &root, &mut cursor);
+    assert_eq!(
+        second["counters"]["liveness_events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        support::sample_cursor(&root, &root, &mut cursor)["counters"]["liveness_events"],
+        second["counters"]["liveness_events"]
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn metrics_preserve_missing_stages_pending_heads_and_repeated_events() {
     let samples = vec![
         json!({"at_ms":0,"queue_depth":4,"reviews":[],"counters":{}}),
@@ -139,4 +233,62 @@ fn latency_cohort_excludes_old_verdicts_and_notice_sampling_is_not_redelivery() 
     assert_eq!(result["fast_verdict_ms"]["p90"], 4_000_000);
     assert_eq!(result["observed_identical_notice_rewrites"], 1);
     assert_eq!(result["deadlines"], false);
+}
+
+#[test]
+fn metadata_deltas_reconstruct_versions_removals_and_order_without_rewriting_old_sources() {
+    let root =
+        std::env::temp_dir().join(format!("keep-up-deltas-{}", kah_cli::relay_store::nonce()));
+    std::fs::create_dir_all(&root).unwrap();
+    let first = json!({"at_ms":1,"reviews":[{"id":"a","status":"pending"},{"id":"b","status":"done"}],"old":true});
+    let next = json!({"at_ms":2,"reviews":[{"id":"b","status":"done"},{"id":"a","status":"done"}]});
+    let mut recorder = support::Recording::default();
+    let mut reconstructed = json!({});
+    let delta = recorder.encode(&root, &first).unwrap();
+    assert_eq!(
+        support::reconstruct(&root, &mut reconstructed, &delta).unwrap(),
+        first
+    );
+    let files = digest_tree(&root);
+    let unchanged = recorder.encode(&root, &first).unwrap();
+    assert_eq!(unchanged["changed"], json!({}));
+    assert_eq!(digest_tree(&root), files);
+    let delta = recorder.encode(&root, &next).unwrap();
+    assert_eq!(
+        support::reconstruct(&root, &mut reconstructed, &delta).unwrap(),
+        next
+    );
+    assert_eq!(delta["removed"], json!(["old"]));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "$0 retained-sample reconstruction; requires explicit old JSONL and private output"]
+fn reconstruct_old_recorder_samples_byte_for_byte() {
+    use std::io::{BufRead, Write};
+    let source = std::env::var("KAH_KEEP_UP_RECONSTRUCT_INPUT").unwrap();
+    let output = std::path::PathBuf::from(std::env::var("KAH_KEEP_UP_RECONSTRUCT_OUTPUT").unwrap());
+    std::fs::create_dir(&output).unwrap();
+    let mut recorder = support::Recording::default();
+    let mut reconstructed = json!({});
+    let mut deltas = std::fs::File::create(output.join("samples.jsonl")).unwrap();
+    let mut count = 0;
+    for line in std::io::BufReader::new(std::fs::File::open(source).unwrap()).lines() {
+        let line = line.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+        let delta = recorder.encode(&output, &value).unwrap();
+        let restored = support::reconstruct(&output, &mut reconstructed, &delta).unwrap();
+        assert_eq!(
+            serde_json::to_string(&restored).unwrap().as_bytes(),
+            line.as_bytes()
+        );
+        writeln!(deltas, "{delta}").unwrap();
+        count += 1;
+    }
+    std::fs::write(
+        output.join("reconstruction.json"),
+        json!({"samples":count,"byte_identical":true,"provider_calls":0}).to_string(),
+    )
+    .unwrap();
+    assert!(count > 0);
 }
