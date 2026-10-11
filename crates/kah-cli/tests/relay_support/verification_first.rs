@@ -7,6 +7,8 @@ use kah_run::store::Store as Runs;
 
 #[path = "verification_first_settings.rs"]
 mod native_settings;
+#[path = "verification_first_phase3.rs"]
+mod phase3;
 #[path = "verification_first_private.rs"]
 mod private;
 
@@ -64,6 +66,7 @@ fn wait(root: &Path, home: &Path, id: &str, provider: &str, courier: &Pane) -> V
     let mut approvals = vec![];
     loop {
         let record = Runs::read(&base, id).unwrap();
+        phase3::request_gate(home, id, &record);
         let private_run = std::env::var_os("KAH_TRACK2_ROOT").is_some();
         if private_run
             && !matches!(
@@ -131,6 +134,11 @@ fn answer_pending(
     {
         if answers.insert(question["id"].as_str().unwrap().to_owned()) {
             assert!(
+                std::env::var_os("KAH_PHASE3_B2").is_none(),
+                "PHASE3_GOOD_QUESTION stage=gate: a fully proven positive must ask no risk question: {}",
+                question["id"]
+            );
+            assert!(
                 std::env::var_os("KAH_TRACK2_ROOT").is_none() || approvals.is_empty(),
                 "TRACK2_SECOND_RISK_QUESTION stage=verification: single question required"
             );
@@ -188,17 +196,19 @@ fn finish(
     let complete = record.published_status() == RunStatus::Completed;
     let exercised = rounds > 0;
     let question_seen = !approvals.is_empty();
-    let early = std::env::var_os("KAH_TRACK2_ROOT").is_some();
-    let round_proof = if early {
+    let private_fixture = std::env::var_os("KAH_TRACK2_ROOT").is_some();
+    let early = private_fixture && std::env::var_os("KAH_PHASE3_B2").is_none();
+    let round_proof = if private_fixture {
         private::rounds(&round_root)
     } else {
         json!(null)
     };
-    let result = json!({"passed":complete && (early || exercised),"early_run":early,"final_acceptance":false,"creation_path":if early {"typed volume fixture then public kah resume"} else {"public kah run"},"roundProof":round_proof,"provider":provider,"version":runs::version(home,provider),"model":runs::fixture_model(provider),"effort":"low",
+    let mut result = json!({"passed":complete && (private_fixture || exercised),"early_run":early,"final_acceptance":false,"creation_path":if private_fixture {"typed volume fixture then public kah resume"} else {"public kah run"},"roundProof":round_proof,"provider":provider,"version":runs::version(home,provider),"model":runs::fixture_model(provider),"effort":"low",
         "run":id,"worker":worker,"status":record.published_status(),"observerSession":state.observer.session,"observerPane":state.observer.pane,
         "rounds":rounds,"questionSeen":question_seen,"approvals":approvals,"checkpoint":checkpoint,"pending":state.pending,
         "observedOutcome":if !complete {"run_not_completed"} else if !exercised {"completed_before_followup_needed"} else if question_seen {"user_risk_approved"} else {"all_verified_after_followup"},
         "globalConfigsUnchanged":true,"realJev":true,"noForcedScores":true});
+    phase3::score(&mut result, &Reviews::directory(worker).unwrap());
     fs::write(
         root.join("verification-first.json"),
         serde_json::to_vec_pretty(&result).unwrap(),

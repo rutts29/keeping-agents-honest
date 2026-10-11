@@ -1,3 +1,4 @@
+mod bundle_cost;
 mod cache_benchmark;
 mod claude_invocation;
 mod claude_login;

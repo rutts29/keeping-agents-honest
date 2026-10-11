@@ -1,3 +1,5 @@
+#[path = "bundle_cost.rs"]
+mod bundle_cost;
 #[path = "claude_invocation.rs"]
 mod claude_invocation;
 #[path = "claude_login.rs"]

@@ -74,7 +74,7 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
         audit.clone()
     };
     fixture.publish(&json!({"mode":mode,"dry_run":fixture.dry,"result":result,
-        "audit":published_audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify","final_acceptance":false,"gate_passed":!matches!(mode,"verify"|"native5e") && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
+        "audit":published_audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify" && std::env::var_os("KAH_PHASE3_B2").is_none(),"final_acceptance":false,"gate_passed":!matches!(mode,"verify"|"native5e") && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
     assert_eq!(audit["passed"], true, "TRACK2_CLEANUP stage=audit: {audit}");
     assert_eq!(
         trust["passed"], true,
@@ -116,6 +116,10 @@ fn entrypoint_test(mode: &str) -> &'static str {
 fn wait(fixture: &fixture::Fixture, terminal: &mut crate::pty::Terminal) -> Value {
     loop {
         terminal.respond_to_cursor_queries();
+        if let Some(stop) = super::bundle_cost::stop(&fixture.root, &fixture.home) {
+            fixture::save(&fixture.root.join("money-stop.json"), &stop);
+            return stop;
+        }
         if let Ok(bytes) = fs::read(fixture.root.join("result.json")) {
             return serde_json::from_slice(&bytes).unwrap();
         }

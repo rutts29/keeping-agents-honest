@@ -31,12 +31,21 @@ fn early_verification_first_private() {
     track2_support::launch("verify");
 }
 #[test]
+#[ignore = "current private Claude B2 journey; make gate and bundle estimate required"]
+fn phase3_verification_first_private() {
+    assert_eq!(
+        std::env::var("KAH_GATE_REVIEW_PROVIDER").as_deref(),
+        Ok("claude")
+    );
+    track2_support::launch("verify");
+}
+#[test]
 fn early_verify_entrypoint() {
     if std::env::var("KAH_TRACK2_ENTRYPOINT").as_deref() == Ok("verify") {
         let root = PathBuf::from(std::env::var_os("KAH_TRACK2_ROOT").unwrap());
         let run = std::panic::catch_unwind(|| relay_support::run(&root));
         let mut result=run.unwrap_or_else(|_|json!({"passed":false,"reason":"TRACK2_VERIFY_PANIC","trace":root.join("helper.log")}));
-        result["early_run"] = true.into();
+        result["early_run"] = std::env::var_os("KAH_PHASE3_B2").is_none().into();
         result["final_acceptance"] = false.into();
         fs::write(
             root.join("result.json"),
