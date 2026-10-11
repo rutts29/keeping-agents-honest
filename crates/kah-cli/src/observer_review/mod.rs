@@ -41,6 +41,7 @@ pub mod state;
 pub mod tags;
 pub mod timing;
 pub mod uncertainty;
+pub mod untrusted;
 pub mod verdict_cache;
 pub mod workspace;
 
