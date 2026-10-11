@@ -179,7 +179,18 @@ impl Store {
         read(&self.directory.join("state.json"))
     }
     pub fn save(&self, state: &State) -> Result<()> {
-        super::source_store::save(&self.directory, "state.json", &serde_json::to_value(state)?)
+        let previous = control::read_at(&self.directory.join("state.json"))?;
+        super::source_store::save(&self.directory, "state.json", &serde_json::to_value(state)?)?;
+        if let Some(old) = previous
+            && let Some(pending) = old.pending
+            && state
+                .pending
+                .as_ref()
+                .is_none_or(|next| next.id != pending.id)
+        {
+            super::source_store::finish_source_view(&old.observer.workspace, &pending.id)?;
+        }
+        Ok(())
     }
     pub fn read(worker: &str) -> Result<Option<State>> {
         read(&Self::directory(worker)?.join("state.json"))
