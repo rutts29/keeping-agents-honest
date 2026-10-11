@@ -203,7 +203,14 @@ fn context_redelivery_does_not_republish_unrelated_report_documents() {
     store.save(&state).unwrap();
     let input = state.observer.workspace.join("inputs").join(&request.id);
     fs::create_dir_all(&input).unwrap();
-    fs::write(input.join("request.json"), "retained report packet").unwrap();
+    // Current catalogue reads metadata; the unrelated canonical packet stays immutable.
+    let retained_packet = serde_json::to_vec(&request).unwrap();
+    fs::write(input.join("request.json"), &retained_packet).unwrap();
+    fs::write(
+        input.join("manifest.json"),
+        json!({"documents":[]}).to_string(),
+    )
+    .unwrap();
     let decision = "review-context-only-v8-one";
     let mut local = request.clone();
     local.id = decision.into();
@@ -212,8 +219,8 @@ fn context_redelivery_does_not_republish_unrelated_report_documents() {
     let prompt = redelivery::prompt(&home, &store, &state, &request, decision).unwrap();
     assert!(prompt.contains("Prepare context for ONE unchanged Jev decision"));
     assert_eq!(
-        fs::read_to_string(input.join("request.json")).unwrap(),
-        "retained report packet"
+        fs::read(input.join("request.json")).unwrap(),
+        retained_packet
     );
     let job: preparation::Job = kah_cli::observer_review::source_store::read(
         &store.directory.join(format!("preparation-{decision}.json")),
