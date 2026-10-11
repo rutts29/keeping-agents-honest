@@ -51,11 +51,7 @@ pub(super) fn enqueue(store: &Store, state: &State, request: &Request, rows: &[R
             let original = request.trigger["option1"]["original_trigger"].clone();
             let captured = capture::request(state, Purpose::Checkpoint, &request.turn, original)?;
             let next = prepare(request, captured, rows)?;
-            super::super::source_store::save(
-                &root,
-                saved.file_name().unwrap().to_str().unwrap(),
-                &json!(next),
-            )?;
+            save_snapshot(&root, request, &next)?;
             next
         }
     };
@@ -70,3 +66,11 @@ pub(super) fn enqueue(store: &Store, state: &State, request: &Request, rows: &[R
     )?;
     Ok(())
 }
+fn save_snapshot(root: &std::path::Path, cumulative: &Request, next: &Request) -> Result<()> {
+    kah_core::run_store::ensure_private_directory(root)?;
+    super::super::source_store::save(root, &format!("{}.json", cumulative.id), &json!(next))
+}
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/explicit_gate_storage.rs"]
+mod storage_tests;
