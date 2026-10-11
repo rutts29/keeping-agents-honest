@@ -60,9 +60,9 @@ pub fn run(f: &fixture::Fixture) {
         &json!({"cases":results,"session":session,"confirmation":"pending real authorized Jev answers; no synthetic flags","zero_jev":true}),
     );
 }
-fn start(f: &fixture::Fixture, prompt: &str) -> String {
+pub(super) fn start(f: &fixture::Fixture, prompt: &str) -> String {
     use kah_sandbox::{Domain, Project};
-    let args = kah_cli::Arguments::parse(vec![
+    let mut argv = vec![
         "--no-observer".into(),
         "--model".into(),
         "gpt-6.1-sol".into(),
@@ -71,9 +71,14 @@ fn start(f: &fixture::Fixture, prompt: &str) -> String {
         "--".into(),
         "--no-daemon".into(),
         "--no-alt-screen".into(),
-        prompt.into(),
-    ])
-    .unwrap();
+    ];
+    // OpenAI rust-v0.162.1 codex-rs/cli/src/main.rs ResumeCommand:
+    // SESSION_ID plus flattened native TUI prompt; no fork/headless mode.
+    if let Ok(id) = std::env::var("KAH_PHASE1_RESUME_SESSION") {
+        argv.extend(["resume".into(), id]);
+    }
+    argv.push(prompt.into());
+    let args = kah_cli::Arguments::parse(argv).unwrap();
     let launch = kah_cli::Launch::prepare_project(
         &f.home,
         Project {

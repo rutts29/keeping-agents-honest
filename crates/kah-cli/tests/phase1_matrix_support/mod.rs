@@ -8,11 +8,47 @@ use std::{
 mod confirmation;
 mod fixture;
 mod journey;
+mod real;
 mod usage;
 pub fn launch() {
     assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
     let fixture = fixture::Fixture::new();
     save(&fixture.evidence.join("native-versions.json"), &versions());
+    drive(fixture);
+}
+pub fn confirmation_replay() {
+    assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
+    let original = PathBuf::from(std::env::var_os("KAH_PHASE1_NATIVE_ROOT").unwrap());
+    let mut f = fixture::Fixture::read(&original);
+    f.name = format!(
+        "kah-phase1-confirmation-{}",
+        kah_observer::session::now_ms()
+    );
+    let root = PathBuf::from("/tmp").join(&f.name);
+    kah_core::run_store::ensure_private_directory(&root).unwrap();
+    fs::copy(f.root.join("herdr.toml"), root.join("herdr.toml")).unwrap();
+    f.root = root;
+    let protected = fs::read(f.evidence.join("global-config-before.json")).unwrap();
+    f.evidence = PathBuf::from(std::env::var_os("KAH_PHASE1_CONFIRM_EVIDENCE").unwrap());
+    kah_core::run_store::ensure_private_directory(&f.evidence).unwrap();
+    fs::write(f.evidence.join("global-config-before.json"), protected).unwrap();
+    save(
+        &f.root.join("fixture.json"),
+        &serde_json::to_value(&f).unwrap(),
+    );
+    save(
+        &f.evidence.join("ownership.json"),
+        &serde_json::to_value(&f).unwrap(),
+    );
+    fs::copy(
+        original.join("fixture.json"),
+        f.evidence.join("original-fixture.json"),
+    )
+    .unwrap();
+    // Same private native HOME/transcript, new Herdr control session only.
+    drive(f);
+}
+fn drive(fixture: fixture::Fixture) {
     let command = format!(
         "HERDR_CONFIG_PATH={} herdr --session {}",
         crate::pty::quote(fixture.root.join("herdr.toml").to_str().unwrap()),
@@ -45,10 +81,12 @@ pub fn launch() {
         .unwrap();
     assert!(stop.status.success());
     drop(terminal);
-    let protected: std::collections::BTreeMap<String, String> = serde_json::from_slice(
-        &fs::read(fixture.evidence.join("global-config-before.json")).unwrap(),
-    )
-    .unwrap();
+    let before = fixture.evidence.join("global-config-before.json");
+    let protected: std::collections::BTreeMap<String, String> = if before.exists() {
+        serde_json::from_slice(&fs::read(before).unwrap()).unwrap()
+    } else {
+        Default::default()
+    };
     for (path, digest) in protected {
         assert_eq!(
             kah_observer::commit_check::digest(&fs::read(path).unwrap()),
@@ -63,7 +101,13 @@ pub fn launch() {
 pub fn entry() {
     let root = PathBuf::from(std::env::var_os("KAH_PHASE1_ROOT").unwrap());
     let fixture = fixture::Fixture::read(&root);
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| journey::run(&fixture)));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if std::env::var_os("KAH_PHASE1_JEV_OUTPUT").is_some() {
+            real::run(&fixture)
+        } else {
+            journey::run(&fixture)
+        }
+    }));
     save(
         &fixture.evidence.join("result.json"),
         &json!({"passed":result.is_ok(),"error":result.err().map(|p|p.downcast_ref::<String>().cloned().or_else(||p.downcast_ref::<&str>().map(|s|s.to_string())).unwrap_or_else(||"panic".into())),"zero_jev":true,"root":root}),

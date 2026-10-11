@@ -11,6 +11,11 @@ fn persistent_native_matrices() {
     phase1_matrix_support::launch();
 }
 #[test]
+#[ignore = "reviewer-authorized real Jev confirmation in SAME native session; make gate only"]
+fn confirm_real_jev() {
+    phase1_matrix_support::confirmation_replay();
+}
+#[test]
 fn matrix_entrypoint() {
     if std::env::var_os("KAH_PHASE1_ROOT").is_some() {
         phase1_matrix_support::entry();
