@@ -183,7 +183,7 @@ fn seed(project: &Path) {
 }
 pub(crate) fn global_settings(home: &Path) -> [(PathBuf, Vec<u8>); 2] {
     [
-        home.join(".claude/settings.json"),
+        kah_claude::paths::config_root(home).join("settings.json"),
         home.join(".codex/config.toml"),
     ]
     .map(|p| (p.clone(), fs::read(p).unwrap()))

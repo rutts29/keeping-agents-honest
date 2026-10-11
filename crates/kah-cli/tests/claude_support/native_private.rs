@@ -51,13 +51,23 @@ fn run(root: &Path) -> Value {
     wait(root, &pane, &mut resources, || {
         let view = pane.inspect().unwrap();
         view["agent"] == "claude"
-            && view["agent_session"]["value"] == id
+            // A fresh idle TUI has no durable transcript/session discovery yet.
+            // --session-id pins identity; check its durable rows after the task.
+            && (view["agent_session"]["value"].is_null()
+                || view["agent_session"]["value"] == id)
             && matches!(view["agent_status"].as_str(), Some("idle" | "done"))
     });
+    save(&root.join("startup-ready.json"), &pane.inspect().unwrap());
     pane.prompt(TASK).unwrap();
     wait(root, &pane, &mut resources, || {
         crate::claude_support::subagent_completion::completed(&rows(&transcript))
     });
+    assert!(
+        rows(&transcript)
+            .iter()
+            .any(|row| { row["sessionId"] == id && row["cwd"] == project.to_str().unwrap() }),
+        "NATIVE5E_IDENTITY stage=completion"
+    );
     let children = verify_child(
         &project,
         &transcript,

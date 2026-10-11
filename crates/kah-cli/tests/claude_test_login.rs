@@ -40,6 +40,21 @@ fn metadata_only_login_gate_requires_user_success_marker_and_private_files() {
         fs::set_permissions(p, fs::Permissions::from_mode(0o600)).unwrap();
     }
     assert_eq!(login::ready_at(&path), Ok(()));
+    if let Ok(uid) = kah_run::access::service_uid() {
+        for directory in [&path, &path.join(".claude")] {
+            kah_run::access::traverse(directory, uid).unwrap();
+        }
+        assert_eq!(login::ready_at(&path), Ok(()));
+        assert!(
+            Command::new("/usr/bin/setfacl")
+                .args(["-m", &format!("u:{uid}:r-x")])
+                .arg(path.join(".claude"))
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(login::ready_at(&path).is_err());
+    }
     fs::set_permissions(path.join(".claude"), fs::Permissions::from_mode(0o755)).unwrap();
     assert!(login::ready_at(&path).is_err());
     fs::remove_dir_all(path).unwrap();

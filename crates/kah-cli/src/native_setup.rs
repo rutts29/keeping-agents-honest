@@ -4,6 +4,7 @@ use kah_codex::overlay;
 use kah_sandbox::{Executor, LaunchOptions, Project, current_uid, publish_binary};
 use std::{
     fs,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -24,7 +25,7 @@ pub fn executor(
     let mut mounts =
         kah_sandbox::global_setup_mounts_with_claude(home, &kah_claude::paths::config_root(home))?;
     for (source, target) in mounts.clone() {
-        share(home, &source, uid)?;
+        share(&source, uid)?;
         if let Ok(relative) = target.strip_prefix(home) {
             mounts.push((source, Path::new("/home/sandbox").join(relative)));
         }
@@ -101,8 +102,16 @@ pub fn codex(
     Ok(id)
 }
 
-fn share(home: &Path, path: &Path, uid: u32) -> Result<()> {
-    for parent in path.ancestors().skip(1).take_while(|p| p.starts_with(home)) {
+fn share(path: &Path, uid: u32) -> Result<()> {
+    let operator = current_uid()?;
+    // Config and installed aliases can live outside HOME. Traverse owned
+    // ancestors only; never list a config root or modify root-owned directories.
+    for parent in path.ancestors().skip(1) {
+        let metadata = fs::symlink_metadata(parent)
+            .map_err(|e| format!("SETUP_PARENT_METADATA stage=setup: {e}"))?;
+        if metadata.uid() != operator {
+            break;
+        }
         kah_run::access::traverse(parent, uid)?;
     }
     if path.is_dir() {
@@ -118,3 +127,7 @@ fn share(home: &Path, path: &Path, uid: u32) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/native_setup_access/mod.rs"]
+mod tests;

@@ -1,3 +1,5 @@
+#[path = "bundle_cost.rs"]
+mod bundle_cost;
 #[path = "claude_invocation.rs"]
 mod claude_invocation;
 #[path = "claude_login.rs"]
@@ -8,11 +10,16 @@ mod claude_metadata;
 mod claude_trust;
 #[path = "config_audit.rs"]
 mod config_audit;
+#[path = "dry_lifecycle.rs"]
+mod dry_lifecycle;
+pub use dry_lifecycle::run as dry_lifecycle;
 pub fn claude_login_ready() {
     claude_login::require_ready();
 }
 #[path = "fixture.rs"]
 mod fixture;
+#[path = "../fixture_support/jev_key.rs"]
+mod jev_key;
 #[path = "launcher.rs"]
 mod launcher;
 #[path = "proof_inputs.rs"]

@@ -4,6 +4,9 @@ use std::{fs, process::Command, time::Duration};
 pub fn launch(mode: &str) {
     assert!(
         std::env::var("KAH_TRACK2_MAKE_GATE").as_deref() == Ok("1")
+            || (mode == "lifecycle"
+                && std::env::var("KAH_TRACK2_LIFECYCLE").as_deref() == Ok("1")
+                && std::env::var_os("KAH_TRACK2_DRY_RUN").is_some())
             || (mode == "native5e" && std::env::var("KAH_5E_NATIVE_ONLY").as_deref() == Ok("1")),
         "TRACK2_GATE_ONLY stage=launch: use make gate"
     );
@@ -44,7 +47,13 @@ pub fn launch(mode: &str) {
         if mode == "native5e" { "--ignored" } else { "" },
         crate::pty::quote(fixture.root.join("helper.log").to_str().unwrap())
     ));
-    let result = wait(&fixture, &mut terminal);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        wait(&fixture, &mut terminal, mode)
+    }))
+    .unwrap_or_else(|_| {
+        json!({"passed":false,"reason":"TRACK2_MONITOR_PANIC",
+        "stage":"fixture_monitor","retained":fixture.root.join("terminal.log")})
+    });
     finish(&fixture, terminal, result, mode);
 }
 fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Value, mode: &str) {
@@ -60,12 +69,21 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
         );
     }
     drop(terminal);
+    let key = super::jev_key::cleanup(&fixture.home);
+    fixture::save(&fixture.root.join("jev-key-cleanup.json"), &key);
     let trust = super::trust::cleanup_claude(&fixture.home);
     fixture::save(&fixture.root.join("claude-trust-cleanup.json"), &trust);
     let audit = fixture.audit();
-    let published_audit = if mode == "native5e" {
-        let retained = retain_native_exit(fixture, &audit);
-        json!({"passed":audit["passed"],"processes":audit["processes"],
+    let published_audit = if matches!(mode, "native5e" | "lifecycle")
+        || std::env::var_os("KAH_PHASE3_B2").is_some()
+    {
+        let retained = if mode == "native5e" {
+            retain_native_exit(fixture, &audit)
+        } else {
+            fixture::save(&fixture.root.join("cleanup-audit.json"), &audit);
+            fixture.root.clone()
+        };
+        json!({"passed":audit["passed"],"processes":audit["processes"],"jev_key_cleanup":audit["jev_key_cleanup"],
             "credential_contents_opened":audit["claude_login"]["credential_contents_opened"],
             "fixture_claude_credentials_absent":audit["claude_login"]["fixture_claude_credentials_absent"],
             "fixture_attributed_operator_entries":audit["claude_login"]["fixture_attributed_operator_entries"],
@@ -74,7 +92,7 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
         audit.clone()
     };
     fixture.publish(&json!({"mode":mode,"dry_run":fixture.dry,"result":result,
-        "audit":published_audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify","final_acceptance":false,"gate_passed":!matches!(mode,"verify"|"native5e") && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
+        "audit":published_audit,"trust_cleanup":trust,"private_trace":fixture.root,"early_run":mode=="verify" && std::env::var_os("KAH_PHASE3_B2").is_none(),"final_acceptance":false,"gate_passed":!matches!(mode,"verify"|"native5e") && !fixture.dry && result["passed"]==true && audit["passed"]==true && trust["passed"]==true}));
     assert_eq!(audit["passed"], true, "TRACK2_CLEANUP stage=audit: {audit}");
     assert_eq!(
         trust["passed"], true,
@@ -108,14 +126,20 @@ fn retain_native_exit(fixture: &fixture::Fixture, audit: &Value) -> std::path::P
 
 fn entrypoint_test(mode: &str) -> &'static str {
     match mode {
-        "verify" => "early_verify_entrypoint",
+        "verify" | "lifecycle" => "early_verify_entrypoint",
         "native5e" => "mine_claude_native_subagent",
         _ => "private_entrypoint",
     }
 }
-fn wait(fixture: &fixture::Fixture, terminal: &mut crate::pty::Terminal) -> Value {
+fn wait(fixture: &fixture::Fixture, terminal: &mut crate::pty::Terminal, mode: &str) -> Value {
     loop {
         terminal.respond_to_cursor_queries();
+        if mode != "lifecycle"
+            && let Some(stop) = super::bundle_cost::stop(&fixture.root, &fixture.home)
+        {
+            fixture::save(&fixture.root.join("money-stop.json"), &stop);
+            return stop;
+        }
         if let Ok(bytes) = fs::read(fixture.root.join("result.json")) {
             return serde_json::from_slice(&bytes).unwrap();
         }

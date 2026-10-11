@@ -15,6 +15,7 @@ pub struct Fixture {
     protected: Vec<(PathBuf, String)>,
     logins: Vec<(PathBuf, PathBuf)>,
     config_before: Value,
+    operator_config: PathBuf,
     operator_claude: PathBuf,
     claude_before: Value,
 }
@@ -39,6 +40,7 @@ impl Fixture {
             protected: vec![],
             logins: vec![],
             config_before: config_snapshot(&actual.join(".config/kah")),
+            operator_config: actual.join(".config/kah"),
             operator_claude: actual.join(".claude"),
             claude_before: super::claude_metadata::snapshot(&actual.join(".claude")),
         };
@@ -74,13 +76,7 @@ impl Fixture {
         let link = self.home.join(".codex/auth.json");
         symlink(&target, &link).unwrap();
         self.logins.push((link, target));
-        // Existing Jev loader rejects a symlink final component. Link its config
-        // directory, so native kah reads the original regular key; never copy it.
-        fs::create_dir_all(self.home.join(".config")).unwrap();
-        let target = actual.join(".config/kah");
-        let link = self.home.join(".config/kah");
-        symlink(&target, &link).unwrap();
-        self.logins.push((link, target));
+        super::jev_key::install(actual, &self.home);
         for relative in [".codex/config.toml", ".local/bin/kah"] {
             let path = actual.join(relative);
             if path.is_file() {
@@ -227,16 +223,23 @@ impl Fixture {
             .map(|p| json!({"pid":p.pid,"cwd":p.cwd}))
             .collect::<Vec<_>>();
         let claude = self.claude_audit();
+        let key: Value =
+            serde_json::from_slice(&fs::read(self.root.join("jev-key-cleanup.json")).unwrap())
+                .unwrap();
         let passed = processes.is_empty()
             && claude["passed"] == true
             && super::proof_inputs::audit(&self.root)["passed"] == true
             && protected.iter().all(|r| r["unchanged"] == true)
             && logins.iter().all(|r| r["symlink_unchanged"] == true)
-            && config_snapshot(&self.home.join(".config/kah")) == self.config_before;
+            && key["passed"] == true
+            && key["removed"] == true
+            && fs::symlink_metadata(self.home.join(".config/kah/typesafe.key")).is_err()
+            && config_snapshot(&self.operator_config) == self.config_before;
         json!({"passed":passed,"processes":processes,"protected":protected,"login_links":logins,
             "historical_replay_source":super::proof_inputs::audit(&self.root),
             "recorder":{"path":self.root.join("terminal.log"),"bytes":fs::metadata(self.root.join("terminal.log")).map(|m|m.len()).unwrap_or(0)},
-            "config_before":self.config_before,"config_after":config_snapshot(&self.home.join(".config/kah")),
+            "config_before":self.config_before,"config_after":config_snapshot(&self.operator_config),
+            "jev_key_cleanup":key,
             "claude_login":claude})
     }
     pub fn publish(&self, value: &Value) {

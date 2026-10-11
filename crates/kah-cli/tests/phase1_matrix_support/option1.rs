@@ -3,7 +3,6 @@
 use super::*;
 use kah_cli::observer_review::{self, state::Store};
 use kah_observer::commit_review::Review;
-use std::os::unix::fs::PermissionsExt;
 pub fn run(f: &fixture::Fixture) {
     private_key(f);
     git(f, &["init"]);
@@ -272,15 +271,5 @@ pub(super) fn private_key(f: &fixture::Fixture) {
     // kah's native ACL helper rather than broadening private content modes.
     kah_run::access::traverse(&f.root, kah_run::access::service_uid().unwrap()).unwrap();
     let actual = PathBuf::from(std::env::var_os("KAH_OPTION1_REAL_HOME").unwrap());
-    fs::create_dir_all(f.home.join(".config/kah")).unwrap();
-    fs::copy(
-        actual.join(".config/kah/typesafe.key"),
-        f.home.join(".config/kah/typesafe.key"),
-    )
-    .unwrap();
-    fs::set_permissions(
-        f.home.join(".config/kah/typesafe.key"),
-        fs::Permissions::from_mode(0o600),
-    )
-    .unwrap();
+    jev_key::install(&actual, &f.home);
 }

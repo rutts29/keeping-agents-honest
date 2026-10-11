@@ -1,13 +1,19 @@
+mod bundle_cost;
 mod cache_benchmark;
 mod claude_invocation;
 mod claude_login;
 mod claude_metadata;
 mod claude_trust;
 mod config_audit;
+mod dry_lifecycle;
+#[allow(unused_imports)]
+pub use dry_lifecycle::run as dry_lifecycle;
 pub fn claude_login_ready() {
     claude_login::require_ready();
 }
 mod fixture;
+#[path = "../fixture_support/jev_key.rs"]
+mod jev_key;
 mod journey;
 mod launcher;
 pub use launcher::launch;
