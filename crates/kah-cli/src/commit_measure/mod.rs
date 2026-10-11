@@ -1,11 +1,14 @@
-//! Explicit offline measurement; does not construct or invoke any Judge client.
+//! Offline preparation by default; explicit authorized replay sends saved bodies.
 use crate::Result;
 use kah_observer::commit_check::{self, Input, Plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
 pub mod comparison;
+pub mod confirmation;
+pub mod decomposition;
 pub mod historical;
+pub mod live;
 pub mod replay;
 pub mod retained;
 mod source;
@@ -101,6 +104,16 @@ fn save_text(root: &Path, name: &str, text: &str) -> Result<()> {
 }
 pub fn command(args: &[String]) -> Result<()> {
     match args {
+        [mode, input, output] if mode == "live" => {
+            let manifest: live::Manifest = serde_json::from_slice(&fs::read(input)?)?;
+            let result = live::run(&manifest, Path::new(output))?;
+            save_text(Path::new(output), "complete.json", &serde_json::to_string_pretty(&result)?)?;
+            println!("{}", json!({"actual_calls":result["actual_calls"],"spend":result["cost_from_actual_usage_usd"],"stop":result["stop"]}));
+        }
+        [mode, input, output] if mode == "decomposition" => {
+            let bundle: Bundle = serde_json::from_slice(&fs::read(input)?)?;
+            println!("{}", decomposition::count(&bundle, Path::new(output))?);
+        }
         [mode, input, output] if mode == "count" => {
             let bundle: Bundle = serde_json::from_slice(&fs::read(input)?)?;
             println!("{}", count(&bundle, Path::new(output))?);
@@ -111,8 +124,13 @@ pub fn command(args: &[String]) -> Result<()> {
             bundle.matrix_source = format!("native:{matrix}");
             println!("{}", count(&bundle, Path::new(output))?);
         }
+        [mode,input,answers,output] if mode == "confirmation" => {
+            let bundle:Bundle=serde_json::from_slice(&fs::read(input)?)?;
+            let answers:confirmation::Answers=serde_json::from_slice(&fs::read(answers)?)?;
+            println!("{}",confirmation::count(&bundle,&answers,Path::new(output))?);
+        }
         [mode, repo, labels, output] if mode == "replay" => replay::run(Path::new(repo), Path::new(labels), Path::new(output))?,
-        _ => return Err("MEASURE_ARGUMENTS stage=cli: kah measure count INPUT OUTPUT | matrix INPUT MATRIX OUTPUT | replay REPO LABELS OUTPUT".into()),
+        _ => return Err("MEASURE_ARGUMENTS stage=cli: kah measure count INPUT OUTPUT | decomposition INPUT OUTPUT | live MANIFEST OUTPUT (explicit GO only) | matrix INPUT MATRIX OUTPUT | confirmation INPUT ANSWERS OUTPUT | replay REPO LABELS OUTPUT".into()),
     }
     Ok(())
 }

@@ -11,7 +11,7 @@ size:
 	cargo run --quiet -p kah-check -- .
 
 disk-check:
-	@bash demos/check-disk.sh
+	@KAH_GATE_PHASE="$(PHASE)" bash demos/check-disk.sh
 
 gate: disk-check
 	@test -n "$(PHASE)" && test -d "demos/phase-$(PHASE)" || { echo 'Use make gate PHASE=N' >&2; exit 2; }

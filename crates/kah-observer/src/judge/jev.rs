@@ -109,13 +109,21 @@ impl HttpClient {
 }
 impl Client for HttpClient {
     fn post(&self, body: &Value) -> Result<Value, Error> {
+        self.post_raw(&body.to_string())
+    }
+}
+impl HttpClient {
+    /// Preserve the reviewed wire bytes, including Choice criterion order.
+    pub fn post_raw(&self, body: &str) -> Result<Value, Error> {
+        *self.error_response.borrow_mut() = None;
         // Fixed TLS origin and no redirects: neither project data nor config can
         // route this host-only credential to another endpoint.
         let mut response = self
             .agent
             .post("https://api.typesafe.ai/v1/systemone")
             .header("Authorization", self.authorization.clone())
-            .send_json(body)
+            .header("Content-Type", "application/json")
+            .send(body.as_bytes())
             .map_err(http_error)?;
         if !response.status().is_success() {
             let status = response.status().as_u16();
