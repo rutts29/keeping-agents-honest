@@ -40,7 +40,23 @@ fn phase3_verification_first_private() {
     track2_support::launch("verify");
 }
 #[test]
+#[ignore = "reviewer-authorized $0 private lifecycle; fake transport and no native agents"]
+fn phase3_fixture_lifecycle() {
+    track2_support::launch("lifecycle");
+}
+#[test]
 fn early_verify_entrypoint() {
+    if std::env::var("KAH_TRACK2_ENTRYPOINT").as_deref() == Ok("lifecycle") {
+        let root = PathBuf::from(std::env::var_os("KAH_TRACK2_ROOT").unwrap());
+        let result = std::panic::catch_unwind(|| track2_support::dry_lifecycle(&root))
+            .unwrap_or_else(|_| json!({"passed":false,"reason":"TRACK2_DRY_LIFECYCLE_PANIC"}));
+        fs::write(
+            root.join("result.json"),
+            serde_json::to_vec_pretty(&result).unwrap(),
+        )
+        .unwrap();
+        return;
+    }
     if std::env::var("KAH_TRACK2_ENTRYPOINT").as_deref() == Ok("verify") {
         let root = PathBuf::from(std::env::var_os("KAH_TRACK2_ROOT").unwrap());
         let run = std::panic::catch_unwind(|| relay_support::run(&root));

@@ -10,6 +10,9 @@ mod claude_metadata;
 mod claude_trust;
 #[path = "config_audit.rs"]
 mod config_audit;
+#[path = "dry_lifecycle.rs"]
+mod dry_lifecycle;
+pub use dry_lifecycle::run as dry_lifecycle;
 pub fn claude_login_ready() {
     claude_login::require_ready();
 }
