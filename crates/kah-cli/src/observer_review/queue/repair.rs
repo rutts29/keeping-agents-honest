@@ -31,7 +31,6 @@ fn plan(
     checkpoint: Wake,
 ) -> Result<(Vec<Value>, BTreeMap<String, Wake>)> {
     let checkpoint_name = format!("{repair}-checkpoint.json");
-    let drift_name = drift::NAME.to_owned();
     let mut replacements = BTreeMap::from([(checkpoint_name.clone(), checkpoint)]);
     let mut rows = vec![];
     let directory = root.join("queued");
@@ -39,7 +38,6 @@ fn plan(
         .map(|e| e.map(|e| e.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     paths.sort();
-    let mut drifts = vec![];
     for path in paths
         .into_iter()
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
@@ -55,20 +53,10 @@ fn plan(
                 replacements.entry(name.clone()).or_insert(wake);
                 name
             }
-            Purpose::Drift => {
-                let wake: Wake = super::super::source_store::read(&path)?;
-                if wake.trigger.get("captured_snapshot").is_some() {
-                    return Err("REVIEW_BACKLOG_SNAPSHOT stage=queue_repair: preserve this explicit snapshot independently".into());
-                }
-                drifts.push((path.clone(), wake));
-                drift_name.clone()
-            }
+            Purpose::Drift => "retired_tripwire".into(),
             _ => checkpoint_name.clone(),
         };
         rows.push(json!({"original":path.file_name().unwrap().to_str().unwrap(),"purpose":purpose,"digest":format!("{:x}",Sha256::digest(&bytes)),"disposition":if matches!(purpose,Purpose::Steering|Purpose::Drift){"covered_by"}else{"superseded"},"replacement":replacement}));
-    }
-    if let Some((wake, _)) = batch(&drifts) {
-        replacements.insert(drift_name, wake);
     }
     Ok((rows, replacements))
 }

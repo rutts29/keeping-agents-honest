@@ -54,15 +54,6 @@ fn steering_survives_resume_and_compaction() {
     continuity::run();
 }
 
-#[path = "observer_journeys/drift.rs"]
-mod drift;
-
-#[test]
-#[ignore = "seeded native mistake corrected by one automatic observer reminder; gate only"]
-fn accidental_drift_is_corrected_once() {
-    drift::run();
-}
-
 #[path = "observer_journeys/interruption.rs"]
 mod interruption;
 

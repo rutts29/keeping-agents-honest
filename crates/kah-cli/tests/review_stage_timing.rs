@@ -70,32 +70,36 @@ fn first_enqueue_time_survives_updates_and_snapshot_transfer_and_stages_do_not_r
     let root = Store::directory(&worker).unwrap();
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "first",
         json!({"actions":["first"]}),
     )
     .unwrap();
+    let first_name = queue::entries(&worker).unwrap()[0]
+        .0
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
     let before: Value =
         kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "second",
         json!({"actions":["second"]}),
     )
     .unwrap();
     let updated: Value =
         kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
-    assert_eq!(
-        updated["drift-pending.json"]["at_ms"],
-        before["drift-pending.json"]["at_ms"]
-    );
+    assert_eq!(updated[&first_name]["at_ms"], before[&first_name]["at_ms"]);
     let (_, paths) = queue::claim_batch(&worker).unwrap().unwrap();
     let snapshot: Value =
         kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
     assert_eq!(
         snapshot[paths[0].file_name().unwrap().to_str().unwrap()]["at_ms"],
-        before["drift-pending.json"]["at_ms"]
+        before[&first_name]["at_ms"]
     );
     timing::mark(&worker, "review-timing", "acknowledged", 10).unwrap();
     timing::mark(&worker, "review-timing", "acknowledged", 20).unwrap();
@@ -141,37 +145,45 @@ fn first_append_and_cached_metadata_recover_retained_original_age() {
         .as_millis() as u64;
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "first",
         json!({"actions":["first"]}),
     )
     .unwrap();
+    let first_name = queue::entries(&worker).unwrap()[0]
+        .0
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
     kah_cli::observer_review::source_store::save(
         &root,
         "queue-metadata.json",
-        &json!({"drift-pending.json":{"at_ms":original_at+10000,"lane":"intent"}}),
+        &json!({first_name.clone():{"at_ms":original_at+10000,"lane":"gate"}}),
     )
     .unwrap();
     kah_cli::observer_review::source_store::save(
         &root.join("queue-repairs"),
         "repair.json",
-        &json!({"rows":[{"original":"original.json","replacement":"drift-pending.json"}]}),
+        &json!({"rows":[{"original":"original.json","replacement":first_name}]}),
     )
     .unwrap();
     queue::entries(&worker).unwrap();
     let recovered: Value =
         kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
-    assert_eq!(recovered["drift-pending.json"]["at_ms"], original_at);
+    assert_eq!(recovered[&first_name]["at_ms"], original_at);
     std::fs::remove_file(root.join("queue-metadata.json")).unwrap();
     queue::enqueue(
         &worker,
-        Purpose::Drift,
+        Purpose::Checkpoint,
         "later",
         json!({"actions":["later"]}),
     )
     .unwrap();
+    queue::entries(&worker).unwrap();
     let append: Value =
         kah_cli::observer_review::source_store::read(&root.join("queue-metadata.json")).unwrap();
-    assert_eq!(append["drift-pending.json"]["at_ms"], original_at);
+    assert_eq!(append[&first_name]["at_ms"], original_at);
     std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }

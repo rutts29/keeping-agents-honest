@@ -6,20 +6,9 @@ use serde_json::json;
 use std::fs;
 
 #[test]
-fn drift_tripwire_and_native_snapshot_preparation_keep_their_paths() {
+fn native_snapshot_preparation_keeps_its_exact_gate_binding() {
     let worker = format!("commit-tripwire-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
-    let triggers =
-        kah_cli::observer_review::dispatch::triggers(Some(json!({"tripwire":"uncertain"})), None);
-    assert_eq!(triggers[0].0, Purpose::Drift);
-    queue::enqueue(&worker, Purpose::Drift, "tool-four", triggers[0].1.clone()).unwrap();
-    assert_eq!(
-        queue::claim_batch(&worker).unwrap().unwrap().0.purpose,
-        Purpose::Drift
-    );
-    for (path, _) in queue::entries(&worker).unwrap() {
-        fs::remove_file(path).unwrap();
-    }
     queue::enqueue(
         &worker,
         Purpose::Preparation,

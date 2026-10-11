@@ -22,7 +22,6 @@ pub mod review_evidence;
 pub mod steering_proposal;
 pub mod verbatim;
 pub mod verification;
-pub mod verified_judgment;
 pub mod whole_preparation;
 
 pub mod verification_contract;

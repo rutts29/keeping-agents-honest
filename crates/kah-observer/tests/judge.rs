@@ -63,47 +63,17 @@ fn mismatched_answers_and_invalid_distributions_are_rejected() {
 }
 
 #[test]
-fn domain_defaults_and_low_confidence_never_trigger_a_reminder() {
-    use kah_observer::judge::decision::AssessmentState;
+fn domain_defaults_and_completion_enforcement_remain_jev_only() {
     use kah_observer::judge::{Judgment, Metrics, decision, routing::Backend};
-    assert_eq!(Backend::for_domain("mine", None).unwrap(), Backend::Jev);
-    for domain in ["research", "untrusted"] {
+    for domain in ["mine", "research", "untrusted"] {
         assert_eq!(Backend::for_domain(domain, None).unwrap(), Backend::Jev);
-        assert_eq!(
-            Backend::for_domain(domain, Some("jev")).unwrap(),
-            Backend::Jev
-        );
     }
-    let mut judgment=Judgment{backend:"jev".into(),model:"test".into(),answers:serde_json::from_value(json!({
-        "alignment":{"type":"choice","choice":"accidental_drift","confidence":0.6,"probabilities":{"accidental_drift":0.8,"unclear":0.2}},
-        "drift_severity":{"type":"score","score":2.0,"confidence":1.0,"legend":{"0":"none","1":"minor","2":"material"},"probabilities":{"0":0.0,"1":0.0,"2":1.0}}
-    })).unwrap(),metrics:Metrics::default(),fallback_reason:None};
-    let actions = vec![json!({"id":"native-action"})];
-    assert_eq!(
-        decision::assessment(&judgment, &actions, 0).state,
-        AssessmentState::Uncertain
-    );
-    if let Answer::Choice { confidence, .. } = judgment.answers.get_mut("alignment").unwrap() {
-        *confidence = 0.99;
-    }
-    assert_eq!(
-        decision::assessment(&judgment, &actions, 0).state,
-        AssessmentState::MaterialDrift
-    );
-    assert!(!decision::complete(&judgment, &[]));
-    judgment.backend = "luna".into();
-    assert_eq!(
-        decision::assessment(&judgment, &actions, 2).state,
-        AssessmentState::Uncertain
-    );
-    judgment.answers = serde_json::from_value(json!({
-        "outcome_met.one":{"type":"noul","noul":1.0},
-        "completion":{"type":"choice","choice":"complete","probabilities":{"complete":1.0},"confidence":1.0}
-    })).unwrap();
+    let judgment=Judgment {backend:"unsupported".into(),model:"recorded".into(),answers:serde_json::from_value(json!({"outcome_met.one":{"type":"choice","choice":"satisfied","probabilities":{"satisfied":1.0},"confidence":1.0}})).unwrap(),metrics:Metrics::default(),fallback_reason:None};
     assert!(!decision::complete(
         &judgment,
         &[("one".into(), "required outcome".into())]
     ));
+    assert!(!decision::complete(&judgment, &[]));
 }
 
 #[test]

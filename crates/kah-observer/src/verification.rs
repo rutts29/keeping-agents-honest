@@ -4,7 +4,7 @@ use crate::{
     judge::{Answer, Judgment},
     session::Store,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{fs, os::unix::fs::PermissionsExt};
 pub fn enabled(session: &str) -> Result<bool, String> {
     let base = kah_core::run_store::RunStore::default_state_root().map_err(|e| e.to_string())?;
@@ -20,16 +20,6 @@ pub fn enabled(session: &str) -> Result<bool, String> {
     let config: Value = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
         .map_err(|_| "REVIEW_CONFIG_JSON stage=verification")?;
     Ok(config["enabled"] == true)
-}
-/// Routing only. Existing drift questions and reminder thresholds are unchanged.
-pub fn trigger(judgment: &Judgment, actions: &[Value]) -> Option<Value> {
-    let suspect=matches!(judgment.answers.get("alignment"),Some(Answer::Choice{choice,..}) if choice=="accidental_drift" || choice=="stalled")
-        || ["repeating_failed_approach","polishing_instead_of_progress"].iter().any(|key|matches!(judgment.answers.get(*key),Some(Answer::Noul{noul}) if *noul>=crate::judge::questions::STRONG_FAILURE_SIGNAL))
-        || matches!(judgment.answers.get("claim_supported"),Some(Answer::Noul{noul}) if *noul<0.5);
-    let assessment = crate::judge::decision::assessment(judgment, actions, 0);
-    let uncertain = assessment.state == crate::judge::decision::AssessmentState::Uncertain;
-    (judgment.backend == "jev" && (suspect || uncertain))
-        .then(|| json!({"tripwire":judgment,"assessment":assessment,"actions":actions}))
 }
 
 pub fn uncertain_impact(judgment: &Judgment) -> bool {

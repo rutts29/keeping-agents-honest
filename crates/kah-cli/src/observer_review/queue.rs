@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 pub mod claim_migration;
-mod drift;
 mod headers;
 mod identity;
 pub mod lanes;
@@ -30,9 +29,6 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
     let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
     kah_core::run_store::ensure_private_directory(&Store::directory(worker)?.join("sources"))?;
-    if purpose == Purpose::Drift && trigger.get("captured_snapshot").is_none() {
-        return drift::append(&root, turn, trigger);
-    }
     let name = if purpose == Purpose::Steering {
         identity::steering(&trigger)?
             .unwrap_or_else(|| format!("{}.json", crate::relay_store::nonce()))
@@ -181,6 +177,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     if crate::observer_review::state::read_control(worker)?.is_some_and(|s| s.pending.is_some()) {
         return Ok(None);
     }
+    super::consume::retired::queued_at(&root)?;
     let mut jobs = headers::at(&root)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
@@ -192,7 +189,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         }
         break;
     }
-    let Some((mut job, mut paths)) = headers::selected(&jobs)? else {
+    let Some((mut job, paths)) = headers::selected(&jobs)? else {
         return Ok(None);
     };
     let stamps = metadata::stamps(&root, &jobs)?;
@@ -203,7 +200,6 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
             .map(|s| s.at_ms)
             .min()
     );
-    drift::detach(&root, &mut paths)?;
     Ok(Some((job, paths)))
 }
 fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
@@ -235,30 +231,8 @@ fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
 /// Snapshot only existing queued events. Later events retain their own files
 /// and cause a follow-up; the in-flight review is never mutated.
 pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
-    let first = jobs.first()?;
-    if first.1.purpose != Purpose::Drift || first.1.trigger.get("captured_snapshot").is_some() {
-        return Some((first.1.clone(), vec![first.0.clone()]));
-    }
-    let group = jobs
-        .iter()
-        .filter(|(_, job)| {
-            job.purpose == Purpose::Drift && job.trigger.get("captured_snapshot").is_none()
-        })
-        .collect::<Vec<_>>();
-    let mut job = group.last()?.1.clone();
-    job.trigger["coalesced_triggers"] = json!(
-        group
-            .iter()
-            .map(|(_, job)| &job.trigger)
-            .collect::<Vec<_>>()
-    );
-    job.trigger["actions"] = json!(
-        group
-            .iter()
-            .flat_map(|(_, job)| job.trigger["actions"].as_array().into_iter().flatten())
-            .collect::<Vec<_>>()
-    );
-    Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
+    jobs.first()
+        .map(|(path, job)| (job.clone(), vec![path.clone()]))
 }
 pub fn kick(worker: &str) -> Result<()> {
     if super::gate_host::runnable(worker)? {

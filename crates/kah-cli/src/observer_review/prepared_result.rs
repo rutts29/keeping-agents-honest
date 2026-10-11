@@ -86,25 +86,6 @@ fn apply_steering(
     )?;
     Ok(())
 }
-fn drift(
-    request: &super::state::Request,
-    input: &Value,
-    judgment: &kah_observer::judge::Judgment,
-) -> Result<()> {
-    let actions = input["event"]["actions"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    if let Some(trigger) = kah_observer::verification::trigger(judgment, &actions) {
-        super::queue::enqueue(
-            &request.worker,
-            super::state::Purpose::Drift,
-            &request.turn,
-            trigger,
-        )?;
-    }
-    Ok(())
-}
 
 fn apply(
     request: &super::state::Request,
@@ -134,8 +115,5 @@ fn apply(
     source.gap = None;
     primary.save(&source)?;
     drop(primary);
-    if packet["purpose"] == "drift" {
-        drift(request, input, judgment)?;
-    }
     Ok(())
 }

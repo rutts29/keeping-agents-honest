@@ -44,25 +44,19 @@ fn uncertain_goal_scope_and_supersession_wait_for_verification() {
     assert!(verification::uncertain_impact(&replacement));
 }
 #[test]
-fn low_confidence_tripwire_can_request_evidence_but_is_not_a_reminder() {
-    let mut j = judgment("none", 0.99);
-    j.answers.insert(
-        "alignment".into(),
-        Answer::Choice {
-            choice: "accidental_drift".into(),
-            confidence: 0.55,
-            probabilities: BTreeMap::from([
-                ("accidental_drift".into(), 0.6),
-                ("on_track".into(), 0.4),
-            ]),
-        },
-    );
-    let actions = vec![serde_json::json!({"id":"tool-1"})];
-    assert!(verification::trigger(&j, &actions).is_some());
-    assert_ne!(
-        kah_observer::judge::decision::assessment(&j, &actions, 0).state,
-        kah_observer::judge::decision::AssessmentState::MaterialDrift
-    );
+fn commit_flags_are_raw_data_and_never_promote_intent() {
+    let policy: kah_observer::commit_review::DoubtLine =
+        serde_json::from_str(include_str!("../../../assets/observer/commit-policy.json")).unwrap();
+    let record = kah_observer::commit_review::classify(
+        "worker",
+        "sha",
+        &[serde_json::json!({"request":"r","question":"rule.one","noul":0.62})],
+        &policy,
+    )
+    .unwrap();
+    assert!(record.woke);
+    assert!(record.native.is_none());
+    assert_eq!(record.maximum.unwrap().noul, 0.62);
 }
 #[test]
 fn pending_verification_cannot_record_intent() {
@@ -98,30 +92,18 @@ fn uncertain_no_replacement_choice_still_checks_a_plausible_supersession() {
 }
 
 #[test]
-fn existing_uncertain_alignment_routes_to_full_context_thinking() {
-    use kah_observer::judge::decision::{AssessmentState, assessment};
-    let mut j = judgment("new_constraint", 0.99);
-    j.answers.insert(
-        "alignment".into(),
-        Answer::Choice {
-            choice: "on_track".into(),
-            confidence: 0.62,
-            probabilities: BTreeMap::from([
-                ("on_track".into(), 0.62),
-                ("accidental_drift".into(), 0.23),
-                ("stalled".into(), 0.15),
-            ]),
-        },
-    );
-    let actions = [serde_json::json!({"id":"uncertain-tool","kind":"commandExecution"})];
-    assert_eq!(
-        assessment(&j, &actions, 0).state,
-        AssessmentState::Uncertain
-    );
-    assert!(verification::trigger(&j, &actions).is_some());
-    if let Some(Answer::Choice { confidence, .. }) = j.answers.get_mut("alignment") {
-        *confidence = 0.99;
+fn per_commit_doubt_uses_the_same_data_line_without_an_uncertainty_band() {
+    let policy: kah_observer::commit_review::DoubtLine =
+        serde_json::from_str(include_str!("../../../assets/observer/commit-policy.json")).unwrap();
+    for (noul, expected) in [(0.49, false), (0.5, true), (0.62, true)] {
+        let record = kah_observer::commit_review::classify(
+            "worker",
+            "sha",
+            &[serde_json::json!({"request":"r","question":"rule.one","noul":noul})],
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(record.woke, expected);
+        assert!(record.native.is_none());
     }
-    assert_eq!(assessment(&j, &actions, 0).state, AssessmentState::Aligned);
-    assert!(verification::trigger(&j, &actions).is_none());
 }

@@ -14,6 +14,7 @@ use std::{
 mod light_ownership_tests;
 
 mod report_io;
+pub mod retired;
 pub use report_io::read_report;
 mod gate;
 mod native;
@@ -27,6 +28,9 @@ pub fn run(worker: &str) -> Result<()> {
 }
 fn run_inner(worker: &str) -> Result<()> {
     super::runtime::require_active(worker)?;
+    if retired::pending(worker)? {
+        return Ok(());
+    }
     if super::service::blocked(worker)? {
         return Ok(());
     }
@@ -128,7 +132,7 @@ pub fn question_version(request: &super::state::Request, report: &Report) -> u32
         match request.purpose {
             Purpose::Checkpoint => kah_observer::checkpoint::VERSION,
             Purpose::Steering => judge::questions::VERSION,
-            _ => kah_observer::verified_judgment::VERSION,
+            _ => 1, // Historical verified question-set ID, read-only; no executor.
         }
     }
 }
@@ -190,25 +194,7 @@ fn decide(
             json!({"state":"steering_reviewed","application":application}),
         ));
     }
-    if request.purpose != Purpose::Drift {
-        return Err("REVIEW_PURPOSE_PENDING stage=consume".into());
-    }
-    let mut input = json!({"intent":request.intent,"event":{"actions":actions,"agent_text":"","user_text":""},"trigger":request.trigger});
-    crate::privacy::scrub(&mut input);
-    if super::preparation::pending(&request.worker, &request.id)? {
-        super::preparation::accept(&request.worker, &request.id)?;
-    }
-    let (judgment, input) = super::preparation::evaluate(
-        home,
-        request,
-        &input,
-        &kah_observer::verified_judgment::questions(),
-    )?;
-    let failures = request.intent["failures"].as_array().map_or(0, Vec::len);
-    let assessment = serde_json::to_value(kah_observer::verified_judgment::assess(
-        &judgment, actions, failures,
-    ))?;
-    Ok((judgment, input, assessment))
+    Err("REVIEW_RETIRED_PURPOSE stage=consume: legacy tripwire judgments are not executed".into())
 }
 pub(super) fn tokens(home: &Path, store: &Store, state: &State) -> Result<u64> {
     if state.worker.provider == "claude" {
