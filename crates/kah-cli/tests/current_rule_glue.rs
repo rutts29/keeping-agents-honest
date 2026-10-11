@@ -161,6 +161,10 @@ fn intent_change_rebuild_is_deduplicated_validated_and_used_by_next_commit() {
     current_set::enqueue(&f.binding, "t").unwrap();
     current_set::enqueue(&f.binding, "t").unwrap();
     assert_eq!(queue::entries(&worker).unwrap().len(), 1);
+    let (claimed, _) = queue::claim_batch(&worker)
+        .unwrap()
+        .expect("rebuild must be admissible without uncertain-message payload");
+    assert_eq!(claimed.trigger["kind"], "current_rules_rebuild");
     assert_eq!(adopt(&f, &first)["status"], "validated");
     assert_eq!(
         adopt(&f, &first)["status"],

@@ -107,7 +107,10 @@ fn validate_proposal(
     )?))
 }
 pub fn covered(worker: &str, trigger: &Value) -> Result<bool> {
-    let source: Input = serde_json::from_value(trigger["uncertain_user_input"].clone())?;
+    let Some(input) = trigger.get("uncertain_user_input").filter(|i| !i.is_null()) else {
+        return Ok(false); // Other intent jobs have their own identity/validation.
+    };
+    let source: Input = serde_json::from_value(input.clone())?;
     let store = match Store::open(&RunStore::default_state_root()?, worker, Duration::ZERO) {
         Ok(store) => store,
         Err(error) if error.starts_with("OBSERVER_BUSY") => return Ok(false),
