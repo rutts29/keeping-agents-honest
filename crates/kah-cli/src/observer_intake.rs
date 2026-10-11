@@ -17,7 +17,7 @@ pub fn observe(
         engine::observe(binding, turn, allow_reminder)
     } else {
         let outcome = engine::synchronize(binding, turn)?;
-        stage_rules(binding, outcome)
+        after_sync(binding, outcome)
     }
 }
 
@@ -31,13 +31,31 @@ pub fn snapshot(
         engine::observe_snapshot(binding, turn, allow_reminder, snapshot)
     } else {
         let outcome = engine::synchronize_snapshot(binding, turn, snapshot)?;
-        stage_rules(binding, outcome)
+        after_sync(binding, outcome)
     }
 }
 
-fn stage_rules(binding: &Binding, outcome: engine::Outcome) -> Result<engine::Outcome, String> {
-    // Durable staging only. The controller resumes the SAME native observer;
-    // it must use direct review until current_rules::current returns a set.
-    kah_observer::current_rules::stage(binding)?;
+pub fn after_sync(binding: &Binding, outcome: engine::Outcome) -> Result<engine::Outcome, String> {
+    // A detached UserPromptSubmit intake has no guaranteed later Stop dispatch.
+    // Publish its distinct intent wake at successful sync, with no inference.
+    let staged = kah_observer::current_rules::stage(binding)?;
+    let config =
+        crate::observer_review::control::config(&binding.session).map_err(|e| e.to_string())?;
+    let base = kah_core::run_store::RunStore::default_state_root().map_err(|e| e.to_string())?;
+    if config.is_some_and(|c| c.enabled)
+        && !kah_observer::session::paused(&base, &binding.session)
+        && let Some(kah_core::run_store::RuleSync::Rebuild(r)) = staged
+    {
+        let trigger =
+            crate::observer_review::option1::current_set::trigger(&r).map_err(|e| e.to_string())?;
+        crate::observer_review::queue::enqueue(
+            &binding.session,
+            crate::observer_review::state::Purpose::Steering,
+            "intent-sync",
+            trigger,
+        )
+        .map_err(|e| e.to_string())?;
+        crate::observer_review::queue::schedule(&binding.session).map_err(|e| e.to_string())?;
+    }
     Ok(outcome)
 }

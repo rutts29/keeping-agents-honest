@@ -284,3 +284,57 @@ fn startup_without_history_is_native_only_and_cannot_claim_an_empty_intent_pass(
     assert!(requests::build(&input, None).unwrap().0.is_empty());
     assert!(input.rules.contains_key("controller_intent_pending"));
 }
+#[test]
+fn adopted_revision_two_then_new_constraint_queues_revision_three_without_a_stop() {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = fixture();
+    append(&mut f, "first", "Never truncate text input.");
+    let r2 = rebuild(&f);
+    assert_eq!(r2.input.revision, 2);
+    assert_eq!(adopt(&f, &r2)["intent_revision"], 2);
+    let root = kah_cli::observer_review::state::Store::directory(&f.binding.session).unwrap();
+    kah_cli::unattended_report::save(&root,"config.json",&json!({"enabled":true,"provider":"codex","worker":f.binding.session,"turn":"short-user-turn","pid":null,"process_stamp":null})).unwrap();
+    // Hold the existing detached-kick lease: this $0 queue test cannot launch a
+    // native process; it exercises the same sync boundary after ledger commit.
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(root.join("job-__review-kick.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    append(&mut f, "second", "Never remove any object field.");
+    kah_cli::observer_intake::after_sync(&f.binding, Default::default()).unwrap();
+    let r3 = rebuild(&f);
+    assert_eq!(r3.input.revision, 3);
+    let queued = queue::entries(&f.binding.session).unwrap();
+    assert_eq!(
+        queued.len(),
+        1,
+        "staging revision3 must itself publish a rebuild wake"
+    );
+    assert_eq!(
+        queued[0].1.trigger["input_digest"],
+        r3.input.digest().unwrap()
+    );
+    kah_cli::observer_intake::after_sync(&f.binding, Default::default()).unwrap();
+    assert_eq!(queue::entries(&f.binding.session).unwrap().len(), 1);
+    drop(lock);
+}
+fn append(f: &mut Fixture, id: &str, text: &str) {
+    f.history
+        .append(Event::RequirementAdded {
+            item: IntentItem::new(id, IntentKind::Constraint, text, vec![source()]),
+            approval: None,
+        })
+        .unwrap();
+    let s = RunStore::open_default(&f.binding.project, "run").unwrap();
+    s.append_pending(f.history.records().last().unwrap().clone())
+        .unwrap();
+    s.commit_projection(
+        &ActiveProjection::from_history(&f.history, ProjectionConfig::default()).unwrap(),
+    )
+    .unwrap();
+}
