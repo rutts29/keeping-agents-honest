@@ -55,7 +55,14 @@ pub(crate) fn herdr(socket: &Path, arguments: &[&str]) -> Result<Value> {
         .output()
         .map_err(|e| format!("RELAY_HERDR_IO stage=delivery: {e}"))?;
     if !output.status.success() {
-        return Err("RELAY_HERDR stage=delivery: command rejected".into());
+        return Err(format!(
+            "RELAY_HERDR stage=delivery: command rejected: {} {} target={} exit={}",
+            arguments.first().copied().unwrap_or(""),
+            arguments.get(1).copied().unwrap_or(""),
+            arguments.get(2).copied().unwrap_or(""),
+            output.status
+        )
+        .into());
     }
     serde_json::from_slice(&output.stdout).map_err(|_| "RELAY_HERDR_JSON stage=delivery".into())
 }

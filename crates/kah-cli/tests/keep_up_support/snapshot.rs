@@ -1,17 +1,17 @@
 use super::*;
 use std::{collections::BTreeMap, process::Command};
 pub(super) fn read(root: &Path, repo: &Path) -> Value {
-    read_cached(root, repo, &mut BTreeMap::new())
+    read_cached(root, repo, &mut Cursor::default())
 }
-pub(super) fn read_cached(root: &Path, repo: &Path, commits: &mut BTreeMap<String, u64>) -> Value {
+pub(super) fn read_cached(root: &Path, repo: &Path, cursor: &mut Cursor) -> Value {
     let started = std::time::Instant::now();
     let mut gaps = vec![];
-    let state = optional(
+    let state = cursor.optional(
         &root.join("state.json"),
         &["pending", "observer", "worker"],
         &mut gaps,
     );
-    let admitted = optional(
+    let admitted = cursor.optional(
         &root.join("last-admitted-lane.json"),
         &["request", "at_ms"],
         &mut gaps,
@@ -33,7 +33,7 @@ pub(super) fn read_cached(root: &Path, repo: &Path, commits: &mut BTreeMap<Strin
     match paths(&root.join("requests")) {
         Ok(paths) => {
             for path in paths {
-                match review(&path, root, repo, &state, &admitted, commits) {
+                match review(&path, root, repo, &state, &admitted, cursor) {
                     Ok(value) => reviews.push(value),
                     Err(error) => gaps.push(json!({"path":path,"error":error.to_string()})),
                 }
@@ -41,15 +41,15 @@ pub(super) fn read_cached(root: &Path, repo: &Path, commits: &mut BTreeMap<Strin
         }
         Err(error) => gaps.push(json!({"stage":"requests","error":error.to_string()})),
     }
-    let events = events(&root.join("liveness/events.jsonl"), &mut gaps);
-    let retries = optional(&root.join("redelivery.json"), &["requests"], &mut gaps);
-    let notices = notices(root, &mut gaps);
+    let events = cursor.events(&root.join("liveness/events.jsonl"), &mut gaps);
+    let retries = cursor.optional(&root.join("redelivery.json"), &["requests"], &mut gaps);
+    let notices = notices(root, &mut gaps, cursor);
     json!({"at_ms":kah_observer::session::now_ms(),"read_only":true,"root":root,"repo":repo,
         "queue_depth":depth,"queued_depth":depth.as_u64().map(|d|d.saturating_sub(u64::from(state["pending"].is_object()))),
         "pending":state["pending"],"reviews":reviews,"notices":notices,"counters":counters(&events,&reviews,&retries),"gaps":gaps,
-        "capture_elapsed_ms":started.elapsed().as_millis(),"snapshot_is_atomic":false})
+        "capture_elapsed_ms":started.elapsed().as_millis(),"metadata_decodes":cursor.decoded,"snapshot_is_atomic":false})
 }
-fn notices(root: &Path, gaps: &mut Vec<Value>) -> Vec<Value> {
+fn notices(root: &Path, gaps: &mut Vec<Value>, cursor: &mut Cursor) -> Vec<Value> {
     [
         "liveness/notice.json",
         "validation-blocked.json",
@@ -59,7 +59,7 @@ fn notices(root: &Path, gaps: &mut Vec<Value>) -> Vec<Value> {
     .into_iter()
     .filter_map(|name| {
         let path = root.join(name);
-        let value = optional(&path, &["request", "text", "state", "notice"], gaps);
+        let value = cursor.optional(&path, &["request", "text", "state", "notice"], gaps);
         if value.is_null() {
             None
         } else {
@@ -74,14 +74,14 @@ fn review(
     repo: &Path,
     state: &Value,
     admitted: &Value,
-    commits: &mut BTreeMap<String, u64>,
+    cursor: &mut Cursor,
 ) -> Result<Value> {
-    let request = request(path)?;
+    let request = request(path, cursor)?;
     let id = request["id"]
         .as_str()
         .ok_or("KEEP_UP_REQUEST stage=sample")?;
     let mut gaps = vec![];
-    let timing = optional(
+    let timing = cursor.optional(
         &root.join("stage-timings").join(format!("{id}.json")),
         &["at_ms"],
         &mut gaps,
@@ -115,14 +115,14 @@ fn review(
     .into_iter()
     .filter(|key| stages.get(*key).is_none_or(Value::is_null))
     .collect::<Vec<_>>();
-    let result = optional(
+    let result = cursor.optional(
         &root.join("results").join(format!("{id}.json")),
         &["assessment"],
         &mut gaps,
     );
     let head = request["head"].as_str();
     let commit = if request["trigger"]["review_class"] == "commit" {
-        head.and_then(|sha| commit_ms(repo, sha, commits))
+        head.and_then(|sha| commit_ms(repo, sha, &mut cursor.commits))
     } else {
         None
     };
@@ -135,7 +135,7 @@ fn review(
         "assessment":result["assessment"],"gaps":gaps}),
     )
 }
-fn request(path: &Path) -> Result<Value> {
+fn request(path: &Path, cursor: &mut Cursor) -> Result<Value> {
     let selection = Select::fields(&[
         ("id", Select::All),
         ("head", Select::All),
@@ -143,7 +143,7 @@ fn request(path: &Path) -> Result<Value> {
         ("created_ms", Select::All),
         ("trigger", Select::fields(&[("review_class", Select::All)])),
     ]);
-    let request = read_selected(path, &selection)?;
+    let request = cursor.select(path, &selection)?;
     let id = request["id"]
         .as_str()
         .ok_or("KEEP_UP_REQUEST stage=sample")?;

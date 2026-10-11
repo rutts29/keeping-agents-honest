@@ -2,16 +2,23 @@ use kah_cli::observer_review::source_store::{Select, read_selected};
 use serde_json::{Value, json};
 use std::{
     fs,
-    io::{BufRead, Write},
+    io::Write,
     path::{Path, PathBuf},
     time::Duration,
 };
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+mod cursor;
+mod recording;
+pub use recording::{Recording, reconstruct};
 mod snapshot;
+pub use cursor::Cursor;
 mod stats;
 pub use stats::summary;
 pub fn sample(root: &Path, repo: &Path) -> Value {
     snapshot::read(root, repo)
+}
+pub fn sample_cursor(root: &Path, repo: &Path, cursor: &mut Cursor) -> Value {
+    snapshot::read_cached(root, repo, cursor)
 }
 
 pub fn run() -> Result<()> {
@@ -47,7 +54,8 @@ fn record(root: &Path, repo: &Path, output: &Path, once: bool) -> Result<()> {
         .write(true)
         .open(output.join("samples.jsonl"))?;
     let mut samples = vec![];
-    let mut commits = std::collections::BTreeMap::new();
+    let mut recording = Recording::default();
+    let mut cursor = Cursor::default();
     let mut event_log = fs::OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -55,11 +63,12 @@ fn record(root: &Path, repo: &Path, output: &Path, once: bool) -> Result<()> {
     let mut archived = 0;
     loop {
         disk_guard()?;
-        let mut sample = snapshot::read_cached(root, repo, &mut commits);
+        let mut sample = snapshot::read_cached(root, repo, &mut cursor);
         archive_events(&mut sample, &mut event_log, &mut archived)?;
-        writeln!(log, "{sample}")?;
+        let delta = recording.encode(output, &sample)?;
+        writeln!(log, "{delta}")?;
         log.sync_all()?;
-        samples.push(sample);
+        samples.push(recording::metrics_sample(&sample));
         let mut measured = summary(&samples);
         measured["recorder_bytes"] =
             json!({"samples":log.metadata()?.len(),"liveness_events":event_log.metadata()?.len()});
@@ -111,13 +120,6 @@ fn archive_events(sample: &mut Value, output: &mut fs::File, archived: &mut usiz
     output.sync_all()?;
     Ok(())
 }
-fn read(path: &Path, fields: &[&str]) -> Result<Value> {
-    let fields = fields
-        .iter()
-        .map(|name| (*name, Select::All))
-        .collect::<Vec<_>>();
-    read_selected(path, &Select::fields(&fields))
-}
 fn paths(directory: &Path) -> Result<Vec<PathBuf>> {
     if !directory.exists() {
         return Ok(vec![]);
@@ -137,40 +139,4 @@ fn modified(path: &Path) -> Option<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_millis() as u64)
-}
-fn optional(path: &Path, fields: &[&str], gaps: &mut Vec<Value>) -> Value {
-    match read(path, fields) {
-        Ok(value) => value,
-        Err(_) if !path.exists() => Value::Null,
-        Err(error) => {
-            gaps.push(json!({"path":path,"error":error.to_string()}));
-            Value::Null
-        }
-    }
-}
-fn events(path: &Path, gaps: &mut Vec<Value>) -> Vec<Value> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(error) => {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                gaps.push(json!({"path":path,"error":error.to_string()}));
-            }
-            return vec![];
-        }
-    };
-    std::io::BufReader::new(file)
-        .lines()
-        .filter_map(|line| {
-            match line
-                .map_err(|e| e.to_string())
-                .and_then(|l| serde_json::from_str(&l).map_err(|e| e.to_string()))
-            {
-                Ok(value) => Some(value),
-                Err(error) => {
-                    gaps.push(json!({"path":path,"error":error}));
-                    None
-                }
-            }
-        })
-        .collect()
 }

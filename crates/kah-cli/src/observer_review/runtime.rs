@@ -1,3 +1,5 @@
+pub mod binding;
+
 use super::{
     capture, control, launch,
     state::{Pending, Purpose, State, Store},
@@ -100,15 +102,7 @@ pub fn submit_snapshot(
     }
     state.wakes += 1;
     state.stopped = false;
-    let existing = state.observer.pane.is_some();
-    if existing {
-        control::owned_pane(&state)?;
-    } else {
-        state.worker = crate::relay_store::endpoint(worker)?;
-        state.observer.pane = Some(create(&state)?);
-        state.observer.pid = None;
-        state.observer.process_stamp = None;
-    }
+    let existing = binding::ensure(&mut state)?;
     store.save(&state)?;
     drop(store); // SessionStart must be able to bind before pane run returns.
     super::liveness::start(worker)?;
@@ -155,9 +149,21 @@ fn create(state: &State) -> Result<String> {
         std::thread::sleep(Duration::from_millis(100));
     }
 }
-fn deliver(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<()> {
+fn deliver(home: &Path, state: &State, prompt: &str, _existing: bool) -> Result<()> {
     super::failure::validation(super::failure::Origin::Delivery, || {
-        deliver_native(home, state, prompt, existing)
+        let store = Store::open_wait(&state.worker.session)?;
+        let mut current = store.load()?.ok_or("REVIEW_STATE_MISSING stage=delivery")?;
+        if current.pending.as_ref().map(|p| &p.id) != state.pending.as_ref().map(|p| &p.id) {
+            return Err("REVIEW_REQUEST_MISMATCH stage=delivery".into());
+        }
+        let existing = if _existing {
+            binding::ensure(&mut current)?
+        } else {
+            false
+        };
+        store.save(&current)?;
+        drop(store);
+        deliver_native(home, &current, prompt, existing)
     })
 }
 fn deliver_native(home: &Path, state: &State, prompt: &str, existing: bool) -> Result<()> {
@@ -213,15 +219,7 @@ pub fn prepare_context(worker: &str) -> Result<()> {
     let _processing = super::liveness::processing(worker, &review)?;
     workspace::prepare(&home, &state)?;
     let prompt = super::preparation::prompt(worker)?;
-    let existing = state.observer.pane.is_some();
-    if existing {
-        control::owned_pane(&state)?;
-    } else {
-        state.worker = crate::relay_store::endpoint(worker)?;
-        state.observer.pane = Some(create(&state)?);
-        state.observer.pid = None;
-        state.observer.process_stamp = None;
-    }
+    let existing = binding::ensure(&mut state)?;
     state.stopped = false;
     state.wakes += 1;
     store.save(&state)?;
@@ -272,15 +270,15 @@ pub fn transport(state: &State) -> Result<(&Path, &str)> {
 }
 
 pub fn resume(worker: &str) -> Result<()> {
+    require_active(worker)?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=resume")?);
     let store = Store::open(worker)?;
     let Some(mut state) = store.load()? else {
         return Ok(());
     };
-    if !state.stopped || state.observer.pane.is_some() {
+    if binding::ensure(&mut state)? {
         return Ok(());
     }
-    state.worker = crate::relay_store::endpoint(worker)?;
     workspace::prepare(&home, &state)?;
     let prompt = if let Some(pending) = &state.pending {
         let request = workspace::request(&store, &pending.id)?;
@@ -296,9 +294,6 @@ pub fn resume(worker: &str) -> Result<()> {
     } else {
         String::new()
     };
-    state.observer.pane = Some(create(&state)?);
-    state.observer.pid = None;
-    state.observer.process_stamp = None;
     state.stopped = false;
     store.save(&state)?;
     drop(store);
