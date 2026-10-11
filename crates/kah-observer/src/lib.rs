@@ -3,7 +3,6 @@ pub mod engine;
 pub mod hook_event_store;
 pub mod inspect_state;
 pub mod session;
-pub mod tool_watch;
 
 pub mod judge;
 

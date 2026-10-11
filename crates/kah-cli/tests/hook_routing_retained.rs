@@ -31,12 +31,12 @@ fn mine_and_research_refresh_whole_native_sources_without_action_judgments() {
     }
     let mut untrusted = old.binding.clone();
     untrusted.project = home.join("repos/untrusted/fixture");
-    assert!(kah_cli::observer_intake::legacy_checks(&untrusted).unwrap());
+    assert!(kah_cli::observer_review::untrusted::host::scope(&untrusted).unwrap());
     let evidence = std::path::PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
     fs::create_dir_all(&evidence).unwrap();
     kah_cli::unattended_report::save(&evidence, "routing.json", &json!({"passed":true,"results":results,
         "source":source,"source_sha256":format!("{:x}",Sha256::digest(&transcript)),
-        "untrusted_legacy_route":true,"native_calls":0,"real_jev_calls":0,"final_acceptance":false})).unwrap();
+        "untrusted_jev_commit_route":true,"native_calls":0,"real_jev_calls":0,"final_acceptance":false})).unwrap();
 }
 
 fn replay(
@@ -65,8 +65,7 @@ fn replay(
     let snapshot = kah_claude::transcript::parse(&text, &binding.session, &project).unwrap();
     assert!(!snapshot.actions.is_empty());
     let before = serde_json::to_value(&snapshot.actions).unwrap();
-    let outcome =
-        kah_cli::observer_intake::snapshot(&binding, "retained:stop", true, snapshot).unwrap();
+    let outcome = kah_cli::observer_intake::snapshot(&binding, "retained:stop", snapshot).unwrap();
     assert!(outcome.gap.is_none(), "{:?}", outcome.gap);
     assert!(outcome.projection.is_some());
     assert!(outcome.reminder.is_none() && outcome.verification.is_none());
@@ -99,14 +98,10 @@ fn check_tools(binding: &Binding, primary: &Path) {
     let input = json!({"hook_event_name":"PostToolUse","session_id":binding.session,
         "cwd":binding.project,"tool_use_id":"retained-tool","tool_name":"Bash","tool_response":{}});
     assert_eq!(
-        kah_cli::in_turn_worker::schedule(binding, &input, true).unwrap(),
+        kah_cli::observer_review::untrusted::host::take(binding, &input).unwrap(),
         json!({})
     );
-    assert!(
-        kah_cli::in_turn_worker::pending(binding, &input)
-            .unwrap()
-            .is_none()
-    );
+    kah_cli::observer_review::untrusted::host::schedule(binding, &input).unwrap();
     assert!(!primary.join("tool-jobs").exists());
     assert!(!primary.join("tool-events.jsonl").exists());
 }

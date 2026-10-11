@@ -144,6 +144,10 @@ fn print_session(state: &State, ledger: bool) -> Result<()> {
     Ok(())
 }
 fn print_review(session: &str) -> Result<()> {
+    let commits = crate::observer_review::untrusted::host::summary(session)?;
+    if !commits.is_null() {
+        println!("Untrusted Jev commit checks: {commits}");
+    }
     let review = crate::observer_review::control::status(session)?;
     if review.is_null() {
         return Ok(());
@@ -171,6 +175,8 @@ fn json_session(state: &State, ledger: bool) -> Result<serde_json::Value> {
         let mut value = serde_json::to_value(state)?;
         value["full_context_observer"] =
             crate::observer_review::control::status(&state.binding.session)?;
+        value["untrusted_commit_checks"] =
+            crate::observer_review::untrusted::host::summary(&state.binding.session)?;
         return Ok(value);
     }
     let Some(id) = &state.run_id else {

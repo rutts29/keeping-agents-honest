@@ -83,7 +83,7 @@ fn watch_loop(binding: &Binding) -> Result<()> {
         }
         let snapshot = source::observe(&mut client, &binding.project, session)?;
         let turn = snapshot.action_digest.clone();
-        let outcome = crate::observer_intake::snapshot(binding, &turn, true, snapshot)?;
+        let outcome = crate::observer_intake::snapshot(binding, &turn, snapshot)?;
         if let Some(gap) = outcome.gap {
             eprintln!("kah observer gap: {gap}");
             gaps += 1;

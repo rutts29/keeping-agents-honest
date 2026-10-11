@@ -201,6 +201,9 @@ fn replay(output: &Path, case: &str, rows: &[Value], policy: &DoubtLine) -> Valu
     assert!(!record.record.woke);
     assert!(record.record.native.is_none());
     assert_eq!(record.native_wake_count, 0);
+    if record.flagged {
+        delivery(output, case, &record);
+    }
     assert!(
         record
             .record
@@ -218,20 +221,29 @@ fn replay(output: &Path, case: &str, rows: &[Value], policy: &DoubtLine) -> Valu
                 .contains("Jev flag, not confirmed by an LLM")
         );
     }
+    cached(&batch, &requests, &transport, &record, map);
+    json!({"case":case,"report":record,"notice":notice,"cached_rejection_not_resent":true})
+}
+fn cached(
+    batch: &Batch,
+    requests: &[WireRequest],
+    transport: &Recorded,
+    record: &untrusted::Report,
+    map: Value,
+) {
     let count = transport.calls.load(Ordering::SeqCst);
     let again = untrusted::evaluate(
-        "retained-worker",
-        head,
-        policy,
-        &batch,
-        &requests,
+        &record.record.worker,
+        &record.record.head,
+        &record.record.policy,
+        batch,
+        requests,
         map,
-        &transport,
+        transport,
     )
     .unwrap();
     assert_eq!(transport.calls.load(Ordering::SeqCst), count);
     assert_eq!(json!(again), json!(record));
-    json!({"case":case,"report":record,"notice":notice,"cached_rejection_not_resent":true})
 }
 fn source_directory(case: &str, rows: &[Value]) -> PathBuf {
     let body = Path::new(rows[0]["job"]["path"].as_str().unwrap());
@@ -241,6 +253,28 @@ fn source_directory(case: &str, rows: &[Value]) -> PathBuf {
         Path::new("/mnt/kah-fixtures/cargo/synthetic-packed-construction")
             .join(case)
             .join("all_changed_files")
+    }
+}
+fn delivery(output: &Path, case: &str, report: &untrusted::Report) {
+    for provider in ["codex", "claude"] {
+        let root = output.join("delivery").join(case).join(provider);
+        let notices = root.join("notices");
+        kah_core::run_store::ensure_private_directory(&notices).unwrap();
+        kah_cli::unattended_report::save(&notices, "notice.json", &json!(report)).unwrap();
+        assert_eq!(untrusted::host::take_at(&root, "Stop").unwrap(), json!({}));
+        assert!(!root.join("delivered/notice.json").exists());
+        let output = untrusted::host::take_at(&root, "PostToolUse").unwrap();
+        assert!(output.get("decision").is_none());
+        assert!(
+            output["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .unwrap()
+                .contains(&report.record.head)
+        );
+        assert_eq!(
+            untrusted::host::take_at(&root, "PostToolUse").unwrap(),
+            json!({})
+        );
     }
 }
 fn corpus(rows: &[Value]) -> (Vec<WireRequest>, Recorded, Vec<f64>, usize) {

@@ -9,6 +9,51 @@ pub fn build(history: &History, standing: &[Source], context: &Value) -> Result<
     let head = context["head"]
         .as_str()
         .ok_or("COMMIT_HEAD_MISSING stage=input")?;
+    let mut intent = authority(history, standing)?;
+    let permissions = intent
+        .items
+        .iter()
+        .filter(|(_, a)| a.origin == "user")
+        .map(|(id, _)| id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let (hunks, files) = super::super::option1::input::files(context, head)?;
+    let rules = intent
+        .items
+        .keys()
+        .map(|id| {
+            (
+                id.clone(),
+                Rule {
+                    authority: id.clone(),
+                    unconditional_prohibition: true,
+                    prohibition: false,
+                    literal_check: true,
+                    hunks: hunks.keys().cloned().collect(),
+                },
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    intent.permissions = rules
+        .keys()
+        .map(|id| (id.clone(), permissions.clone()))
+        .collect();
+    let authority_digest = kah_observer::context_selection::digest(&json!(intent));
+    Ok(Input {
+        revision: head.into(),
+        baseline: context["baseline_tree"].as_str().map(str::to_owned),
+        checkpoint: false,
+        code_changed: !hunks.is_empty(),
+        impacted: rules.keys().cloned().collect(),
+        intent,
+        rules,
+        hunks,
+        files,
+        matrix: vec![],
+        carried: json!({"authority_digest":authority_digest,"source":"code_resolved_verbatim","domain":"untrusted","observer_session":null}),
+    })
+}
+
+fn authority(history: &History, standing: &[Source]) -> Result<commit_check::CurrentIntent> {
     let mut intent = commit_check::CurrentIntent::resolve(history, BTreeMap::new())?;
     if !history.snapshot().open_conflicts.is_empty() {
         return Err("UNTRUSTED_AUTHORITY_CONFLICT stage=commit_source".into());
@@ -28,35 +73,5 @@ pub fn build(history: &History, standing: &[Source], context: &Value) -> Result<
             sources: json!({"source_id":source.id,"content_digest":source.content_digest,"origin":source.origin}),
         });
     }
-    let (hunks, files) = super::super::option1::input::files(context, head)?;
-    let rules = intent
-        .items
-        .keys()
-        .map(|id| {
-            (
-                id.clone(),
-                Rule {
-                    authority: id.clone(),
-                    unconditional_prohibition: true,
-                    prohibition: false,
-                    literal_check: true,
-                    hunks: hunks.keys().cloned().collect(),
-                },
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let authority_digest = kah_observer::context_selection::digest(&json!(intent));
-    Ok(Input {
-        revision: head.into(),
-        baseline: context["baseline_tree"].as_str().map(str::to_owned),
-        checkpoint: false,
-        code_changed: !hunks.is_empty(),
-        impacted: rules.keys().cloned().collect(),
-        intent,
-        rules,
-        hunks,
-        files,
-        matrix: vec![],
-        carried: json!({"authority_digest":authority_digest,"source":"code_resolved_verbatim","domain":"untrusted","observer_session":null}),
-    })
+    Ok(intent)
 }

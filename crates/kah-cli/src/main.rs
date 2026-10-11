@@ -60,7 +60,6 @@ fn run() -> Result<()> {
 }
 fn internal(args: &[String]) -> Option<Result<()>> {
     match args.first().map(String::as_str) {
-        Some("__in-turn-worker") => Some(kah_cli::in_turn_worker::run(args)),
         Some("__native-run") => Some(kah_cli::native_controller::run_cli(args)),
         _ => kah_cli::observer_review::command(args),
     }

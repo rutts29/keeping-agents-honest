@@ -206,7 +206,6 @@ impl Run<'_> {
         let outcome = crate::observer_intake::snapshot(
             &state.binding,
             "run:idle",
-            false,
             kah_core::observation::ObservationSnapshot {
                 users: snapshot.users.clone(),
                 actions: snapshot.actions.clone(),
