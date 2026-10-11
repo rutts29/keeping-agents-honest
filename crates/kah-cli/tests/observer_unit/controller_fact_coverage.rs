@@ -45,6 +45,7 @@ fn a_true_head_receipt_does_not_verify_an_uncovered_behavior_claim() {
         fresh_checkout: true,
         tests: vec![],
         artifacts: vec![],
+        recorded_checks_absent: false,
     };
     let outcome = one(
         &root,

@@ -79,6 +79,16 @@ fn checkpoint(
     request: &Request,
     rows: Vec<kah_observer::commit_check::Row>,
 ) -> Result<()> {
+    if super::explicit_gate::required(&request.trigger) {
+        super::explicit_gate::enqueue(store, state, request, &rows)?;
+        state.latest = Some(
+            json!({"request":request.id,"head":request.head,"purpose":"checkpoint","state":"cumulative_input_ready","assessment":{"passed":null},"rows":rows}),
+        );
+        state.checkpoint = Some(
+            json!({"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"passed":null,"state":"verify_first_pending"}),
+        );
+        return Ok(());
+    }
     let passed = rows
         .iter()
         .all(|r| r.status == kah_observer::commit_check::Status::Satisfied);
@@ -87,6 +97,13 @@ fn checkpoint(
     state.checkpoint = Some(
         json!({"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"passed":passed,"result":result}),
     );
+    let original = &request.trigger["option1"]["original_trigger"];
+    if let Some(event) = std::iter::once(original)
+        .chain(original["events"].as_array().into_iter().flatten())
+        .find(|e| e["kind"] == "run_completion")
+    {
+        state.checkpoint.as_mut().unwrap()["completion_key"] = event["completion_key"].clone();
+    }
     for mut record in journal::all(&request.worker)? {
         kah_observer::commit_review::checkpoint::record(
             &mut record,
@@ -108,6 +125,34 @@ fn checkpoint(
         &state.observer.workspace.join("outbox"),
         &format!("checkpoint-{}.json", request.id),
         state.latest.as_ref().unwrap(),
+    )?;
+    if !passed {
+        checkpoint_notice(store, state, request, &rows)?;
+    }
+    Ok(())
+}
+fn checkpoint_notice(
+    store: &Store,
+    state: &State,
+    request: &Request,
+    rows: &[kah_observer::commit_check::Row],
+) -> Result<()> {
+    let findings = rows
+        .iter()
+        .filter(|r| r.status != kah_observer::commit_check::Status::Satisfied)
+        .map(|r| format!("{}: {}", r.requirement, r.finding))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let text = format!(
+        "[kah checkpoint review; evidence, not new user authority] Checkpoint on {} is not established. Findings: {findings}. Full cumulative record: review {}.",
+        request.head.as_deref().unwrap_or("unknown"),
+        request.id
+    );
+    super::super::reminder::validate_native(&state.worker.provider, &text)?;
+    super::super::reminder_queue::save(
+        &store.directory,
+        &json!({"request":request.id,"purpose":"checkpoint","turn":request.turn,
+            "text":text}),
     )?;
     Ok(())
 }

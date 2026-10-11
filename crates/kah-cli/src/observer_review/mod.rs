@@ -134,6 +134,9 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
         return Some(option1::capture::cli(base, head));
     }
     match args {
+        [name, head] if name == "__review-gate-bundle" => {
+            Some(gate_approval::interactive::bundle_cli(head))
+        }
         [name] if name == "__review-project-context" => Some(capture::project_cli(None)),
         [name, flag, head] if name == "__review-project-context" && flag == "--commit-baseline" => {
             Some(capture::project_cli(Some(head)))

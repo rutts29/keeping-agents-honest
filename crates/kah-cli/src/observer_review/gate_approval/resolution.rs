@@ -31,7 +31,7 @@ pub fn resolve(
         );
     }
     let proof: DeliveryProof = serde_json::from_value(question["proof"].clone())?;
-    if !proof.passes(head) {
+    if !proof.risk_receipts(head) {
         return Err("REVIEW_GATE_DELIVERY_UNPROVEN stage=approval".into());
     }
     if question["status"] != "pending" {

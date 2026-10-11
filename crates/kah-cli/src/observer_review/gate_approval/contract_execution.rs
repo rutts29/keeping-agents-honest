@@ -197,6 +197,13 @@ fn one(
         Method::TargetedCheck { command }
             if coverage["covered"] == true || coverage["execute_reasoned_check"] == true =>
         {
+            if !request.trigger["interactive_gate_verification"].is_null() {
+                let proof = super::captured(request)?
+                    .ok_or("REVIEW_GATE_CHECK_SOURCE stage=verification")?;
+                if !proof.tests.iter().any(|t| t.command == *command) {
+                    return Err("REVIEW_GATE_CHECK_SOURCE stage=verification: interactive gates reuse recorded project checks, never an invented command".into());
+                }
+            }
             result.check = targeted(directory, state, round, item, command)?;
             result.verified = coverage["covered"] == true
                 && result
@@ -249,7 +256,7 @@ fn targeted(
         &json!({"binding":round.binding,"item":item.requirement_id,"command":command}),
     )?;
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=verification")?);
-    let candidate = super::checks::trusted_candidate(state)?;
+    let candidate = super::checks::trusted_candidate(state, &round.binding.head)?;
     let (receipt, changed) = crate::exact_verification::execute(
         &home,
         &candidate,

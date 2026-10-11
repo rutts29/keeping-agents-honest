@@ -9,6 +9,11 @@ pub fn store(
     proof: &DeliveryProof,
     judgment: &Value,
 ) -> Result<Option<Value>> {
+    if proof.recorded_checks_absent {
+        return super::interactive::missing_question(
+            root, request, report, assessment, proof, judgment,
+        );
+    }
     let Some(followup) = followup::completed(root, request)? else {
         return Ok(None);
     };
