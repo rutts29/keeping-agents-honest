@@ -5,6 +5,7 @@ use std::{
     process::Command,
     time::Duration,
 };
+mod atomize;
 mod confirmation;
 mod fixture;
 mod journey;
@@ -102,7 +103,12 @@ pub fn entry() {
     let root = PathBuf::from(std::env::var_os("KAH_PHASE1_ROOT").unwrap());
     let fixture = fixture::Fixture::read(&root);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if std::env::var_os("KAH_PHASE1_JEV_OUTPUT").is_some() {
+        if matches!(
+            std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref(),
+            Ok("atomize" | "atomize-refine")
+        ) {
+            atomize::run(&fixture)
+        } else if std::env::var_os("KAH_PHASE1_JEV_OUTPUT").is_some() {
             real::run(&fixture)
         } else {
             journey::run(&fixture)

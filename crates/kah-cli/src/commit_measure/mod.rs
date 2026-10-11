@@ -4,6 +4,7 @@ use kah_observer::commit_check::{self, Input, Plan};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
+pub mod atomization;
 pub mod comparison;
 pub mod confirmation;
 pub mod decomposition;
@@ -104,6 +105,9 @@ fn save_text(root: &Path, name: &str, text: &str) -> Result<()> {
 }
 pub fn command(args: &[String]) -> Result<()> {
     match args {
+        [mode, repo, run, output] if mode == "atomize-input" => {
+            println!("{}", atomization::input(Path::new(repo),run,Path::new(output))?);
+        }
         [mode, input, output] if mode == "live" => {
             let manifest: live::Manifest = serde_json::from_slice(&fs::read(input)?)?;
             let result = live::run(&manifest, Path::new(output))?;
