@@ -17,6 +17,7 @@ pub const AUTH_ENV: &[&str] = &[
     "CLAUDE_CODE_USE_BEDROCK",
     "CLAUDE_CODE_USE_VERTEX",
     "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_SECURESTORAGE_CONFIG_DIR",
 ];
 
 pub fn ready_at(home: &Path) -> Result<(), &'static str> {
