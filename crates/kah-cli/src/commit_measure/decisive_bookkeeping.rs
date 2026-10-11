@@ -22,14 +22,17 @@ pub fn literal(original: &Prepared) -> Result<(Prepared, Value)> {
     let mut local = serde_json::Map::new();
     for (old_key, check) in original.state["checks"].as_object().unwrap() {
         let id = check["requirement"].as_str().unwrap();
-        let (source, clause) = id
+        let legacy = id
             .strip_prefix("user-")
-            .and_then(|s| s.split_once("-rule-"))
-            .ok_or("MEASURE_RULE_KEY stage=bookkeeping")?;
-        let prefix = source
-            .get(..8)
-            .ok_or("MEASURE_RULE_KEY stage=bookkeeping")?;
-        let short = format!("r_{prefix}_{clause}");
+            .and_then(|s| s.split_once("-rule-"));
+        let short = if let Some((source, clause)) = legacy {
+            let prefix = source
+                .get(..8)
+                .ok_or("MEASURE_RULE_KEY stage=bookkeeping")?;
+            format!("r_{prefix}_{clause}")
+        } else {
+            format!("r_{}", &commit_check::key(id)[5..17])
+        };
         if checks.contains_key(&short) {
             return Err("MEASURE_KEY_COLLISION stage=bookkeeping".into());
         }

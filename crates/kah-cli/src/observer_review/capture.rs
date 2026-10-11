@@ -298,7 +298,11 @@ pub fn project_context_with_baseline(
     }
     Ok(project)
 }
-fn restricted_context(home: &Path, state: &State, args: &[String]) -> Result<std::process::Output> {
+pub(super) fn restricted_context(
+    home: &Path,
+    state: &State,
+    args: &[String],
+) -> Result<std::process::Output> {
     let project = Project {
         domain: Domain::Research,
         root: state.worker.project.clone(),

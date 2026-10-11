@@ -12,6 +12,14 @@ pub fn evaluate(
     requests: &[WireRequest],
     transport: &impl Transport,
 ) -> Result<Review, String> {
+    if requests.is_empty() {
+        let mut record = classify(worker, head, &[], policy)?;
+        record
+            .gaps
+            .push(serde_json::json!({"route":"direct_observer_review",
+            "reason":"no_literal_rules","full_intent_retained":true}));
+        return Ok(record);
+    }
     for request in requests {
         let body: Value = serde_json::from_str(&request.body)
             .map_err(|_| "COMMIT_BODY_JSON stage=commit_review")?;
@@ -42,10 +50,6 @@ pub fn evaluate(
         }
     }
     let mut record = classify(worker, head, &answers, policy)?;
-    if requests.is_empty() {
-        gaps.push(serde_json::json!({"route":"direct_observer_review",
-            "reason":"no_literal_rules","full_intent_retained":true}));
-    }
     record.gaps = gaps;
     Ok(record)
 }

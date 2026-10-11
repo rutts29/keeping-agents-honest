@@ -1,0 +1,16 @@
+//! Literal-first Mine/Research protocol, reusing the persistent native runtime.
+pub mod admission;
+pub mod advance;
+pub mod authority;
+pub mod capture;
+pub mod consume;
+pub mod fold;
+pub mod input;
+pub mod journal;
+pub mod native;
+pub mod prompt;
+pub mod protocol;
+pub mod requests;
+pub mod selection;
+pub mod whole;
+pub mod workspace;

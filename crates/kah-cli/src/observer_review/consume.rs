@@ -53,6 +53,9 @@ fn run_inner(worker: &str) -> Result<()> {
         return super::runtime::prepare_context(worker);
     }
     let request = workspace::request(&store, &pending.id)?;
+    if super::option1::protocol::active(&request) {
+        return super::option1::consume::run(store, state, request);
+    }
     super::queue::memory::sample(worker, "consume_request_loaded")?;
     if super::gate_approval::release_stale(&store, &mut state, &request)? {
         drop(store);

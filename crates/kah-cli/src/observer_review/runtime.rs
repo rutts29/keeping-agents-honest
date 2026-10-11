@@ -43,6 +43,9 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     transport(&state)?;
     store.save(&state)?;
     workspace::prepare(&home, &state)?;
+    if super::option1::admission::applicable(&purpose, &trigger) {
+        return super::option1::admission::submit(store, state, &home, turn, trigger);
+    }
     let mut request = capture::request(&state, purpose, turn, trigger)?;
     super::queue::memory::sample(worker, "submission_context_captured")?;
     request.created_ms = started;

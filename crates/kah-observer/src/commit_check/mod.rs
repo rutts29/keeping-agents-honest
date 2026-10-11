@@ -18,6 +18,9 @@ pub fn digest(bytes: &[u8]) -> String {
 pub fn key(id: &str) -> String {
     format!("item_{:x}", Sha256::digest(id.as_bytes()))
 }
+pub fn literal(input: &Input) -> Result<Prepared, String> {
+    requests::literal(input, &selected(input))
+}
 pub fn prepare(input: &Input) -> Result<Plan, String> {
     let touched = selected(input);
     let literal = requests::literal(input, &touched)?;

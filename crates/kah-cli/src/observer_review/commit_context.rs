@@ -7,7 +7,12 @@ mod tree;
 pub use tree::collect as tree;
 pub fn collect(root: &Path, baseline: Option<&str>) -> Result<Value> {
     let head = text(root, &["rev-parse", "--verify", "HEAD"])?;
-    let head = head.trim();
+    exact(root, baseline, head.trim())
+}
+pub fn exact(root: &Path, baseline: Option<&str>, head: &str) -> Result<Value> {
+    if !matches!(head.len(), 40 | 64) || !head.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("REVIEW_COMMIT_HEAD stage=context".into());
+    }
     let base = if let Some(base) = baseline {
         if !matches!(base.len(), 40 | 64) || !base.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("REVIEW_COMMIT_BASELINE stage=context".into());
@@ -45,7 +50,22 @@ pub fn collect(root: &Path, baseline: Option<&str>) -> Result<Value> {
     )?;
     let mut files = vec![];
     for raw in names.split(|b| *b == 0).filter(|p| !p.is_empty()) {
-        files.push(file(root, head, raw)?);
+        let mut value = file(root, head, raw)?;
+        let path = value["path"].as_str().unwrap();
+        value["patch"] = json!(text(
+            root,
+            &[
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--binary",
+                &base,
+                head,
+                "--",
+                path
+            ]
+        )?);
+        files.push(value);
     }
     Ok(
         json!({"baseline":baseline,"baseline_tree":base,"head":head,"diff":diff,"touched_files":files,"whole_files":true,"content_cut":false}),
@@ -70,7 +90,35 @@ fn text(root: &Path, args: &[&str]) -> Result<String> {
         .map_err(|_| "REVIEW_COMMIT_TEXT_ENCODING stage=context".into())
 }
 fn bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
-    let output = Command::new("/usr/bin/git")
+    let output = output(root, args)?;
+    if !output.status.success() {
+        return Err(format!(
+            "REVIEW_COMMIT_GIT stage=context: git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(output.stdout)
+}
+/// git/git v2.53.0 Documentation/git-merge-base.adoc: 0=ancestor,1=not.
+pub fn ancestor(root: &Path, from: &str, to: &str) -> Result<bool> {
+    if [from, to]
+        .iter()
+        .any(|h| !matches!(h.len(), 40 | 64) || !h.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err("REVIEW_COMMIT_HEAD stage=context".into());
+    }
+    match output(root, &["merge-base", "--is-ancestor", from, to])?
+        .status
+        .code()
+    {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err("REVIEW_COMMIT_ANCESTRY stage=context".into()),
+    }
+}
+fn output(root: &Path, args: &[&str]) -> Result<std::process::Output> {
+    Ok(Command::new("/usr/bin/git")
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -88,13 +136,5 @@ fn bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
         .arg(format!("safe.directory={}", root.display()))
         .args(args)
         .current_dir(root)
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "REVIEW_COMMIT_GIT stage=context: git {args:?}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(output.stdout)
+        .output()?)
 }

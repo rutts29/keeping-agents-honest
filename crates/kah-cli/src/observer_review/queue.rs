@@ -161,14 +161,19 @@ pub fn drain(worker: &str) -> Result<Value> {
     }
     super::events::transfer(worker)?;
     memory::sample(worker, "events_transferred")?;
-    let claimed = claim_batch(worker)?;
-    memory::sample(worker, "selected")?;
-    if let Some((job, paths)) = claimed {
-        let submitted = submit_batch(worker, job, paths);
-        memory::sample(worker, "submission_finished")?;
-        return submitted;
+    loop {
+        let claimed = claim_batch(worker)?;
+        memory::sample(worker, "selected")?;
+        if let Some((job, paths)) = claimed {
+            let submitted = submit_batch(worker, job, paths)?;
+            memory::sample(worker, "submission_finished")?;
+            if submitted["status"] == "option1_reviewed" {
+                continue;
+            }
+            return Ok(submitted);
+        }
+        return Ok(json!({"status":"idle"}));
     }
-    Ok(json!({"status":"idle"}))
 }
 pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     let root = Store::directory(worker)?;
@@ -216,7 +221,7 @@ fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
     };
     if matches!(
         receipt["status"].as_str(),
-        Some("submitted" | "preparation_submitted")
+        Some("submitted" | "preparation_submitted" | "option1_reviewed")
     ) {
         let handled = Store::directory(worker)?.join("covered-triggers");
         kah_core::run_store::ensure_private_directory(&handled)?;

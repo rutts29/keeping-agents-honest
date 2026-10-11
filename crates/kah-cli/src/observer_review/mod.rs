@@ -22,6 +22,7 @@ pub mod launch;
 pub mod light_commit;
 pub mod light_report;
 pub mod liveness;
+pub mod option1;
 pub mod packet_references;
 pub mod preparation;
 mod prepared_result;
@@ -115,6 +116,21 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     }))
 }
 fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
+    if let [name, from, to] = args
+        && name == "__review-commit-ancestor"
+    {
+        return Some(
+            std::env::current_dir()
+                .map_err(Into::into)
+                .and_then(|p| commit_context::ancestor(&p, from, to))
+                .map(|a| println!("{}", serde_json::json!({"ancestor":a}))),
+        );
+    }
+    if let [name, base, head] = args
+        && name == "__review-commit-context"
+    {
+        return Some(option1::capture::cli(base, head));
+    }
     match args {
         [name] if name == "__review-project-context" => Some(capture::project_cli(None)),
         [name, flag, head] if name == "__review-project-context" && flag == "--commit-baseline" => {
@@ -162,6 +178,9 @@ pub mod steering;
 mod steering_conflict;
 
 fn observe_route(args: &[String]) -> Option<crate::Result<()>> {
+    if args.len() == 4 && args[1] == "recalibrate" {
+        return Some(option1::journal::cli(&args[2], &args[3]));
+    }
     match args.get(1).map(String::as_str) {
         Some("report") => Some(workspace::submit(args)),
         Some("select") => Some(preparation::submit(args)),

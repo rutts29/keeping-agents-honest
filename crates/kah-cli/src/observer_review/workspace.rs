@@ -82,11 +82,12 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
     let mut report_schema = schema(&request.purpose);
     report_schema["properties"]["decision_units"]["properties"]["version"] =
         json!({"const":instructions::protocol_version(request)?});
-    if super::commit_packet::is_commit(request) {
+    if super::commit_packet::is_commit(request) && !super::option1::protocol::active(request) {
         report_schema = super::light_report::schema::schema();
         super::indexed_sources::publish(&store.directory, &input, request)?;
         super::indexed_sources::publish_input(&input, request)?;
     }
+    report_schema = super::option1::workspace::schema(request, report_schema);
     fs::write(
         input.join("schema.json"),
         serde_json::to_vec_pretty(&report_schema)?,
@@ -164,6 +165,9 @@ pub(super) fn prompt(state: &State, request: &Request, input: &Path) -> Result<S
         .arg("--json")
         .arg(&output);
     let submission = crate::native_run::shell_command(&command)?;
+    if super::option1::protocol::active(request) {
+        return super::option1::prompt::compose(request, input, &output, &submission);
+    }
     let claim_note = if super::checkpoint_claim::doubtful(request) {
         "The native completion claim is unconfirmed. Include a finding with topic=claim citing whole native assistant words that show what was said (completion or ordinary progress). Do not use user instructions or tool output as an assistant claim; Jev decides whether completion was asserted."
     } else {
@@ -243,6 +247,9 @@ pub fn submit(args: &[String]) -> Result<()> {
         .and_then(Path::parent)
         .ok_or("REVIEW_REPORT_PATH stage=report")?
         .join("outbox");
+    if super::option1::protocol::active(&request) {
+        return super::option1::workspace::submit(&directory, &request, &bytes);
+    }
     let report = match validate_report_bytes(&request, &bytes) {
         Ok(report) => report,
         Err(error) => {
