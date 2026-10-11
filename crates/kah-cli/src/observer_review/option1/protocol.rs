@@ -11,6 +11,8 @@ use kah_observer::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+/// Criterion for identifying checks that use only a code change.
+pub const CHECKABILITY: &str = "a rule is diff-checkable when the code change alone can break it. Runtime measurements, investigations, sequencing and outside-design references are not diff-checkable";
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Report {
@@ -109,6 +111,7 @@ fn validate_rows(input: &Input, rows: &[Row]) -> Result<()> {
 pub fn schema(stage: &str) -> Value {
     let mut value = serde_json::json!({"protocol":"literal_first_option1","request":"copy request id","result":{"stage":stage},"typed_report":"kah_cli::observer_review::option1::protocol::Report"});
     if stage == "current_rules" {
+        value["checkability_criterion"] = CHECKABILITY.into();
         value["result"]["candidate"] = serde_json::json!({
             "schema_version":1,"input_digest":"copy option1.input_digest","previous_digest":"copy rebuild.previous_digest (null on first set)",
             "rules":[{"id":"stable rule id","predicate":"literal whole rule","scope":"explicit scope","diff_checkable":true,"clauses":["clause id"],"permissions":[{"source":"source id","start":"UTF-8 byte offset","end":"UTF-8 byte offset","quote":"exact exception words"}]}],
