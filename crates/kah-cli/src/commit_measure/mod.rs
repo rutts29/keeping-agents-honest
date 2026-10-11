@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
 pub mod comparison;
+pub mod confirmation;
 pub mod historical;
 pub mod replay;
 pub mod retained;
@@ -111,8 +112,13 @@ pub fn command(args: &[String]) -> Result<()> {
             bundle.matrix_source = format!("native:{matrix}");
             println!("{}", count(&bundle, Path::new(output))?);
         }
+        [mode,input,answers,output] if mode == "confirmation" => {
+            let bundle:Bundle=serde_json::from_slice(&fs::read(input)?)?;
+            let answers:confirmation::Answers=serde_json::from_slice(&fs::read(answers)?)?;
+            println!("{}",confirmation::count(&bundle,&answers,Path::new(output))?);
+        }
         [mode, repo, labels, output] if mode == "replay" => replay::run(Path::new(repo), Path::new(labels), Path::new(output))?,
-        _ => return Err("MEASURE_ARGUMENTS stage=cli: kah measure count INPUT OUTPUT | matrix INPUT MATRIX OUTPUT | replay REPO LABELS OUTPUT".into()),
+        _ => return Err("MEASURE_ARGUMENTS stage=cli: kah measure count INPUT OUTPUT | matrix INPUT MATRIX OUTPUT | confirmation INPUT ANSWERS OUTPUT | replay REPO LABELS OUTPUT".into()),
     }
     Ok(())
 }
