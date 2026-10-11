@@ -105,9 +105,14 @@ fn finish_case(
     }
 }
 pub(super) fn start(f: &fixture::Fixture, prompt: &str) -> String {
+    start_mode(f, prompt, false)
+}
+pub(super) fn start_worker(f: &fixture::Fixture, prompt: &str) -> String {
+    start_mode(f, prompt, true)
+}
+fn start_mode(f: &fixture::Fixture, prompt: &str, observer: bool) -> String {
     use kah_sandbox::{Domain, Project};
     let mut argv = vec![
-        "--no-observer".into(),
         "--model".into(),
         "gpt-6.1-sol".into(),
         "--effort".into(),
@@ -116,6 +121,9 @@ pub(super) fn start(f: &fixture::Fixture, prompt: &str) -> String {
         "--no-daemon".into(),
         "--no-alt-screen".into(),
     ];
+    if !observer {
+        argv.insert(0, "--no-observer".into());
+    }
     // OpenAI rust-v0.162.1 codex-rs/cli/src/main.rs ResumeCommand:
     // SESSION_ID plus flattened native TUI prompt; no fork/headless mode.
     if let Ok(id) = std::env::var("KAH_PHASE1_RESUME_SESSION") {

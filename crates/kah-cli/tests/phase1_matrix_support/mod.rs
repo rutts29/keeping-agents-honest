@@ -10,6 +10,8 @@ mod checkpoint;
 mod confirmation;
 mod fixture;
 mod journey;
+mod option1;
+mod option1_budget;
 mod real;
 mod selection;
 pub(super) mod usage;
@@ -104,6 +106,12 @@ fn drive(fixture: fixture::Fixture) {
         .unwrap();
     assert!(stop.status.success());
     drop(terminal);
+    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("option1-e2e") {
+        let key = fixture.home.join(".config/kah/typesafe.key");
+        if key.exists() {
+            fs::remove_file(key).unwrap();
+        }
+    }
     let before = fixture.evidence.join("global-config-before.json");
     let protected: std::collections::BTreeMap<String, String> = if before.exists() {
         serde_json::from_slice(&fs::read(before).unwrap()).unwrap()
@@ -125,7 +133,9 @@ pub fn entry() {
     let root = PathBuf::from(std::env::var_os("KAH_PHASE1_ROOT").unwrap());
     let fixture = fixture::Fixture::read(&root);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if matches!(
+        if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("option1-e2e") {
+            option1::run(&fixture)
+        } else if matches!(
             std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref(),
             Ok("atomize" | "atomize-refine")
         ) {
@@ -142,7 +152,7 @@ pub fn entry() {
     }));
     save(
         &fixture.evidence.join("result.json"),
-        &json!({"passed":result.is_ok(),"error":result.err().map(|p|p.downcast_ref::<String>().cloned().or_else(||p.downcast_ref::<&str>().map(|s|s.to_string())).unwrap_or_else(||"panic".into())),"zero_jev":true,"root":root}),
+        &json!({"passed":result.is_ok(),"error":result.err().map(|p|p.downcast_ref::<String>().cloned().or_else(||p.downcast_ref::<&str>().map(|s|s.to_string())).unwrap_or_else(||"panic".into())),"zero_jev":std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref()!=Ok("option1-e2e"),"root":root}),
     );
 }
 pub fn save(path: &Path, value: &Value) {

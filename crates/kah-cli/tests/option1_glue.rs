@@ -136,3 +136,29 @@ fn known_oversized_whole_patch_routes_direct_without_rendering_a_fake_small_body
     assert_eq!(gap.reason, "known_oversized");
     assert_eq!(gap.original_body_digest, gap.candidate_body_digest);
 }
+#[test]
+fn native_prompt_uses_the_existing_receipt_marker_and_real_source_filename() {
+    use kah_cli::observer_review::state::{Purpose, Request};
+    let request = Request {
+        id: "review-marker".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "t".into(),
+        head: None,
+        intent: Value::Null,
+        trigger: json!({"option1":{"stage":"rules","items":[]}}),
+        documents: vec![],
+        created_ms: 0,
+    };
+    let text = kah_cli::observer_review::option1::prompt::compose(
+        &request,
+        std::path::Path::new("/inputs"),
+        std::path::Path::new("/outbox/report.json"),
+        "bin/kah observe report",
+    )
+    .unwrap();
+    // Existing delivery.rs::prompt_marker binds the exact native receipt.
+    assert!(text.starts_with("kah review request review-marker "));
+    assert!(text.contains("/inputs/option1.txt"));
+    assert!(!text.contains("option1.json"));
+}

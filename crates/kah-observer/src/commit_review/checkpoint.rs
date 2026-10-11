@@ -25,6 +25,13 @@ pub fn plan(reviews: &[Review], authority: &str, files: &BTreeMap<String, String
     }
     plan
 }
+/// A range verdict is evidence about its final SHA, never a retroactive label
+/// on every older commit. Direct carried verdicts keep their original binding.
+pub fn record(review: &mut Review, head: &str, id: &str, rows: &[crate::commit_check::Row]) {
+    if review.head == head {
+        review.checkpoints.insert(id.into(), rows.to_vec());
+    }
+}
 /// A due checkpoint consumes the wake as part of its fresh range; source stays.
 pub fn folded(review: &Review, due: Option<&str>) -> Option<Value> {
     (review.requires_native())

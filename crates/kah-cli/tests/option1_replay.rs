@@ -136,3 +136,67 @@ fn load(rows: &[Value]) -> (Corpus, Vec<f64>, usize) {
     }
     (Corpus { requests, replies }, expected, rejected)
 }
+#[test]
+#[ignore = "recorded oversized sources; zero provider/native calls"]
+fn seven_recorded_context_rejections_reach_a_direct_terminal_after_whole_preparation() {
+    use kah_observer::{
+        context_budget::Calibration,
+        context_selection::digest,
+        whole_preparation::{self, Choice, Manifest, Outcome, Policy},
+    };
+    let archive: Value = serde_json::from_slice(
+        &fs::read(
+            "/mnt/kah-fixtures/cargo/synthetic-preparation/jev/complete.json",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut terminals = vec![];
+    for row in archive["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["job"]["stage"] == "literal" && r["error_response"]["status"] == 400)
+    {
+        let bytes = fs::read(row["job"]["path"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            kah_observer::commit_check::digest(&bytes),
+            row["job"]["digest"]
+        );
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        let catalogue = kah_cli::observer_review::option1::whole::catalogue(&body).unwrap();
+        let selected = catalogue
+            .sources
+            .iter()
+            .flat_map(|s| &s.records)
+            .map(|r| Choice {
+                id: r.id.clone(),
+                digest: r.digest.clone(),
+                reason: "keep-all terminal witness; native selection is proved separately in E2E"
+                    .into(),
+            })
+            .collect();
+        let manifest = Manifest {
+            body_digest: digest(&body),
+            catalogue_digest: whole_preparation::catalogue_digest(&catalogue),
+            selected,
+            excluded: vec![],
+        };
+        let policy = Policy {
+            calibration: Some(Calibration {
+                input_utf8_bytes: 4,
+                input_tokens: 1,
+            }),
+            known_oversized: std::collections::BTreeSet::from([digest(&body)]),
+        };
+        let Outcome::DirectObserverReview { gap } =
+            whole_preparation::prepare(&body, &catalogue, &manifest, &policy).unwrap()
+        else {
+            panic!("known rejection cannot return to Jev")
+        };
+        assert_eq!(gap.reason, "known_oversized");
+        terminals.push(json!({"case":row["job"]["case_id"],"original":row["job"],"manifest":manifest,"terminal":gap,"route":"direct_observer_review","actual_http_calls":0}));
+    }
+    assert_eq!(terminals.len(), 7);
+    fs::write(PathBuf::from(std::env::var_os("KAH_OPTION1_REPLAY_OUTPUT").unwrap()).join("oversized-terminals.json"),serde_json::to_vec_pretty(&json!({"terminals":terminals,"native_selection":"not claimed by this code keep-all witness; E2E required"})).unwrap()).unwrap();
+}

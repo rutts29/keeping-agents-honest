@@ -6,7 +6,8 @@ pub fn report(reviews: &[Review], line: f64) -> Result<Value, String> {
     }
     let mut rows = vec![];
     for review in reviews {
-        let would_wake = review.maximum.as_ref().is_some_and(|m| m.noul >= line);
+        let would_wake =
+            !review.gaps.is_empty() || review.maximum.as_ref().is_some_and(|m| m.noul >= line);
         let native = review.native.as_ref().map(|n| {
             n.rows
                 .iter()

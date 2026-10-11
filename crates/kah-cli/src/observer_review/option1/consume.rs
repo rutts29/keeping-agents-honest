@@ -74,7 +74,12 @@ fn checkpoint(
         json!({"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"passed":passed,"result":result}),
     );
     for mut record in journal::all(&request.worker)? {
-        record.checkpoints.insert(request.id.clone(), rows.clone());
+        kah_observer::commit_review::checkpoint::record(
+            &mut record,
+            request.head.as_deref().unwrap_or(""),
+            &request.id,
+            &rows,
+        );
         journal::save(&record)?;
     }
     if let Some(head) = &request.head {
