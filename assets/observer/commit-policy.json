@@ -1,0 +1,9 @@
+{
+  "line": 0.5,
+  "provenance": [
+    "Project policy: use held-out evaluation data to select thresholds.",
+    "Validation includes false-positive and missed-violation cases.",
+    "Policy changes require an explicit review decision."
+  ],
+  "adjustment": "Reviewer/user decision on held-out confirmed, rejected and later checkpoint data; no automatic adjustment"
+}
