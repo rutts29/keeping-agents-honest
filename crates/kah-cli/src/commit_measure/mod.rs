@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
 pub mod comparison;
 pub mod confirmation;
+pub mod decomposition;
 pub mod historical;
 pub mod replay;
 pub mod retained;
@@ -102,6 +103,10 @@ fn save_text(root: &Path, name: &str, text: &str) -> Result<()> {
 }
 pub fn command(args: &[String]) -> Result<()> {
     match args {
+        [mode, input, output] if mode == "decomposition" => {
+            let bundle: Bundle = serde_json::from_slice(&fs::read(input)?)?;
+            println!("{}", decomposition::count(&bundle, Path::new(output))?);
+        }
         [mode, input, output] if mode == "count" => {
             let bundle: Bundle = serde_json::from_slice(&fs::read(input)?)?;
             println!("{}", count(&bundle, Path::new(output))?);
