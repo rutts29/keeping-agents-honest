@@ -34,6 +34,7 @@ pub fn run(f: &fixture::Fixture) {
         }
         wait(f, pane.as_deref().unwrap(), &output);
         let after = usage::snapshot(&f.home, &f.project);
+        verify_private_cwd(f, &after);
         if let Some(expected) = &session {
             assert_eq!(after["session"], *expected);
         } else {
@@ -49,16 +50,59 @@ pub fn run(f: &fixture::Fixture) {
         let (result, count) = retain(f, id, &output, &checked, &matrix, &after, started);
         results.push(result);
         save(&f.evidence.join("cases.json"), &json!(results));
-        assert!(
-            count.is_ok(),
-            "matrix quote/scope validation failed; evidence retained"
-        );
-        confirmation::run(f, id, pane.as_deref().unwrap(), &checked);
+        finish_case(f, id, pane.as_deref().unwrap(), &checked, &count);
     }
     save(
         &f.evidence.join("complete.json"),
         &json!({"cases":results,"session":session,"confirmation":"pending real authorized Jev answers; no synthetic flags","zero_jev":true}),
     );
+}
+fn verify_private_cwd(f: &fixture::Fixture, native: &Value) {
+    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() != Ok("decisive") {
+        return;
+    }
+    // OpenAI rust-v0.162.1 protocol/src/protocol.rs:3324–3334:
+    // TurnContextItem.cwd is the durable per-turn working root.
+    let rows = fs::read_to_string(native["transcript"].as_str().unwrap()).unwrap();
+    let cwd = rows
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .rfind(|r| r["type"] == "turn_context")
+        .unwrap()["payload"]["cwd"]
+        .clone();
+    assert_eq!(
+        cwd.as_str(),
+        f.project.to_str(),
+        "DECISIVE_CWD stage=matrix"
+    );
+    save(
+        &f.evidence.join("private-project.json"),
+        &json!({"native_session":native["session"],"cwd":cwd,"baseline":"cd415f4","scoring_files_present":false,"source":"native turn_context plus private project preflight"}),
+    );
+}
+fn finish_case(
+    f: &fixture::Fixture,
+    id: &str,
+    pane: &str,
+    checked: &Bundle,
+    count: &kah_cli::Result<Value>,
+) {
+    assert!(
+        count.is_ok(),
+        "matrix quote/scope validation failed; evidence retained"
+    );
+    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("decisive") {
+        assert!(
+            count.as_ref().unwrap()["matrix_pending"]
+                .as_array()
+                .unwrap()
+                .is_empty(),
+            "DECISIVE_MATRIX_MISSING stage=matrix: every frozen diff-checkable rule needs a row; evidence retained"
+        );
+    }
+    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() != Ok("decisive") {
+        confirmation::run(f, id, pane, checked);
+    }
 }
 pub(super) fn start(f: &fixture::Fixture, prompt: &str) -> String {
     use kah_sandbox::{Domain, Project};
@@ -76,6 +120,11 @@ pub(super) fn start(f: &fixture::Fixture, prompt: &str) -> String {
     // SESSION_ID plus flattened native TUI prompt; no fork/headless mode.
     if let Ok(id) = std::env::var("KAH_PHASE1_RESUME_SESSION") {
         argv.extend(["resume".into(), id]);
+    }
+    // OpenAI rust-v0.162.1 utils/cli/src/shared_options.rs:66–68,205–206:
+    // native --cd selects the working root and survives resume merging.
+    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("decisive") {
+        argv.extend(["--cd".into(), f.project.to_string_lossy().into_owned()]);
     }
     argv.push(prompt.into());
     let args = kah_cli::Arguments::parse(argv).unwrap();
