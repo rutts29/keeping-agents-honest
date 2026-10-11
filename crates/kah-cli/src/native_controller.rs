@@ -22,6 +22,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod completion;
+mod completion_intent;
 mod contention;
 mod sync;
 

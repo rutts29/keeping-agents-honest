@@ -31,12 +31,17 @@ impl Run<'_> {
         Ok(candidate)
     }
     pub(super) fn assess(&mut self, state: &session::State) -> Result<()> {
+        if self.completion_paused(state)? {
+            return Ok(());
+        }
         let record = self.record()?;
         let native = record.native.as_ref().unwrap();
         let Some(snapshot) = self.fresh_completion(native)? else {
             return Ok(());
         };
-        let projection = self.refresh(state, &snapshot)?;
+        let Some(projection) = self.refresh(state, &snapshot)? else {
+            return Ok(());
+        };
         let sequence = record.control.inputs().last().unwrap().sequence;
         let candidate = self.capture_candidate()?;
         let commit = self.record()?.control.last_checkpoint().unwrap().to_owned();
@@ -185,7 +190,7 @@ impl Run<'_> {
         &self,
         state: &session::State,
         snapshot: &kah_core::observation::ObservationSnapshot,
-    ) -> Result<kah_core::projection::ActiveProjection> {
+    ) -> Result<Option<kah_core::projection::ActiveProjection>> {
         let record = self.record()?;
         let native = record
             .native
@@ -212,12 +217,37 @@ impl Run<'_> {
                 action_digest: snapshot.action_digest.clone(),
             },
         )?;
-        if let Some(gap) = outcome.gap {
-            return Err(format!("RUN_OBSERVER_GAP stage=completion: {gap}").into());
+        let status = super::completion_intent::resolve(
+            &RunStore::default_state_root()?,
+            &state.binding,
+            outcome,
+        )?;
+        self.completion_wait(status)
+    }
+    fn completion_paused(&self, state: &session::State) -> Result<bool> {
+        let Some(status) =
+            super::completion_intent::paused(&RunStore::default_state_root()?, &state.binding)
+        else {
+            return Ok(false);
+        };
+        self.completion_wait(status)?;
+        Ok(true)
+    }
+    fn completion_wait(
+        &self,
+        status: super::completion_intent::Status,
+    ) -> Result<Option<kah_core::projection::ActiveProjection>> {
+        let reason = super::completion_intent::waiting(&status);
+        if self.record()?.native.as_ref().unwrap().waiting.as_deref() != reason {
+            self.update(|r| {
+                r.native.as_mut().unwrap().waiting = reason.map(str::to_owned);
+                Ok(())
+            })?;
         }
-        outcome
-            .projection
-            .ok_or_else(|| "RUN_INTENT_MISSING stage=completion".into())
+        Ok(match status {
+            super::completion_intent::Status::Ready(projection) => Some(*projection),
+            super::completion_intent::Status::Pending(_) => None,
+        })
     }
     fn judge_candidate(
         &self,
