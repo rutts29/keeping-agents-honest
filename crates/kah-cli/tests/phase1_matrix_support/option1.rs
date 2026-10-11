@@ -60,7 +60,7 @@ pub fn run(f: &fixture::Fixture) {
         checkpoint,
     );
 }
-fn git(f: &fixture::Fixture, args: &[&str]) -> String {
+pub(super) fn git(f: &fixture::Fixture, args: &[&str]) -> String {
     let out = Command::new("/usr/bin/git")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -90,7 +90,7 @@ fn commit(f: &fixture::Fixture, message: &str) -> String {
     git(f, &["commit", "-m", message]);
     git(f, &["rev-parse", "HEAD"])
 }
-fn sample(f: &fixture::Fixture, worker: &str) {
+pub(super) fn sample(f: &fixture::Fixture, worker: &str) {
     observer_review::tags::schedule(worker).unwrap();
     let out = Command::new(f.home.join(".local/bin/kah"))
         .args(["__checkpoint-tags", worker])
@@ -102,7 +102,7 @@ fn sample(f: &fixture::Fixture, worker: &str) {
         String::from_utf8_lossy(&out.stderr)
     );
 }
-fn wait_worker(f: &fixture::Fixture, pane: &str) -> String {
+pub(super) fn wait_worker(f: &fixture::Fixture, pane: &str) -> String {
     loop {
         let native = usage::snapshot(&f.home, &f.project);
         if let Some(id) = native["session"].as_str()
@@ -267,7 +267,7 @@ fn finish(
     );
 }
 
-fn private_key(f: &fixture::Fixture) {
+pub(super) fn private_key(f: &fixture::Fixture) {
     // Rootless Docker bind sources require parent search permission; reuse
     // kah's native ACL helper rather than broadening private content modes.
     kah_run::access::traverse(&f.root, kah_run::access::service_uid().unwrap()).unwrap();

@@ -43,6 +43,9 @@ pub(super) fn submit(worker: &str, purpose: Purpose, turn: &str, trigger: Value)
     transport(&state)?;
     store.save(&state)?;
     workspace::prepare(&home, &state)?;
+    if trigger["kind"] == "current_rules_rebuild" {
+        return super::option1::current_set::submit(store, state, &home, turn, trigger);
+    }
     if super::option1::admission::applicable(&purpose, &trigger) {
         return super::option1::admission::submit(store, state, &home, turn, trigger);
     }

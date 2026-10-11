@@ -6,7 +6,6 @@ use kah_observer::{
     commit_review,
     context_selection::digest,
     judge::{batch::Batch, jev::HttpClient},
-    rule_source::{RuleList, Source},
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -20,26 +19,23 @@ pub fn submit(
     turn: &str,
     trigger: Value,
 ) -> Result<Value> {
-    let history = authority::history(&state.worker.session)?;
-    let items = authority::items(&history);
-    let head =
-        super::super::tags::head(home, &state)?.ok_or("COMMIT_HEAD_MISSING stage=admission")?;
-    let head = trigger["head"].as_str().unwrap_or(&head).to_owned();
-    let list = super::super::state::read::<RuleList>(&store.directory.join("option1-rules.json"))?;
-    let source = list
-        .as_ref()
-        .filter(|l| state.observer.session.as_ref() == Some(&l.observer_session))
-        .and_then(|l| l.load(&items).ok());
+    let head = head(home, &state, &trigger)?;
+    let history = match authority::history(&state.worker.session) {
+        Ok(h) => h,
+        Err(e) if e.to_string().starts_with("COMMIT_NO_INTENT") => {
+            return super::direct::submit(store, state, home, turn, &head, trigger);
+        }
+        Err(e) => return Err(e),
+    };
+    let source = super::current_set::resolve(
+        &state.worker.session,
+        state.observer.session.as_deref().unwrap_or(""),
+        &head,
+    )?;
+    let history_digest = kah_core::current_rules::digest(history.records())?;
+    let source = source.filter(|s| s.history_digest.as_deref() == Some(history_digest.as_str()));
     let Some(source) = source else {
-        return native::submit(
-            store,
-            state,
-            home,
-            turn,
-            &head,
-            json!({"stage":"rules","items":items,"original_trigger":trigger}),
-            trigger.clone(),
-        );
+        return super::direct::submit(store, state, home, turn, &head, trigger);
     };
     let checkpoint = trigger["review_class"] != "commit";
     let previous: Option<Value> =
@@ -51,10 +47,22 @@ pub fn submit(
     let base = previous.as_ref().and_then(|p| p["head"].as_str());
     let context = capture::project(home, &state, base, &head)?;
     let input = input::build(&history, &source, &context, checkpoint)?;
+    crate::unattended_report::save(
+        &store.directory,
+        &format!("current-rules-commit-{head}.json"),
+        &json!({"head":head,"set_digest":source.source_digest,"observer_session":source.observer_session,"intent_revision":input.carried["intent_revision"],"history_digest":source.history_digest}),
+    )?;
     if checkpoint {
         return checkpoint_wake(store, state, home, turn, input, trigger);
     }
     screen(store, state, home, turn, input, trigger)
+}
+fn head(home: &Path, state: &State, trigger: &Value) -> Result<String> {
+    if let Some(head) = trigger["head"].as_str() {
+        return Ok(head.into());
+    }
+    super::super::tags::head(home, state)?
+        .ok_or_else(|| "COMMIT_HEAD_MISSING stage=admission".into())
 }
 
 fn checkpoint_wake(

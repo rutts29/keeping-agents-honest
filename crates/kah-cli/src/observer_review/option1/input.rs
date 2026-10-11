@@ -22,8 +22,7 @@ pub fn build(
     );
     let (hunks, files) = files(context, head)?;
     let hunk_ids = hunks.keys().cloned().collect::<BTreeSet<_>>();
-    let permissions = intent.items.keys().cloned().collect::<BTreeSet<_>>();
-    let selected = select(&mut intent, rules, checkpoint, &hunk_ids, &permissions)?;
+    let selected = select(&mut intent, rules, checkpoint, &hunk_ids)?;
     let mut input = Input {
         revision: head.into(),
         baseline: context["baseline_tree"].as_str().map(str::to_owned),
@@ -45,6 +44,48 @@ pub fn build(
         completion_requirements(history, &mut input);
     }
     Ok(input)
+}
+/// Native startup can precede intake's first accepted History. Preserve standing
+/// words; absence of a ledger is a controller fact, never a fabricated goal.
+pub fn without_history(rules: &Resolved, context: &Value) -> Result<Input> {
+    let head = context["head"]
+        .as_str()
+        .ok_or("COMMIT_HEAD_MISSING stage=input")?;
+    let (hunks, files) = files(context, head)?;
+    let mut intent = commit_check::CurrentIntent {
+        goal: String::new(),
+        items: BTreeMap::new(),
+        retired: BTreeSet::new(),
+        permissions: BTreeMap::new(),
+        conflicts: json!([]),
+    };
+    let ids = hunks.keys().cloned().collect();
+    let mut selected = select(&mut intent, rules, true, &ids)?;
+    let pending = "controller_intent_pending".to_owned();
+    intent.items.insert(pending.clone(),Authority {text:"No user intent History is accepted yet; alignment is unconfirmed until intake settles.".into(),origin:"controller_fact".into(),sources:json!([])});
+    selected.insert(
+        pending.clone(),
+        Rule {
+            authority: pending,
+            unconditional_prohibition: false,
+            prohibition: false,
+            literal_check: false,
+            hunks: ids,
+        },
+    );
+    Ok(Input {
+        revision: head.into(),
+        baseline: None,
+        checkpoint: false,
+        code_changed: !hunks.is_empty(),
+        intent,
+        rules: selected.clone(),
+        impacted: selected.keys().cloned().collect(),
+        hunks,
+        files,
+        matrix: vec![],
+        carried: json!({"source_digest":rules.source_digest,"intent_revision":null,"accepted_intent":false}),
+    })
 }
 fn completion_requirements(history: &kah_core::intent_history::History, input: &mut Input) {
     let mut ids = history
@@ -116,7 +157,6 @@ fn select(
     rules: &Resolved,
     checkpoint: bool,
     hunk_ids: &BTreeSet<String>,
-    permissions: &BTreeSet<String>,
 ) -> Result<BTreeMap<String, Rule>> {
     let mut selected = BTreeMap::new();
     for rule in &rules.rules {
@@ -124,29 +164,21 @@ fn select(
             continue;
         }
         for link in &rule.sources {
-            let source = intent
-                .items
+            let source = rules
+                .source_words
                 .get(&link.source_id)
+                .map(String::as_str)
+                .or_else(|| intent.items.get(&link.source_id).map(|s| s.text.as_str()))
                 .ok_or("COMMIT_RULE_SOURCE_MISSING stage=input")?;
-            if link.quote.is_empty() || !source.text.contains(&link.quote) {
+            if link.quote.is_empty() || !source.contains(&link.quote) {
                 return Err("COMMIT_RULE_SOURCE_QUOTE stage=input".into());
             }
         }
-        intent.items.insert(
-            rule.id.clone(),
-            Authority {
-                text: rule.predicate.clone(),
-                origin: "user".into(),
-                sources: json!(rule.sources),
-            },
-        );
-        intent
-            .permissions
-            .insert(rule.id.clone(), permissions.clone());
+        let authority = install(intent, rule);
         selected.insert(
             rule.id.clone(),
             Rule {
-                authority: rule.id.clone(),
+                authority,
                 unconditional_prohibition: true,
                 prohibition: true,
                 literal_check: rule.diff_checkable,
@@ -156,4 +188,44 @@ fn select(
     }
 
     Ok(selected)
+}
+fn install(
+    intent: &mut commit_check::CurrentIntent,
+    rule: &kah_observer::rule_source::Rule,
+) -> String {
+    let id = format!("derived_rule:{}", rule.id);
+    let permissions = rule
+        .permissions
+        .iter()
+        .map(|p| {
+            intent.items.insert(
+                p.source_id.clone(),
+                Authority {
+                    text: p.quote.clone(),
+                    origin: if p.source_id.starts_with("permission:standing:") {
+                        "standing_file"
+                    } else {
+                        "user"
+                    }
+                    .into(),
+                    sources: json!({"kind":"exact_linked_words","link":p}),
+                },
+            );
+            p.source_id.clone()
+        })
+        .collect();
+    intent.items.insert(
+        id.clone(),
+        Authority {
+            text: if rule.scope.is_empty() {
+                rule.predicate.clone()
+            } else {
+                format!("Scope: {}. {}", rule.scope, rule.predicate)
+            },
+            origin: "derived_rule".into(),
+            sources: json!(rule.sources),
+        },
+    );
+    intent.permissions.insert(id.clone(), permissions);
+    id
 }

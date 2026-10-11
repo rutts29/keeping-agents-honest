@@ -4,6 +4,15 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub(super) fn steering(trigger: &Value) -> Result<Option<String>> {
+    if trigger["kind"] == "current_rules_rebuild" {
+        let digest = trigger["input_digest"]
+            .as_str()
+            .ok_or("RULE_SET_BINDING stage=queue: input digest required")?;
+        return Ok(Some(format!(
+            "steering-rules-{:x}.json",
+            Sha256::digest(digest.as_bytes())
+        )));
+    }
     let Some(value) = trigger.get("uncertain_user_input") else {
         return Ok(None);
     };
