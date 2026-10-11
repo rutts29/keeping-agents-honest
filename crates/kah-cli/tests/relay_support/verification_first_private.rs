@@ -129,7 +129,11 @@ pub fn dialogs(home: &Path, record: &kah_run::store::Record, provider: &str) {
         let config: Value =
             serde_json::from_slice(&fs::read(kah_claude::paths::global_config(home)).unwrap())
                 .unwrap();
-        if config["projects"][path.to_str().unwrap()]["hasTrustDialogAccepted"] != true {
+        // Native startup publishes the worker ID before a review creates its workspace.
+        // Trust only the fixture-owned directory after it exists; never create it here.
+        if path.is_dir()
+            && config["projects"][path.to_str().unwrap()]["hasTrustDialogAccepted"] != true
+        {
             crate::track2_support::preseed_claude(home, &path);
         }
     }
