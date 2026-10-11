@@ -8,6 +8,7 @@ use serde_json::Value;
 mod boundary_tests;
 mod coverage;
 pub(crate) mod scoped;
+mod scoped_batch;
 mod steering;
 pub use coverage::checkpoint as checkpoint_coverage;
 

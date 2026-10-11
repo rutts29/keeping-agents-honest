@@ -109,8 +109,8 @@ impl Run<'_> {
             .as_ref()
             .map(|s| s.usage.input_tokens.saturating_add(s.usage.output_tokens))
             .unwrap_or(native.observer_tokens);
-        let elapsed = self.clock.elapsed().as_millis().min(u64::MAX as u128) as u64;
-        self.clock = Instant::now();
+        let accounted_through = Instant::now();
+        let elapsed = elapsed_ms(self.clock, accounted_through);
         self.update(|r| {
             let n = r.native.as_mut().unwrap();
             if state.is_some() {
@@ -119,6 +119,7 @@ impl Run<'_> {
             n.account(&mut r.control, tokens, observer, elapsed);
             Ok(())
         })?;
+        self.clock = accounted_through;
         Ok(state)
     }
     pub(super) fn deliver(&self, pane: &Value) -> Result<()> {
@@ -217,4 +218,10 @@ impl Run<'_> {
         self.sampled = Instant::now() - Duration::from_secs(2);
         Ok(())
     }
+}
+fn elapsed_ms(from: Instant, through: Instant) -> u64 {
+    through
+        .duration_since(from)
+        .as_millis()
+        .min(u64::MAX as u128) as u64
 }

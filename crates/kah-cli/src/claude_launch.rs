@@ -65,6 +65,8 @@ fn configure(
             "SessionStart",
             "UserPromptSubmit",
             "PreToolUse",
+            // Metadata handlers remain for commit/tag discovery. Only
+            // Untrusted routes these events to completed-tool Jev checks.
             "PostToolUse",
             "PostToolUseFailure",
             "Stop",

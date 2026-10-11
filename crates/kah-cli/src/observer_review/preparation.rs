@@ -2,12 +2,15 @@
 use super::state::{Request, Store};
 pub mod batch;
 mod calibration;
+pub mod cursors;
 mod job;
 pub mod rejection;
 pub use job::job;
 mod validation;
 use crate::Result;
 pub(crate) use calibration::calibration;
+pub(crate) mod ready;
+pub(crate) mod send;
 use kah_observer::{
     context_selection::{self, Item, Manifest},
     judge::{self, Questions},
@@ -42,12 +45,7 @@ pub fn pending(worker: &str, decision: &str) -> Result<bool> {
         && !root.join(format!("prepared-{decision}.json")).exists())
 }
 pub fn active_decision(worker: &str, review: &str) -> Result<String> {
-    let active: Option<Value> =
-        super::state::read(&Store::directory(worker)?.join("preparation-current.json"))?;
-    Ok(active
-        .filter(|v| v["review"] == review)
-        .and_then(|v| v["decision"].as_str().map(str::to_owned))
-        .unwrap_or_else(|| review.into()))
+    cursors::active(worker, review)
 }
 pub fn evaluate(
     home: &Path,
@@ -55,45 +53,11 @@ pub fn evaluate(
     input: &Value,
     questions: &Questions,
 ) -> Result<(judge::Judgment, Value)> {
-    let binding = kah_observer::session::Store::read(
-        &kah_core::run_store::RunStore::default_state_root()?,
-        &request.worker,
-    )?
-    .ok_or("PREPARATION_BINDING stage=context_preparation")?
-    .binding;
-    let saved: Option<Job> = super::state::read(&job_path(&request.worker, &request.id)?)?;
-    if let Some(job) = saved {
-        if !matches_decision(&job, input, questions)? {
-            archive_changed(request)?;
-            stage(
-                request,
-                input,
-                questions,
-                "The report/decision changed. Select whole relevant items for the current state and questions; the prior selection and judgment are archived, not reused.",
-            )?;
-            return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
-        }
-        return retry(home, request, &binding, &job);
-    }
     let calibration = calibration(&request.worker)?;
-    if let Some(plan) = calibration
-        .and_then(|c| c.plan(input, questions))
-        .filter(|p| p.prepare)
-    {
-        stage(request, input, questions, &serde_json::to_string(&plan)?)?;
-        return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
-    }
-    match judge::routing::evaluate(home, binding.judge, &binding.jev_model, input, questions) {
-        Ok(judgment) => {
-            calibrate(&request.worker, input, questions, &judgment)?;
-            Ok((judgment, input.clone()))
-        }
-        Err(error) if error.code == "JEV_CONTEXT_LIMIT" => {
-            stage(request, input, questions, &error.to_string())?;
-            Err("JEV_PREPARATION_PENDING stage=context_preparation".into())
-        }
-        Err(error) => Err(error.into()),
-    }
+    ready::evaluated(
+        home,
+        ready::prepare(request, input, questions, calibration.as_ref())?,
+    )
 }
 pub fn matches_decision(job: &Job, input: &Value, questions: &Questions) -> Result<bool> {
     Ok(job.state == *input
@@ -147,14 +111,8 @@ pub fn stage(request: &Request, input: &Value, questions: &Questions, reason: &s
         &format!("preparation-{}.json", request.id),
         &serde_json::to_value(job)?,
     )?;
-    let review = Store::read(&request.worker)?
-        .and_then(|s| s.pending.map(|p| p.id))
-        .unwrap_or_else(|| request.id.clone());
-    crate::unattended_report::save(
-        &Store::directory(&request.worker)?,
-        "preparation-current.json",
-        &json!({"review":review,"decision":request.id}),
-    )
+    let review = cursors::review(request)?;
+    cursors::activate(&request.worker, &review, &request.id)
 }
 pub fn prompt(worker: &str) -> Result<String> {
     let state = Store::read(worker)?.ok_or("PREPARATION_STATE stage=context_preparation")?;
@@ -290,64 +248,6 @@ fn archive(
         &format!("prepared-{}.json", job.decision),
         &json!({"decision":job.decision,"original":job.state,"questions":job.questions,"selection":manifest,"prepared_state":prepared,"judgment":judgment,"provider_tokens":judgment.metrics.input_tokens}),
     )
-}
-
-fn retry(
-    home: &Path,
-    request: &Request,
-    binding: &kah_observer::session::Binding,
-    job: &Job,
-) -> Result<(judge::Judgment, Value)> {
-    let selected = selection_path(&request.worker, &request.id)?;
-    if !selected.exists() {
-        return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
-    }
-    let manifest: Manifest = serde_json::from_slice(&super::consume::read_report(&selected)?)?;
-    let prepared = context_selection::prepare(
-        &job.decision,
-        &job.state,
-        &job.items,
-        &manifest,
-        &BTreeMap::new(),
-    )?;
-    if rejection::known(request, &prepared, &job.questions)? {
-        return Err(format!("PREPARATION_CONTEXT_UNCONFIRMED stage=context_preparation: {} repeated identical rejected context",request.id).into());
-    }
-    let archive_path =
-        Store::directory(&request.worker)?.join(format!("prepared-{}.json", request.id));
-    if let Some(saved) = super::state::read::<Value>(&archive_path)? {
-        if saved["selection"] != serde_json::to_value(&manifest)?
-            || saved["prepared_state"] != prepared
-        {
-            return Err("PREPARATION_COMPLETED_IDENTITY stage=context_preparation".into());
-        }
-        return Ok((serde_json::from_value(saved["judgment"].clone())?, prepared));
-    }
-    super::source_store::save(
-        &Store::directory(&request.worker)?,
-        &format!("preparation-retry-{}.json", request.id),
-        &json!({"decision":request.id,"selection":manifest,"prepared_state":prepared,"questions":job.questions,"at_ms":kah_observer::session::now_ms()}),
-    )?;
-    let result = judge::routing::evaluate(
-        home,
-        binding.judge,
-        &binding.jev_model,
-        &prepared,
-        &job.questions,
-    );
-    if let Err(error) = &result
-        && error.code == "JEV_CONTEXT_LIMIT"
-    {
-        if rejection::record(request, job, &manifest, &prepared, &error.to_string())? {
-            return Err(format!("PREPARATION_CONTEXT_UNCONFIRMED stage=context_preparation: {} repeated identical rejected context",request.id).into());
-        }
-        revise(request, job, &error.to_string())?;
-        return Err("JEV_PREPARATION_PENDING stage=context_preparation".into());
-    }
-    let judgment = result?;
-    archive(&request.worker, job, &manifest, &prepared, &judgment)?;
-    calibrate(&request.worker, &prepared, &job.questions, &judgment)?;
-    Ok((judgment, prepared))
 }
 
 fn revise(request: &Request, job: &Job, reason: &str) -> Result<()> {

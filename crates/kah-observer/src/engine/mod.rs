@@ -24,6 +24,7 @@ mod judgment;
 pub(crate) mod reconcile;
 use reconcile::*;
 
+#[derive(Default)]
 pub struct Outcome {
     pub verification: Option<serde_json::Value>,
     pub projection: Option<ActiveProjection>,
@@ -32,7 +33,21 @@ pub struct Outcome {
 }
 
 pub fn observe(binding: &Binding, turn: &str, allow_reminder: bool) -> Result<Outcome, String> {
-    observe_with(binding, turn, allow_reminder, || read_source(binding))
+    observe_with(binding, turn, allow_reminder, true, || read_source(binding))
+}
+
+/// Synchronize whole user history without assessing ordinary tool/turn actions.
+pub fn synchronize(binding: &Binding, turn: &str) -> Result<Outcome, String> {
+    observe_with(binding, turn, false, false, || read_source(binding))
+}
+
+pub fn synchronize_snapshot(
+    binding: &Binding,
+    turn: &str,
+    snapshot: ObservationSnapshot,
+) -> Result<Outcome, String> {
+    validate_snapshot(binding, &snapshot)?;
+    observe_with(binding, turn, false, false, || Ok(snapshot))
 }
 
 /// Hooks supply completed tool results; user authority still comes from native history.
@@ -42,7 +57,7 @@ pub fn observe_tools(
     actions: Vec<serde_json::Value>,
 ) -> Result<Outcome, String> {
     use sha2::{Digest, Sha256};
-    observe_with(binding, observation, true, || {
+    observe_with(binding, observation, true, true, || {
         let mut snapshot = read_source(binding)?;
         snapshot.actions = actions;
         snapshot.action_digest = format!(
@@ -62,23 +77,19 @@ pub fn observe_snapshot(
     snapshot: ObservationSnapshot,
 ) -> Result<Outcome, String> {
     validate_snapshot(binding, &snapshot)?;
-    observe_with(binding, turn, allow_reminder, || Ok(snapshot))
+    observe_with(binding, turn, allow_reminder, true, || Ok(snapshot))
 }
 
 fn observe_with(
     binding: &Binding,
     turn: &str,
     allow_reminder: bool,
+    assess_actions: bool,
     source: impl FnOnce() -> Result<ObservationSnapshot, String>,
 ) -> Result<Outcome, String> {
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     if crate::session::paused(&base, &binding.session) {
-        return Ok(Outcome {
-            projection: None,
-            reminder: None,
-            verification: None,
-            gap: None,
-        });
+        return Ok(Outcome::default());
     }
     let mut store = Store::open(&base, &binding.session, Duration::from_secs(110))?;
     let mut state = store.load()?.unwrap_or_else(|| State::new(binding.clone()));
@@ -89,8 +100,16 @@ fn observe_with(
     state.binding = binding.clone();
     state.begin(turn);
     store.save(&state)?;
-    let result = source()
-        .and_then(|snapshot| update(&mut state, &mut store, turn, allow_reminder, snapshot));
+    let result = source().and_then(|snapshot| {
+        update(
+            &mut state,
+            &mut store,
+            turn,
+            allow_reminder,
+            assess_actions,
+            snapshot,
+        )
+    });
     match result {
         Ok(outcome) => {
             state.inflight = None;
@@ -135,6 +154,7 @@ fn update(
     store: &mut Store,
     turn: &str,
     allow_reminder: bool,
+    assess_actions: bool,
     mut snapshot: ObservationSnapshot,
 ) -> Result<Outcome, String> {
     let binding = state.binding.clone();
@@ -160,7 +180,8 @@ fn update(
     if new_user {
         state.drift_active = false;
     }
-    if state.action_digest.as_deref() == Some(&snapshot.action_digest)
+    if !assess_actions
+        || state.action_digest.as_deref() == Some(&snapshot.action_digest)
         || snapshot.actions.is_empty()
         || projection.preserve.is_empty()
             && projection.frontier.is_empty()

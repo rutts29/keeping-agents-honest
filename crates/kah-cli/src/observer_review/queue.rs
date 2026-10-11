@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 pub mod claim_migration;
-mod commit_preparation;
 mod drift;
 mod headers;
 mod identity;
@@ -31,7 +30,6 @@ pub fn enqueue(worker: &str, purpose: Purpose, turn: &str, trigger: Value) -> Re
     let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
     kah_core::run_store::ensure_private_directory(&Store::directory(worker)?.join("sources"))?;
-    commit_preparation::advance(&root, &purpose, &trigger)?;
     if purpose == Purpose::Drift && trigger.get("captured_snapshot").is_none() {
         return drift::append(&root, turn, trigger);
     }
@@ -89,9 +87,6 @@ pub fn status(worker: &str) -> Result<Value> {
     kah_core::run_store::ensure_private_directory(&root.join("sources"))?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
     let jobs = headers::at(&root)?;
-    let mut eligible = jobs.clone();
-    commit_preparation::eligible(&root, &mut eligible)?;
-    let deferred_preparations = jobs.len() - eligible.len();
     let stamps = metadata::stamps(&root, &jobs)?;
     let now = kah_observer::session::now_ms();
     let mut lanes = serde_json::Map::new();
@@ -107,9 +102,7 @@ pub fn status(worker: &str) -> Result<Value> {
         let key = serde_json::to_value(lane)?.as_str().unwrap().to_owned();
         lanes.insert(key,json!({"depth":waiting.len(),"oldest_at_ms":oldest,"oldest_age_ms":oldest.map(|at|now.saturating_sub(at))}));
     }
-    Ok(
-        json!({"at_ms":now,"last_admitted_lane":metadata::last(&root)?,"lanes":lanes,"deferred_preparations":deferred_preparations}),
-    )
+    Ok(json!({"at_ms":now,"last_admitted_lane":metadata::last(&root)?,"lanes":lanes}))
 }
 fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
     supersede::recover(root)?;
@@ -166,8 +159,6 @@ pub fn drain(worker: &str) -> Result<Value> {
         }
         return Ok(json!({"status":"queued","pending":state.pending}));
     }
-    preparation_coverage::run(worker)?;
-    memory::sample(worker, "coverage_complete")?;
     super::events::transfer(worker)?;
     memory::sample(worker, "events_transferred")?;
     let claimed = claim_batch(worker)?;
@@ -186,18 +177,6 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         return Ok(None);
     }
     let mut jobs = headers::at(&root)?;
-    let mut pending_jobs = vec![];
-    for (path, job) in jobs {
-        if job.purpose == Purpose::Preparation
-            && job.trigger.get("captured_snapshot").is_none()
-            && super::preparation::batch::terminal_packets::retire(worker, &job, &path)?
-        {
-            continue;
-        }
-        pending_jobs.push((path, job));
-    }
-    jobs = pending_jobs;
-    commit_preparation::eligible(&root, &mut jobs)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
@@ -208,7 +187,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
         }
         break;
     }
-    let Some((mut job, mut paths)) = headers::selected(worker, &jobs)? else {
+    let Some((mut job, mut paths)) = headers::selected(&jobs)? else {
         return Ok(None);
     };
     let stamps = metadata::stamps(&root, &jobs)?;
@@ -251,9 +230,6 @@ fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
 /// Snapshot only existing queued events. Later events retain their own files
 /// and cause a follow-up; the in-flight review is never mutated.
 pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
-    if let Some(batch) = super::preparation::batch::packets::group(jobs) {
-        return Some(batch);
-    }
     let first = jobs.first()?;
     if first.1.purpose != Purpose::Drift || first.1.trigger.get("captured_snapshot").is_some() {
         return Some((first.1.clone(), vec![first.0.clone()]));
@@ -280,6 +256,9 @@ pub fn batch(jobs: &[(PathBuf, Wake)]) -> Option<(Wake, Vec<PathBuf>)> {
     Some((job, group.iter().map(|(path, _)| path.clone()).collect()))
 }
 pub fn kick(worker: &str) -> Result<()> {
+    if super::gate_host::runnable(worker)? {
+        super::hook::spawn("__gate-host", worker)?;
+    }
     if super::gate_approval::pending_followups(worker)? {
         super::hook::spawn("__gate-followup", worker)?;
     }
@@ -323,7 +302,6 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     }
     let directory = root.join("queued");
     kah_core::run_store::ensure_private_directory(&directory)?;
-    commit_preparation::advance(root, &wake.purpose, &wake.trigger)?;
     ordering::reserve(root, &name)?;
     metadata::queued(root, &name, wake)?;
     super::source_store::save(&directory, &name, &value)?;
@@ -344,7 +322,5 @@ pub fn header_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
 fn admissible_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    let mut jobs = headers::at(&root)?;
-    commit_preparation::eligible(&root, &mut jobs)?;
-    Ok(jobs)
+    headers::at(&root)
 }

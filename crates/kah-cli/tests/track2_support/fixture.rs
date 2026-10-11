@@ -22,10 +22,15 @@ impl Fixture {
     pub fn new(mode: &str) -> Self {
         let actual = PathBuf::from(std::env::var_os("HOME").unwrap());
         let name = format!("kah-gate-track2-{}", kah_observer::session::now_ms());
-        let root = PathBuf::from("/mnt/kah-fixtures/cargo/test-fixtures").join(&name);
+        let base = if mode == "native5e" {
+            PathBuf::from("/tmp")
+        } else {
+            PathBuf::from("/mnt/kah-fixtures/cargo/test-fixtures")
+        };
+        let root = base.join(&name);
         assert!(!root.exists(), "TRACK2_EXISTING_FIXTURE stage=prepare");
         kah_core::run_store::ensure_private_directory(&root).unwrap();
-        let home = prepare_home(&root);
+        let home = prepare_home(&root, mode);
         let mut result = Self {
             root,
             home,
@@ -154,6 +159,9 @@ impl Fixture {
         fs::create_dir(&repo).unwrap();
         git(&repo, &["init", "--quiet"]);
         fs::write(repo.join("PLAN.md"),"# Fixture\nPublic marker must remain BLUE. Phase 1 exposes marker and records absent serializer as a genuine Phase 2 dependency. Phase 2 creates serializer, closes dependency and proves integration. Phase 3 documents the earlier marker finding and its repair. No pushes, dependencies, subagents or changes outside this fixture.\n").unwrap();
+        if mode == "native5e" {
+            fs::write(repo.join("PLAN.md"), "# Native 5e exit fixture\nThe fixture user requests exactly one native Claude Sonnet 5.5 / low subagent. It writes child.txt containing CHILD_OK. The parent waits for completion and replies CHILD_DONE. Work only in this private worktree; no pushes, installs or account changes.\n").unwrap();
+        }
         fs::write(repo.join("marker.txt"), "BLUE\n").unwrap();
         fs::write(repo.join("check.sh"),"#!/bin/sh\nset -eu\ntest \"$(cat marker.txt)\" = BLUE\nif [ -e serializer.txt ]; then test \"$(cat serializer.txt)\" = SERIALIZER; fi\necho FIXTURE_INTEGRATION_PASS\n").unwrap();
         git(&repo, &["add", "."]);
@@ -264,10 +272,14 @@ impl Fixture {
         )
     }
 }
-fn prepare_home(root: &Path) -> PathBuf {
-    let uid = kah_run::access::service_uid().unwrap();
-    for parent in [root, root.parent().unwrap()] {
-        kah_run::access::traverse(parent, uid).unwrap();
+fn prepare_home(root: &Path, mode: &str) -> PathBuf {
+    // Native Mine runs as the operator. Root-owned tmpfs /tmp rejects ancestor
+    // ACL changes; only sandbox fixtures need service-UID traversal.
+    if mode != "native5e" {
+        let uid = kah_run::access::service_uid().unwrap();
+        for parent in [root, root.parent().unwrap()] {
+            kah_run::access::traverse(parent, uid).unwrap();
+        }
     }
     let home = root.join("home");
     for dir in [

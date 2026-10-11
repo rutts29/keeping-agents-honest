@@ -28,6 +28,9 @@ pub fn schedule(
     input: &Value,
     claude: bool,
 ) -> std::result::Result<Value, String> {
+    if !crate::observer_intake::legacy_checks(binding)? {
+        return Ok(json!({}));
+    }
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     crate::observer_hook::initialize(&base, binding)?;
     let directory = Store::directory(&base, &binding.session);
@@ -65,6 +68,9 @@ pub fn schedule(
 }
 
 pub fn pending(binding: &Binding, input: &Value) -> std::result::Result<Option<Value>, String> {
+    if !crate::observer_intake::legacy_checks(binding)? {
+        return Ok(None);
+    }
     let directory = Store::directory(
         &RunStore::default_state_root().map_err(|e| e.to_string())?,
         &binding.session,
@@ -100,6 +106,9 @@ pub fn run(args: &[String]) -> Result<()> {
     let base = RunStore::default_state_root()?;
     if directory != Store::directory(&base, &job.binding.session) {
         return Err("OBSERVER_WORKER_SCOPE stage=in_turn".into());
+    }
+    if !crate::observer_intake::legacy_checks(&job.binding)? {
+        return Ok(());
     }
     let result = crate::in_turn::judge(&job.binding, &job.input, job.actions, job.claude);
     let output = match result {

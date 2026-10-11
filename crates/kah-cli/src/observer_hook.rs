@@ -59,7 +59,7 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     initialize(&base, binding)?;
-    let tool = if crate::in_turn::event(input) {
+    let tool = if crate::in_turn::event(input) && crate::observer_intake::legacy_checks(binding)? {
         Some(crate::in_turn::codex(binding, input)?)
     } else {
         None
@@ -82,7 +82,7 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
         crate::dispatch::receive(binding, input, "codex").map_err(|e| e.to_string())?;
     if input["hook_event_name"] == "PreToolUse" {
         return if dispatched {
-            let outcome = engine::observe(binding, "dispatch", false)?;
+            let outcome = crate::observer_intake::observe(binding, "dispatch", false)?;
             Ok(Some(output(
                 "PreToolUse",
                 &outcome
@@ -99,6 +99,9 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     }
     if tool.is_some() {
         return Ok(tool);
+    }
+    if crate::in_turn::event(input) {
+        return Ok(Some(json!({})));
     }
     crate::in_turn_worker::pending(binding, input)
 }
@@ -132,7 +135,7 @@ fn observe_event(
         event.kind,
         EventKind::TurnEnded | EventKind::Compacted | EventKind::Resumed
     ) {
-        let mut outcome = engine::observe(
+        let mut outcome = crate::observer_intake::observe(
             binding,
             turn.unwrap_or("continuity"),
             event.kind == EventKind::TurnEnded && input["stop_hook_active"] != true,

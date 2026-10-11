@@ -60,16 +60,10 @@ fn fields() -> Select {
         ("trigger", trigger),
     ])
 }
-pub fn selected(worker: &str, jobs: &[(PathBuf, Wake)]) -> Result<Option<(Wake, Vec<PathBuf>)>> {
-    let Some((header, paths)) = super::batch(jobs) else {
+pub fn selected(jobs: &[(PathBuf, Wake)]) -> Result<Option<(Wake, Vec<PathBuf>)>> {
+    let Some((_, paths)) = super::batch(jobs) else {
         return Ok(None);
     };
-    if header.purpose == Purpose::Preparation && header.trigger.get("captured_snapshot").is_none() {
-        return crate::observer_review::preparation::batch::packet_refs::group(
-            worker, &header, &paths,
-        )
-        .map(Some);
-    }
     let original = paths
         .iter()
         .map(|path| {

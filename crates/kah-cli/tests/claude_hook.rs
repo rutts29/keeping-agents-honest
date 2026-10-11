@@ -17,12 +17,15 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        Self::domain("mine")
+    }
+    fn domain(domain: &str) -> Self {
         let home = std::env::temp_dir().join(format!(
             "kah-claude-hook-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
-        let project = home.join("repos/mine/project");
+        let project = home.join(format!("repos/{domain}/project"));
         let transcript = home.join(".claude/projects/project/session.jsonl");
         fs::create_dir_all(&project).unwrap();
         fs::create_dir_all(transcript.parent().unwrap()).unwrap();
@@ -214,7 +217,7 @@ fn pre_tool_hooks_sync_intent_without_judging_unexecuted_actions() {
 
 #[test]
 fn in_turn_hook_waits_for_four_completed_tools_before_any_judge_access() {
-    let f = Fixture::new();
+    let f = Fixture::domain("untrusted");
     for (n, id) in ["one", "two", "three", "one"].into_iter().enumerate() {
         let mut input = f.input();
         input["hook_event_name"] = "PostToolUse".into();
@@ -308,7 +311,7 @@ fn wait_worker(f: &Fixture) {
 
 #[test]
 fn empty_native_history_never_judges_drift() {
-    let f = Fixture::new();
+    let f = Fixture::domain("untrusted");
     fs::write(&f.transcript, "").unwrap();
     for n in 0..4 {
         let mut input = f.input();
@@ -337,7 +340,7 @@ fn empty_native_history_never_judges_drift() {
 
 #[test]
 fn busy_worker_does_not_block_hooks_or_start_another_worker() {
-    let f = Fixture::new();
+    let f = Fixture::domain("untrusted");
     f.run(f.input());
     let directory = Store::directory(&f.home.join("state/kah"), "session");
     let lock = fs::File::create(directory.join("tool-worker.lock")).unwrap();
@@ -372,7 +375,7 @@ fn busy_worker_does_not_block_hooks_or_start_another_worker() {
 
 #[test]
 fn queued_reminder_is_delivered_once_and_new_user_input_preserves_it_as_context() {
-    let f = Fixture::new();
+    let f = Fixture::domain("untrusted");
     f.run(f.input());
     let directory = Store::directory(&f.home.join("state/kah"), "session");
     let queued = json!({"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"fixture reminder"}});
@@ -401,7 +404,7 @@ fn queued_reminder_is_delivered_once_and_new_user_input_preserves_it_as_context(
 
 #[test]
 fn user_input_while_worker_is_busy_retains_its_finding_as_previous_turn_context() {
-    let f = Fixture::new();
+    let f = Fixture::domain("untrusted");
     f.run(f.input());
     let directory = Store::directory(&f.home.join("state/kah"), "session");
     let lock = fs::File::open(directory.join("tool-worker.lock")).unwrap();

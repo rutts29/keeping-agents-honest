@@ -56,7 +56,16 @@ pub fn prompt(worker: &str, batch: &Batch) -> Result<String> {
 }
 pub fn reopen(worker: &str, decision: &str) -> Result<()> {
     let root = Store::directory(worker)?;
-    let current: Option<serde_json::Value> = state::read(&root.join("preparation-current.json"))?;
+    let scoped = preparation::cursors::owner(worker, decision)?
+        .map(|review| {
+            preparation::active_decision(worker, &review).map(|id| json!({"decision":id}))
+        })
+        .transpose()?;
+    let current: Option<serde_json::Value> = if scoped.is_some() {
+        scoped
+    } else {
+        state::read(&root.join("preparation-current.json"))?
+    };
     let Some(id) = current.as_ref().and_then(|v| v["decision"].as_str()) else {
         return Ok(());
     };

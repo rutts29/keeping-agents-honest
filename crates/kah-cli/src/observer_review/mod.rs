@@ -14,6 +14,7 @@ pub mod decisions;
 pub mod deferrals;
 pub mod dispatch;
 pub mod gate_approval;
+pub mod gate_host;
 pub mod hook;
 pub mod hook_queue;
 pub mod indexed_sources;
@@ -91,6 +92,7 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
         }
         "__review-consume-worker" => consume::run(&args[1]),
         "__gate-followup" => gate_approval::run_followups(&args[1]),
+        "__gate-host" => gate_host::run(&args[1]),
         "__gate-answers" => gate_approval::apply_answers(&args[1]),
         "__review-hook-events" => hook_queue::run(&args[1]),
         "__review-wake" => dispatch::run(&args[1]),
@@ -143,9 +145,6 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
         }
         [name, worker, authorization] if name == "__review-light-migrate" => {
             Some(queue::migration::cli(worker, authorization))
-        }
-        [name, worker] if name == "__review-preparation-coverage" => {
-            Some(queue::preparation_coverage::run(worker).map(|value| println!("{value}")))
         }
         _ => None,
     }

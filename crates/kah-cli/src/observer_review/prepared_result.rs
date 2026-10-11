@@ -3,7 +3,6 @@ use crate::Result;
 use kah_observer::{intake::Decision, session};
 use serde_json::{Value, json};
 use std::path::PathBuf;
-mod packets;
 
 pub fn consume(worker: &str) -> Result<()> {
     let store = Store::open_wait(worker)?;
@@ -15,10 +14,6 @@ pub fn consume(worker: &str) -> Result<()> {
         .clone()
         .ok_or("PREPARATION_PENDING stage=context_preparation")?;
     let request = workspace::request(&store, &pending.id)?;
-    if preparation::batch::packets::packets(&request).is_some() {
-        drop(store);
-        return packets::consume(worker);
-    }
     preparation::accept(worker, &pending.id)?;
     let packet = &request.trigger["preparation"];
     let questions = serde_json::from_value(packet["questions"].clone())?;
