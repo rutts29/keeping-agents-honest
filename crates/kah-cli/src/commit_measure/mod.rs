@@ -109,6 +109,9 @@ fn save_text(root: &Path, name: &str, text: &str) -> Result<()> {
 }
 pub fn command(args: &[String]) -> Result<()> {
     match args {
+        [mode, repo, base, head, items, rules, output] if mode == "decisive-checkpoint" => {
+            decisive::checkpoint(Path::new(repo), base, head, Path::new(items), Path::new(rules), Path::new(output))?;
+        }
         [mode, repo, items, rules, cases, output] if mode == "decisive" => {
             decisive::construct(Path::new(repo), Path::new(items), Path::new(rules), Path::new(cases), Path::new(output))?;
         }

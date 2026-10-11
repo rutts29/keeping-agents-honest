@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 mod atomize;
+mod checkpoint;
 mod confirmation;
 mod fixture;
 mod journey;
@@ -129,6 +130,8 @@ pub fn entry() {
             Ok("atomize" | "atomize-refine")
         ) {
             atomize::run(&fixture)
+        } else if std::env::var_os("KAH_OPTION1_CHECKPOINT_INPUT").is_some() {
+            checkpoint::run(&fixture)
         } else if std::env::var_os("KAH_PHASE1_SELECTION_JOBS").is_some() {
             selection::run(&fixture)
         } else if std::env::var_os("KAH_PHASE1_JEV_OUTPUT").is_some() {

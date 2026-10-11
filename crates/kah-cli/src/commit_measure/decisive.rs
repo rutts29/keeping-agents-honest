@@ -8,6 +8,41 @@ use kah_core::intent_history::{
 use kah_observer::commit_check::Rule;
 use std::collections::BTreeSet;
 
+pub fn checkpoint(
+    repo: &Path,
+    base: &str,
+    head: &str,
+    items: &Path,
+    rules: &Path,
+    output: &Path,
+) -> Result<()> {
+    let items: Vec<Item> = serde_json::from_slice(&fs::read(items)?)?;
+    let rules: Vec<AtomicRule> = serde_json::from_slice(&fs::read(rules)?)?;
+    atomization::verify(&items, &rules)?;
+    let mut bundle = bundle(
+        repo,
+        head,
+        &rules,
+        &history(&items, &rules)?,
+        &replay::calibration()?,
+    )?;
+    let base = source::git(repo, &["rev-parse", "--verify", base])?
+        .trim()
+        .to_owned();
+    let (hunks, files) = collect(repo, &base, &bundle.input.revision)?;
+    bundle.input.rules = selected(&rules, &hunks.keys().cloned().collect());
+    bundle.input.hunks = hunks;
+    bundle.input.files = files;
+    bundle.input.baseline = Some(base);
+    bundle.input.checkpoint = true;
+    kah_core::run_store::ensure_private_directory(output)?;
+    save_text(
+        output,
+        "checkpoint-input.json",
+        &serde_json::to_string(&resolve(&bundle)?)?,
+    )
+}
+
 pub fn construct(
     repo: &Path,
     items_path: &Path,
