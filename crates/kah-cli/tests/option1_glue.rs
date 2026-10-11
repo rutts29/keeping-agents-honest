@@ -38,10 +38,14 @@ fn source() -> Resolved {
     Resolved {
         source_digest: "source-binding".into(),
         observer_session: "same-native".into(),
+        source_words: Default::default(),
+        history_digest: None,
         rules: vec![Rule {
             id: "rule-whole".into(),
             predicate: "Never cut evidence.".into(),
             diff_checkable: true,
+            scope: String::new(),
+            permissions: vec![],
             sources: vec![Link {
                 source_id: "user-source".into(),
                 quote: "Never cut evidence.".into(),

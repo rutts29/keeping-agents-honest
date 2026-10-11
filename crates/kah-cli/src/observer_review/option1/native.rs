@@ -25,7 +25,7 @@ pub fn submit(
             std::process::id()
         ),
         worker: state.worker.session.clone(),
-        purpose: Purpose::Checkpoint,
+        purpose: if job["stage"] == "current_rules" { Purpose::Steering } else { Purpose::Checkpoint },
         turn: turn.into(),
         head: Some(head.into()),
         intent: job.get("intent").cloned().unwrap_or_else(||json!({"revision":job["input"]["carried"]["intent_revision"],"goal":job["input"]["intent"]["goal"]})),

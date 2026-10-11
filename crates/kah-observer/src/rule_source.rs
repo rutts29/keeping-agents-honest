@@ -1,6 +1,8 @@
 //! Replaceable source-linked rule list; transport and scheduling never atomize.
 pub mod atomization;
+mod current_set;
 use atomization::{AtomicRule, Item};
+pub use current_set::CurrentSet;
 use serde::{Deserialize, Serialize};
 pub trait Source {
     fn load(&self, items: &[Item]) -> Result<Resolved, String>;
@@ -16,12 +18,20 @@ pub struct Rule {
     pub predicate: String,
     pub diff_checkable: bool,
     pub sources: Vec<Link>,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub permissions: Vec<Link>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Resolved {
     pub source_digest: String,
     pub observer_session: String,
     pub rules: Vec<Rule>,
+    #[serde(default)]
+    pub source_words: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub history_digest: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RuleList {
@@ -39,6 +49,8 @@ impl Source for RuleList {
         Ok(Resolved {
             source_digest: self.digest(),
             observer_session: self.observer_session.clone(),
+            source_words: Default::default(),
+            history_digest: None,
             rules: self
                 .rules
                 .iter()
@@ -46,6 +58,8 @@ impl Source for RuleList {
                     id: r.rule_id.clone(),
                     predicate: r.rule_sentence.clone(),
                     diff_checkable: r.diff_checkable,
+                    scope: String::new(),
+                    permissions: vec![],
                     sources: vec![Link {
                         source_id: r.source_intent_id.clone(),
                         quote: r.source_quote.clone(),

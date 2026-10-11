@@ -29,6 +29,20 @@ pub fn run(store: Store, mut state: State, request: Request) -> Result<()> {
         .clone()
         .ok_or("COMMIT_NATIVE_SESSION stage=consume")?;
     match report.result {
+        Answer::CurrentRules { candidate } => {
+            let result = super::current_set::accept(&request.worker, &session, &candidate)?;
+            if result["status"] == "validated" {
+                super::rule_questions::store(&store.directory, &request, &candidate)?;
+                super::rule_questions::resolve(&store.directory, &request, &candidate)?;
+            }
+            state.latest =
+                Some(json!({"request":request.id,"purpose":"current_rules","result":result}));
+            crate::unattended_report::save(
+                &store.directory,
+                &format!("current-rules-result-{}.json", request.id),
+                &result,
+            )?;
+        }
         Answer::Rules { rules } => rules_result(&store, &state, &request, rules, &session)?,
         Answer::Confirmation { rows } => {
             confirmation(&store, &mut state, &request, rows, &session)?

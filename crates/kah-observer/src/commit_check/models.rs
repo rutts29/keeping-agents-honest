@@ -74,7 +74,7 @@ impl CurrentIntent {
             let item = self
                 .items
                 .get(id)
-                .filter(|i| i.origin == "user")
+                .filter(|i| matches!(i.origin.as_str(), "user" | "standing_file"))
                 .ok_or_else(|| {
                     format!("MEASURE_PERMISSION_SOURCE stage=resolve: {rule} -> {id}")
                 })?;

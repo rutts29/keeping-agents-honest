@@ -7,10 +7,16 @@ impl RuleSet {
         input: &Input,
         previous: Option<&ValidatedSet>,
     ) -> Result<ValidatedSet, String> {
+        self.validate_report(input, previous.map(ValidatedSet::as_set))?;
+        Ok(ValidatedSet(self.clone(), input.revision))
+    }
+    /// Check a report against its host-published input/predecessor snapshot.
+    /// This does not construct an adopted set; adoption validates the live chain.
+    pub fn validate_report(&self, input: &Input, previous: Option<&RuleSet>) -> Result<(), String> {
         input.validate()?;
         if self.schema_version != 1
             || self.input_digest != input.digest()?
-            || self.previous_digest != previous.map(ValidatedSet::digest).transpose()?
+            || self.previous_digest != previous.map(digest).transpose()?
         {
             return Err(error("BINDING", "version, input or predecessor changed"));
         }
@@ -39,7 +45,7 @@ impl RuleSet {
             validate_rule(rule, input, &clauses)?;
         }
         if let Some(previous) = previous {
-            for old in &previous.0.rules {
+            for old in &previous.rules {
                 if self.rules.iter().any(|new| {
                     new.predicate == old.predicate
                         && new.scope == old.scope
@@ -50,7 +56,7 @@ impl RuleSet {
                 }
             }
         }
-        Ok(ValidatedSet(self.clone(), input.revision))
+        Ok(())
     }
 }
 fn unique<T>(items: &[T], key: impl Fn(&T) -> &String) -> Result<BTreeMap<&String, &T>, String> {

@@ -85,7 +85,8 @@ pub fn outcome(binding: &Binding, outcome: &mut Outcome) -> Result<()> {
         outcome.verification.take(),
         super::steering::pending(&binding.session)?,
     );
-    if triggers.is_empty() {
+    let rebuild = super::option1::current_set::enqueue(binding, &config.turn)?;
+    if triggers.is_empty() && !rebuild {
         return Ok(());
     }
     for (purpose, trigger) in triggers {
