@@ -80,6 +80,19 @@ fn commit_has_literal_only_and_gate_keeps_the_same_authority_identity() {
     assert!(body["state"]["rows"].is_null());
     assert_eq!(map["rules"].as_object().unwrap().len(), 1);
     assert_eq!(body["state"]["diff_hunks"]["h1"]["text"], "+keep_all();\n");
+    assert!(
+        body["state"]["checks"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|c| c.get("rule").is_none())
+    );
+    assert!(body["questions"].as_object().unwrap().values().all(|q| {
+        q["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("the rule \"Never cut evidence.\"")
+    }));
 }
 #[test]
 fn native_confirmation_cannot_skip_a_rule_or_forge_a_whole_quote() {

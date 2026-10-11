@@ -200,3 +200,28 @@ fn seven_recorded_context_rejections_reach_a_direct_terminal_after_whole_prepara
     assert_eq!(terminals.len(), 7);
     fs::write(PathBuf::from(std::env::var_os("KAH_OPTION1_REPLAY_OUTPUT").unwrap()).join("oversized-terminals.json"),serde_json::to_vec_pretty(&json!({"terminals":terminals,"native_selection":"not claimed by this code keep-all witness; E2E required"})).unwrap()).unwrap();
 }
+#[test]
+#[ignore = "retained49-body placement correspondence; zero provider/native calls"]
+fn adopted_placement_matches_every_frozen_body_sent_in_the_approved_replay() {
+    let root = Path::new("/mnt/kah-fixtures/cargo/step5a-placement-count-20261011");
+    let report: Value =
+        serde_json::from_slice(&fs::read(root.join("count-only.json")).unwrap()).unwrap();
+    let mut verified = 0;
+    for job in report["jobs"].as_array().unwrap() {
+        let before: Value =
+            serde_json::from_slice(&fs::read(job["original"]["path"].as_str().unwrap()).unwrap())
+                .unwrap();
+        let prepared = kah_observer::commit_check::Prepared {
+            state: before["state"].clone(),
+            questions: serde_json::from_value(before["questions"].clone()).unwrap(),
+        };
+        let after = kah_observer::commit_check::rule_in_question(&prepared).unwrap();
+        let actual: Value = serde_json::from_str(&after.body().unwrap()).unwrap();
+        let expected: Value =
+            serde_json::from_slice(&fs::read(job["path"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(actual, expected, "{}", job["case_id"]);
+        verified += 1;
+    }
+    assert_eq!(verified, 49);
+    fs::write(root.join("production-correspondence.json"),serde_json::to_vec_pretty(&json!({"verified_bodies":verified,"actual_provider_calls":0,"native_calls":0,"exact_semantic_body_match":true})).unwrap()).unwrap();
+}

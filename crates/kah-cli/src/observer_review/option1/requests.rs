@@ -15,6 +15,7 @@ pub fn build(
     calibration: Option<&Calibration>,
 ) -> Result<(Vec<WireRequest>, Value)> {
     let (short, map) = decisive_bookkeeping::literal(&commit_check::literal(input)?)?;
+    let short = commit_check::rule_in_question(&short)?;
     let packed = if let Some(c) = calibration {
         let ratio = c.input_tokens as f64 / c.input_utf8_bytes as f64;
         let estimate = estimate::Calibration {
