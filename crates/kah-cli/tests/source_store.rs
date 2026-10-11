@@ -63,7 +63,7 @@ fn preparation_and_archive_recover_whole_sources_from_one_copy() {
         source_store::read::<Value>(&private.join("prepared.json")).unwrap(),
         archive
     );
-    // The public alias shares the inode; no extra physical source copy.
+    // Public evidence has an independent inode; private ACLs cannot leak.
     alias_sources(&private, &workspace);
     assert_eq!(
         source_store::read::<Value>(&input.join("preparation.json")).unwrap(),
@@ -94,8 +94,8 @@ fn alias_sources(private: &std::path::Path, workspace: &std::path::Path) {
     for entry in fs::read_dir(private.join("sources")).unwrap() {
         let entry = entry.unwrap();
         let alias = workspace.join("sources").join(entry.file_name());
-        fs::hard_link(entry.path(), &alias).unwrap();
-        assert_eq!(
+        fs::copy(entry.path(), &alias).unwrap();
+        assert_ne!(
             fs::metadata(entry.path()).unwrap().ino(),
             fs::metadata(alias).unwrap().ino()
         );

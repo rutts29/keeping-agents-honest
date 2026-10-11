@@ -92,6 +92,7 @@ pub fn park(
     state.latest = Some(result);
     state.pending = None;
     store.save(state)?;
+    super::super::source_store::finish_source_view(&state.observer.workspace, &request.id)?;
     super::super::reminder_queue::save(
         &store.directory,
         &json!({"request":request.id,"purpose":"uncertainty","turn":request.turn,"system_notice":true,

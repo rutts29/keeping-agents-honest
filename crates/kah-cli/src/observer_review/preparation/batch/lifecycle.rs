@@ -31,7 +31,13 @@ pub fn prompt(worker: &str, batch: &Batch) -> Result<String> {
         source_store::save(&directory, &name, &serde_json::to_value(&job)?)?;
         paths.push(json!({"decision":job.decision,"source":directory.join(name)}));
     }
-    source_store::share(&Store::directory(worker)?, &state.observer.workspace)?;
+    let mut files = vec![source.clone()];
+    files.extend(
+        paths
+            .iter()
+            .filter_map(|row| row["source"].as_str().map(std::path::PathBuf::from)),
+    );
+    source_store::share_preparation(&Store::directory(worker)?, &directory, &files)?;
     kah_run::access::share_tree(&directory, kah_run::access::service_uid()?, false)?;
     let output = state
         .observer

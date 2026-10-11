@@ -34,7 +34,6 @@ pub fn persist(state: &State, documents: &mut [Document]) -> Result<()> {
         &document.uri,
         &serde_json::to_string(&compact)?,
     );
-    source_store::share(&root, &state.observer.workspace)?;
     kah_run::access::share_tree(&public, kah_run::access::service_uid()?, false)?;
     Ok(())
 }

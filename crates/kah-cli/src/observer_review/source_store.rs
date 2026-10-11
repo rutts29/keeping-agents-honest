@@ -5,10 +5,13 @@ use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::Write,
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
 
+pub mod access_repair;
+mod publication;
+mod retirement;
 mod roundtrip;
 mod segments;
 mod selection;
@@ -58,15 +61,29 @@ fn verify(path: &Path, digest: &str) -> Result<Vec<u8>> {
 }
 fn resolved(path: &Path, digest: &str) -> PathBuf {
     if path.exists() {
-        path.to_owned()
-    } else {
-        path.ancestors()
-            .skip(1)
-            .map(|parent| parent.join("sources").join(digest))
-            .find(|candidate| candidate.is_file())
-            .unwrap_or_else(|| path.to_owned())
+        return path.to_owned();
     }
+    for parent in path.ancestors().skip(1) {
+        let candidate = parent.join("sources").join(digest);
+        if candidate.is_file() {
+            return candidate;
+        }
+        if let Ok(view) = fs::read_link(parent.join(".source-view-current"))
+            && view.starts_with(parent)
+            && view.join(digest).is_file()
+        {
+            return view.join(digest);
+        }
+        if let Ok(root) = fs::read_to_string(parent.join(".source-root")) {
+            let candidate = PathBuf::from(root).join(digest);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    path.to_owned()
 }
+
 fn read_bytes(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|e| {
         format!(
@@ -277,26 +294,27 @@ pub fn verify_blob(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn share(private: &Path, workspace: &Path) -> Result<()> {
-    let public = workspace.join("sources");
-    for entry in fs::read_dir(private.join("sources"))? {
-        let entry = entry?;
-        if entry.file_name().to_string_lossy().ends_with(".tmp") {
-            continue;
-        }
-        let target = public.join(entry.file_name());
-        if target.exists() && fs::metadata(&target)?.ino() != fs::metadata(entry.path())?.ino() {
-            let temporary = target.with_extension(format!("{}.tmp", crate::relay_store::nonce()));
-            fs::hard_link(entry.path(), &temporary)?;
-            fs::rename(temporary, &target)?;
-        }
-        if !target.exists() {
-            fs::hard_link(entry.path(), target)?;
-        }
+pub fn retire_shared_sources(private: &Path, workspace: &Path) -> Result<serde_json::Value> {
+    retirement::retire(private, workspace)
+}
+pub fn finish_source_view(workspace: &Path, request: &str) -> Result<()> {
+    let view = workspace.join("inputs").join(request).join("sources");
+    if view.is_dir() {
+        fs::remove_dir_all(&view)?;
     }
-    kah_run::access::share_tree(&public, kah_run::access::service_uid()?, false)?;
+    let marker = workspace.join(".source-view-current");
+    if fs::read_link(&marker).is_ok_and(|p| p == view) {
+        fs::remove_file(marker)?;
+    }
     Ok(())
 }
+pub fn share_preparation(private: &Path, input: &Path, files: &[PathBuf]) -> Result<()> {
+    publication::share_files(private, input, files.iter().cloned().collect())
+}
+pub fn share(private: &Path, workspace: &Path) -> Result<()> {
+    publication::share(private, workspace)
+}
+
 pub fn migrate(worker: &str) -> Result<Value> {
     let store = super::state::Store::open(worker)?;
     let state = store
