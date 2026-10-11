@@ -11,6 +11,11 @@ fn persistent_native_matrices() {
     phase1_matrix_support::launch();
 }
 #[test]
+#[ignore = "decisive Step1 clean native atomization; make gate only; zero Jev"]
+fn atomize_current_intent() {
+    phase1_matrix_support::launch();
+}
+#[test]
 #[ignore = "reviewer-authorized real Jev confirmation in SAME native session; make gate only"]
 fn confirm_real_jev() {
     phase1_matrix_support::confirmation_replay();
