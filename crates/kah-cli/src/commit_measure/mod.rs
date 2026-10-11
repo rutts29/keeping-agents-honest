@@ -10,6 +10,7 @@ pub mod confirmation;
 pub mod decisive;
 pub mod decisive_bookkeeping;
 pub mod decisive_packing;
+pub mod decisive_selection;
 pub mod decomposition;
 pub mod historical;
 pub mod live;

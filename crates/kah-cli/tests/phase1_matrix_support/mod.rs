@@ -10,6 +10,7 @@ mod confirmation;
 mod fixture;
 mod journey;
 mod real;
+mod selection;
 pub(super) mod usage;
 pub fn launch() {
     assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
@@ -21,7 +22,7 @@ pub fn confirmation_replay() {
     assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
     let original = PathBuf::from(std::env::var_os("KAH_PHASE1_NATIVE_ROOT").unwrap());
     let mut f = fixture::Fixture::read(&original);
-    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("decisive") {
+    if std::env::var_os("KAH_PHASE1_NATIVE_PROJECT").is_some() {
         f.corpus = PathBuf::from(std::env::var_os("KAH_PHASE1_CORPUS").unwrap());
         f.project = PathBuf::from(std::env::var_os("KAH_PHASE1_NATIVE_PROJECT").unwrap());
         let head = Command::new("/usr/bin/git")
@@ -128,6 +129,8 @@ pub fn entry() {
             Ok("atomize" | "atomize-refine")
         ) {
             atomize::run(&fixture)
+        } else if std::env::var_os("KAH_PHASE1_SELECTION_JOBS").is_some() {
+            selection::run(&fixture)
         } else if std::env::var_os("KAH_PHASE1_JEV_OUTPUT").is_some() {
             real::run(&fixture)
         } else {

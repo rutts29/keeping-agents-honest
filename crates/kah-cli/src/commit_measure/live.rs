@@ -34,7 +34,7 @@ pub fn run(manifest: &Manifest, output: &Path) -> Result<Value> {
             &serde_json::to_string(&record)?,
         )?;
         records.push(record.clone());
-        if spend > 0.50 {
+        if spend > 0.46 {
             stop = Some("APPROVED_SPEND_STOP");
         } else if record["host_stop"] == true {
             stop = Some("PROVIDER_OR_RESPONSE_FAILURE");
@@ -47,7 +47,7 @@ pub fn run(manifest: &Manifest, output: &Path) -> Result<Value> {
     Ok(
         json!({"records":records,"cost_from_actual_usage_usd":spend,"stop":stop,
         "planned_calls":manifest.jobs.len(),"actual_calls":records.len(),"no_retries":true,
-        "authority":"Explicit replay approval with an actual-spend safeguard; not a content limit"}),
+        "authority":"Explicit approval for one replay with an actual-spend safeguard; not a content limit"}),
     )
 }
 fn execute(client: &HttpClient, job: &Job, index: usize) -> Result<Value> {
