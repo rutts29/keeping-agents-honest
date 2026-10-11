@@ -62,6 +62,8 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
     drop(terminal);
     let trust = super::trust::cleanup_claude(&fixture.home);
     fixture::save(&fixture.root.join("claude-trust-cleanup.json"), &trust);
+    let key = super::jev_key::cleanup(&fixture.home);
+    fixture::save(&fixture.root.join("jev-key-cleanup.json"), &key);
     let audit = fixture.audit();
     let published_audit = if mode == "native5e" || std::env::var_os("KAH_PHASE3_B2").is_some() {
         let retained = if mode == "native5e" {
@@ -70,7 +72,7 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
             fixture::save(&fixture.root.join("cleanup-audit.json"), &audit);
             fixture.root.clone()
         };
-        json!({"passed":audit["passed"],"processes":audit["processes"],
+        json!({"passed":audit["passed"],"processes":audit["processes"],"jev_key_cleanup":audit["jev_key_cleanup"],
             "credential_contents_opened":audit["claude_login"]["credential_contents_opened"],
             "fixture_claude_credentials_absent":audit["claude_login"]["fixture_claude_credentials_absent"],
             "fixture_attributed_operator_entries":audit["claude_login"]["fixture_attributed_operator_entries"],

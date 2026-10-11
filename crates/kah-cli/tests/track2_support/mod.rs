@@ -9,6 +9,8 @@ pub fn claude_login_ready() {
     claude_login::require_ready();
 }
 mod fixture;
+#[path = "../fixture_support/jev_key.rs"]
+mod jev_key;
 mod journey;
 mod launcher;
 pub use launcher::launch;

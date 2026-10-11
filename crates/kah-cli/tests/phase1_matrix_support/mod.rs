@@ -10,6 +10,8 @@ mod checkpoint;
 mod confirmation;
 mod current_rules;
 mod fixture;
+#[path = "../fixture_support/jev_key.rs"]
+mod jev_key;
 mod journey;
 mod option1;
 mod option1_budget;
@@ -111,10 +113,9 @@ fn drive(fixture: fixture::Fixture) {
         std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref(),
         Ok("option1-e2e" | "current-rules-e2e")
     ) {
-        let key = fixture.home.join(".config/kah/typesafe.key");
-        if key.exists() {
-            fs::remove_file(key).unwrap();
-        }
+        let cleanup = jev_key::cleanup(&fixture.home);
+        save(&fixture.evidence.join("jev-key-cleanup.json"), &cleanup);
+        assert_eq!(cleanup["passed"], true);
     }
     let before = fixture.evidence.join("global-config-before.json");
     let protected: std::collections::BTreeMap<String, String> = if before.exists() {

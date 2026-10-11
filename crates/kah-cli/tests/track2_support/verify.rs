@@ -15,6 +15,8 @@ pub fn claude_login_ready() {
 }
 #[path = "fixture.rs"]
 mod fixture;
+#[path = "../fixture_support/jev_key.rs"]
+mod jev_key;
 #[path = "launcher.rs"]
 mod launcher;
 #[path = "proof_inputs.rs"]
