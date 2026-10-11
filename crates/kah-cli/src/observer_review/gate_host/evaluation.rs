@@ -57,9 +57,11 @@ pub(crate) fn process_with(
     }
     resume_handoff(job)?;
     let _processing = super::super::liveness::processing(&job.request.worker, &job.request.id)?;
-    let evaluated = evaluate_unlocked(job, evaluate)?;
+    let mut prepared = job.clone();
+    super::super::gate_approval::interactive::prepare(&mut prepared)?;
+    let evaluated = evaluate_unlocked(&prepared, evaluate)?;
     merge_fresh(
-        job,
+        &prepared,
         &evaluated.judgment,
         &evaluated.input,
         &evaluated.assessment,

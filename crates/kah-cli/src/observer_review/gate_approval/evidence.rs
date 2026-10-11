@@ -3,6 +3,11 @@
 use super::*;
 
 pub fn captured(request: &Request) -> Result<Option<DeliveryProof>> {
+    if let Some(proof) = request.trigger["interactive_gate_verification"].get("proof") {
+        return serde_json::from_value(proof.clone())
+            .map(Some)
+            .map_err(Into::into);
+    }
     let Some(head) = request.head.as_deref() else {
         return Ok(None);
     };
@@ -40,5 +45,6 @@ pub fn captured(request: &Request) -> Result<Option<DeliveryProof>> {
         fresh_checkout: true,
         tests,
         artifacts,
+        recorded_checks_absent: false,
     }))
 }

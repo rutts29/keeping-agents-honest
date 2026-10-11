@@ -9,6 +9,11 @@ pub(super) fn prepare(
     questions: &mut Questions,
     proof: Option<&DeliveryProof>,
 ) -> Result<()> {
+    if proof.is_some_and(|p| p.recorded_checks_absent) {
+        // No executable test evidence exists. Code keeps the gate unconfirmed
+        // and names that risk; do not invent a command/index or a coverage vote.
+        return Ok(());
+    }
     let Some(items) = &report.verification_contracts else {
         return Ok(());
     };

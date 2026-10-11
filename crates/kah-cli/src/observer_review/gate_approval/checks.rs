@@ -17,13 +17,14 @@ pub(super) fn execute(
         .join("gate-followups")
         .join(format!("{}-checks", round.id));
     kah_core::run_store::ensure_private_directory(&directory)?;
-    let candidate = trusted_candidate(state)?;
+    let candidate = trusted_candidate(state, &round.binding.head)?;
     let options = options(&state.worker.session)?;
     let mut proof = DeliveryProof {
         head: round.binding.head.clone(),
         fresh_checkout: true,
         tests: vec![],
         artifacts: original.artifacts.clone(),
+        recorded_checks_absent: original.recorded_checks_absent,
     };
     for (index, test) in original.tests.iter().enumerate() {
         let (receipt, changed) = crate::exact_verification::execute(
@@ -60,7 +61,18 @@ pub(super) fn options(worker: &str) -> Result<LaunchOptions> {
 }
 pub(super) fn trusted_candidate(
     state: &super::super::state::State,
+    head: &str,
 ) -> Result<kah_run::worktree::Worktree> {
+    if !state
+        .worker
+        .project
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str())
+        .is_some_and(|id| id.starts_with("run-"))
+    {
+        return super::interactive::candidate_for(state, head);
+    }
     let id = state
         .worker
         .project

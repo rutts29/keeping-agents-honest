@@ -44,13 +44,28 @@ pub fn submit(
     )?;
     let pending = primary.sources()?;
     drop(primary);
+    let checkpoint = trigger["review_class"] != "commit";
+    let plan = if checkpoint {
+        let files = input
+            .files
+            .iter()
+            .map(|(p, f)| (p.clone(), f.digest.clone()))
+            .collect();
+        json!(commit_review::checkpoint::plan(
+            &journal::all(&b.session)?,
+            &commit_review::authority(&input),
+            &files
+        ))
+    } else {
+        Value::Null
+    };
     native::submit(
         store,
         state,
         home,
         turn,
         head,
-        json!({"stage":"confirmation","input":input,"record":record,"source_catalogue":sources,"pending_intake":pending,"direct_reason":"Resolve current applicability from full original sources. No validated set exists or intake is unsettled; do not assume pending words are absent. Unresolved applicability remains unclear.","original_trigger":trigger}),
+        json!({"stage":if checkpoint{"checkpoint"}else{"confirmation"},"input":input,"record":record,"plan":plan,"source_catalogue":sources,"pending_intake":pending,"direct_reason":"Resolve current applicability from full original sources. No validated set exists or intake is unsettled; do not assume pending words are absent. Unresolved applicability remains unclear.","original_trigger":trigger}),
         trigger.clone(),
     )
 }

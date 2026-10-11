@@ -26,6 +26,7 @@ mod contract_evidence;
 mod contract_execution;
 mod contract_facts;
 mod contract_results;
+pub mod interactive;
 pub(super) use contract_results::unchecked_final;
 mod contracts;
 pub(super) use contracts::{outcome as contract_outcome, prepare as prepare_contracts};
@@ -53,10 +54,13 @@ pub struct DeliveryProof {
     pub fresh_checkout: bool,
     pub tests: Vec<TestReceipt>,
     pub artifacts: Vec<kah_observer::decision_units::artifact::Receipt>,
+    #[serde(default)]
+    pub recorded_checks_absent: bool,
 }
 impl DeliveryProof {
     pub fn passes(&self, head: &str) -> bool {
         oid(head)
+            && !self.recorded_checks_absent
             && self.head == head
             && self.fresh_checkout
             && !self.tests.is_empty()
@@ -72,6 +76,17 @@ impl DeliveryProof {
                     && a.delivered_sha == head
                     && a.delivered_blob.as_deref() == Some(&a.baseline_blob)
             })
+    }
+    pub fn risk_receipts(&self, head: &str) -> bool {
+        self.passes(head)
+            || self.recorded_checks_absent
+                && self.tests.is_empty()
+                && self.head == head
+                && oid(head)
+                && self.fresh_checkout
+                && self.artifacts.iter().all(|a| {
+                    a.delivered_sha == head && a.delivered_blob.as_deref() == Some(&a.baseline_blob)
+                })
     }
 }
 fn oid(value: &str) -> bool {
@@ -181,6 +196,12 @@ pub(super) fn guard_report(
     assessment: &mut Value,
 ) -> Result<()> {
     if super::commit_packet::is_commit(request) {
+        return Ok(());
+    }
+    interactive::guard(request, assessment)?;
+    if captured(request)?.is_some_and(|p| p.recorded_checks_absent)
+        && !request.trigger["interactive_gate_verification"].is_null()
+    {
         return Ok(());
     }
     guard_followup(root, request, assessment)?;
