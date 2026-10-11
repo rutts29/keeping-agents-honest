@@ -8,7 +8,7 @@ use std::{
     os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::Path,
 };
-fn digest(path: &Path) -> Result<String> {
+pub(super) fn digest(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path)?;
     let mut hash = Sha256::new();
     let mut buf = [0; 8192];

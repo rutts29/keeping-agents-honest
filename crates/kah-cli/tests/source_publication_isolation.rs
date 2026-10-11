@@ -175,3 +175,63 @@ fn catalogue_fixture(
     .unwrap();
     (input, secret, digest)
 }
+
+#[test]
+fn repair_retires_all_historical_input_aliases_without_copying_the_store() {
+    let root = std::env::temp_dir().join(format!("historical-aliases-{}", std::process::id()));
+    let private = root.join("private");
+    let public = root.join("observer");
+    fs::create_dir_all(&private).unwrap();
+    source_store::initialize(&private, &public).unwrap();
+    let (_, original, _) = catalogue_fixture(&private, &public);
+    let inputs = public.join("inputs/old");
+    fs::create_dir_all(&inputs).unwrap();
+    for name in ["intent.json", "transcript.crashed.tmp"] {
+        fs::hard_link(&original, inputs.join(name)).unwrap();
+    }
+    let result = source_store::access_repair::retire_inputs(&private, &public).unwrap();
+    assert_eq!(result["retired"], 2);
+    assert_eq!(result["copied_bytes"], 0);
+    assert!(!inputs.join("intent.json").exists());
+    assert!(!inputs.join("transcript.crashed.tmp").exists());
+    assert_eq!(fs::read(&original).unwrap(), b"whole original evidence");
+    assert_eq!(fs::metadata(&original).unwrap().nlink(), 1);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn importing_a_sandbox_report_keeps_bytes_but_not_its_inode_or_acl() {
+    let root = std::env::temp_dir().join(format!("report-import-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("sandbox.json");
+    let target = root.join("private.json");
+    fs::write(&source, b"whole sandbox report evidence").unwrap();
+    kah_run::access::share_tree(&root, 42420, true).unwrap();
+    let original_inode = fs::metadata(&source).unwrap().ino();
+    source_store::access_repair::private_copy(&source, &target).unwrap();
+    assert_eq!(fs::read(&target).unwrap(), fs::read(&source).unwrap());
+    assert_ne!(fs::metadata(&target).unwrap().ino(), original_inode);
+    assert!(!acl(&target).contains("user:42420:"));
+    assert_eq!(
+        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    source_store::access_repair::private_copy(&source, &source).unwrap();
+    assert_ne!(fs::metadata(&source).unwrap().ino(), original_inode);
+    assert!(!acl(&source).contains("user:42420:"));
+    assert_eq!(fs::read(&source).unwrap(), b"whole sandbox report evidence");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn importing_a_report_rejects_a_symbolic_link_before_reading_it() {
+    let root = std::env::temp_dir().join(format!("report-symlink-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let link = root.join("sandbox.json");
+    std::os::unix::fs::symlink(root.join("missing-private-file"), &link).unwrap();
+    let error =
+        source_store::access_repair::private_copy(&link, &root.join("private.json")).unwrap_err();
+    assert!(error.to_string().contains("REVIEW_PRIVATE_COPY_TYPE"));
+    assert!(!root.join("private.json").exists());
+    fs::remove_dir_all(root).unwrap();
+}
