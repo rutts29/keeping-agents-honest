@@ -8,6 +8,11 @@ fn shared_smoke_setup_seeds_only_the_marked_private_home() {
     fs::create_dir_all(root.join("claude")).unwrap();
     fs::write(root.join(".smoke-private"), "fixture owned\n").unwrap();
     fs::write(root.join("seeds/skills/sample/SKILL.md"), "public skill\n").unwrap();
+    std::os::unix::fs::symlink(
+        root.join("seeds/skills/sample"),
+        root.join("seeds/skills/linked"),
+    )
+    .unwrap();
     let script =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../demos/smoke-environment.sh");
     let output = Command::new("bash")
@@ -35,6 +40,12 @@ fn shared_smoke_setup_seeds_only_the_marked_private_home() {
     assert_eq!(
         fs::read(root.join("home/.agents/skills/sample/SKILL.md")).unwrap(),
         b"public skill\n"
+    );
+    assert!(
+        !fs::symlink_metadata(root.join("home/.agents/skills/linked"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap().trim(),
