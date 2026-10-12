@@ -70,6 +70,10 @@ fn resolving_success_keeps_newer_gaps_and_archives_the_entire_old_diagnostic() {
     );
     let records = fs::read_dir(root.join("resolved-gaps"))
         .unwrap()
+        .filter(|entry| match entry {
+            Ok(entry) => entry.path().extension().is_some_and(|v| v == "json"),
+            Err(_) => true,
+        })
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(records.len(), 2);

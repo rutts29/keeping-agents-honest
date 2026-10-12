@@ -13,7 +13,7 @@ pub use recording::{Recording, reconstruct};
 mod snapshot;
 pub use cursor::Cursor;
 mod stats;
-pub use stats::summary;
+pub use stats::{Accumulator, summary};
 pub fn sample(root: &Path, repo: &Path) -> Value {
     snapshot::read(root, repo)
 }
@@ -53,7 +53,7 @@ fn record(root: &Path, repo: &Path, output: &Path, once: bool) -> Result<()> {
         .create_new(true)
         .write(true)
         .open(output.join("samples.jsonl"))?;
-    let mut samples = vec![];
+    let mut metrics = Accumulator::default();
     let mut recording = Recording::default();
     let mut cursor = Cursor::default();
     let mut event_log = fs::OpenOptions::new()
@@ -68,8 +68,8 @@ fn record(root: &Path, repo: &Path, output: &Path, once: bool) -> Result<()> {
         let delta = recording.encode(output, &sample)?;
         writeln!(log, "{delta}")?;
         log.sync_all()?;
-        samples.push(recording::metrics_sample(&sample));
-        let mut measured = summary(&samples);
+        metrics.observe(&recording::metrics_sample(&sample));
+        let mut measured = metrics.snapshot();
         measured["recorder_bytes"] =
             json!({"samples":log.metadata()?.len(),"liveness_events":event_log.metadata()?.len()});
         fs::write(

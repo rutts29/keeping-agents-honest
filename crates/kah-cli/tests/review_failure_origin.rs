@@ -49,3 +49,25 @@ fn collect(path: &Path, codes: &mut BTreeSet<String>) {
         }
     }
 }
+
+#[test]
+fn writer_contention_is_host_pending_for_every_validation_origin() {
+    use kah_cli::observer_review::{failure, redelivery};
+    let error = "STORE_BUSY stage=run_store: run store is busy";
+    assert!(failure::pending(&error));
+    for origin in [
+        Origin::Host,
+        Origin::ReportValidation,
+        Origin::SelectionValidation,
+        Origin::Delivery,
+    ] {
+        assert!(!correctable(origin, error));
+        assert!(!redelivery::retryable(origin, error));
+    }
+    let wrapped =
+        failure::validation::<()>(Origin::ReportValidation, || Err(error.into())).unwrap_err();
+    assert_eq!(failure::origin(wrapped.as_ref()), Origin::Host);
+    assert!(!failure::pending(
+        &"REVIEW_SCHEMA stage=report: detail mentions STORE_BUSY"
+    ));
+}
