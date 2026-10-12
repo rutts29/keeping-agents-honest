@@ -59,6 +59,7 @@ pub fn write(
     Ok(())
 }
 pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
+    kah_core::run_store::ensure_save_directory(directory)?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("RUN_REPORT_CLOCK stage=report: {e}"))?

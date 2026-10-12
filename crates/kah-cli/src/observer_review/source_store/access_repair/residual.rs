@@ -103,6 +103,11 @@ pub fn archive(source: &Path, target: &Path) -> Result<()> {
 }
 
 fn copy_inner(source: &Path, target: &Path) -> Result<()> {
+    kah_core::run_store::ensure_save_directory(
+        target
+            .parent()
+            .ok_or("REVIEW_PRIVATE_COPY_PATH stage=source_access_repair")?,
+    )?;
     if !fs::symlink_metadata(source)?.is_file() {
         return Err("REVIEW_PRIVATE_COPY_TYPE stage=source_access_repair".into());
     }

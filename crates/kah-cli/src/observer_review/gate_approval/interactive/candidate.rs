@@ -54,6 +54,11 @@ pub(super) fn load(
     Ok(candidate)
 }
 fn export(project: &Path, head: &str, bundle: &Path) -> Result<()> {
+    kah_core::run_store::ensure_save_directory(
+        bundle
+            .parent()
+            .ok_or("REVIEW_GATE_BUNDLE_PATH stage=verification")?,
+    )?;
     let temporary = bundle.with_extension(format!("{}.partial", crate::relay_store::nonce()));
     let output = fs::OpenOptions::new()
         .write(true)

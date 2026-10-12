@@ -205,3 +205,7 @@ fn recorded_commands(request: &Request, report: &Report) -> Result<Vec<String>> 
     }
     Ok(commands)
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/candidate_registration.rs"]
+mod registration_tests;
