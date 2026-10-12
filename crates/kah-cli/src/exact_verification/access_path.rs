@@ -3,6 +3,15 @@ use crate::Result;
 use std::{fs, os::unix::fs::MetadataExt, path::Path, process::Command};
 
 pub(super) fn prepare(bind: &Path, uid: u32) -> Result<serde_json::Value> {
+    let state = kah_core::run_store::RunStore::default_state_root()?;
+    let resolved = bind.canonicalize()?;
+    if bind.starts_with(&state)
+        || state
+            .canonicalize()
+            .is_ok_and(|state| resolved.starts_with(state))
+    {
+        return Err("RUN_VERIFIER_INFRA_GAP stage=verification: candidate is inside private state; no traverse grants applied".into());
+    }
     let owner = kah_sandbox::current_uid()?;
     let mut audit = vec![];
     // Same owned-ancestor boundary as native_setup::share. No siblings touched.

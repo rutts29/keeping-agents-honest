@@ -20,7 +20,8 @@ fn retained_gate_tag_survives_import_and_planned_checks_select_the_gate_candidat
     )
     .unwrap();
     let head = "8dfddba6469f55882370a4c5432c3b605b4857ce";
-    let candidate = load(&root, &state, head).unwrap();
+    let home = std::env::temp_dir().join(format!("tag-home-{}", crate::relay_store::nonce()));
+    let candidate = load(&root, &home, &state, head).unwrap();
     let tag = git()
         .arg("-C")
         .arg(&candidate.path)
@@ -51,10 +52,14 @@ fn retained_gate_tag_survives_import_and_planned_checks_select_the_gate_candidat
         super::super::super::checks::planned_candidate(&state, head, &request).is_err(),
         "normal completion still requires the authentic run candidate"
     );
-    assert_eq!(load(&root, &state, head).unwrap().head().unwrap(), head);
+    assert_eq!(
+        load(&root, &home, &state, head).unwrap().head().unwrap(),
+        head
+    );
     reject_missing_target(&root, &candidate);
     drop(store);
     fs::remove_dir_all(root.parent().unwrap().parent().unwrap()).unwrap();
+    fs::remove_dir_all(home).unwrap();
 }
 
 fn reject_missing_target(root: &Path, candidate: &Worktree) {
