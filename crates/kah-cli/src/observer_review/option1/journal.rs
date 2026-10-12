@@ -43,6 +43,17 @@ pub fn save(record: &Review) -> Result<()> {
     crate::unattended_report::save(&archive, &format!("{digest}.json"), &value)?;
     crate::unattended_report::save(&root, &format!("{}.json", record.head), &value)
 }
+pub fn save_screen(record: &Review) -> Result<()> {
+    save(record)?;
+    if !record.requires_native() && record.native.is_none() {
+        super::super::timing::now(
+            &record.worker,
+            &format!("jev-only-{}", record.head),
+            "judged",
+        )?;
+    }
+    Ok(())
+}
 pub fn load(worker: &str, head: &str) -> Result<Option<Review>> {
     if !matches!(head.len(), 40 | 64) || !head.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("COMMIT_HEAD_INVALID stage=commit_journal".into());

@@ -3,6 +3,67 @@ use serde_json::json;
 use std::fs;
 
 #[test]
+fn a_persisted_fast_verdict_is_measured_at_its_actual_host_receipt() {
+    use kah_cli::observer_review::{option1::journal, source_store, state::Store};
+    use kah_observer::commit_review::{DoubtLine, classify};
+    std::env::var_os("XDG_STATE_HOME").expect("private check-tests state required");
+    let worker = format!("keep-up-fast-boundary-{}", kah_cli::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let root = store.directory.clone();
+    for dir in ["queued", "requests"] {
+        fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    source_store::save(
+        &root,
+        "state.json",
+        &json!({"pending":null,"observer":{},"worker":{}}),
+    )
+    .unwrap();
+    let head = "a".repeat(40);
+    let policy: DoubtLine = serde_json::from_str(include_str!(
+        "../../../../assets/observer/commit-policy.json"
+    ))
+    .unwrap();
+    let record = classify(
+        &worker,
+        &head,
+        &[json!({"request":"real-boundary-receipt","question":"r","noul":0.04})],
+        &policy,
+    )
+    .unwrap();
+    let before = kah_observer::session::now_ms();
+    journal::save_screen(&record).unwrap();
+    let after = kah_observer::session::now_ms();
+    let timing: serde_json::Value = source_store::read(
+        &root
+            .join("stage-timings")
+            .join(format!("jev-only-{head}.json")),
+    )
+    .unwrap();
+    let sample = support::sample(&root, &root);
+    let row = sample["reviews"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["head"] == head)
+        .unwrap();
+    assert_eq!(row["at_ms"]["judged"], timing["at_ms"]["judged"]);
+    let judged = row["at_ms"]["judged"].as_u64().unwrap();
+    assert!(judged >= before && judged <= after);
+    assert_eq!(row["missing_stages"], json!([]));
+    assert_eq!(
+        row["stage_sources"]["judged"],
+        "per-commit persisted Jev-only verdict receipt"
+    );
+    assert_eq!(
+        row["answer_receipts"][0]["request"],
+        "real-boundary-receipt"
+    );
+    drop(store);
+    fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
+
+#[test]
 fn jev_only_journal_receipts_are_visible_without_inventing_judgment_time() {
     let root = fixture();
     fs::create_dir(root.join("commit-reviews")).unwrap();
