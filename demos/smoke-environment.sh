@@ -35,6 +35,7 @@ setfacl -P -m "d:u:$smoke_service_uid:rwx,d:o::---" -- \
     "$HOME/repos/research" "$HOME/repos/untrusted"
 if [ -d "$KAH_SMOKE_SEEDS/skills" ]; then
     cp -RL --update=none "$KAH_SMOKE_SEEDS/skills/." "$HOME/.agents/skills/"
+    export KAH_SMOKE_SKILL_SOURCE=$KAH_SMOKE_SEEDS/skills
 fi
 # Only explicit, secret-free seed files are accepted; nothing reads real HOME.
 for smoke_name in hooks.json; do
