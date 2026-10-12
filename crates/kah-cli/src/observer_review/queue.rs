@@ -222,9 +222,7 @@ fn submit_batch(worker: &str, job: Wake, paths: Vec<PathBuf>) -> Result<Value> {
         let handled = Store::directory(worker)?.join("covered-triggers");
         kah_core::run_store::ensure_private_directory(&handled)?;
         let _lock = Store::delivery_at(&Store::directory(worker)?.join("queue-receipts"), true)?;
-        for path in paths {
-            fs::rename(&path, handled.join(path.file_name().unwrap()))?;
-        }
+        archive_submitted(&Store::directory(worker)?, &paths)?;
     }
     Ok(receipt)
 }
@@ -302,4 +300,32 @@ fn admissible_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
     headers::at(&root)
+}
+
+pub fn archive_submitted(root: &std::path::Path, paths: &[PathBuf]) -> Result<()> {
+    let archive = root.join("queue-transfers");
+    kah_core::run_store::ensure_private_directory(&archive)?;
+    for path in paths {
+        let name = path
+            .file_name()
+            .ok_or("REVIEW_QUEUE_PATH stage=queue_transfer")?;
+        let covered = root.join("covered-triggers").join(name);
+        let retired = root.join("queue-retired").join(name);
+        let (retained, status) = match fs::rename(path, &covered) {
+            Ok(()) => (covered, "transferred"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && !path.exists() && covered.is_file() =>
+                (covered, "already_covered"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && !path.exists() && retired.is_file() =>
+                (retired, "superseded_while_submitting"),
+            Err(error) => return Err(format!("REVIEW_QUEUE_TRANSFER_IO stage=queue_transfer: source={} covered={} retired={}: {error}",path.display(),covered.display(),retired.display()).into()),
+        };
+        let digest = super::source_store::stored_digest(&retained)?;
+        crate::unattended_report::save(
+            &archive,
+            name.to_str()
+                .ok_or("REVIEW_QUEUE_PATH stage=queue_transfer")?,
+            &json!({"source":path,"retained":retained,"status":status,"stored_sha256":digest,"at_ms":kah_observer::session::now_ms()}),
+        )?;
+    }
+    Ok(())
 }

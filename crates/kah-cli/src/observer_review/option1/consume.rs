@@ -62,6 +62,7 @@ pub fn run(store: Store, mut state: State, request: Request) -> Result<()> {
     state.pending = None;
     store.save(&state)?;
     fs::remove_file(path)?;
+    super::super::consume::resolve_gaps(&store.directory, &request.id)?;
     drop(store);
     super::super::timing::now(&request.worker, &request.id, "consumed")?;
     super::super::queue::kick(&request.worker)

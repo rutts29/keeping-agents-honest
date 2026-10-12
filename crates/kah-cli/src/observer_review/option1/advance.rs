@@ -22,6 +22,7 @@ pub fn selection(
     let result =
         super::selection::continue_review(store, state, &home, &request.turn, &job, manifests)?;
     std::fs::remove_file(path)?;
+    super::super::consume::resolve_gaps(&root, &request.id)?;
     crate::unattended_report::save(
         &root,
         &format!("option1-handoff-{}.json", request.id),

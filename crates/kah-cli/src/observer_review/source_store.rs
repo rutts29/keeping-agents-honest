@@ -378,3 +378,7 @@ fn collect(root: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
     }
     Ok(())
 }
+
+pub(crate) fn stored_digest(path: &Path) -> Result<String> {
+    retirement::digest(path)
+}

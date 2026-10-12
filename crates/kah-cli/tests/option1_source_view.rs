@@ -40,8 +40,16 @@ fn ordinary_option1_consume_releases_its_view_and_preserves_private_evidence() {
         .unwrap(),
     )
     .unwrap();
+    for name in ["gap.json", "delivered-gap.json"] {
+        kah_cli::unattended_report::save(&store.directory, name, &json!({"request":request.id,"error":"REVIEW_IO stage=review: No such file or directory (os error 2)"})).unwrap();
+    }
     let private = store.directory.clone();
     option1::consume::run(store, state, request).unwrap();
+    assert!(
+        !private.join("gap.json").exists(),
+        "successful consume clears only its own ghost gap"
+    );
+    assert!(!private.join("delivered-gap.json").exists());
     assert!(
         !input.join("sources").exists(),
         "completed report must release its view"

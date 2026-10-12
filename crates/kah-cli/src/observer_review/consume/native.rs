@@ -40,5 +40,5 @@ pub(super) fn finish(
     if request.purpose == Purpose::Checkpoint && !super::super::commit_packet::is_commit(&request) {
         super::super::checkpoint::notify(&state, &request, state.latest.as_ref().unwrap())?;
     }
-    super::finish(store, &path, &worker)
+    super::finish(store, &path, &worker, &request.id)
 }
