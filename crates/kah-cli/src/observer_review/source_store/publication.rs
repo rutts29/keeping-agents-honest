@@ -30,7 +30,9 @@ pub(super) fn share_files(private: &Path, input: &Path, files: BTreeSet<PathBuf>
         }
     }
     graph::publish(&private.join("sources"), &public, refs)?;
-    kah_run::access::share_tree(&public, kah_run::access::service_uid()?, false)?;
+    // Atomic descriptor replacement masks inherited ACLs too. Publish read
+    // access for the complete request view, not only its CAS children.
+    kah_run::access::share_tree(input, kah_run::access::service_uid()?, false)?;
     if let Some(workspace) = input.ancestors().find(|p| p.join(".source-root").is_file()) {
         let marker = workspace.join(".source-view-current");
         let temporary = workspace.join(format!("source-view-{}.tmp", crate::relay_store::nonce()));

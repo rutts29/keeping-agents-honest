@@ -112,7 +112,6 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
     super::source_store::save(&input, "request.json", &serde_json::to_value(request)?)?;
     super::queue::memory::sample_at(&store.directory, "submission_input_archived")?;
     super::source_store::share(&store.directory, &input)?;
-    kah_run::access::share_tree(&input, kah_run::access::service_uid()?, false)?;
     prompt(state, request, &input)
 }
 fn write_delta(store: &Store, request: &Request, input: &Path) -> Result<()> {
