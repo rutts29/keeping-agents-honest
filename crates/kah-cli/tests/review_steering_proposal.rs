@@ -47,6 +47,7 @@ fn input(record: &str) -> Input {
         }),
         dismissed: false,
         promoted: false,
+        rule_set_resolution: None,
         prior_intent: Some(
             json!({"goal":"Older goal","goal_item_id":"older","items":[{"id":"older","text":"Original requirement."}]}),
         ),

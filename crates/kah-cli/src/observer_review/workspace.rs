@@ -81,10 +81,10 @@ pub fn publish(store: &Store, state: &State, request: &Request) -> Result<String
         {
             return Err("REVIEW_DOCUMENT_ID stage=publish".into());
         }
-        super::source_store::text(
+        super::source_store::document(
             &store.directory,
             &input.join(format!("{}.txt", document.id)),
-            &document.text,
+            document,
         )?;
     }
     super::queue::memory::sample_at(&store.directory, "submission_documents_published")?;

@@ -97,6 +97,12 @@ fn validate_clause(
         clause.disposition,
         Disposition::Contributes | Disposition::Merged
     );
+    if contributes && source.origin["non_authority_sender"] == true {
+        return Err(error(
+            "AUTHORITY",
+            "delegate intake cannot support a user rule",
+        ));
+    }
     if contributes
         && source.origin["current_lifecycle"]
             .as_str()

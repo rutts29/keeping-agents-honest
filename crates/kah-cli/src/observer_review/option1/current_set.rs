@@ -90,7 +90,7 @@ fn resolve_ready(worker: &str, observer: &str, head: &str) -> Result<Option<Reso
     }
     let input = Input::from_history(
         &authority::history(worker)?,
-        current_rules::standing_sources(&b.project)?,
+        current_rules::sources(&b)?,
         "now",
     )?;
     if set.digest()? != set_digest || set.as_set().input_digest != input.digest()? {
@@ -130,7 +130,19 @@ pub fn accept(worker: &str, observer: &str, candidate: &RuleSet) -> Result<Value
     };
     match adopted {
         Ok(set) => {
-            let result = json!({"status":"validated","set_digest":set.digest()?,"observer_session":observer,"intent_revision":set.revision(),"conflicts":set.has_conflicts()});
+            let input = Input::from_history(
+                &authority::history(worker)?,
+                current_rules::sources(&b)?,
+                "now",
+            )?;
+            if set.as_set().input_digest != input.digest()? {
+                enqueue(&b, "intake-changed-during-rebuild")?;
+                return Ok(
+                    json!({"status":"stale_candidate_retained","reason":"intake changed before resolution"}),
+                );
+            }
+            let intake = current_rules::intake::resolve(&b, &set, &input)?;
+            let result = json!({"status":"validated","set_digest":set.digest()?,"observer_session":observer,"intent_revision":set.revision(),"conflicts":set.has_conflicts(),"intake_resolution":intake});
             crate::unattended_report::save(
                 &Store::directory(worker)?,
                 "current-rules-observer.json",

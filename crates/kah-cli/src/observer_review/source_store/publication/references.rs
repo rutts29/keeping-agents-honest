@@ -49,7 +49,7 @@ impl<'de> Visitor<'de> for Scan<'_> {
                 ));
             }
             let json = match encoding.as_deref() {
-                Some("json") => true,
+                Some("json" | "json_text") => true,
                 Some("utf8" | "binary") => false,
                 _ => {
                     return Err(serde::de::Error::custom(

@@ -40,6 +40,7 @@ pub(super) fn update_intent(
                 }),
                 dismissed: false,
                 promoted: false,
+                rule_set_resolution: None,
                 prior_intent: None,
                 newer_conflicts: vec![],
             };
@@ -62,12 +63,7 @@ pub(super) fn update_intent(
         persist(&state.binding.project, &source, previous.as_ref(), h, p)?;
         state.run_id = Some(source.run_id().to_string());
     }
-    if let Some(input) = inputs.iter().find(|i| i.status(history.as_ref()) == "gap") {
-        return Err(match &input.decision {
-            Some(Decision::Gap { reason }) => reason.clone(),
-            _ => "OBSERVER_SOURCE_PENDING stage=intake".into(),
-        });
-    }
+    check_gaps(&inputs, history.as_ref())?;
     Ok((
         projection,
         history.as_ref().is_some_and(|h| h.records().len() > before),
@@ -192,6 +188,16 @@ pub(crate) fn persist(
         source
             .create(project, history, projection)
             .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn check_gaps(inputs: &[Input], history: Option<&History>) -> Result<(), String> {
+    if let Some(input) = inputs.iter().find(|i| i.status(history) == "gap") {
+        return Err(match &input.decision {
+            Some(Decision::Gap { reason }) => reason.clone(),
+            _ => "OBSERVER_SOURCE_PENDING stage=intake".into(),
+        });
     }
     Ok(())
 }
