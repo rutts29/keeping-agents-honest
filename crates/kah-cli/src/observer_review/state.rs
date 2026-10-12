@@ -126,6 +126,11 @@ pub struct Store {
     pub directory: PathBuf,
     _lock: File,
 }
+impl Drop for Store {
+    fn drop(&mut self) {
+        let _ = self._lock.unlock();
+    }
+}
 impl Store {
     pub fn directory(worker: &str) -> Result<PathBuf> {
         Ok(Sessions::directory(&RunStore::default_state_root()?, worker).join("review"))
@@ -235,3 +240,7 @@ pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
 
 mod control;
 pub use control::{Control, read_control};
+
+#[cfg(test)]
+#[path = "../../tests/observer_unit/review_lock_drop.rs"]
+mod lock_drop_tests;
