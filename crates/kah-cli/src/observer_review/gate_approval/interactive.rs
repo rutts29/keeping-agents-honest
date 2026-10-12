@@ -2,9 +2,10 @@
 use super::super::{gate_host::Job, source_store, state::Store};
 use super::*;
 use kah_observer::decision_units::artifact::Receipt;
-use std::{collections::BTreeSet, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 mod candidate;
 mod missing;
+mod replay;
 mod risk_text;
 pub use candidate::bundle_cli;
 pub use missing::guard;
@@ -56,12 +57,13 @@ fn execute(root: &Path, job: &Job) -> Result<DeliveryProof> {
         .head
         .as_deref()
         .ok_or("REVIEW_GATE_HEAD_MISSING stage=verification")?;
-    let commands = recorded_commands(&job.request, &job.report)?;
-    let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=verification")?);
+    source_store::save(
+        root,
+        "recorded-check-dispositions.json",
+        &replay::dispositions(&job.request, &job.report)?,
+    )?;
     let tree = candidate::load(root, &job.state, head)?;
-    if commands.is_empty() {
-        inventory(&tree, head)?;
-    }
+    inventory(&tree, head)?;
     let index = Store::directory(&job.request.worker)?.join("interactive-candidates");
     source_store::save(
         &index,
@@ -78,17 +80,13 @@ fn execute(root: &Path, job: &Job) -> Result<DeliveryProof> {
             delivered_sha: head.into(),
         })
         .collect();
-    let options = super::checks::options(&job.request.worker)?;
-    let proof = verify_commands(head, &commands, artifacts, |index, command| {
-        recorded_check(
-            &home,
-            &tree,
-            head,
-            options,
-            command,
-            &root.join(format!("check-{index}.log")),
-        )
-    })?;
+    let proof = DeliveryProof {
+        head: head.into(),
+        fresh_checkout: true,
+        tests: vec![],
+        artifacts,
+        recorded_checks_absent: true,
+    };
     source_store::save(root, "proof.json", &json!(proof))?;
     Ok(proof)
 }
@@ -108,32 +106,6 @@ fn inventory(tree: &kah_run::worktree::Worktree, head: &str) -> Result<()> {
     };
     snapshot.remove_verification()?;
     result
-}
-fn recorded_check(
-    home: &Path,
-    tree: &kah_run::worktree::Worktree,
-    head: &str,
-    options: kah_sandbox::LaunchOptions,
-    command: &str,
-    log: &Path,
-) -> Result<TestReceipt> {
-    if log.with_extension("reserved").exists()
-        && !crate::exact_verification::receipt_path(log).exists()
-    {
-        return Err("REVIEW_FOLLOWUP_CHECK_UNKNOWN stage=verification: recorded check was reserved without a receipt; retained, never silently repeated".into());
-    }
-    if let Some(saved) =
-        super::super::state::read::<Value>(&crate::exact_verification::receipt_path(log))?
-    {
-        return Ok(test_receipt(
-            serde_json::from_value(saved["receipt"].clone())?,
-            saved["changed"] == true,
-        ));
-    }
-    fs::write(log.with_extension("reserved"), command)?;
-    let (receipt, changed) =
-        crate::exact_verification::execute(home, tree, head, options, command, log, || Ok(false))?;
-    Ok(test_receipt(receipt, changed))
 }
 pub(super) fn candidate_for(
     state: &crate::observer_review::state::State,
@@ -158,15 +130,6 @@ pub(super) fn candidate_for(
     }
     kah_run::worktree::Worktree::load(&path).map_err(Into::into)
 }
-fn test_receipt(receipt: kah_run::verification::Receipt, changed: bool) -> TestReceipt {
-    TestReceipt {
-        command: receipt.command,
-        commit: receipt.commit,
-        exit_code: receipt.exit_code,
-        success: receipt.success && !changed,
-        output: receipt.output,
-    }
-}
 pub fn verify_commands(
     head: &str,
     commands: &[String],
@@ -189,38 +152,6 @@ pub fn verify_commands(
         recorded_checks_absent: commands.is_empty(),
     })
 }
-fn recorded_commands(request: &Request, report: &Report) -> Result<Vec<String>> {
-    let verified = super::super::decisions::verify_evidence(request, report)?
-        .ok_or("REVIEW_GATE_CHECK_SOURCE stage=verification")?;
-    let mut seen = BTreeSet::new();
-    let mut commands = vec![];
-    for r in report.decision_units.iter().flat_map(|u| &u.requirements) {
-        let value = verified["requirements"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|v| v["id"] == r.id)
-            .ok_or("REVIEW_GATE_CHECK_SOURCE stage=verification")?;
-        for check in &r.checks {
-            let records = &value["citations"][check.command_citation]["native_records"];
-            let recorded = records
-                .as_array()
-                .into_iter()
-                .flatten()
-                .flat_map(|r| r["executions"].as_array().into_iter().flatten())
-                .filter_map(|e| e["command"].as_str())
-                .collect::<BTreeSet<_>>();
-            if recorded.len() != 1 {
-                return Err("REVIEW_GATE_CHECK_SOURCE stage=verification: cite exactly one whole recorded native command, not an ambiguous range".into());
-            }
-            let command = recorded.into_iter().next().unwrap();
-            if seen.insert(command.to_owned()) {
-                commands.push(command.to_owned());
-            }
-        }
-    }
-    Ok(commands)
-}
 
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/candidate_registration.rs"]
@@ -229,3 +160,7 @@ mod registration_tests;
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/interactive_first_round.rs"]
 mod first_round_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/recorded_replay.rs"]
+mod replay_tests;

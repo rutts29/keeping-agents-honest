@@ -204,7 +204,9 @@ fn interactive(exit: Option<i32>) -> (Request, gate_approval::DeliveryProof) {
                 commit: req.head.clone().unwrap(),
                 exit_code: exit,
                 success: exit == Some(0),
-                output: "Recorded native check output".into(),
+                // Native bodies are evidence-only. This
+                // receipt represents the separately planned candidate check.
+                output: "Planned isolated check output".into(),
             })
         },
     )
@@ -213,7 +215,7 @@ fn interactive(exit: Option<i32>) -> (Request, gate_approval::DeliveryProof) {
     (req, proof)
 }
 #[test]
-fn interactive_passing_recorded_check_keeps_a_proven_gate_question_free() {
+fn interactive_passing_planned_check_keeps_a_proven_gate_question_free() {
     let (req, proof) = interactive(Some(0));
     assert!(proof.passes(req.head.as_deref().unwrap()));
     let report = report(&req, "satisfied");
@@ -240,7 +242,7 @@ fn interactive_passing_recorded_check_keeps_a_proven_gate_question_free() {
     std::fs::remove_dir_all(root).unwrap();
 }
 #[test]
-fn interactive_failing_recorded_check_blocks_even_a_supported_thinker() {
+fn interactive_failing_planned_check_blocks_even_a_supported_thinker() {
     let (req, proof) = interactive(Some(1));
     assert!(!proof.passes(req.head.as_deref().unwrap()));
     let report = report(&req, "satisfied");

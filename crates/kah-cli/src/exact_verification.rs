@@ -3,6 +3,7 @@ use crate::{Result, native_child::stop_executors};
 use kah_run::{access, verification, worktree::Worktree};
 use kah_sandbox::{Domain, LaunchOptions, Project};
 use std::{path::Path, time::Duration};
+mod access_path;
 
 pub fn execute(
     home: &Path,
@@ -43,7 +44,13 @@ fn run(
     interrupted: impl FnMut() -> std::result::Result<bool, String>,
 ) -> Result<verification::Receipt> {
     let uid = access::service_uid()?;
-    access::traverse(tree.path.parent().unwrap(), uid)?;
+    let acl_audit = access_path::prepare(&tree.path, uid)?;
+    let acl_path = log.with_extension("ancestor-acl.json");
+    crate::unattended_report::save(
+        acl_path.parent().unwrap(),
+        acl_path.file_name().unwrap().to_str().unwrap(),
+        &acl_audit,
+    )?;
     access::share_tree(&tree.path, uid, true)?;
     let project = Project {
         domain: Domain::Research,
@@ -58,14 +65,29 @@ fn run(
         ])?;
     // Preserve the existing unattended test deadline; this is not a review
     // deadline. Review progress/liveness remains independent of test execution.
-    Ok(verification::execute_checked(
+    let receipt = verification::execute_checked(
         &executor,
         script,
         commit,
         Duration::from_secs(120),
         log,
         interrupted,
-    )?)
+    )?;
+    checked_receipt(receipt, log)
+}
+
+fn checked_receipt(receipt: verification::Receipt, log: &Path) -> Result<verification::Receipt> {
+    if receipt.exit_code == Some(126)
+        && receipt.output.contains("invalid mount config")
+        && receipt.output.contains("permission denied")
+    {
+        return Err(format!(
+            "RUN_VERIFIER_INFRA_GAP stage=verification: bind traversal denied; retained log {}",
+            log.display()
+        )
+        .into());
+    }
+    Ok(receipt)
 }
 
 pub(crate) fn receipt_path(log: &Path) -> std::path::PathBuf {
@@ -88,3 +110,7 @@ fn record(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/observer_unit/verifier_access.rs"]
+mod tests;

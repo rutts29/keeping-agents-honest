@@ -175,6 +175,22 @@ fn schedule_checks(
         &proof,
         request,
     )?;
+    append_planned_checks(&mut proof, &items);
+    source_store::save(path, "checks.json", &serde_json::to_value(&proof)?)?;
+    source_store::save(path, "item-results.json", &serde_json::to_value(items)?)?;
+    queue_checks(root, path, round, request, job, &proof)?;
+    source_store::save(
+        path,
+        "finished.json",
+        &json!({"status":"awaiting_thinker","request":request.id}),
+    )?;
+    hook::spawn("__review-wake", &request.worker)
+}
+
+fn append_planned_checks(
+    proof: &mut DeliveryProof,
+    items: &[super::contract_execution::ItemResult],
+) {
     for check in items.iter().filter_map(|i| i.check.as_ref()) {
         if !proof
             .tests
@@ -185,15 +201,6 @@ fn schedule_checks(
         }
     }
     proof.recorded_checks_absent = proof.tests.is_empty();
-    source_store::save(path, "checks.json", &serde_json::to_value(&proof)?)?;
-    source_store::save(path, "item-results.json", &serde_json::to_value(items)?)?;
-    queue_checks(root, path, round, request, job, &proof)?;
-    source_store::save(
-        path,
-        "finished.json",
-        &json!({"status":"awaiting_thinker","request":request.id}),
-    )?;
-    hook::spawn("__review-wake", &request.worker)
 }
 
 fn drive_one(root: &Path, path: &Path, worker: &str) -> Result<()> {
@@ -293,3 +300,7 @@ fn queue_checks(
         },
     )
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/interactive_planned_pass.rs"]
+mod planned_pass_tests;
