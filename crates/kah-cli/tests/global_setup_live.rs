@@ -9,6 +9,8 @@ mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[path = "terminal_support/public_config.rs"]
+mod public_config;
 use kah_codex::{control::Control, overlay};
 use pty::Terminal;
 use serde_json::{Value, json};
@@ -29,7 +31,7 @@ fn codex_global_setup_in_both_restricted_domains() {
 fn journey(domain: &str) {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();
-    let hooks_before = fs::read(home.join(".codex/hooks.json")).unwrap();
+    let hooks_before = public_config::snapshot(&home.join(".codex/hooks.json"));
     let version = Command::new(home.join(".local/bin/codex"))
         .arg("--version")
         .output()
@@ -80,7 +82,7 @@ fn journey(domain: &str) {
         "global config changed"
     );
     assert!(
-        hooks_before == fs::read(home.join(".codex/hooks.json")).unwrap(),
+        hooks_before == public_config::snapshot(&home.join(".codex/hooks.json")),
         "global hooks changed"
     );
     let evidence = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());

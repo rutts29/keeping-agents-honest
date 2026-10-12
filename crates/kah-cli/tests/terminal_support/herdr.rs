@@ -5,6 +5,8 @@ use super::{
     pty::{Terminal, quote},
 };
 use crate::fixture;
+#[path = "public_config.rs"]
+mod public_config;
 use serde_json::{Value, json};
 use std::{
     env, fs,
@@ -25,7 +27,7 @@ fn run_domain(domain: &str) {
     let home = PathBuf::from(env::var_os("HOME").unwrap());
     let before = (
         fs::read(home.join(".codex/config.toml")).unwrap(),
-        fs::read(home.join(".codex/hooks.json")).unwrap(),
+        public_config::snapshot(&home.join(".codex/hooks.json")),
     );
     let (_, mut f) = fixture::prepare(&home, domain, false);
     let probe = setup();
@@ -69,7 +71,7 @@ fn run_domain(domain: &str) {
     assert_eq!(
         (
             fs::read(home.join(".codex/config.toml")).unwrap(),
-            fs::read(home.join(".codex/hooks.json")).unwrap()
+            public_config::snapshot(&home.join(".codex/hooks.json"))
         ),
         before
     );
