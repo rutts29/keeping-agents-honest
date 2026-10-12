@@ -44,7 +44,13 @@ fn run(
     interrupted: impl FnMut() -> std::result::Result<bool, String>,
 ) -> Result<verification::Receipt> {
     let uid = access::service_uid()?;
-    access_path::prepare(&tree.path, uid)?;
+    let acl_audit = access_path::prepare(&tree.path, uid)?;
+    let acl_path = log.with_extension("ancestor-acl.json");
+    crate::unattended_report::save(
+        acl_path.parent().unwrap(),
+        acl_path.file_name().unwrap().to_str().unwrap(),
+        &acl_audit,
+    )?;
     access::share_tree(&tree.path, uid, true)?;
     let project = Project {
         domain: Domain::Research,

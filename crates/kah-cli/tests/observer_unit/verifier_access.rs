@@ -168,5 +168,36 @@ fn private_verifier_ancestors_allow_only_traversal_and_leave_siblings_private() 
         0o700
     );
     assert!(!acl(&sibling).contains(&format!("user:{uid}:")));
+    restricted_mask(&root, uid);
     fs::remove_dir_all(root).unwrap();
+}
+
+fn restricted_mask(root: &Path, uid: u32) {
+    let bind = root.join("restricted-mask/bind");
+    kah_core::run_store::ensure_save_directory(&bind).unwrap();
+    let parent = bind.parent().unwrap();
+    assert!(
+        Command::new("setfacl")
+            .args(["-m", "u:65533:rwx,m::r--"])
+            .arg(parent)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let before = acl(parent);
+    let audit = access_path::prepare(&bind, uid).unwrap();
+    let entry = audit
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["path"] == serde_json::json!(parent))
+        .unwrap();
+    assert_eq!(entry["prior_mask"], "r--");
+    assert_eq!(entry["prior_acl"], before);
+    let after = acl(parent);
+    assert!(after.contains("mask::r-x"), "{after}");
+    assert!(
+        !after.contains("mask::rwx"),
+        "hidden write rights must stay masked"
+    );
 }
