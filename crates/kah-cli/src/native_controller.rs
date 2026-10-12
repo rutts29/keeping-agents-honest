@@ -24,6 +24,7 @@ use std::{
 mod completion;
 mod completion_intent;
 mod contention;
+mod followup;
 mod sync;
 
 pub fn run_cli(arguments: &[String]) -> Result<()> {
@@ -188,7 +189,7 @@ struct Run<'a> {
     sampled: Instant,
     tests: Option<kah_run::verification::Receipt>,
     unsuccessful: u8,
-    followup_sample: Option<String>,
+    followup_progress: followup::Tracker,
     online: bool,
 }
 impl<'a> Run<'a> {
@@ -235,7 +236,7 @@ impl<'a> Run<'a> {
             sampled: Instant::now() - Duration::from_secs(2),
             tests: None,
             unsuccessful: 0,
-            followup_sample: None,
+            followup_progress: followup::Tracker::default(),
             online,
         })
     }
@@ -343,17 +344,13 @@ impl<'a> Run<'a> {
                 // Stop may precede the durable native completion marker. This
                 // existing idle controller loop re-kicks a waiting evidence
                 // round; no model polling, extra ask or review deadline.
-                if crate::observer_review::gate_approval::pending_followups(&state.binding.session)?
-                    && self
-                        .history
-                        .as_mut()
-                        .map(History::completed)
-                        .transpose()?
-                        .unwrap_or(false)
-                    && state.action_digest != self.followup_sample
-                {
-                    crate::observer_review::hook::spawn("__gate-followup", &state.binding.session)?;
-                    self.followup_sample = state.action_digest.clone();
+                if let Some(history) = self.history.as_mut() {
+                    followup::poll(&state, history, &mut self.followup_progress, || {
+                        crate::observer_review::hook::spawn(
+                            "__gate-followup",
+                            &state.binding.session,
+                        )
+                    })?;
                 }
                 contention::poll(|| self.assess(&state))?;
             }
