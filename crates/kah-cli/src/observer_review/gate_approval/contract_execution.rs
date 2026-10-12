@@ -3,6 +3,7 @@ use super::followup::{Attempt, Binding, VerificationRound};
 use super::*;
 use kah_observer::verification_contract::{Item, Method};
 use std::path::PathBuf;
+mod source;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -197,13 +198,7 @@ fn one(
         Method::TargetedCheck { command }
             if coverage["covered"] == true || coverage["execute_reasoned_check"] == true =>
         {
-            if !request.trigger["interactive_gate_verification"].is_null() {
-                let proof = super::captured(request)?
-                    .ok_or("REVIEW_GATE_CHECK_SOURCE stage=verification")?;
-                if !proof.tests.iter().any(|t| t.command == *command) {
-                    return Err("REVIEW_GATE_CHECK_SOURCE stage=verification: interactive gates reuse recorded project checks, never an invented command".into());
-                }
-            }
+            source::validate(request, &coverage, command)?;
             result.check = targeted(directory, state, round, item, command)?;
             result.verified = coverage["covered"] == true
                 && result
@@ -389,3 +384,7 @@ mod controller_fact_tests;
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/v12_terminal_coverage.rs"]
 mod v12_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/planned_replay.rs"]
+mod planned_tests;
