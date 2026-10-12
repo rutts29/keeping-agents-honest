@@ -9,7 +9,9 @@ use std::{
 };
 mod cleanup;
 mod completion;
+pub mod settings;
 pub mod subagent_completion;
+mod transcript;
 
 pub struct Fixture {
     root: PathBuf,
@@ -42,14 +44,17 @@ impl Fixture {
                 .unwrap()
                 .success()
         );
-        let encoded = root.to_string_lossy().replace('/', "-");
+        let transcript_directory = kah_claude::paths::transcript(&home, &root, &id)
+            .parent()
+            .unwrap()
+            .to_owned();
         Self {
             created_root: root.clone(),
             root,
             id,
             base: RunStore::default_state_root().unwrap(),
             evidence: PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()),
-            transcript_directory: home.join(".claude/projects").join(encoded),
+            transcript_directory,
         }
     }
     pub fn start(&self, resume: bool) -> Terminal {
@@ -133,21 +138,27 @@ impl Fixture {
         }
     }
     pub fn rows(&self) -> Vec<serde_json::Value> {
-        fs::read_to_string(self.transcript_directory.join(format!("{}.jsonl", self.id)))
+        fs::read_to_string(transcript::path(self))
             .unwrap_or_default()
             .lines()
             .filter_map(|s| serde_json::from_str(s).ok())
             .collect()
     }
     pub fn child_transcripts(&self) -> usize {
-        fs::read_dir(self.transcript_directory.join(&self.id).join("subagents"))
-            .map(|entries| {
-                entries
-                    .flatten()
-                    .filter(|e| e.path().extension().is_some_and(|s| s == "jsonl"))
-                    .count()
-            })
-            .unwrap_or(0)
+        fs::read_dir(
+            transcript::path(self)
+                .parent()
+                .unwrap()
+                .join(&self.id)
+                .join("subagents"),
+        )
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().extension().is_some_and(|s| s == "jsonl"))
+                .count()
+        })
+        .unwrap_or(0)
     }
     pub fn has_file(&self, file: &str, text: &str) -> bool {
         fs::read_to_string(self.root.join(file)).is_ok_and(|s| s.trim() == text)

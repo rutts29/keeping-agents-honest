@@ -27,7 +27,7 @@ fn repository_settings_cannot_escape_restricted_claude() {
 
 fn journey(domain: &str) {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let before = claude_support::settings::snapshot(&home);
     let version = Command::new("claude").arg("--version").output().unwrap();
     let f = Fixture::new_domain(domain);
     let private = Canary(home.join(".ssh").join(format!("kah-settings-{}", f.id)));
@@ -57,10 +57,7 @@ fn journey(domain: &str) {
             "repository command escaped: {name}"
         );
     }
-    assert_eq!(
-        fs::read(home.join(".claude/settings.json")).unwrap(),
-        before
-    );
+    assert_eq!(claude_support::settings::snapshot(&home), before);
     fs::write(f.evidence.join(format!("repo-settings-{domain}.json")), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":domain,"projectAndLocalSettingsIgnored":true,"emptyPrefixIgnored":true,"execHookCanariesAbsent":true,"statusLineCanaryAbsent":true,"apiKeyHelperCanaryAbsent":true,"nativeReadDenied":true,"bashHostFileHidden":true,"bashOffline":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }
 
@@ -113,7 +110,7 @@ fn prove(rows: &[Value]) {
 #[ignore = "positive control: the same repository command traps fire in disposable Mine"]
 fn repository_command_traps_fire_without_restricted_settings_sources() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let before = claude_support::settings::snapshot(&home);
     let version = Command::new("claude").arg("--version").output().unwrap();
     let f = Fixture::new_domain("mine");
     let path = home.join(".ssh").join(format!("kah-settings-{}", f.id));
@@ -134,9 +131,6 @@ fn repository_command_traps_fire_without_restricted_settings_sources() {
         "ESCAPED"
     );
     drop(terminal);
-    assert_eq!(
-        fs::read(home.join(".claude/settings.json")).unwrap(),
-        before
-    );
+    assert_eq!(claude_support::settings::snapshot(&home), before);
     fs::write(f.evidence.join("repo-settings-positive-control.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"mine","fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","modelTurnRequested":false,"sameRepositorySettings":true,"settingSourcesOverride":false,"execHookCanaryCreated":true,"statusLineCanaryCreated":true,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }

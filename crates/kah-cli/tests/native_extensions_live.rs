@@ -9,6 +9,8 @@ mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[path = "terminal_support/public_config.rs"]
+mod public_config;
 
 use kah_codex::overlay::{self, OwnedHook};
 use kah_sandbox::{Executor, LaunchOptions, current_uid, publish_binary};
@@ -78,11 +80,29 @@ fn native_remote_mcp_and_hook_in_gvisor() {
     .unwrap();
 }
 
-fn globals(home: &std::path::Path) -> (Vec<u8>, Vec<u8>) {
+// openai/codex rust-v0.162.1 config/src/hook_config.rs defaults to empty hooks.
+// https://learn.chatgpt.com/docs/hooks also permits inline TOML instead of JSON.
+fn globals(home: &std::path::Path) -> (Vec<u8>, Option<Vec<u8>>) {
     (
         fs::read(home.join(".codex/config.toml")).unwrap(),
-        fs::read(home.join(".codex/hooks.json")).unwrap(),
+        public_config::snapshot(&home.join(".codex/hooks.json")),
     )
+}
+
+#[test]
+fn the_global_audit_preserves_missing_hooks_and_detects_new_hooks() {
+    let root = std::env::temp_dir().join(format!("kah-optional-hooks-unit-{}", std::process::id()));
+    fs::create_dir_all(root.join(".codex")).unwrap();
+    fs::write(root.join(".codex/config.toml"), "# whole public config\n").unwrap();
+    let before = globals(&root);
+    assert_eq!(before, globals(&root));
+    fs::write(root.join(".codex/hooks.json"), "{\"hooks\":{}}\n").unwrap();
+    assert_ne!(before, globals(&root));
+    fs::remove_file(root.join(".codex/hooks.json")).unwrap();
+    assert_eq!(before, globals(&root));
+    fs::create_dir(root.join(".codex/hooks.json")).unwrap();
+    assert!(std::panic::catch_unwind(|| globals(&root)).is_err());
+    fs::remove_dir_all(root).unwrap();
 }
 
 fn verify_catalog(home: &std::path::Path, f: &fixture::Fixture) {

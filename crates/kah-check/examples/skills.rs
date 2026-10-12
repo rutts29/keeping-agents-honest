@@ -4,6 +4,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
+#[path = "support/skill_source.rs"]
+mod skill_source;
 
 struct Probe {
     child: Child,
@@ -100,12 +102,7 @@ fn main() {
                 skill["enabled"], true,
                 "SKILL_DISABLED stage=skills: {name}"
             );
-            assert!(
-                skill["path"]
-                    .as_str()
-                    .unwrap()
-                    .contains("/agent-skills/sources/")
-            );
+            verify_source(skill, name);
             json!({"name":skill["name"],"path":skill["path"],"enabled":true})
         })
         .collect();
@@ -114,5 +111,20 @@ fn main() {
         serde_json::to_string_pretty(&json!({"freshProcess":true,
         "freshEphemeralSession":true,"skills":selected,"passed":true}))
         .unwrap()
+    );
+}
+
+fn verify_source(skill: &Value, name: &str) {
+    let seed = std::env::var_os("KAH_SMOKE_SKILL_SOURCE").map(std::path::PathBuf::from);
+    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    assert!(
+        skill_source::matches(
+            std::path::Path::new(skill["path"].as_str().unwrap()),
+            name,
+            seed.as_deref(),
+            &home
+        )
+        .unwrap(),
+        "SKILL_SOURCE stage=skills: {name}"
     );
 }

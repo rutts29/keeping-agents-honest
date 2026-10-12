@@ -16,8 +16,7 @@ use std::{fs, process::Command};
 fn claude_restricted_native_flow() {
     let f = Restricted::new();
     f.verify_cwd_file();
-    let settings = f.home.join(".claude/settings.json");
-    let before = fs::read(&settings).unwrap();
+    let before = claude_support::settings::snapshot(&f.home);
     let version = Command::new("claude").arg("--version").output().unwrap();
     let mut terminal = f.start();
     f.fixture.ready(&mut terminal);
@@ -54,7 +53,7 @@ fn claude_restricted_native_flow() {
     // Turn and observer are durable. Reap this fixture's process directly:
     // slash-command completion can display billing actions even for /exit.
     drop(terminal);
-    assert_eq!(fs::read(settings).unwrap(), before);
+    assert_eq!(claude_support::settings::snapshot(&f.home), before);
     fs::write(f.fixture.evidence.join("claude-prefix-flow.json"),serde_json::to_vec_pretty(&json!({
         "version":String::from_utf8(version.stdout).unwrap().trim(),"domain":"research-offline","fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low",
         "nativeReadEditWrite":true,"bashInGvisor":true,"mcp":proof,"shellHookInGvisor":true,"deniedSymlinkContentAbsent":true,

@@ -38,7 +38,7 @@ fn private_completion_archive_stays_outside_native_tools() {
     let version = version::Version::capture("claude");
     let f = Fixture::new_domain("research");
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let before = claude_support::settings::snapshot(&home);
     let directory = home.join(".local/share/kah-eval/completion-fixtures");
     kah_core::run_store::ensure_private_directory(&directory).unwrap();
     let path = directory.join(format!("canary-{}", f.id));
@@ -74,10 +74,7 @@ fn private_completion_archive_stays_outside_native_tools() {
             .any(|p| p["content"].to_string().contains("REPLAY_HIDDEN"))
     );
     drop(terminal);
-    assert_eq!(
-        before,
-        fs::read(home.join(".claude/settings.json")).unwrap()
-    );
+    assert_eq!(before, claude_support::settings::snapshot(&home));
     let installed = std::process::Command::new(home.join(".local/bin/claude"))
         .arg("--version")
         .output()

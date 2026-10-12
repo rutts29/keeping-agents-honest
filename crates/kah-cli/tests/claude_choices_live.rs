@@ -15,9 +15,8 @@ use std::{fs, process::Command, time::Duration};
 fn claude_native_effort_choice() {
     let f = Fixture::new();
     let version = Command::new("claude").arg("--version").output().unwrap();
-    let settings =
-        std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".claude/settings.json");
-    let before = fs::read(&settings).unwrap();
+    let settings_home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    let before = claude_support::settings::snapshot(&settings_home);
     let mut terminal = f.start_with(false, "claude-sonnet-5-5", "low", &[]);
     f.ready(&mut terminal);
     let offset = terminal.log_size();
@@ -29,7 +28,7 @@ fn claude_native_effort_choice() {
     terminal.send("s");
     std::thread::sleep(Duration::from_secs(1));
     assert!(
-        before == fs::read(&settings).unwrap(),
+        before == claude_support::settings::snapshot(&settings_home),
         "native session-only effort changed global settings"
     );
     let prompt = "Reply exactly EFFORT_OK without using tools.";
@@ -57,7 +56,7 @@ fn claude_native_effort_choice() {
     terminal.wait_exit(false);
     drop(terminal);
     assert!(
-        before == fs::read(&settings).unwrap(),
+        before == claude_support::settings::snapshot(&settings_home),
         "global settings changed"
     );
     fs::write(f.evidence.join("effort.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
@@ -70,9 +69,8 @@ fn claude_native_effort_choice() {
 fn claude_native_model_switch() {
     let f = Fixture::new();
     let version = Command::new("claude").arg("--version").output().unwrap();
-    let settings =
-        std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".claude/settings.json");
-    let before = fs::read(&settings).unwrap();
+    let settings_home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    let before = claude_support::settings::snapshot(&settings_home);
     let capture = f.project().join("model-change.json");
     fs::create_dir(f.project().join(".claude")).unwrap();
     let hook = format!("cat > {}", pty::quote(capture.to_str().unwrap()));
@@ -117,7 +115,7 @@ fn claude_native_model_switch() {
     terminal.wait_exit(false);
     drop(terminal);
     assert!(
-        before == fs::read(&settings).unwrap(),
+        before == claude_support::settings::snapshot(&settings_home),
         "session-only model switch changed global settings"
     );
     assert_eq!(

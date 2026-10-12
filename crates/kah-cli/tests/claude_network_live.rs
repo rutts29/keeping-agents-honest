@@ -14,7 +14,7 @@ use std::{fs, path::PathBuf, process::Command};
 #[ignore = "native Claude hosted search and online MCP while Bash stays offline"]
 fn claude_search_and_mcp_with_offline_bash() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let before = claude_support::settings::snapshot(&home);
     let version = Command::new("claude").arg("--version").output().unwrap();
     let f = Fixture::new_domain("untrusted");
     fs::write(
@@ -65,7 +65,7 @@ fn claude_search_and_mcp_with_offline_bash() {
     assert_eq!(proof["hostLoginHidden"], true);
     drop(terminal);
     assert!(
-        before == fs::read(home.join(".claude/settings.json")).unwrap(),
+        before == claude_support::settings::snapshot(&home),
         "global settings changed"
     );
     let evidence = f.evidence.clone();

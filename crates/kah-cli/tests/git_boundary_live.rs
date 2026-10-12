@@ -19,7 +19,7 @@ use std::{fs, path::PathBuf};
 #[ignore = "native restricted Git controls cannot plant host commands"]
 fn git_controls_stay_host_owned() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let claude_before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let claude_before = claude_support::settings::snapshot(&home);
     let codex_before = fs::read(home.join(".codex/config.toml")).unwrap();
     for domain in ["research", "untrusted"] {
         let f = Fixture::new_domain(domain);
@@ -52,10 +52,7 @@ fn git_controls_stay_host_owned() {
             }),
         );
     }
-    assert_eq!(
-        claude_before,
-        fs::read(home.join(".claude/settings.json")).unwrap()
-    );
+    assert_eq!(claude_before, claude_support::settings::snapshot(&home));
     assert_eq!(
         codex_before,
         fs::read(home.join(".codex/config.toml")).unwrap()

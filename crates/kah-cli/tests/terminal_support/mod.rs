@@ -1,3 +1,5 @@
+pub mod audit_runtime;
+pub mod audit_scope;
 pub mod closure;
 pub mod herdr;
 pub mod herdr_probe;
