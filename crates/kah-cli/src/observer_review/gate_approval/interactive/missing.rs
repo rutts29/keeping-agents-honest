@@ -105,7 +105,7 @@ fn draft(
         json!({"kind":"checkpoint_approval","id":id,"worker":request.worker,"requirement":"gate_approval","name":name,"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"summary":summary,"question":summary,"options":["Accept named unverified risks","Send back for evidence"],"status":"pending","delivery":"queued","question_origin":"controller","proof":proof,"assessment":assessment,"jev":judgment,"thinker_items":report.decision_units,"unverified_risks":risks,"record":root.join("questions").join(format!("{id}.json")),"authority_at_question":crate::observer_review::decisions::active_items(&request.intent),"goal_at_question":request.intent["goal"],"verification_round":{"source":request.trigger["interactive_gate_verification"],"checks_executed":0},"at_ms":kah_observer::session::now_ms()}),
     )
 }
-fn risks(report: &Report, assessment: &Value) -> Result<Vec<Value>> {
+pub(super) fn risks(report: &Report, assessment: &Value) -> Result<Vec<Value>> {
     let mut risks = vec![
         json!({"requirement_id":"recorded_checks","unverified":"No recorded project check was supplied for exact-SHA verification.","tried":[{"what":"Read checked native evidence; imported the exact gate SHA through fsck; created a private fresh checkout. No test command was invented or executed."}],"acceptance_risk":"Executable behavior has no objective test evidence on this gate SHA."}),
     ];
@@ -115,7 +115,7 @@ fn risks(report: &Report, assessment: &Value) -> Result<Vec<Value>> {
         .flatten()
         .filter_map(Value::as_str)
     {
-        let risk=report.verification_risks.as_ref().and_then(|items|items.iter().find(|i|i.requirement_id==id)).ok_or("REVIEW_FOLLOWUP_RISK_MISSING stage=verification: explain each remaining gate item in plain words")?;
+        let risk = super::risk_text(report, id)?;
         risks.push(json!({"requirement_id":id,"unverified":risk.unverified,"tried":[{"what":"Read this item's checked evidence; no recorded project check was supplied to verify it on the exact SHA."}],"acceptance_risk":risk.acceptance_risk}));
     }
     Ok(risks)

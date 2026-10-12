@@ -22,6 +22,17 @@ pub(crate) fn begin(
     report: &Report,
     assessment: &Value,
 ) -> Result<bool> {
+    begin_with(store, request, report, assessment, || {
+        hook::spawn("__gate-followup", &request.worker)
+    })
+}
+pub(super) fn begin_with(
+    store: &Store,
+    request: &Request,
+    report: &Report,
+    assessment: &Value,
+    schedule: impl FnOnce() -> Result<()>,
+) -> Result<bool> {
     let Some(proof) = captured(request)? else {
         return Ok(false);
     };
@@ -35,6 +46,9 @@ pub(crate) fn begin(
         return Ok(false);
     }
     let round = start(&store.directory, request)?;
+    if round.stage == Stage::Complete {
+        return Ok(false);
+    }
     let root = directory(&store.directory, &round);
     if root.join("finished.json").exists() {
         super::contract_delivery::retry(&store.directory, request, &round)?;
@@ -68,7 +82,7 @@ pub(crate) fn begin(
         let evidence = selected_evidence(request, report)?;
         advance(&store.directory, &round.binding, Step::Evidence(evidence))?;
     }
-    hook::spawn("__gate-followup", &request.worker)?;
+    schedule()?;
     Ok(true)
 }
 pub fn pending(worker: &str) -> Result<bool> {
@@ -141,7 +155,7 @@ fn schedule_checks(
     request: &Request,
     job: &Job,
 ) -> Result<()> {
-    let proof = if let Some(proof) =
+    let mut proof = if let Some(proof) =
         super::super::state::read::<DeliveryProof>(&path.join("checks.json"))?
     {
         proof
@@ -161,6 +175,17 @@ fn schedule_checks(
         &proof,
         request,
     )?;
+    for check in items.iter().filter_map(|i| i.check.as_ref()) {
+        if !proof
+            .tests
+            .iter()
+            .any(|t| t.command == check.command && t.commit == check.commit)
+        {
+            proof.tests.push(check.clone());
+        }
+    }
+    proof.recorded_checks_absent = proof.tests.is_empty();
+    source_store::save(path, "checks.json", &serde_json::to_value(&proof)?)?;
     source_store::save(path, "item-results.json", &serde_json::to_value(items)?)?;
     queue_checks(root, path, round, request, job, &proof)?;
     source_store::save(

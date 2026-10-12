@@ -56,6 +56,13 @@ fn proof() -> gate_approval::DeliveryProof {
         "artifacts":[{"path":"PLAN.md","baseline_blob":"b".repeat(40),"delivered_blob":"b".repeat(40),"delivered_sha":"a".repeat(40)}]})).unwrap()
 }
 fn round(root: &std::path::Path, request: &Request) {
+    round_with_proof(root, request, proof());
+}
+fn round_with_proof(
+    root: &std::path::Path,
+    request: &Request,
+    proof: gate_approval::DeliveryProof,
+) {
     use gate_approval::followup::*;
     source_store::save(
         &root.join("requests"),
@@ -86,13 +93,13 @@ fn round(root: &std::path::Path, request: &Request) {
         &round.binding,
         Step::Checks(CheckReceipt {
             receipt: ptr(&round.checks_receipt()),
-            proof: proof(),
+            proof,
             verified: vec![],
             risks: vec![UnverifiedRisk {
                 requirement_id: "integration".into(),
                 unverified: "Provider interaction remains unverified.".into(),
                 tried: vec![Attempt {
-                    what: "Ran exact-SHA integration check; inspected the native evidence.".into(),
+                    what: "Read exact-SHA check inventory and native evidence.".into(),
                     receipt: round.checks_receipt(),
                 }],
                 acceptance_risk: "The unverified provider interaction could fail.".into(),
@@ -264,6 +271,24 @@ fn interactive_no_recorded_checks_waits_on_one_named_risk_never_a_pass() {
     gate_approval::interactive::guard(&req, &mut result).unwrap();
     assert!(result["passed"].is_null());
     let root = fixture();
+    source_store::save(
+        &root.join("requests"),
+        &format!("{}.json", req.id),
+        &json!(req),
+    )
+    .unwrap();
+    // Missing recorded checks still require the verification round before asking.
+    assert!(
+        gate_approval::store(&root, &req, &report, &result, &proof, &json!({}))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        kah_cli::observer_review::questions::pending(&root)
+            .unwrap()
+            .is_empty()
+    );
+    round_with_proof(&root, &req, proof.clone());
     let first = gate_approval::store(&root, &req, &report, &result, &proof, &json!({}))
         .unwrap()
         .unwrap();

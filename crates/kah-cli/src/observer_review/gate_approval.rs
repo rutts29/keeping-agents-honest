@@ -160,7 +160,9 @@ fn positive_uncertainty(
         || !assessment["needs_user"]
             .as_array()
             .is_some_and(Vec::is_empty)
-        || !request.head.as_deref().is_some_and(|h| proof.passes(h))
+        || !request.head.as_deref().is_some_and(|h| {
+            proof.passes(h) || interactive::usable_plan(report) && proof.risk_receipts(h)
+        })
     {
         return false;
     }

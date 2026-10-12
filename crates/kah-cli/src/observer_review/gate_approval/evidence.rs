@@ -3,6 +3,13 @@
 use super::*;
 
 pub fn captured(request: &Request) -> Result<Option<DeliveryProof>> {
+    if request.trigger["verification_followup"]["stage"] == "checks_complete"
+        && let Some(proof) = request.trigger["verification_followup"].get("proof")
+    {
+        return serde_json::from_value(proof.clone())
+            .map(Some)
+            .map_err(Into::into);
+    }
     if let Some(proof) = request.trigger["interactive_gate_verification"].get("proof") {
         return serde_json::from_value(proof.clone())
             .map(Some)

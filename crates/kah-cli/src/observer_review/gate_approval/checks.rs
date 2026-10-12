@@ -8,7 +8,7 @@ pub(super) fn execute(
     round: &followup::VerificationRound,
     original: &DeliveryProof,
 ) -> Result<DeliveryProof> {
-    if !original.passes(&round.binding.head) {
+    if !original.risk_receipts(&round.binding.head) {
         return Err("REVIEW_FOLLOWUP_DELIVERY stage=verification".into());
     }
     let home =

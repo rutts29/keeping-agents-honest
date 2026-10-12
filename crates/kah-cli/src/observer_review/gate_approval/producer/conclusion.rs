@@ -22,7 +22,7 @@ pub(crate) fn finish(
     let directory = directory(root, &round);
     let job: Job = source_store::read(&directory.join("job.json"))?;
     let proof: DeliveryProof = source_store::read(&directory.join("checks.json"))?;
-    if !proof.passes(&round.binding.head) || assessment["passed"] == false {
+    if !proof.risk_receipts(&round.binding.head) || assessment["passed"] == false {
         // Failed checks/confirmed violations stay blocking; no risk admission.
         return Ok(true);
     }
@@ -134,12 +134,11 @@ fn items(
                 decision_receipt: decision.clone(),
             });
         } else {
-            let explanation = report.verification_risks.as_ref().and_then(|items|items.iter().find(|item|item.requirement_id==id))
-                .ok_or_else(||format!("REVIEW_FOLLOWUP_RISK_MISSING stage=verification: item {id}; provide plain verification_risks wording explaining what could not be verified and what acceptance risks; never ask for status confirmation"))?;
+            let explanation = super::super::interactive::report_risk(report, id)?;
             risks.push(checked_risk(
                 round,
                 id,
-                explanation,
+                &explanation,
                 receipt,
                 units.version(),
                 original.is_none(),
@@ -190,7 +189,7 @@ fn risk(
             },
             Attempt {
                 what: format!(
-                    "Reran the recorded checks in fresh gVisor checkouts of {}.",
+                    "Read the exact-SHA verification inventory and check receipts for {}.",
                     round.binding.head
                 ),
                 receipt: receipt.receipt.clone(),
@@ -213,7 +212,7 @@ pub(crate) fn guard(root: &Path, request: &Request, assessment: &mut Value) -> R
     }
     let round = start(root, request)?;
     let proof: DeliveryProof = source_store::read(&directory(root, &round).join("checks.json"))?;
-    if !proof.passes(&round.binding.head) {
+    if !proof.risk_receipts(&round.binding.head) {
         assessment["passed"] = false.into();
         assessment["state"] = "checkpoint_failed".into();
         let violations = assessment["violations"]

@@ -294,7 +294,7 @@ fn validate(round: &VerificationRound) -> Result<()> {
                 && round.checks.as_ref().is_some_and(|v| {
                     v.receipt.valid()
                         && v.receipt.receipt == round.checks_receipt()
-                        && v.proof.passes(&round.binding.head)
+                        && v.proof.risk_receipts(&round.binding.head)
                 })
                 && valid_risks(round)
         }
