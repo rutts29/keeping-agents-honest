@@ -10,6 +10,7 @@ use std::{
 };
 
 pub mod access_repair;
+pub mod binary;
 mod publication;
 mod retirement;
 mod roundtrip;
@@ -134,6 +135,10 @@ pub fn expand(value: Value, root: &Path) -> Result<Value> {
     if let Some(digest) = value.get("$kah_source").and_then(Value::as_str) {
         if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("REVIEW_SOURCE_ID stage=source_store".into());
+        }
+        if value["encoding"] == "binary" {
+            binary::verify(root, digest)?;
+            return Ok(value);
         }
         let bytes = verify(&root.join(digest), digest)?;
         return match value["encoding"].as_str() {

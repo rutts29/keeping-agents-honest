@@ -50,7 +50,7 @@ impl<'de> Visitor<'de> for Scan<'_> {
             }
             let json = match encoding.as_deref() {
                 Some("json") => true,
-                Some("utf8") => false,
+                Some("utf8" | "binary") => false,
                 _ => {
                     return Err(serde::de::Error::custom(
                         "REVIEW_SOURCE_ENCODING stage=source_view",

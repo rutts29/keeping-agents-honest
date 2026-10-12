@@ -14,6 +14,12 @@ pub fn build(
     input: &commit_check::Input,
     calibration: Option<&Calibration>,
 ) -> Result<(Vec<WireRequest>, Value)> {
+    if input.carried["binary_sources"]
+        .as_object()
+        .is_some_and(|v| !v.is_empty())
+    {
+        return Err("COMMIT_BINARY_NATIVE_REQUIRED stage=literal: complete binary evidence requires the observer".into());
+    }
     let (short, map) = decisive_bookkeeping::literal(&commit_check::literal(input)?)?;
     let short = commit_check::rule_in_question(&short)?;
     let packed = if let Some(c) = calibration {

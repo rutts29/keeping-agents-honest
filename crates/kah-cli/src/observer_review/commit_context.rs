@@ -50,7 +50,7 @@ pub fn exact(root: &Path, baseline: Option<&str>, head: &str) -> Result<Value> {
     )?;
     let mut files = vec![];
     for raw in names.split(|b| *b == 0).filter(|p| !p.is_empty()) {
-        let mut value = file(root, head, raw)?;
+        let mut value = changed_file(root, &base, head, raw)?;
         let path = value["path"].as_str().unwrap();
         value["patch"] = json!(text(
             root,
@@ -70,6 +70,15 @@ pub fn exact(root: &Path, baseline: Option<&str>, head: &str) -> Result<Value> {
     Ok(
         json!({"baseline":baseline,"baseline_tree":base,"head":head,"diff":diff,"touched_files":files,"whole_files":true,"content_cut":false}),
     )
+}
+fn changed_file(root: &Path, base: &str, head: &str, raw: &[u8]) -> Result<Value> {
+    let value = file(root, head, raw)?;
+    if value["deleted"] != true {
+        return Ok(value);
+    }
+    let mut previous = file(root, base, raw)?;
+    previous["deleted"] = json!(true);
+    Ok(previous)
 }
 fn file(root: &Path, head: &str, raw: &[u8]) -> Result<Value> {
     let path=std::str::from_utf8(raw).map_err(|_|"REVIEW_COMMIT_PATH_ENCODING stage=context: original Git diff remains available; native non-UTF8 path needs explicit handling")?;

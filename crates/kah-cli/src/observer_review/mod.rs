@@ -198,6 +198,9 @@ fn observe_route(args: &[String]) -> Option<crate::Result<()>> {
         Some("read-source") if args.len() == 3 => {
             Some(source_store::print_text(std::path::Path::new(&args[2])))
         }
+        Some("read-blob") if args.len() == 3 => {
+            Some(source_store::binary::print(std::path::Path::new(&args[2])))
+        }
         Some("repair-source-access") if args.len() == 3 => {
             Some(source_store::access_repair::repair(&args[2]).map(|v| println!("{v}")))
         }

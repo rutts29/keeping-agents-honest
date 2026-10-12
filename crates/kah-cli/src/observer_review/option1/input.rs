@@ -40,6 +40,7 @@ pub fn build(
         kah_core::projection::project(history, kah_core::projection::ProjectionConfig::default())?
             .revision
     );
+    input.carried["binary_sources"] = super::binary::descriptors(context);
     if checkpoint || input.rules.is_empty() {
         completion_requirements(history, &mut input);
     }
@@ -84,7 +85,8 @@ pub fn without_history(rules: &Resolved, context: &Value) -> Result<Input> {
         hunks,
         files,
         matrix: vec![],
-        carried: json!({"source_digest":rules.source_digest,"intent_revision":null,"accepted_intent":false}),
+        carried: json!({"source_digest":rules.source_digest,"intent_revision":null,"accepted_intent":false,
+            "binary_sources":super::binary::descriptors(context)}),
     })
 }
 fn completion_requirements(history: &kah_core::intent_history::History, input: &mut Input) {
@@ -141,11 +143,16 @@ pub(crate) fn files(
                 text: patch.into(),
             },
         );
-        if item["deleted"] != true {
-            let text = item["content"]["text"]
-                .as_str()
-                .ok_or("COMMIT_BINARY_SOURCE stage=input: native direct review required")?;
-            files.insert(path.into(), CodeFile::new(head, text));
+        if item["deleted"] != true || item["content"]["encoding"] == "binary" {
+            let text = if item["content"]["encoding"] == "binary" {
+                serde_json::to_string_pretty(&item["content"])?
+            } else {
+                item["content"]["text"]
+                    .as_str()
+                    .ok_or("COMMIT_SOURCE_ENCODING stage=input")?
+                    .to_owned()
+            };
+            files.insert(path.into(), CodeFile::new(head, &text));
         }
     }
 
