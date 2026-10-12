@@ -86,8 +86,7 @@ fn review(
         &["at_ms"],
         &mut gaps,
     );
-    let mut stages = timing["at_ms"].as_object().cloned().unwrap_or_default();
-    stages.insert("consumed".into(), timing["at_ms"]["completed"].clone());
+    let mut stages = completion_stages(&timing);
     let durable_admitted = stages.get("admitted").is_some_and(Value::is_u64);
     if !durable_admitted {
         stages.insert(
@@ -121,19 +120,36 @@ fn review(
         &mut gaps,
     );
     let head = request["head"].as_str();
-    let commit = if request["trigger"]["review_class"] == "commit" {
+    let class = review_class(&request);
+    let commit = if class == "commit" {
         head.and_then(|sha| commit_ms(repo, sha, &mut cursor.commits))
     } else {
         None
     };
     Ok(
-        json!({"id":id,"head":head,"purpose":request["purpose"],"review_class":request["trigger"]["review_class"],
+        json!({"id":id,"head":head,"purpose":request["purpose"],"review_class":class,
         "commit_ms":commit,"commit_clock":"git committer timestamp, second precision","at_ms":stages,"missing_stages":missing,
         "stage_sources":{"admitted":if durable_admitted{"per-request host admission receipt"}else{"last-admitted-lane exact request fallback"},
         "native_done":if durable_native_done{"per-request validated native Stop host receipt"}else{"missing native turn-end receipt"},
-        "evidence_ack":"mtime of accepted evidence ACK; separate from native turn end","judged":"host judgment completion","consumed":"host completed mark"},
+        "evidence_ack":"mtime of accepted evidence ACK; separate from native turn end","judged":"host judgment completion",
+        "consumed":if timing["at_ms"]["consumed"].is_u64(){"per-request host consumed receipt"}else if timing["at_ms"]["completed"].is_u64(){"legacy host completed receipt"}else{"missing host completion receipt"}},
         "assessment":result["assessment"],"gaps":gaps}),
     )
+}
+fn completion_stages(timing: &Value) -> serde_json::Map<String, Value> {
+    let mut stages = timing["at_ms"].as_object().cloned().unwrap_or_default();
+    if !stages.get("consumed").is_some_and(Value::is_u64) {
+        stages.insert("consumed".into(), timing["at_ms"]["completed"].clone());
+    }
+    stages
+}
+fn review_class(request: &Value) -> &Value {
+    let original = &request["trigger"]["option1"]["original_trigger"]["review_class"];
+    if original.is_string() {
+        original
+    } else {
+        &request["trigger"]["review_class"]
+    }
 }
 fn request(path: &Path, cursor: &mut Cursor) -> Result<Value> {
     let selection = Select::fields(&[
@@ -141,7 +157,19 @@ fn request(path: &Path, cursor: &mut Cursor) -> Result<Value> {
         ("head", Select::All),
         ("purpose", Select::All),
         ("created_ms", Select::All),
-        ("trigger", Select::fields(&[("review_class", Select::All)])),
+        (
+            "trigger",
+            Select::fields(&[
+                ("review_class", Select::All),
+                (
+                    "option1",
+                    Select::fields(&[(
+                        "original_trigger",
+                        Select::fields(&[("review_class", Select::All)]),
+                    )]),
+                ),
+            ]),
+        ),
     ]);
     let request = cursor.select(path, &selection)?;
     let id = request["id"]
