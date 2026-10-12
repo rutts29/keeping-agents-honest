@@ -56,7 +56,12 @@ pub fn record(
         super::gate_approval::finish_followup(&store.directory, request, report, assessment)?;
     super::questions::resolve(&store.directory, request, report, judgment)?;
     super::questions::store(&store.directory, request, report, assessment)?;
+    let fresh = followup_finished || fresh_followup(&store.directory, request, report, assessment)?;
+    let started = !followup_finished
+        && fresh
+        && super::gate_approval::begin_followup(store, request, report, assessment)?;
     if let Some(proof) = super::gate_approval::captured(request)?
+        && !started
         && let Some(question) = super::gate_approval::store(
             &store.directory,
             request,
@@ -69,15 +74,11 @@ pub fn record(
         super::reminder_queue::save(
             &store.directory,
             &json!({"request":request.id,"purpose":"uncertainty","turn":request.turn,
-                "system_notice":true,"text":format!("kah gate {} waits on user question {}. No confirmed violation; exact-SHA delivery receipts pass. Neither passed nor failed. Unrelated authorized work continues.",request.id,question["id"])}),
+                "system_notice":true,"text":format!("kah gate {} waits on user question {}. No confirmed violation; recorded verification evidence is retained. Neither passed nor failed. Unrelated authorized work continues.",request.id,question["id"])}),
         )?;
         return Ok(());
     }
-    let fresh = followup_finished || fresh_followup(&store.directory, request, report, assessment)?;
-    if !followup_finished
-        && fresh
-        && !super::gate_approval::begin_followup(store, request, report, assessment)?
-    {
+    if !followup_finished && fresh && !started {
         retain_rethink(&store.directory, request, assessment)?;
     }
     if let Some(mut text) = notice(request, report, assessment) {

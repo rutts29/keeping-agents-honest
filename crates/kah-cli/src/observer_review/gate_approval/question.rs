@@ -9,14 +9,17 @@ pub fn store(
     proof: &DeliveryProof,
     judgment: &Value,
 ) -> Result<Option<Value>> {
+    if assessment["passed"] != Value::Null {
+        return Ok(None);
+    }
+    let Some(followup) = followup::completed(root, request)? else {
+        return Ok(None);
+    };
     if proof.recorded_checks_absent {
         return super::interactive::missing_question(
             root, request, report, assessment, proof, judgment,
         );
     }
-    let Some(followup) = followup::completed(root, request)? else {
-        return Ok(None);
-    };
     if !eligible_after_followup(request, report, assessment, proof, &followup) {
         return Ok(None);
     }

@@ -5,9 +5,25 @@ use kah_observer::decision_units::artifact::Receipt;
 use std::{collections::BTreeSet, fs, path::PathBuf};
 mod candidate;
 mod missing;
+mod risk_text;
 pub use candidate::bundle_cli;
 pub use missing::guard;
 pub(super) use missing::missing_question;
+pub(super) use risk_text::derive as risk_text;
+pub(super) use risk_text::for_report as report_risk;
+
+pub(super) fn usable_plan(report: &Report) -> bool {
+    report
+        .decision_units
+        .as_ref()
+        .is_some_and(|u| u.version() >= 12)
+        && report.verification_contracts.as_ref().is_some_and(|items| {
+            !items.is_empty()
+                && items
+                    .iter()
+                    .all(|i| !i.claim.trim().is_empty() && !i.coverage_reasoning.trim().is_empty())
+        })
+}
 
 pub(crate) fn prepare(job: &mut Job) -> Result<()> {
     if job.request.trigger["option1_cumulative_input"].is_null()
@@ -209,3 +225,7 @@ fn recorded_commands(request: &Request, report: &Report) -> Result<Vec<String>> 
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/candidate_registration.rs"]
 mod registration_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/interactive_first_round.rs"]
+mod first_round_tests;
