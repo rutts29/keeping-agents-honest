@@ -49,6 +49,15 @@ fn phase3_hosted_search_private() {
     track2_support::launch("search");
 }
 #[test]
+#[ignore = "selected relay case in a private volume fixture; count and make gate required"]
+fn phase3_relay_private() {
+    assert!(matches!(
+        std::env::var("KAH_TRACK2_RELAY_ROUTE").as_deref(),
+        Ok("ambiguity" | "queue" | "question-v7" | "question-v8")
+    ));
+    track2_support::launch("relay");
+}
+#[test]
 #[ignore = "reviewer-authorized $0 private lifecycle; fake transport and no native agents"]
 fn phase3_fixture_lifecycle() {
     track2_support::launch("lifecycle");
@@ -68,7 +77,7 @@ fn early_verify_entrypoint() {
     }
     if std::env::var("KAH_TRACK2_ENTRYPOINT")
         .as_deref()
-        .is_ok_and(|mode| mode == "verify" || mode == "search")
+        .is_ok_and(|mode| mode == "verify" || mode == "search" || mode == "relay")
     {
         let root = PathBuf::from(std::env::var_os("KAH_TRACK2_ROOT").unwrap());
         let run = std::panic::catch_unwind(|| relay_support::run(&root));
