@@ -37,7 +37,6 @@ pub fn prompt(worker: &str, batch: &Batch) -> Result<String> {
             .filter_map(|row| row["source"].as_str().map(std::path::PathBuf::from)),
     );
     source_store::share_preparation(&Store::directory(worker)?, &directory, &files)?;
-    kah_run::access::share_tree(&directory, kah_run::access::service_uid()?, false)?;
     let output = state
         .observer
         .workspace

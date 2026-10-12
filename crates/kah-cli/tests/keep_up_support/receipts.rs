@@ -3,6 +3,32 @@ use serde_json::json;
 use std::fs;
 
 #[test]
+fn jev_only_journal_receipts_are_visible_without_inventing_judgment_time() {
+    let root = fixture();
+    fs::create_dir(root.join("commit-reviews")).unwrap();
+    let head = "a".repeat(40);
+    let receipt = root.join("commit-reviews").join(format!("{head}.json"));
+    fs::write(&receipt, json!({"worker":"worker","head":head,"woke":false,"native":null,
+        "gaps":[],"answers":[{"request":"literal-body-1","question":"full state stays private","noul":0.04}]}).to_string()).unwrap();
+    let original = fs::read(&receipt).unwrap();
+    let result = support::sample(&root, &root);
+    let row = result["reviews"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["head"] == head)
+        .expect("Jev-only commits belong to the measured cohort");
+    assert_eq!(row["receipt"], receipt.to_str().unwrap());
+    assert_eq!(row["answer_receipts"][0]["request"], "literal-body-1");
+    assert_eq!(row["verdict_path"], "jev_only");
+    assert!(row["at_ms"]["judged"].is_null());
+    assert_eq!(row["missing_stages"], json!(["judged"]));
+    assert!(!result.to_string().contains("full state stays private"));
+    assert_eq!(fs::read(&receipt).unwrap(), original);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn option1_class_and_actual_consumption_receipts_survive_sampling() {
     let root = fixture();
     let before = fs::read(root.join("requests/review-commit.json")).unwrap();

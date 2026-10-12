@@ -1,5 +1,6 @@
 use super::*;
 use std::{collections::BTreeMap, process::Command};
+mod fast;
 pub(super) fn read(root: &Path, repo: &Path) -> Value {
     read_cached(root, repo, &mut Cursor::default())
 }
@@ -41,6 +42,7 @@ pub(super) fn read_cached(root: &Path, repo: &Path, cursor: &mut Cursor) -> Valu
         }
         Err(error) => gaps.push(json!({"stage":"requests","error":error.to_string()})),
     }
+    reviews.extend(fast::read(root, repo, cursor, &mut gaps));
     let events = cursor.events(&root.join("liveness/events.jsonl"), &mut gaps);
     let retries = cursor.optional(&root.join("redelivery.json"), &["requests"], &mut gaps);
     let notices = notices(root, &mut gaps, cursor);

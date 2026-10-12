@@ -136,7 +136,6 @@ pub fn prompt(worker: &str) -> Result<String> {
         &directory,
         std::slice::from_ref(&file),
     )?;
-    kah_run::access::share_tree(&directory, kah_run::access::service_uid()?, false)?;
     let output = state
         .observer
         .workspace
