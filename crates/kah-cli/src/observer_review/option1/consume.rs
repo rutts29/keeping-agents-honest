@@ -80,6 +80,9 @@ fn checkpoint(
     request: &Request,
     rows: Vec<kah_observer::commit_check::Row>,
 ) -> Result<()> {
+    if super::carry::empty(store, state, request)? {
+        return Ok(());
+    }
     if super::explicit_gate::required(&request.trigger) {
         super::explicit_gate::enqueue(store, state, request, &rows)?;
         state.latest = Some(
@@ -90,13 +93,13 @@ fn checkpoint(
         );
         return Ok(());
     }
-    let passed = rows
-        .iter()
-        .all(|r| r.status == kah_observer::commit_check::Status::Satisfied);
-    let result = json!({"request":request.id,"head":request.head,"purpose":"checkpoint","assessment":{"state":if passed{"checkpoint_passed"}else{"checkpoint_unconfirmed"},"passed":passed,"violations":rows.iter().filter(|r|r.status==kah_observer::commit_check::Status::Violated).collect::<Vec<_>>(),"unproven":rows.iter().filter(|r|r.status==kah_observer::commit_check::Status::Unclear).collect::<Vec<_>>()},"rows":rows});
+    let assessment = super::checkpoint_outcome::assess(&request.trigger["option1"]["input"], &rows);
+    let passed = assessment["passed"].clone();
+    let result = json!({"request":request.id,"head":request.head,"purpose":"checkpoint","assessment":assessment,"rows":rows});
     state.latest = Some(result.clone());
     state.checkpoint = Some(
-        json!({"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"passed":passed,"result":result}),
+        json!({"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"passed":passed,
+            "terminal":true,"unverified_non_diff":assessment["unverified_non_diff"],"result":result}),
     );
     let original = &request.trigger["option1"]["original_trigger"];
     if let Some(event) = std::iter::once(original)
@@ -114,7 +117,9 @@ fn checkpoint(
         );
         journal::save(&record)?;
     }
-    if let Some(head) = &request.head {
+    if passed == true
+        && let Some(head) = &request.head
+    {
         baseline(store, head)?;
         crate::unattended_report::save(
             &store.directory,
@@ -127,7 +132,7 @@ fn checkpoint(
         &format!("checkpoint-{}.json", request.id),
         state.latest.as_ref().unwrap(),
     )?;
-    if !passed {
+    if passed != true {
         checkpoint_notice(store, state, request, &rows)?;
     }
     Ok(())

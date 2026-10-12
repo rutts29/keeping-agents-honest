@@ -14,7 +14,7 @@ pub fn applicable(purpose: &Purpose, trigger: &Value) -> bool {
 }
 pub fn submit(
     store: Store,
-    state: State,
+    mut state: State,
     home: &Path,
     turn: &str,
     trigger: Value,
@@ -27,6 +27,13 @@ pub fn submit(
         }
         Err(e) => return Err(e),
     };
+    let revision =
+        kah_core::projection::project(&history, kah_core::projection::ProjectionConfig::default())?
+            .revision;
+    if let Some(result) = super::carry::admit(&store, &mut state, &head, revision, turn, &trigger)?
+    {
+        return Ok(result);
+    }
     let source = super::current_set::resolve(
         &state.worker.session,
         state.observer.session.as_deref().unwrap_or(""),
