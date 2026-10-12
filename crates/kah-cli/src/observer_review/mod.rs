@@ -27,6 +27,7 @@ pub mod option1;
 pub mod packet_references;
 pub mod preparation;
 mod prepared_result;
+pub mod provider_block;
 pub mod questions;
 pub mod queue;
 pub mod recovery;

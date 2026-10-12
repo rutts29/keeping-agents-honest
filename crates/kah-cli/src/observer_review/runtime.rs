@@ -150,6 +150,7 @@ fn create(state: &State) -> Result<String> {
     }
 }
 fn deliver(home: &Path, state: &State, prompt: &str, _existing: bool) -> Result<()> {
+    super::provider_block::observe(&state.worker.session)?;
     super::failure::validation(super::failure::Origin::Delivery, || {
         let store = Store::open_wait(&state.worker.session)?;
         let mut current = store.load()?.ok_or("REVIEW_STATE_MISSING stage=delivery")?;
@@ -246,6 +247,7 @@ pub(super) fn helper_changed(state: &State) -> Result<bool> {
         != Some(std::fs::read(home.join(".local/bin/kah"))?))
 }
 pub(super) fn require_active(worker: &str) -> Result<()> {
+    super::provider_block::require_active(worker)?;
     if kah_observer::session::paused(
         &kah_core::run_store::RunStore::default_state_root()?,
         worker,

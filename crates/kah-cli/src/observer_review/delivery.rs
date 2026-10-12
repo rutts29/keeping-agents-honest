@@ -13,6 +13,7 @@ use std::{
 };
 
 pub fn warm(state: &State, prompt: &str) -> Result<()> {
+    super::provider_block::observe(&state.worker.session)?;
     let (socket, _) = runtime::transport(state)?;
     let pane = state
         .observer
@@ -307,6 +308,12 @@ fn starts_request(text: &str, provider: &str, marker: &str) -> bool {
     text.starts_with(marker)
 }
 pub fn safe_keyboard(screen: &str) -> Result<()> {
+    if super::provider_block::precaution(screen) {
+        return Err(
+            "REVIEW_PROVIDER_BLOCKED stage=delivery: native precaution picker; no keypress sent"
+                .into(),
+        );
+    }
     if crate::native_billing::active(screen) {
         return Err("REVIEW_BILLING_ABORT stage=delivery: no keypress sent".into());
     }
