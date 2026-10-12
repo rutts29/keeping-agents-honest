@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 pub mod claim_migration;
+mod continuation;
 mod headers;
 mod identity;
 pub mod lanes;
@@ -192,6 +193,12 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     let Some((mut job, paths)) = headers::selected(&jobs)? else {
         return Ok(None);
     };
+    job.trigger["queued_receipt"] = paths
+        .first()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .map(|n| json!(n))
+        .unwrap_or(Value::Null);
     let stamps = metadata::stamps(&root, &jobs)?;
     job.trigger["queued_at_ms"] = json!(
         paths
@@ -281,6 +288,7 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     kah_core::run_store::ensure_private_directory(&directory)?;
     ordering::reserve(root, &name)?;
     metadata::queued(root, &name, wake)?;
+    continuation::inherit(root, &name, wake)?;
     super::source_store::save(&directory, &name, &value)?;
     Ok(true)
 }
