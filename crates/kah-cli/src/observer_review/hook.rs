@@ -299,6 +299,10 @@ pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
     record_gap(worker, error, super::failure::Origin::Host)
 }
 pub fn gap_error(worker: &str, error: &(dyn std::error::Error + 'static)) -> Result<()> {
+    if super::provider_block::reason(&error) {
+        super::provider_block::retain(worker, None, "native precaution screen")?;
+        return Ok(());
+    }
     if super::failure::pending(&error) {
         super::consume::outcome::record(
             worker,
@@ -331,6 +335,10 @@ fn record_gap(
     error: &dyn std::fmt::Display,
     origin: super::failure::Origin,
 ) -> Result<()> {
+    if super::provider_block::reason(error) {
+        super::provider_block::retain(worker, None, "native precaution screen")?;
+        return Ok(());
+    }
     if super::failure::pending(error) {
         return spawn("__review-kick", worker);
     }

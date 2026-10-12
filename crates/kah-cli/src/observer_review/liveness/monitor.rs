@@ -15,6 +15,7 @@ use std::{
 };
 
 pub fn run(worker: &str) -> Result<()> {
+    super::super::provider_block::observe(worker)?;
     super::super::runtime::require_active(worker)?;
     if super::super::service::blocked(worker)? {
         return Ok(());
@@ -78,7 +79,7 @@ pub fn run(worker: &str) -> Result<()> {
 pub fn watch(worker: &str) -> Result<()> {
     loop {
         if let Err(error) = run(worker) {
-            if error.to_string().starts_with("REVIEW_PAUSED") {
+            if super::super::provider_block::stops_watch(&error) {
                 return Ok(());
             }
             super::failure::record(worker, error.as_ref())?;

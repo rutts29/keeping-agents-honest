@@ -7,7 +7,16 @@ mod monitor;
 pub(crate) mod selection_rejection;
 pub(crate) use handoff::awaiting_host;
 pub(crate) mod rejection;
-pub use monitor::{Processing, notice, processing, run, start, watch};
+pub use monitor::{Processing, processing, run, start, watch};
+pub fn notice(worker: &str) -> crate::Result<Option<serde_json::Value>> {
+    if let Some(block) = super::provider_block::take_notice(worker)? {
+        return Ok(Some(block));
+    }
+    if super::provider_block::recorded(worker)?.is_some() {
+        return Ok(None);
+    }
+    monitor::notice(worker)
+}
 pub fn waiting(worker: &str) -> crate::Result<Option<Processing>> {
     super::state::Store::read(worker)?
         .and_then(|s| s.pending.map(|p| processing(worker, &p.id)))
