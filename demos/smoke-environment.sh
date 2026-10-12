@@ -47,3 +47,8 @@ done
 if [ -f "$KAH_SMOKE_SEEDS/bashrc" ] && [ ! -e "$HOME/.bashrc" ]; then
     cp "$KAH_SMOKE_SEEDS/bashrc" "$HOME/.bashrc"
 fi
+# Only controller-supplied closed replay data; independent copies, no live links.
+if [ -d "$KAH_SMOKE_SEEDS/kah-eval" ]; then
+    mkdir -p "$HOME/.local/share/kah-eval"
+    cp -RL --update=none "$KAH_SMOKE_SEEDS/kah-eval/." "$HOME/.local/share/kah-eval/"
+fi
