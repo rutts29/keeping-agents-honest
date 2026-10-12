@@ -199,7 +199,7 @@ fn one(
             if coverage["covered"] == true || coverage["execute_reasoned_check"] == true =>
         {
             source::validate(request, &coverage, command)?;
-            result.check = targeted(directory, state, round, item, command)?;
+            result.check = targeted(directory, state, round, item, command, request)?;
             result.verified = coverage["covered"] == true
                 && result
                     .check
@@ -235,6 +235,7 @@ fn targeted(
     round: &VerificationRound,
     item: &Item,
     command: &str,
+    request: &Request,
 ) -> Result<Option<TestReceipt>> {
     let reserved = directory.join(format!("{}-reserved.json", item.requirement_id));
     if let Some(saved) = super::super::state::read::<Value>(&reserved)? {
@@ -251,7 +252,7 @@ fn targeted(
         &json!({"binding":round.binding,"item":item.requirement_id,"command":command}),
     )?;
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=verification")?);
-    let candidate = super::checks::trusted_candidate(state, &round.binding.head)?;
+    let candidate = super::checks::planned_candidate(state, &round.binding.head, request)?;
     let (receipt, changed) = crate::exact_verification::execute(
         &home,
         &candidate,
