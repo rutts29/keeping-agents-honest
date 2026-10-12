@@ -115,10 +115,13 @@ impl Run<'_> {
     ) -> Result<bool> {
         let pane = self.pane.inspect()?;
         let current = self.synchronize(&pane)?;
+        let fresh = self
+            .history
+            .as_mut()
+            .ok_or("RUN_NATIVE_HISTORY stage=completion")?
+            .snapshot()?;
         Ok(self.tree.sandbox_state(&self.executor)?.0 == commit
-            && current.is_some_and(|s| {
-                s.action_digest.as_ref() == Some(&snapshot.action_digest) && s.inflight.is_none()
-            })
+            && current.is_some_and(|s| unchanged_history(&s, snapshot, &fresh))
             && matches!(pane["agent_status"].as_str(), Some("idle" | "done")))
     }
     fn finish_assessment(
@@ -341,4 +344,12 @@ impl Run<'_> {
                 .current(&record.control, sequence)
             || self.pane.inspect()?["agent_status"] == "working")
     }
+}
+
+pub(super) fn unchanged_history(
+    state: &session::State,
+    captured: &kah_core::observation::ObservationSnapshot,
+    fresh: &kah_core::observation::ObservationSnapshot,
+) -> bool {
+    fresh.action_digest == captured.action_digest && state.inflight.is_none()
 }
