@@ -7,6 +7,10 @@ use kah_observer::{
 use std::collections::BTreeSet;
 mod v12;
 
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/v12_controller_receipt.rs"]
+mod controller_tests;
+
 pub(crate) fn prepare(
     request: &Request,
     report: &Report,
@@ -132,7 +136,7 @@ pub(crate) fn outcome(request: &Request, report: &Report, judgment: &Judgment) -
             .flatten()
             .map(|i| (
                 &i.requirement_id,
-                json!({"covered":if report.decision_units.as_ref().is_some_and(|u|u.version()>=12) {kah_observer::verification_contract::reasoned::covered(judgment,&i.requirement_id)} else {covered(i,judgment)} && match &i.method {Method::ControllerReceipt{facts}=>proof.as_ref().is_some_and(|p|super::contract_facts::verified(request,p,facts)),_=>true},"semantic_risk_admissible":matches!(i.method,Method::SemanticRisk{..}) && kah_observer::decision_units::confirmed(judgment,&format!("risk_admission.{}",i.requirement_id),"supported"),"method":i.method,"claim":i.claim})
+                json!({"covered":!i.evidence_citations.is_empty() && if report.decision_units.as_ref().is_some_and(|u|u.version()>=12) {kah_observer::verification_contract::reasoned::covered(judgment,&i.requirement_id)} else {covered(i,judgment)} && match &i.method {Method::ControllerReceipt{facts}=>proof.as_ref().is_some_and(|p|super::contract_facts::verified(request,p,facts)),_=>true},"semantic_risk_admissible":matches!(i.method,Method::SemanticRisk{..}) && kah_observer::decision_units::confirmed(judgment,&format!("risk_admission.{}",i.requirement_id),"supported"),"method":i.method,"claim":i.claim})
             ))
             .collect::<std::collections::BTreeMap<_, _>>()
     ))
