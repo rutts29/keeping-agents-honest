@@ -52,8 +52,12 @@ pub fn submit(
             "option1-baseline.json"
         }))?;
     let base = previous.as_ref().and_then(|p| p["head"].as_str());
-    let context = capture::project(home, &state, base, &head)?;
+    let mut context = capture::project(home, &state, base, &head)?;
+    super::binary::publish(&store, &state, &mut context)?;
     let input = input::build(&history, &source, &context, checkpoint)?;
+    if super::binary::present(&context) {
+        return super::binary::wake(store, state, home, turn, input, trigger);
+    }
     crate::unattended_report::save(
         &store.directory,
         &format!("current-rules-commit-{head}.json"),

@@ -13,6 +13,7 @@ pub(super) mod memory;
 pub mod metadata;
 pub mod migration;
 mod ordering;
+pub mod outcome;
 pub mod preparation_coverage;
 pub mod repair;
 pub mod supersede;
@@ -135,6 +136,9 @@ fn entries_at(root: &std::path::Path) -> Result<Vec<(PathBuf, Wake)>> {
     Ok(jobs)
 }
 pub fn drain(worker: &str) -> Result<Value> {
+    outcome::run(worker, || drain_inner(worker))
+}
+fn drain_inner(worker: &str) -> Result<Value> {
     let root = Store::directory(worker)?;
     let _owner = match Store::delivery_at(&root.join("admission-worker"), false) {
         Ok(owner) => owner,

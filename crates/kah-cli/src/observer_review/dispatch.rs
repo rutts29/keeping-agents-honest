@@ -47,7 +47,7 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
         hook::spawn("__checkpoint-worker", &binding.session)?;
     }
     super::queue::schedule(&binding.session)?;
-    if let Some(notice) = super::liveness::notice(&binding.session)? {
+    if let Some(notice) = notice(&binding.session)? {
         return Ok(Some(notice));
     }
     if let Some(state) = Store::read(&binding.session)?
@@ -67,6 +67,12 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<Opti
         Err(e) if e.to_string().starts_with("REVIEW_BUSY") => Ok(None),
         other => other,
     }
+}
+fn notice(worker: &str) -> Result<Option<Value>> {
+    if let Some(value) = super::liveness::notice(worker)? {
+        return Ok(Some(value));
+    }
+    super::queue::outcome::notice(worker)
 }
 pub fn outcome(binding: &Binding, outcome: &mut Outcome) -> Result<()> {
     if kah_observer::session::paused(

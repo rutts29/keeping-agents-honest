@@ -2,6 +2,7 @@
 pub mod admission;
 pub mod advance;
 pub mod authority;
+pub mod binary;
 pub mod capture;
 pub mod carry;
 pub mod checkpoint_outcome;

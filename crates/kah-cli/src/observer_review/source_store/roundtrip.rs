@@ -11,6 +11,10 @@ pub(super) fn matches(stored: &Value, expected: &Value, root: &Path) -> Result<b
         let path = resolved(&root.join(digest), digest);
         let reader = segments::reader::open(&path, digest)?;
         return match stored["encoding"].as_str() {
+            Some("binary") => {
+                std::io::copy(&mut { reader }, &mut std::io::sink())?;
+                Ok(stored == expected)
+            }
             Some("utf8") => match expected.as_str() {
                 Some(text) => equal_bytes(reader, text.as_bytes()),
                 None => Ok(false),

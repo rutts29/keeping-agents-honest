@@ -24,7 +24,8 @@ pub fn submit(
         Err(e) => return Err(e),
     };
     let standing = kah_observer::current_rules::standing_sources(&b.project)?;
-    let context = capture::project(home, &state, None, head)?;
+    let mut context = capture::project(home, &state, None, head)?;
+    super::binary::publish(&store, &state, &mut context)?;
     let (input, sources) = source_input(
         history.as_ref(),
         standing,

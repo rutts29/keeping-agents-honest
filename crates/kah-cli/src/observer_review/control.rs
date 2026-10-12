@@ -138,6 +138,9 @@ pub fn status(worker: &str) -> Result<Value> {
             value = json!({});
         }
         value["queued"] = json!(queued);
+        value["admission"] = json!(state::read::<Value>(
+            &Store::directory(worker)?.join("admission-blocked.json")
+        )?);
         value["scheduling"] = super::queue::status(worker)?;
         value["checkpoint_events_pending"] = json!(checkpoint_events_pending);
         value["service"] = json!(state::read::<Value>(
