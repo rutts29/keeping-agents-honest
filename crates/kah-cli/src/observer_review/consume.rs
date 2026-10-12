@@ -13,6 +13,8 @@ use std::{
 #[path = "../../tests/observer_unit/light_commit_ownership.rs"]
 mod light_ownership_tests;
 
+mod resolved_gap;
+pub use resolved_gap::archive as resolve_gaps;
 mod report_io;
 pub mod retired;
 pub use report_io::read_report;
@@ -293,12 +295,9 @@ fn take_gap(store: &Store) -> Result<Option<Value>> {
     ))
 }
 
-fn finish(store: Store, path: &Path, worker: &str) -> Result<()> {
+fn finish(store: Store, path: &Path, worker: &str, request: &str) -> Result<()> {
     fs::remove_file(path)?;
-    let gap = store.directory.join("gap.json");
-    if gap.exists() {
-        fs::remove_file(gap)?;
-    }
+    resolve_gaps(&store.directory, request)?;
     drop(store);
     super::queue::kick(worker)
 }

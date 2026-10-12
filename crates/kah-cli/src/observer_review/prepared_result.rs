@@ -53,17 +53,7 @@ pub fn consume(worker: &str) -> Result<()> {
 }
 fn finish(store: Store, worker: &str, request: &str) -> Result<()> {
     super::redelivery::completed(&store, request)?;
-    for name in ["gap.json", "validation-current.json"] {
-        let path = store.directory.join(name);
-        if super::state::read::<Value>(&path)?.is_some_and(|v| {
-            v["request"] == request
-                && v["error"]
-                    .as_str()
-                    .is_some_and(|e| e.starts_with("PREPARATION_CONTEXT_UNCONFIRMED"))
-        }) {
-            std::fs::remove_file(path)?;
-        }
-    }
+    super::consume::resolve_gaps(&store.directory, request)?;
     super::timing::now(worker, request, "completed")?;
     drop(store);
     super::queue::kick(worker)
