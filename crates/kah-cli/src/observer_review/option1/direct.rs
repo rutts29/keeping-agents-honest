@@ -24,7 +24,7 @@ pub fn submit(
         Err(e) => return Err(e),
     };
     let standing = kah_observer::current_rules::standing_sources(&b.project)?;
-    let mut context = capture::project(home, &state, None, head)?;
+    let mut context = context(home, &state, &store.directory, head)?;
     super::binary::publish(&store, &state, &mut context)?;
     let (input, sources) = source_input(
         history.as_ref(),
@@ -69,6 +69,12 @@ pub fn submit(
         json!({"stage":if checkpoint{"checkpoint"}else{"confirmation"},"input":input,"record":record,"plan":plan,"source_catalogue":sources,"pending_intake":pending,"direct_reason":"Resolve current applicability from full original sources. No validated set exists or intake is unsettled; do not assume pending words are absent. Unresolved applicability remains unclear.","original_trigger":trigger}),
         trigger.clone(),
     )
+}
+pub fn context(home: &Path, state: &State, directory: &Path, head: &str) -> Result<Value> {
+    let baseline: Option<Value> =
+        super::super::state::read(&directory.join("option1-baseline.json"))?;
+    let base = baseline.as_ref().and_then(|v| v["head"].as_str());
+    capture::project(home, state, base, head)
 }
 fn source_input(
     history: Option<&kah_core::intent_history::History>,

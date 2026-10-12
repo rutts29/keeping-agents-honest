@@ -11,6 +11,18 @@ pub struct Source {
     pub origin: Value,
 }
 impl Source {
+    pub fn intake(
+        record: &str,
+        text: &str,
+        source: &crate::intent_history::SourceRef,
+        non_authority_sender: bool,
+    ) -> Self {
+        Self::new(
+            format!("intake:{record}"),
+            text.into(),
+            json!({"kind":"intake_verification","record":record,"source":source,"non_authority_sender":non_authority_sender}),
+        )
+    }
     pub fn standing(path: &str, text: &str, provenance: Value) -> Self {
         Self::new(
             format!("standing:{path}"),
@@ -45,7 +57,12 @@ impl Input {
         standing: Vec<Source>,
         observed_at: &str,
     ) -> Result<Self, String> {
-        if standing.iter().any(|s| s.origin["kind"] != "standing_file") {
+        if standing.iter().any(|s| {
+            !matches!(
+                s.origin["kind"].as_str(),
+                Some("standing_file" | "intake_verification")
+            )
+        }) {
             return Err(error("SOURCE", "standing inputs must have file provenance"));
         }
         let mut sources = history_sources(history)?;
@@ -68,7 +85,12 @@ impl Input {
         let standing = self
             .sources
             .iter()
-            .filter(|s| s.origin["kind"] == "standing_file")
+            .filter(|s| {
+                matches!(
+                    s.origin["kind"].as_str(),
+                    Some("standing_file" | "intake_verification")
+                )
+            })
             .cloned()
             .collect();
         let reconstructed = Self::from_history(&history, standing, &self.observed_at)?;

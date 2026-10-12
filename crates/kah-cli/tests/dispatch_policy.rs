@@ -37,6 +37,7 @@ fn input(category: &str) -> Input {
         }),
         dismissed: false,
         promoted: false,
+        rule_set_resolution: None,
     }
 }
 #[test]

@@ -10,6 +10,13 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+pub mod intake;
+
+pub fn sources(binding: &Binding) -> Result<Vec<Source>, String> {
+    let mut sources = standing_sources(&binding.project)?;
+    sources.extend(intake::sources(binding)?);
+    Ok(sources)
+}
 
 pub fn stage(binding: &Binding) -> Result<Option<RuleSync>, String> {
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
@@ -19,12 +26,10 @@ pub fn stage(binding: &Binding) -> Result<Option<RuleSync>, String> {
     let Some(run) = state.run_id else {
         return Ok(None);
     };
+    let sources = sources(binding)?;
     let store = RunStore::open_default(&binding.project, &run).map_err(|e| e.to_string())?;
     store
-        .sync_current_rules(
-            standing_sources(&binding.project)?,
-            &crate::session::now_ms().to_string(),
-        )
+        .sync_current_rules(sources, &crate::session::now_ms().to_string())
         .map(Some)
 }
 /// Re-read History and standing files under the writer lock before adoption.
@@ -33,12 +38,9 @@ pub fn accept(binding: &Binding, candidate: &RuleSet) -> Result<ValidatedSet, St
     let state = crate::session::Store::read(&base, &binding.session)?
         .ok_or("RULE_SET_SESSION stage=current_rules")?;
     let run = state.run_id.ok_or("RULE_SET_RUN stage=current_rules")?;
+    let sources = sources(binding)?;
     let store = RunStore::open_default(&binding.project, &run).map_err(|e| e.to_string())?;
-    store.accept_current_rules(
-        candidate,
-        standing_sources(&binding.project)?,
-        &crate::session::now_ms().to_string(),
-    )
+    store.accept_current_rules(candidate, sources, &crate::session::now_ms().to_string())
 }
 /// Current means exact live input identity. A stale or conflicting set uses LLM review.
 pub fn current(binding: &Binding) -> Result<Option<ValidatedSet>, String> {

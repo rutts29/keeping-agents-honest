@@ -23,6 +23,11 @@ pub(super) fn matches(stored: &Value, expected: &Value, root: &Path) -> Result<b
                 let value: Value = serde_json::from_reader(BufReader::new(reader))?;
                 matches(&value, expected, root)
             }
+            Some("json_text") => {
+                let value: Value = serde_json::from_reader(BufReader::new(reader))?;
+                let text = serde_json::to_string(&super::expand(value, root)?)?;
+                Ok(expected.as_str() == Some(text.as_str()))
+            }
             _ => Err("REVIEW_SOURCE_ENCODING stage=source_store".into()),
         };
     }

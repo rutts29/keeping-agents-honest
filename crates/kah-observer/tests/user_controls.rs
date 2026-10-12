@@ -399,6 +399,7 @@ fn model_ignored_input_remains_retrievable_and_can_be_promoted_without_inference
         }),
         dismissed: false,
         promoted: false,
+        rule_set_resolution: None,
     };
     assert!(input.recently_ignored());
     store.add_source(&input).unwrap();

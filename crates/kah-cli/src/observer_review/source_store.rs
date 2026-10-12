@@ -14,10 +14,14 @@ pub mod binary;
 mod publication;
 mod reading;
 use reading::read_bytes;
+mod canonical_text;
+mod encoding;
 mod retirement;
 mod roundtrip;
 mod segments;
 mod selection;
+pub use canonical_text::publish as document;
+use encoding::strings;
 pub use selection::{Select, read_selected};
 
 fn directory(path: &Path) -> Result<PathBuf> {
@@ -92,37 +96,6 @@ fn resolved(path: &Path, digest: &str) -> PathBuf {
     path.to_owned()
 }
 
-fn strings(value: &Value, root: &Path) -> Result<Value> {
-    if value.get("$kah_source").is_some() {
-        return Ok(value.clone());
-    }
-    match value {
-        Value::String(text) => reference(root, text.as_bytes(), "utf8"),
-        Value::Array(items) => Ok(Value::Array(
-            items
-                .iter()
-                .map(|v| record(v, root))
-                .collect::<Result<_>>()?,
-        )),
-        Value::Object(items) => Ok(Value::Object(
-            items
-                .iter()
-                .map(|(k, v)| Ok((k.clone(), strings(v, root)?)))
-                .collect::<Result<_>>()?,
-        )),
-        _ => Ok(value.clone()),
-    }
-}
-fn record(value: &Value, root: &Path) -> Result<Value> {
-    let encoded = strings(value, root)?;
-    if value.is_object() && value.get("$kah_source").is_none() {
-        // The complete native record (identity plus every field) owns its CAS
-        // digest. Snapshots keep ordered refs, not a reserialized full history.
-        reference(root, &serde_json::to_vec(&encoded)?, "json")
-    } else {
-        Ok(encoded)
-    }
-}
 pub fn expand(value: Value, root: &Path) -> Result<Value> {
     if let Some(digest) = value.get("$kah_source").and_then(Value::as_str) {
         if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -136,6 +109,7 @@ pub fn expand(value: Value, root: &Path) -> Result<Value> {
         return match value["encoding"].as_str() {
             Some("utf8") => Ok(Value::String(String::from_utf8(bytes)?)),
             Some("json") => expand(serde_json::from_slice(&bytes)?, root),
+            Some("json_text") => canonical_text::restore(&bytes, root).map(Value::String),
             _ => Err("REVIEW_SOURCE_ENCODING stage=source_store".into()),
         };
     }
@@ -202,7 +176,10 @@ fn compact_source(value: &Value, root: &Path) -> Result<Value> {
     if value.get("$kah_source").is_some() {
         return Ok(value.clone());
     }
-    let encoded = strings(value, root)?;
+    let encoded = match canonical_text::encode_document(value, root)? {
+        Some(encoded) => encoded,
+        None => strings(value, root)?,
+    };
     reference(root, &serde_json::to_vec(&encoded)?, "json")
 }
 pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {

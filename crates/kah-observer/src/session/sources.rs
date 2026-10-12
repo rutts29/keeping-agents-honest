@@ -60,8 +60,7 @@ impl Store {
                 }
                 Some("source_review_v1") => {
                     let index = position(&positions, &value)?;
-                    inputs[index].dismissed = value["action"] == "dismiss";
-                    inputs[index].promoted |= value["action"] == "promote";
+                    apply_review(&mut inputs[index], &value);
                 }
                 _ => (),
             }
@@ -92,4 +91,14 @@ fn position(positions: &BTreeMap<String, usize>, value: &Value) -> Result<usize,
         .and_then(|r| positions.get(r))
         .copied()
         .ok_or("OBSERVER_SOURCE_UNKNOWN stage=source_history".into())
+}
+
+fn apply_review(input: &mut Input, value: &Value) {
+    input.dismissed = value["action"] == "dismiss";
+    input.promoted |= value["action"] == "promote";
+    input.rule_set_resolution = if value["source"] == "observer_rule_set" {
+        value["rule_set_revision"].as_u64()
+    } else {
+        None
+    };
 }

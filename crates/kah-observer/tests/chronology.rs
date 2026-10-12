@@ -18,6 +18,7 @@ fn input(source: SourceRef, text: &str, decision: Decision) -> Input {
         decision: Some(decision),
         dismissed: false,
         promoted: false,
+        rule_set_resolution: None,
         prior_intent: None,
         newer_conflicts: vec![],
     }
