@@ -12,6 +12,8 @@ use std::{
 pub mod access_repair;
 pub mod binary;
 mod publication;
+mod reading;
+use reading::read_bytes;
 mod retirement;
 mod roundtrip;
 mod segments;
@@ -88,16 +90,6 @@ fn resolved(path: &Path, digest: &str) -> PathBuf {
         }
     }
     path.to_owned()
-}
-
-fn read_bytes(path: &Path) -> Result<Vec<u8>> {
-    fs::read(path).map_err(|e| {
-        format!(
-            "REVIEW_SOURCE_IO stage=source_store: {}: {e}",
-            path.display()
-        )
-        .into()
-    })
 }
 
 fn strings(value: &Value, root: &Path) -> Result<Value> {
@@ -230,7 +222,9 @@ pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
     crate::unattended_report::save(directory, name, &stored)
 }
 pub fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
-    let value = serde_json::from_slice(&read_bytes(path)?)?;
+    let actual = reading::path(path)?;
+    let path = actual.as_path();
+    let value = serde_json::from_slice(&reading::content(path)?)?;
     let root = directory(path).unwrap_or_else(|_| path.parent().unwrap().join("sources"));
     let expanded = expand(value, &root)?;
     Ok(serde_json::from_value(expanded)?)
@@ -254,7 +248,9 @@ pub fn text(private: &Path, target: &Path, text: &str) -> Result<()> {
     )
 }
 pub fn load_text(path: &Path) -> Result<String> {
-    let bytes = read_bytes(path)?;
+    let actual = reading::path(path)?;
+    let path = actual.as_path();
+    let bytes = reading::content(path)?;
     if let Ok(value) = serde_json::from_slice::<Value>(&bytes)
         && value.get("$kah_source").is_some()
     {
@@ -267,7 +263,9 @@ pub fn load_text(path: &Path) -> Result<String> {
     Ok(String::from_utf8(bytes)?)
 }
 pub fn print_text(path: &Path) -> Result<()> {
-    let bytes = read_bytes(path)?;
+    let actual = reading::path(path)?;
+    let path = actual.as_path();
+    let bytes = reading::content(path)?;
     let output = match serde_json::from_slice::<Value>(&bytes) {
         Ok(value) => {
             let value = expand(value, &directory(path)?)?;
