@@ -16,6 +16,7 @@ mod ordering;
 pub mod preparation_coverage;
 pub mod repair;
 pub mod supersede;
+mod waiting;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -180,6 +181,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     }
     super::consume::retired::queued_at(&root)?;
     let mut jobs = headers::at(&root)?;
+    waiting::filter(&root, &mut jobs)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
@@ -307,7 +309,9 @@ pub fn header_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
 fn admissible_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    headers::at(&root)
+    let mut jobs = headers::at(&root)?;
+    waiting::filter(&root, &mut jobs)?;
+    Ok(jobs)
 }
 
 pub fn archive_submitted(root: &std::path::Path, paths: &[PathBuf]) -> Result<()> {
