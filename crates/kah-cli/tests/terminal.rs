@@ -203,13 +203,7 @@ fn fixture_process_audit() {
     if std::env::var_os("KAH_POST_GATE_AUDIT").is_none() {
         return;
     }
-    let processes = terminal_support::processes::leftovers();
-    let report = processes
-        .iter()
-        .map(|p| json!({"pid":p.pid,"group":p.group,"cwd":p.cwd}))
-        .collect::<Vec<_>>();
-    let containers = terminal_support::processes::fixture_containers().unwrap();
-    let report = json!({"fixtureProcesses":report,"fixtureContainers":containers,"passed":processes.is_empty()&&containers.is_empty()});
+    let report = terminal_support::audit_runtime::run();
     println!("{report}");
     if let Some(directory) = std::env::var_os("KAH_GATE_EVIDENCE")
         .map(PathBuf::from)
@@ -222,8 +216,8 @@ fn fixture_process_audit() {
         .unwrap();
     }
     assert!(
-        processes.is_empty() && containers.is_empty(),
-        "live fixture processes or containers remain"
+        report["passed"] == true,
+        "own or unattributed fixture processes or containers remain"
     );
 }
 
