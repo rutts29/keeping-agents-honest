@@ -95,3 +95,14 @@ pub(super) fn trusted_candidate(
         &kah_run::store::Store::path(&base, id)?.join("candidate.json"),
     )?)
 }
+
+pub(super) fn planned_candidate(
+    state: &super::super::state::State,
+    head: &str,
+    request: &Request,
+) -> Result<kah_run::worktree::Worktree> {
+    if !request.trigger["interactive_gate_verification"].is_null() {
+        return super::interactive::candidate_for(state, head);
+    }
+    trusted_candidate(state, head)
+}

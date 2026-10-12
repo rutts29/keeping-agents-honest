@@ -5,19 +5,48 @@ use std::{
     os::unix::fs::OpenOptionsExt,
     process::{Command, Stdio},
 };
+mod tags;
 pub(super) fn load(
     root: &Path,
     state: &crate::observer_review::state::State,
     head: &str,
 ) -> Result<Worktree> {
     let saved = root.join("candidate.json");
-    if saved.exists() {
-        return Worktree::load(&saved).map_err(Into::into);
-    }
     let bundle = root.join("source.bundle");
     if !bundle.exists() {
+        if saved.exists() {
+            return Err(
+                "REVIEW_GATE_BUNDLE_MISSING stage=verification: retained candidate lost its bundle"
+                    .into(),
+            );
+        }
         export(&state.worker.project, head, &bundle)?;
     }
+    let candidate = if saved.exists() {
+        Worktree::load(&saved)?
+    } else {
+        create(root, state, &bundle)?
+    };
+    tags::import(&candidate, &bundle)?;
+    if !git()
+        .arg("-C")
+        .arg(&candidate.path)
+        .args(["cat-file", "-e", &format!("{head}^{{commit}}")])
+        .status()?
+        .success()
+    {
+        return Err("REVIEW_GATE_SOURCE_MISSING stage=verification".into());
+    }
+    if !saved.exists() {
+        candidate.save(&saved)?;
+    }
+    Ok(candidate)
+}
+fn create(
+    root: &Path,
+    state: &crate::observer_review::state::State,
+    bundle: &Path,
+) -> Result<Worktree> {
     let output = git()
         .args([
             "bundle",
@@ -33,25 +62,13 @@ pub(super) fn load(
         .split_whitespace()
         .next()
         .ok_or("REVIEW_GATE_BUNDLE_HEAD stage=verification")?;
-    let candidate = Worktree::from_bundle(
+    Ok(Worktree::from_bundle(
         &state.worker.project,
         &root.join("candidate"),
-        &bundle,
+        bundle,
         advertised,
         &format!("run-gate-{}", crate::relay_store::nonce()),
-    )?;
-    // The imported HEAD may be newer. Every verifier still selects the gate SHA.
-    if !git()
-        .arg("-C")
-        .arg(&candidate.path)
-        .args(["cat-file", "-e", &format!("{head}^{{commit}}")])
-        .status()?
-        .success()
-    {
-        return Err("REVIEW_GATE_SOURCE_MISSING stage=verification".into());
-    }
-    candidate.save(&saved)?;
-    Ok(candidate)
+    )?)
 }
 fn export(project: &Path, head: &str, bundle: &Path) -> Result<()> {
     kah_core::run_store::ensure_save_directory(
@@ -128,3 +145,7 @@ fn git() -> Command {
 #[cfg(test)]
 #[path = "../../../../tests/observer_unit/linked_gate_bundle.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/observer_unit/tag_import.rs"]
+mod tag_tests;
