@@ -1,5 +1,7 @@
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
+mod accumulator;
+pub use accumulator::Accumulator;
 pub fn summary(samples: &[Value]) -> Value {
     let mut heads = BTreeMap::<String, Option<u64>>::new();
     let mut judged_heads = BTreeSet::new();
