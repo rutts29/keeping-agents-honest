@@ -50,9 +50,13 @@ pub fn finished(
         .as_deref()
         .map(|id| super::super::preparation::active_decision(worker, id))
         .transpose()?;
+    let waiting = result
+        .as_ref()
+        .err()
+        .is_some_and(|e| super::super::failure::pending(e.as_ref()));
     record(
         worker,
-        json!({"kind":"return","success":result.is_ok(),"reason":reason,"before":before,"after":after,"active_decision":decision,"elapsed_ms":elapsed_ms}),
+        json!({"kind":"return","success":result.is_ok() || waiting,"operation_succeeded":result.is_ok(),"pending":waiting,"reason":reason,"before":before,"after":after,"active_decision":decision,"elapsed_ms":elapsed_ms}),
     )?;
     eprintln!("{reason}; elapsed_ms={elapsed_ms}");
     Ok(())
@@ -74,9 +78,38 @@ pub fn run(worker: &str) -> Result<()> {
     super::super::queue::memory::sample(worker, "consume_start")?;
     let result = super::run_inner(worker);
     super::super::queue::memory::sample(worker, "consume_end")?;
-    finished(worker, before, started.elapsed().as_millis(), &result)?;
+    complete(
+        worker,
+        before,
+        started.elapsed().as_millis(),
+        result,
+        || super::super::hook::spawn("__review-kick", worker),
+    )
+}
+
+fn complete(
+    worker: &str,
+    before: Option<String>,
+    elapsed_ms: u128,
+    result: Result<()>,
+    retry: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    finished(worker, before, elapsed_ms, &result)?;
+    if result
+        .as_ref()
+        .err()
+        .is_some_and(|e| super::super::failure::pending(e.as_ref()))
+    {
+        // run_inner has returned and released its review lock before requeueing.
+        retry()?;
+        return Ok(());
+    }
     result
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/busy_consume.rs"]
+mod busy_tests;
 
 pub(crate) fn stage(worker: &str, request: &str, stage: &str) -> Result<()> {
     record(

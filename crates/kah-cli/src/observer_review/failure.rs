@@ -36,6 +36,9 @@ pub fn validation<T>(origin: Origin, operation: impl FnOnce() -> Result<T>) -> R
     })
 }
 pub fn origin(error: &(dyn Error + 'static)) -> Origin {
+    if pending(&error) {
+        return Origin::Host;
+    }
     let mut cause = Some(error);
     while let Some(error) = cause {
         if error.downcast_ref::<kah_observer::judge::Error>().is_some() {
@@ -49,7 +52,7 @@ pub fn origin(error: &(dyn Error + 'static)) -> Origin {
         .unwrap_or_default()
 }
 pub fn correctable(origin: Origin, error: &str) -> bool {
-    if error.starts_with("JEV_") {
+    if pending(&error) || error.starts_with("JEV_") {
         return false;
     }
     if !matches!(
@@ -70,4 +73,9 @@ pub fn correctable(origin: Origin, error: &str) -> bool {
     .contains(&code)
         && !code.starts_with("REVIEW_SESSION_")
         && !code.starts_with("REVIEW_HOOK_SCOPE")
+}
+
+/// Writer contention preserves the request; it is never report correction work.
+pub fn pending(error: &dyn fmt::Display) -> bool {
+    error.to_string().split_whitespace().next() == Some("STORE_BUSY")
 }

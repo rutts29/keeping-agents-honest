@@ -11,10 +11,11 @@ pub use correction::*;
 pub use reviewer::notify;
 
 pub fn retryable(origin: super::failure::Origin, error: &str) -> bool {
-    super::failure::correctable(origin, error)
-        || origin == super::failure::Origin::Delivery
-            && !error.starts_with("REVIEW_SESSION_")
-            && !error.starts_with("REVIEW_HOOK_SCOPE")
+    !super::failure::pending(&error)
+        && (super::failure::correctable(origin, error)
+            || origin == super::failure::Origin::Delivery
+                && !error.starts_with("REVIEW_SESSION_")
+                && !error.starts_with("REVIEW_HOOK_SCOPE"))
 }
 pub fn gap_retryable(gap: &Value) -> bool {
     if gap["error"]

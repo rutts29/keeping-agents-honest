@@ -299,6 +299,13 @@ pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
     record_gap(worker, error, super::failure::Origin::Host)
 }
 pub fn gap_error(worker: &str, error: &(dyn std::error::Error + 'static)) -> Result<()> {
+    if super::failure::pending(&error) {
+        super::consume::outcome::record(
+            worker,
+            json!({"kind":"pending","request":super::consume::outcome::pending(worker)?,"reason":error.to_string()}),
+        )?;
+        return spawn("__review-kick", worker);
+    }
     let mut gap = super::failure_snapshot::capture(worker, error)?;
     gap["at_ms"] = kah_observer::session::now_ms().into();
     let store = Store::open(worker)?;
@@ -324,6 +331,9 @@ fn record_gap(
     error: &dyn std::fmt::Display,
     origin: super::failure::Origin,
 ) -> Result<()> {
+    if super::failure::pending(error) {
+        return spawn("__review-kick", worker);
+    }
     if error.to_string().starts_with("REVIEW_PAUSED")
         || error.to_string().starts_with("REVIEW_BUSY")
     {
