@@ -146,7 +146,7 @@ fn screen(
         &requests,
         &HttpClient::from_home(home)?,
     )?;
-    journal::save(&record)?;
+    journal::save_screen(&record)?;
     if record.requires_native()
         && let Some(fold) = super::fold::into_due(home, &state, &record)?
     {
