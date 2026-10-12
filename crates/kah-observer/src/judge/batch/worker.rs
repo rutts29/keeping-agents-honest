@@ -18,11 +18,7 @@ pub(super) fn execute(
     let mut throttles = 0;
     let started = Instant::now();
     loop {
-        let ticket = batch.pacer.start(&batch.root, request)?;
-        let response = transport.exchange(request);
-        batch
-            .pacer
-            .finish(&batch.root, &ticket, response.as_ref().ok())?;
+        let response = exchange(batch, request, transport);
         if let Err(error) = &response {
             store::event(
                 &batch.root,
@@ -50,6 +46,26 @@ pub(super) fn execute(
         )?;
         std::thread::sleep(delay);
     }
+}
+fn exchange(
+    batch: &Batch,
+    request: &WireRequest,
+    transport: &impl Transport,
+) -> Result<RawResponse> {
+    let budget = batch
+        .budget
+        .as_ref()
+        .map(|b| b.reserve(request))
+        .transpose()?;
+    let ticket = batch.pacer.start(&batch.root, request)?;
+    let response = transport.exchange(request);
+    batch
+        .pacer
+        .finish(&batch.root, &ticket, response.as_ref().ok())?;
+    if let Some(budget) = budget {
+        budget.record(request, response.as_ref().ok())?;
+    }
+    response
 }
 fn answered(
     batch: &Batch,
