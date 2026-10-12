@@ -1,3 +1,5 @@
+#[path = "keep_up_support/receipts.rs"]
+mod receipts;
 #[path = "keep_up_support/mod.rs"]
 mod support;
 use serde_json::json;

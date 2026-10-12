@@ -229,6 +229,7 @@ fn confirmation(
     };
     record.confirm(&input, verdict)?;
     journal::save(&record)?;
+    super::super::timing::now(&request.worker, &request.id, "judged")?;
     state.latest = Some(
         json!({"request":request.id,"head":request.head,"purpose":"checkpoint","assessment":{"state":"commit_reviewed","passed":record.native.as_ref().unwrap().rows.iter().all(|r|r.status==kah_observer::commit_check::Status::Satisfied)},"record":record}),
     );
