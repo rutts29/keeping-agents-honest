@@ -89,7 +89,7 @@ pub fn command_environment(command: &mut Command) {
         .env("CLAUDE_CONFIG_DIR", CONFIG_DIR);
 }
 pub fn requires_claude(mode: &str) -> bool {
-    if mode == "cache" {
+    if mode == "cache" || mode == "search" {
         return false;
     }
     if mode == "verify" {
