@@ -42,7 +42,7 @@ fn execute(root: &Path, job: &Job) -> Result<DeliveryProof> {
         .ok_or("REVIEW_GATE_HEAD_MISSING stage=verification")?;
     let commands = recorded_commands(&job.request, &job.report)?;
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=verification")?);
-    let tree = candidate::load(&home, root, &job.state, head)?;
+    let tree = candidate::load(root, &job.state, head)?;
     if commands.is_empty() {
         inventory(&tree, head)?;
     }
@@ -205,3 +205,7 @@ fn recorded_commands(request: &Request, report: &Report) -> Result<Vec<String>> 
     }
     Ok(commands)
 }
+
+#[cfg(test)]
+#[path = "../../../tests/observer_unit/candidate_registration.rs"]
+mod registration_tests;

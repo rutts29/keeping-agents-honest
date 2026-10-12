@@ -1,13 +1,11 @@
-//! The bundle is created in gVisor; only fsck-checked objects reach the host.
+//! Read source objects/refs on the host; only fsck-imported objects reach checks.
 use super::*;
 use kah_run::worktree::Worktree;
-use kah_sandbox::{Domain, Project};
 use std::{
     os::unix::fs::OpenOptionsExt,
     process::{Command, Stdio},
 };
 pub(super) fn load(
-    home: &Path,
     root: &Path,
     state: &crate::observer_review::state::State,
     head: &str,
@@ -18,7 +16,7 @@ pub(super) fn load(
     }
     let bundle = root.join("source.bundle");
     if !bundle.exists() {
-        export(home, state, head, &bundle)?;
+        export(&state.worker.project, head, &bundle)?;
     }
     let output = git()
         .args([
@@ -55,61 +53,33 @@ pub(super) fn load(
     candidate.save(&saved)?;
     Ok(candidate)
 }
-fn export(
-    home: &Path,
-    state: &crate::observer_review::state::State,
-    head: &str,
-    bundle: &Path,
-) -> Result<()> {
+fn export(project: &Path, head: &str, bundle: &Path) -> Result<()> {
+    kah_core::run_store::ensure_save_directory(
+        bundle
+            .parent()
+            .ok_or("REVIEW_GATE_BUNDLE_PATH stage=verification")?,
+    )?;
     let temporary = bundle.with_extension(format!("{}.partial", crate::relay_store::nonce()));
-    let project = Project {
-        domain: Domain::Research,
-        root: state.worker.project.clone(),
-        relative_cwd: Default::default(),
-        needs_creation: false,
-    };
-    let binary = state.observer.workspace.join("bin/kah");
-    let executor = crate::native_setup::executor(
-        home,
-        &project,
-        super::super::checks::options(&state.worker.session)?,
-        None,
-    )?
-    .with_read_only_mounts(&[(binary.clone(), binary.clone())])?
-    .read_only_project();
     let output = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(&temporary)?;
-    let status = executor
-        .command(
-            &project.root,
-            &[
-                binary.to_string_lossy().into_owned(),
-                "__review-gate-bundle".into(),
-                head.into(),
-            ],
-        )?
-        .stdout(output)
-        .stderr(Stdio::piped())
-        .output()?;
-    if !status.status.success() {
-        return Err(format!(
-            "REVIEW_GATE_BUNDLE stage=verification: {}",
-            String::from_utf8_lossy(&status.stderr)
-        )
-        .into());
-    }
+    write_bundle(project, head, Stdio::from(output))?;
     fs::File::open(&temporary)?.sync_all()?;
     fs::rename(temporary, bundle)?;
     Ok(())
 }
 pub fn bundle_cli(head: &str) -> Result<()> {
+    write_bundle(&std::env::current_dir()?, head, Stdio::inherit())
+}
+fn write_bundle(project: &Path, head: &str, output: Stdio) -> Result<()> {
     if !super::super::oid(head) {
         return Err("REVIEW_GATE_HEAD stage=bundle".into());
     }
     if !git()
+        .arg("-C")
+        .arg(project)
         .args(["cat-file", "-e", &format!("{head}^{{commit}}")])
         .status()?
         .success()
@@ -117,8 +87,10 @@ pub fn bundle_cli(head: &str) -> Result<()> {
         return Err("REVIEW_GATE_SOURCE_MISSING stage=bundle".into());
     }
     if !git()
+        .arg("-C")
+        .arg(project)
         .args(["bundle", "create", "-", "--all", "HEAD"])
-        .stdout(Stdio::inherit())
+        .stdout(output)
         .status()?
         .success()
     {
@@ -133,6 +105,9 @@ fn git() -> Command {
         .env("PATH", "/usr/bin:/bin")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env("GIT_NO_LAZY_FETCH", "1")
         .args([
             "-c",
             "core.hooksPath=/dev/null",
@@ -140,6 +115,16 @@ fn git() -> Command {
             "core.fsmonitor=false",
             "-c",
             "core.pager=cat",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "maintenance.auto=false",
+            "-c",
+            "protocol.allow=never",
         ]);
     c
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/observer_unit/linked_gate_bundle.rs"]
+mod tests;

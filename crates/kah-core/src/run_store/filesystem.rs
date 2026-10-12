@@ -137,6 +137,39 @@ pub fn ensure_private_directory(path: &Path) -> Result<(), RunStoreError> {
     set_private_directory_permissions(path)
 }
 
+/// Atomic saves create private levels, preserving existing modes/traverse ACLs.
+pub fn ensure_save_directory(path: &Path) -> Result<(), RunStoreError> {
+    if let Some(parent) = path.parent()
+        && parent != path
+        && !parent.as_os_str().is_empty()
+    {
+        ensure_save_directory(parent)?;
+    }
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(RunStoreError::SymlinkRefused { path: path.into() })
+        }
+        Ok(metadata) if metadata.is_dir() => Ok(()),
+        Ok(_) => Err(RunStoreError::InvalidStateComponent { path: path.into() }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            match builder.create(path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    ensure_save_directory(path)
+                }
+                Err(error) => Err(io_error("create private save directory", path, error)),
+            }
+        }
+        Err(error) => Err(io_error("inspect private save directory", path, error)),
+    }
+}
+
 #[cfg(unix)]
 pub(super) fn set_private_directory_permissions(path: &Path) -> Result<(), RunStoreError> {
     use std::os::unix::fs::PermissionsExt;

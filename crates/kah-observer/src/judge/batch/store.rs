@@ -23,7 +23,8 @@ pub(super) fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option
 }
 pub(super) fn write<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let root = path.parent().ok_or(Error::new("JEV_BATCH_PATH"))?;
-    private(root)?;
+    kah_core::run_store::ensure_save_directory(root)
+        .map_err(|_| Error::new("JEV_BATCH_DIRECTORY"))?;
     let temporary = root.join(format!(
         "{}-{}.tmp",
         std::process::id(),

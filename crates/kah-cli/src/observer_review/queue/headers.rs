@@ -41,6 +41,9 @@ fn fields() -> Select {
         ("kind", Select::All),
         ("head", Select::All),
         ("question_set", Select::All),
+        ("tags", Select::All),
+        ("completion_key", Select::fields(&[("commit", Select::All)])),
+        ("verification", Select::fields(&[("commit", Select::All)])),
     ]);
     let trigger = Select::fields(&[
         ("review_class", Select::All),

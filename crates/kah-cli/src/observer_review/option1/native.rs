@@ -18,7 +18,7 @@ pub fn submit(
 ) -> Result<Value> {
     let mut trigger = trigger;
     trigger["option1"] = job.clone();
-    let request = Request {
+    let mut request = Request {
         id: format!(
             "review-{}-{}",
             kah_observer::session::now_ms(),
@@ -38,5 +38,10 @@ pub fn submit(
         )],
         created_ms: kah_observer::session::now_ms(),
     };
+    if job["stage"] == "checkpoint" {
+        request
+            .documents
+            .push(super::super::capture::history(home, &state)?);
+    }
     runtime::submit_snapshot(store, state, &request, home)
 }

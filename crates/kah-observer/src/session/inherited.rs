@@ -64,6 +64,7 @@ impl Store {
             return Err("INHERITED_BOUND stage=intake".into());
         }
         let temporary = self.path.join(format!("inherited-{}.tmp", super::now_ms()));
+        kah_core::run_store::ensure_save_directory(&self.path).map_err(|e| e.to_string())?;
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create_new(true)

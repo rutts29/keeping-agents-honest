@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+mod budget;
 mod cache;
 mod pacing;
 mod store;
@@ -66,6 +67,7 @@ impl Outcome {
 pub struct Batch {
     root: PathBuf,
     pacer: pacing::Pacer,
+    budget: Option<budget::Budget>,
 }
 impl Batch {
     pub fn calibration(rate_root: &Path) -> Result<Option<crate::context_budget::Calibration>> {
@@ -76,6 +78,7 @@ impl Batch {
         Ok(Self {
             root: root.into(),
             pacer: pacing::Pacer::new(rate_root)?,
+            budget: budget::Budget::from_env(rate_root)?,
         })
     }
     pub fn run(

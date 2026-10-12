@@ -88,6 +88,7 @@ impl Store {
         read_state(&Self::directory(base, session).join("state.json"))
     }
     pub fn save(&mut self, state: &State) -> Result<(), String> {
+        kah_core::run_store::ensure_save_directory(&self.path).map_err(|e| e.to_string())?;
         let path = self.path.join("state.json");
         reject_symlink(&path)?;
         let temporary = self.path.join(format!("state-{}.tmp", std::process::id()));

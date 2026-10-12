@@ -13,6 +13,9 @@ pub(super) fn write_new_file_bytes(
     contents: &[u8],
     action: &'static str,
 ) -> Result<(), RunStoreError> {
+    if let Some(parent) = path.parent() {
+        ensure_save_directory(parent)?;
+    }
     ensure_regular_or_missing(path)?;
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -58,6 +61,9 @@ pub(super) fn write_new_private_file_bytes(
     contents: &[u8],
     action: &'static str,
 ) -> Result<(), RunStoreError> {
+    if let Some(parent) = path.parent() {
+        ensure_save_directory(parent)?;
+    }
     ensure_regular_or_missing(path)?;
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);

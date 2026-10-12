@@ -3,6 +3,18 @@ use super::*;
 use lanes::{Lane, Stamp};
 use std::{collections::BTreeMap, path::Path, time::UNIX_EPOCH};
 type Metadata = BTreeMap<String, Stamp>;
+pub(super) fn inherit(root: &Path, name: &str, parent: &str) -> Result<()> {
+    let mut map = load(root)?;
+    let stamp = map
+        .get(parent)
+        .ok_or("REVIEW_CONTINUATION_STAMP stage=queue")?
+        .clone();
+    if stamp.lane != Lane::Gate {
+        return Err("REVIEW_CONTINUATION_LANE stage=queue".into());
+    }
+    map.insert(name.into(), stamp);
+    save(root, &map)
+}
 pub(super) fn reclassified(root: &Path, name: &str, wake: &Wake) -> Result<()> {
     let mut map = load(root)?;
     if let Some(stamp) = map.get_mut(name) {

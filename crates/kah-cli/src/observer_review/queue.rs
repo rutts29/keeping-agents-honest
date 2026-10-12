@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 pub mod claim_migration;
+mod continuation;
 mod headers;
 mod identity;
 pub mod lanes;
@@ -15,6 +16,7 @@ mod ordering;
 pub mod preparation_coverage;
 pub mod repair;
 pub mod supersede;
+mod waiting;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -179,6 +181,7 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     }
     super::consume::retired::queued_at(&root)?;
     let mut jobs = headers::at(&root)?;
+    waiting::filter(&root, &mut jobs)?;
     while let Some((path, job)) = jobs.first() {
         if job.purpose == Purpose::Steering && super::steering::covered(worker, &job.trigger)? {
             let handled = Store::directory(worker)?.join("covered-triggers");
@@ -192,6 +195,12 @@ pub fn claim_batch(worker: &str) -> Result<Option<(Wake, Vec<PathBuf>)>> {
     let Some((mut job, paths)) = headers::selected(&jobs)? else {
         return Ok(None);
     };
+    job.trigger["queued_receipt"] = paths
+        .first()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .map(|n| json!(n))
+        .unwrap_or(Value::Null);
     let stamps = metadata::stamps(&root, &jobs)?;
     job.trigger["queued_at_ms"] = json!(
         paths
@@ -281,6 +290,7 @@ pub fn enqueue_once_at(root: &std::path::Path, receipt: &str, wake: &Wake) -> Re
     kah_core::run_store::ensure_private_directory(&directory)?;
     ordering::reserve(root, &name)?;
     metadata::queued(root, &name, wake)?;
+    continuation::inherit(root, &name, wake)?;
     super::source_store::save(&directory, &name, &value)?;
     Ok(true)
 }
@@ -299,7 +309,9 @@ pub fn header_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
 fn admissible_entries(worker: &str) -> Result<Vec<(PathBuf, Wake)>> {
     let root = Store::directory(worker)?;
     let _lock = Store::delivery_at(&root.join("queue-receipts"), true)?;
-    headers::at(&root)
+    let mut jobs = headers::at(&root)?;
+    waiting::filter(&root, &mut jobs)?;
+    Ok(jobs)
 }
 
 pub fn archive_submitted(root: &std::path::Path, paths: &[PathBuf]) -> Result<()> {

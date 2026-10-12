@@ -23,7 +23,7 @@ pub fn required(trigger: &Value) -> bool {
         })
 }
 pub fn prepare(cumulative: &Request, mut captured: Request, rows: &[Row]) -> Result<Request> {
-    if !required(&cumulative.trigger)
+    if !(required(&cumulative.trigger) || required(&captured.trigger))
         || cumulative.worker != captured.worker
         || cumulative.head != captured.head
         || cumulative.intent["revision"] != captured.intent["revision"]
@@ -41,6 +41,50 @@ pub fn prepare(cumulative: &Request, mut captured: Request, rows: &[Row]) -> Res
     captured.documents.push(Document::new("option1-cumulative", "cumulative_review_input", &format!("kah:{}",cumulative.id),
         &serde_json::to_string(&json!({"request":cumulative,"rows":rows,"role":"Cumulative carry/fold/interaction evidence only; explicit gate requires the typed v12 verify-first decision."}))?));
     Ok(captured)
+}
+
+pub(super) fn carry(
+    store: &Store,
+    state: &mut State,
+    turn: &str,
+    trigger: Value,
+    previous: &Value,
+) -> Result<Value> {
+    let id = previous["request"]
+        .as_str()
+        .ok_or("CHECKPOINT_CARRY_REQUEST stage=gate")?;
+    let cumulative: Request = super::super::source_store::read(
+        &store.directory.join("requests").join(format!("{id}.json")),
+    )?;
+    let rows: Vec<Row> = serde_json::from_value(previous["result"]["rows"].clone())?;
+    let saved = store.directory.join("explicit-gate-inputs");
+    let next = match super::super::state::read::<Request>(&saved.join(format!("{id}.json")))? {
+        Some(next) => next,
+        None => {
+            let captured = capture::request(state, Purpose::Checkpoint, turn, trigger)?;
+            let next = prepare(&cumulative, captured, &rows)?;
+            save_snapshot(&saved, &cumulative, &next)?;
+            next
+        }
+    };
+    queue::enqueue_once_at(
+        &store.directory,
+        &format!("explicit-gate-carry:{id}"),
+        &queue::Wake {
+            purpose: Purpose::Checkpoint,
+            turn: turn.into(),
+            trigger: json!({"captured_snapshot":next}),
+        },
+    )?;
+    state.checkpoint = Some(
+        json!({"head":next.head,"intent_revision":next.intent["revision"],
+        "request":next.id,"passed":null,"state":"verify_first_pending","carried_from":id}),
+    );
+    store.save(state)?;
+    Ok(
+        json!({"status":"option1_reviewed","head":next.head,"carried_from":id,
+        "typed_continuation":next.id,"new_cumulative_reviews":0}),
+    )
 }
 pub(super) fn enqueue(store: &Store, state: &State, request: &Request, rows: &[Row]) -> Result<()> {
     let root = store.directory.join("explicit-gate-inputs");

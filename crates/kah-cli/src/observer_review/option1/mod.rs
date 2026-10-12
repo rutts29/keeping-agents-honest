@@ -3,6 +3,8 @@ pub mod admission;
 pub mod advance;
 pub mod authority;
 pub mod capture;
+pub mod carry;
+pub mod checkpoint_outcome;
 pub mod consume;
 pub mod current_set;
 pub mod direct;

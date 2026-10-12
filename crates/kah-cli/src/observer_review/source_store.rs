@@ -33,6 +33,11 @@ fn reference(root: &Path, bytes: &[u8], encoding: &str) -> Result<Value> {
     Ok(json!({"$kah_source":digest,"encoding":encoding}))
 }
 fn write_once(target: &Path, bytes: &[u8]) -> Result<()> {
+    kah_core::run_store::ensure_save_directory(
+        target
+            .parent()
+            .ok_or("REVIEW_SOURCE_PATH stage=source_store")?,
+    )?;
     if target.exists() {
         return Ok(());
     }
@@ -204,6 +209,7 @@ fn compact_source(value: &Value, root: &Path) -> Result<Value> {
     reference(root, &serde_json::to_vec(&encoded)?, "json")
 }
 pub fn save(directory: &Path, name: &str, value: &Value) -> Result<()> {
+    kah_core::run_store::ensure_save_directory(directory)?;
     let root = if let Some(parent) = directory
         .ancestors()
         .find(|p| p.join(".source-root").is_file())
