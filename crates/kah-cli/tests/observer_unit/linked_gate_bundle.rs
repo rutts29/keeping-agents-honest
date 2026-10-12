@@ -89,7 +89,7 @@ fn linked_worker_exports_only_objects_and_never_carries_or_executes_source_contr
     let before = inventory(&admin);
     let candidate_root = root.join("gate");
     fs::create_dir(&candidate_root).unwrap();
-    let candidate = load(&candidate_root, &state, &head).unwrap();
+    let candidate = load(&candidate_root, &root.join("home"), &state, &head).unwrap();
     assert_eq!(candidate.head().unwrap(), head);
     verify_candidate(&root, &candidate);
     assert_eq!(before, inventory(&admin), "host export must be read-only");

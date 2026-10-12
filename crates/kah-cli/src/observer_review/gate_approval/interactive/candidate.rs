@@ -8,9 +8,11 @@ use std::{
 mod tags;
 pub(super) fn load(
     root: &Path,
+    home: &Path,
     state: &crate::observer_review::state::State,
     head: &str,
 ) -> Result<Worktree> {
+    let workspace = workspace(root, home, &state.worker.session)?;
     let saved = root.join("candidate.json");
     let bundle = root.join("source.bundle");
     if !bundle.exists() {
@@ -25,8 +27,11 @@ pub(super) fn load(
     let candidate = if saved.exists() {
         Worktree::load(&saved)?
     } else {
-        create(root, state, &bundle)?
+        create(&workspace, state, &bundle)?
     };
+    if candidate.path != workspace.join("candidate/worktree") {
+        return Err("REVIEW_GATE_CANDIDATE_PRIVATE_STATE stage=verification: candidate must be outside private observer state".into());
+    }
     tags::import(&candidate, &bundle)?;
     if !git()
         .arg("-C")
@@ -41,6 +46,16 @@ pub(super) fn load(
         candidate.save(&saved)?;
     }
     Ok(candidate)
+}
+fn workspace(root: &Path, home: &Path, worker: &str) -> Result<PathBuf> {
+    use sha2::{Digest, Sha256};
+    use std::os::unix::ffi::OsStrExt;
+    let worker = format!("{:x}", Sha256::digest(worker.as_bytes()));
+    let gate = format!("{:x}", Sha256::digest(root.as_os_str().as_bytes()));
+    let path = home.join(".cache/kah-verifiers").join(worker).join(gate);
+    // Receipts and bundle remain in root. Only isolated Git/check snapshots go here.
+    kah_core::run_store::ensure_save_directory(&path)?;
+    Ok(path.canonicalize()?)
 }
 fn create(
     root: &Path,
@@ -149,3 +164,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../../tests/observer_unit/tag_import.rs"]
 mod tag_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/observer_unit/verifier_state_privacy.rs"]
+mod privacy_tests;

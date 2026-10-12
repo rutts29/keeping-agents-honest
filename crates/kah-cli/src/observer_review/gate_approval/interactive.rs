@@ -62,7 +62,8 @@ fn execute(root: &Path, job: &Job) -> Result<DeliveryProof> {
         "recorded-check-dispositions.json",
         &replay::dispositions(&job.request, &job.report)?,
     )?;
-    let tree = candidate::load(root, &job.state, head)?;
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("REVIEW_HOME stage=verification")?);
+    let tree = candidate::load(root, &home, &job.state, head)?;
     inventory(&tree, head)?;
     let index = Store::directory(&job.request.worker)?.join("interactive-candidates");
     source_store::save(

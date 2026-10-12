@@ -4,6 +4,10 @@ use kah_run::{access, verification, worktree::Worktree};
 use kah_sandbox::{Domain, LaunchOptions, Project};
 use std::{path::Path, time::Duration};
 mod access_path;
+#[cfg(test)]
+pub(crate) fn prepare_access(path: &Path, uid: u32) -> Result<serde_json::Value> {
+    access_path::prepare(path, uid)
+}
 
 pub fn execute(
     home: &Path,
