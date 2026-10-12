@@ -13,6 +13,11 @@ pub struct Store {
     pub(super) path: PathBuf,
     _lock: File,
 }
+impl Drop for Store {
+    fn drop(&mut self) {
+        let _ = self._lock.unlock();
+    }
+}
 impl Store {
     pub fn directory(base: &Path, session: &str) -> PathBuf {
         let digest = format!("{:x}", Sha256::digest(session.as_bytes()));
@@ -146,3 +151,7 @@ fn reject_symlink(path: &Path) -> Result<(), String> {
 fn io_error(error: std::io::Error) -> String {
     format!("OBSERVER_STATE_IO stage=session_store: {error}")
 }
+
+#[cfg(test)]
+#[path = "../../tests/session_unit/lock_drop.rs"]
+mod lock_drop_tests;
