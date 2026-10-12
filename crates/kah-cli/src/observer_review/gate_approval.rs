@@ -27,6 +27,7 @@ mod contract_execution;
 mod contract_facts;
 mod contract_results;
 pub mod interactive;
+mod semantic_resolution;
 pub(super) use contract_results::unchecked_final;
 mod contracts;
 pub(super) use contracts::{outcome as contract_outcome, prepare as prepare_contracts};
@@ -101,6 +102,10 @@ pub fn eligible(
     // Native reports and trigger markers cannot admit a user risk decision.
     false
 }
+
+#[cfg(test)]
+#[path = "../../tests/observer_unit/semantic_admission.rs"]
+mod semantic_admission_tests;
 pub fn eligible_after_followup(
     request: &Request,
     report: &Report,
@@ -115,6 +120,14 @@ pub fn eligible_after_followup(
         return false;
     }
     let ids = assessment["needs_thinker"].as_array().unwrap();
+    if ids.iter().any(|id| {
+        id.as_str().is_some_and(|id| {
+            semantic_resolution::semantic(report, id)
+                && assessment["contract_coverage"][id]["semantic_risk_admissible"] != true
+        })
+    }) {
+        return false;
+    }
     if report
         .decision_units
         .as_ref()
@@ -207,5 +220,8 @@ pub(super) fn guard_report(
         return Ok(());
     }
     guard_followup(root, request, assessment)?;
+    if semantic_resolution::guard(root, request, report, assessment)? {
+        return Ok(());
+    }
     unchecked_final(request, report, assessment)
 }

@@ -96,6 +96,9 @@ fn proposed_target(report: &Report, item: &Item, coverage: &mut Value) {
     }
 }
 fn terminal_coverage(report: &Report, assessment: &Value, result: &mut ItemResult) {
+    if super::semantic_resolution::semantic(report, &result.requirement_id) {
+        return;
+    }
     if report
         .decision_units
         .as_ref()
