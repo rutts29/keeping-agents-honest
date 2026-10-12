@@ -28,9 +28,8 @@ fn claude_herdr_and_new_project() {
     f.reserve_for_creation();
     let probe = herdr_probe::setup();
     let version = Command::new("claude").arg("--version").output().unwrap();
-    let settings =
-        std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".claude/settings.json");
-    let before = fs::read(&settings).unwrap();
+    let settings_home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    let before = claude_support::settings::snapshot(&settings_home);
     let mut terminal = Terminal::start(
         &format!(
             "HERDR_CONFIG_PATH={} herdr --session {}",
@@ -74,7 +73,7 @@ fn claude_herdr_and_new_project() {
     terminal.wait_exit(false);
     drop(terminal);
     assert!(
-        before == fs::read(&settings).unwrap(),
+        before == claude_support::settings::snapshot(&settings_home),
         "global Claude settings changed"
     );
     fs::write(f.evidence.join("herdr-new-project.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),

@@ -24,7 +24,7 @@ fn ownership_claude_native_and_gvisor() {
     let f = claude_restricted_support::Restricted::new();
     f.verify_cwd_file();
     prepare(f.fixture.project());
-    let before = fs::read(f.home.join(".claude/settings.json")).unwrap();
+    let before = claude_support::settings::snapshot(&f.home);
     let mut terminal = f.start();
     f.fixture.ready(&mut terminal);
     let task = format!(
@@ -38,10 +38,7 @@ fn ownership_claude_native_and_gvisor() {
     f.fixture.settled(&mut terminal, &task);
     drop(terminal);
     let proof = verify_host(f.fixture.project());
-    assert_eq!(
-        before,
-        fs::read(f.home.join(".claude/settings.json")).unwrap()
-    );
+    assert_eq!(before, claude_support::settings::snapshot(&f.home));
     save(
         "claude-ownership.json",
         json!({"version":version("claude"),"domain":"research-offline","fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","proof":proof,"globalConfigUnchanged":true,"passed":true}),

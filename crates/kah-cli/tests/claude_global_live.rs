@@ -19,10 +19,10 @@ fn claude_global_setup_in_both_restricted_domains() {
 }
 fn journey(domain: &str) {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let before = fs::read(home.join(".claude/settings.json")).unwrap();
+    let before = claude_support::settings::snapshot(&home);
     let version = Command::new("claude").arg("--version").output().unwrap();
     let f = Fixture::new_domain(domain);
-    let config = home.join(".claude");
+    let config = kah_claude::paths::config_root(&home);
     let mut terminal = f.start(false);
     f.ready(&mut terminal);
     let skill = home.join(".agents/skills/ponytail/SKILL.md");
@@ -51,7 +51,7 @@ fn journey(domain: &str) {
     child_proof(&f, &config);
     drop(terminal);
     assert!(
-        before == fs::read(home.join(".claude/settings.json")).unwrap(),
+        before == claude_support::settings::snapshot(&home),
         "global settings changed"
     );
     let evidence = f.evidence.clone();
@@ -62,7 +62,7 @@ fn journey(domain: &str) {
 fn child_proof(f: &Fixture, config: &std::path::Path) {
     let child_root = config
         .join("projects")
-        .join(f.project().to_string_lossy().replace('/', "-"))
+        .join(kah_claude::paths::project_key(f.project()))
         .join(&f.id)
         .join("subagents");
     let files = fs::read_dir(&child_root)

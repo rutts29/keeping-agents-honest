@@ -9,6 +9,7 @@ use std::{
 };
 mod cleanup;
 mod completion;
+pub mod settings;
 pub mod subagent_completion;
 mod transcript;
 
