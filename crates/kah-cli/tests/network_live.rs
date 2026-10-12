@@ -9,6 +9,8 @@ mod processes;
 #[allow(dead_code)]
 #[path = "terminal_support/pty.rs"]
 mod pty;
+#[path = "terminal_support/public_config.rs"]
+mod public_config;
 use kah_cli::{Arguments, Launch};
 use kah_codex::overlay;
 use kah_sandbox::{Executor, LaunchOptions, current_uid, publish_binary};
@@ -162,10 +164,11 @@ fn outputs(turn: &Value) -> String {
         .map(|v| v["aggregatedOutput"].as_str().unwrap_or(""))
         .collect()
 }
-fn globals(home: &Path) -> (Vec<u8>, Vec<u8>) {
+// Same optional native hook source as native_extensions_live; absence is audited.
+fn globals(home: &Path) -> (Vec<u8>, Option<Vec<u8>>) {
     (
         fs::read(home.join(".codex/config.toml")).unwrap(),
-        fs::read(home.join(".codex/hooks.json")).unwrap(),
+        public_config::snapshot(&home.join(".codex/hooks.json")),
     )
 }
 fn version() -> String {
