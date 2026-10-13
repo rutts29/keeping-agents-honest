@@ -14,3 +14,9 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 too_many_lines = "deny"
 cognitive_complexity = "deny"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
