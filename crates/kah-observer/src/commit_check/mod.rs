@@ -61,11 +61,18 @@ fn selected(input: &Input) -> BTreeSet<String> {
         .collect()
 }
 pub fn verify_quote(input: &Input, quote: &CodeQuote) -> Result<(), String> {
-    let file = input
-        .files
+    verify_file_quote(&input.revision, &input.files, quote)
+}
+/// Whole-file quote identity at one revision; callers may pass only cited files.
+pub fn verify_file_quote(
+    revision: &str,
+    files: &BTreeMap<String, CodeFile>,
+    quote: &CodeQuote,
+) -> Result<(), String> {
+    let file = files
         .get(&quote.file)
         .ok_or_else(|| format!("MEASURE_QUOTE_FILE stage=citation: {}", quote.file))?;
-    if file.revision != input.revision
+    if file.revision != revision
         || file.digest != quote.digest
         || file.digest != digest(file.text.as_bytes())
     {

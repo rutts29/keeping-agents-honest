@@ -2,7 +2,7 @@
 use super::super::state::Request;
 use crate::Result;
 use kah_observer::{
-    commit_check::{Input, Row},
+    commit_check::Row,
     rule_source::{
         RuleList, Source,
         atomization::{AtomicRule, Item},
@@ -42,11 +42,20 @@ pub fn active(request: &Request) -> bool {
     request.trigger["option1"].is_object()
 }
 pub fn validate(request: &Request, bytes: &[u8]) -> Result<Report> {
+    let report = decode(&request.id, bytes)?;
+    check(&request.trigger["option1"], &report)?;
+    Ok(report)
+}
+/// Parses a native report and binds it to its request before any job is read.
+pub fn decode(request: &str, bytes: &[u8]) -> Result<Report> {
     let report: Report = serde_json::from_slice(bytes)?;
-    if report.request != request.id {
+    if report.request != request {
         return Err("COMMIT_REPORT_BINDING stage=report".into());
     }
-    let job = &request.trigger["option1"];
+    Ok(report)
+}
+/// Checks a report against the complete job or the job parts selected for it.
+pub fn check(job: &Value, report: &Report) -> Result<()> {
     match (&report.result, job["stage"].as_str()) {
         (Answer::CurrentRules { candidate }, Some("current_rules")) => {
             let rebuild: kah_core::run_store::RuleRebuild =
@@ -66,45 +75,11 @@ pub fn validate(request: &Request, bytes: &[u8]) -> Result<Report> {
         }
         (Answer::Confirmation { rows }, Some("confirmation"))
         | (Answer::Checkpoint { rows }, Some("checkpoint")) => {
-            let input: Input = serde_json::from_value(job["input"].clone())?;
-            validate_rows(&input, rows)?;
+            let scope = super::report_scope::RowScope::read(&job["input"], rows)?;
+            super::report_scope::validate_rows(&scope, rows)?;
         }
         (Answer::Selection { .. }, Some("selection")) => {}
         _ => return Err("COMMIT_REPORT_STAGE stage=report".into()),
-    }
-    Ok(report)
-}
-fn validate_rows(input: &Input, rows: &[Row]) -> Result<()> {
-    let expected = input
-        .rules
-        .keys()
-        .collect::<std::collections::BTreeSet<_>>();
-    let actual = rows
-        .iter()
-        .map(|r| &r.requirement)
-        .collect::<std::collections::BTreeSet<_>>();
-    if expected != actual || rows.len() != actual.len() {
-        return Err("COMMIT_REPORT_SCOPE stage=report".into());
-    }
-    for row in rows {
-        if row.requirement == "controller_intent_pending"
-            && row.status != kah_observer::commit_check::Status::Unclear
-        {
-            return Err(
-                "COMMIT_INTENT_NOT_ACCEPTED stage=report: startup intent stays unconfirmed".into(),
-            );
-        }
-        if row.kind == kah_observer::commit_check::FindingKind::NotViolated
-            && !input.rules[&row.requirement].prohibition
-        {
-            return Err("COMMIT_REPORT_ABSENCE_SCOPE stage=report".into());
-        }
-        if row.status == kah_observer::commit_check::Status::Violated && row.quotes.is_empty() {
-            return Err("COMMIT_REPORT_QUOTES stage=report".into());
-        }
-        for quote in &row.quotes {
-            kah_observer::commit_check::verify_quote(input, quote)?;
-        }
     }
     Ok(())
 }

@@ -51,6 +51,7 @@ impl Read for Reader {
     }
 }
 pub(crate) fn open(path: &Path, digest: &str) -> Result<Box<dyn Read>> {
+    super::super::trace::note(digest);
     let mut file = File::open(path)?;
     let mut hash = Sha256::new();
     let mut buffer = [0u8; 8192];

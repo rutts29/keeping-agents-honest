@@ -35,6 +35,7 @@ pub(super) fn store(root: &Path, bytes: &[u8], digest: &str) -> Result<()> {
 }
 
 pub(super) fn recover(path: &Path, digest: &str) -> Result<Vec<u8>> {
+    super::trace::note(digest);
     let stored = super::read_bytes(path)?;
     if format!("{:x}", Sha256::digest(&stored)) == digest {
         return Ok(stored); // Older, unsegmented sources remain readable.

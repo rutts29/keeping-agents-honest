@@ -9,6 +9,8 @@ pub enum Select {
     Raw,
     Fields(BTreeMap<String, Select>),
     Each(Box<Select>),
+    /// Every value of an object whose keys are data (for example rule IDs).
+    Values(Box<Select>),
 }
 impl Select {
     pub fn fields(fields: &[(&str, Select)]) -> Self {
@@ -54,6 +56,12 @@ fn resolve(value: Value, root: &Path, selection: &Select) -> Result<Value> {
             }
             Ok(Value::Object(result))
         }
+        (Value::Object(fields), Select::Values(child)) => Ok(Value::Object(
+            fields
+                .into_iter()
+                .map(|(key, value)| Ok((key, resolve(value, root, child)?)))
+                .collect::<Result<_>>()?,
+        )),
         (Value::Array(items), Select::Each(child)) => Ok(Value::Array(
             items
                 .into_iter()

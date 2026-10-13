@@ -198,7 +198,7 @@ fn observe_route(args: &[String]) -> Option<crate::Result<()>> {
         return Some(option1::journal::cli(&args[2], &args[3]));
     }
     match args.get(1).map(String::as_str) {
-        Some("report") => Some(workspace::submit(args)),
+        Some("report") => Some(option1::workspace::report(args)),
         Some("select") => Some(preparation::submit(args)),
         Some("select-batch") => Some(preparation::batch::submit(args)),
         Some("context") if args.len() == 3 => {

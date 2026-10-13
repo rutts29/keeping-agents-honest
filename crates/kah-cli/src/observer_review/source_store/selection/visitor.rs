@@ -32,6 +32,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
             }
             let child = match self.0 {
                 Select::Fields(fields) => fields.get(&key),
+                Select::Values(child) => Some(child.as_ref()),
                 _ => None,
             };
             if let Some(child) = child {

@@ -16,6 +16,8 @@ pub mod journal;
 pub mod native;
 pub mod prompt;
 pub mod protocol;
+pub mod report_scope;
+pub mod report_source;
 pub mod requests;
 pub mod rule_questions;
 pub mod selection;

@@ -20,6 +20,7 @@ mod retirement;
 mod roundtrip;
 mod segments;
 mod selection;
+pub mod trace;
 pub use canonical_text::publish as document;
 use encoding::strings;
 pub use selection::{Select, read_selected};
