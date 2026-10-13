@@ -11,6 +11,9 @@ pub(crate) fn finish(
     if request.trigger["verification_followup"]["stage"] != "checks_complete" {
         return Ok(false);
     }
+    if assessment["semantic_resolution"]["status"] == "pending" {
+        return Ok(true); // Durable SAME-observer context owns the next conclusion.
+    }
     if super::super::contract_results::send_back(root, request, assessment)? {
         return Ok(true);
     }

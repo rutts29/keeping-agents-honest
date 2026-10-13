@@ -115,6 +115,22 @@ fn round(
 }
 
 fn route(root: &Path, mut request: Request, report: &Report, covered: bool, reason: &str) {
+    let mut executable = report.clone();
+    // Explicit $0 executable-route case under obligation-owned routing. The
+    // retained original non-executable reporting classification is unchanged.
+    executable
+        .decision_units
+        .as_mut()
+        .unwrap()
+        .requirements
+        .iter_mut()
+        .find(|r| r.id == "req-commit-tag")
+        .unwrap()
+        .obligation
+        .as_mut()
+        .unwrap()
+        .kind = kah_observer::decision_units::ObligationKind::Executable;
+    let report = &executable;
     request
         .trigger
         .as_object_mut()
@@ -168,6 +184,9 @@ fn good_controller_facts_ask_nothing_and_all_three_negatives_keep_named_risks() 
             case == "good",
             "{case}"
         );
+        if case != "good" {
+            non_executable_route(&root, &request, &report);
+        }
         route(&root, request, &report, case == "good", case);
         println!(
             "CONTROLLER_CASE {case} covered={} Jev_calls=0",
@@ -214,4 +233,72 @@ fn git_fixture(root: &Path, case: &str) -> PathBuf {
         );
     }
     repo
+}
+
+fn non_executable_route(root: &Path, request: &Request, report: &Report) {
+    use super::super::semantic_resolution;
+    assert!(semantic_resolution::semantic(report, "req-commit-tag"));
+    let (snapshot, mut assessment) = semantic_context(root, request, report);
+    // Explicit $0 unsupported post-resolution outcome. No synthetic answer is
+    // used for a model-quality claim or replayed as a paid receipt.
+    assessment["violations"] = json!(["req-commit-tag"]);
+    assessment["needs_thinker"] = json!([]);
+    assert!(
+        semantic_resolution::guard_with(root, &snapshot, report, &mut assessment, |_| panic!(
+            "no new check"
+        ))
+        .unwrap()
+    );
+    assert_eq!(assessment["passed"], false);
+    assert_eq!(assessment["semantic_resolution"]["status"], "finding");
+    assert_eq!(
+        crate::observer_review::reminder_queue::pending(root)
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+fn semantic_context(root: &Path, request: &Request, report: &Report) -> (Request, Value) {
+    use super::super::semantic_resolution;
+    let key = request.trigger["queued_receipt"].as_str().unwrap();
+    source_store::save(root, "queue-order.json", &json!({key:1})).unwrap();
+    source_store::save(
+        root,
+        "queue-metadata.json",
+        &json!({key:{"at_ms":request.created_ms,"lane":"gate"}}),
+    )
+    .unwrap();
+    let mut assessment = json!({"passed":null,"violations":[],"needs_thinker":["req-commit-tag"],
+        "needs_check":[],"contract_coverage":{"req-commit-tag":{"semantic_risk_admissible":false}}});
+    let value: Value = serde_json::from_str(include_str!(
+        "../../../../docs/gates/evidence/phase3-obligation-routing/controller-observer-identity.json"
+    ))
+    .unwrap();
+    let observer = value["observer_session"].clone();
+    assert!(observer.as_str().is_some_and(|id| !id.is_empty()));
+    assert!(
+        semantic_resolution::guard_with(root, request, report, &mut assessment, |snapshot| {
+            snapshot.trigger["semantic_resolution"]["observer_session"] = observer.clone();
+            Ok(())
+        })
+        .unwrap()
+    );
+    let snapshot: Request = source_store::read(&PathBuf::from(
+        assessment["semantic_resolution"]["record"]
+            .as_str()
+            .unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(snapshot.worker, request.worker);
+    assert_eq!(
+        snapshot.trigger["semantic_resolution"]["observer_session"],
+        observer
+    );
+    assert_eq!(
+        snapshot.trigger["semantic_resolution"]["same_observer"],
+        true
+    );
+    assert!(super::super::finish_followup(root, request, report, &assessment).unwrap());
+    (snapshot, assessment)
 }

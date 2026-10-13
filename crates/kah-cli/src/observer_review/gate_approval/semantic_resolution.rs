@@ -8,27 +8,21 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, path::PathBuf};
 
 pub(super) fn semantic(report: &Report, id: &str) -> bool {
-    let method = report
-        .verification_contracts
-        .as_ref()
-        .and_then(|items| items.iter().find(|i| i.requirement_id == id))
-        .map(|i| &i.method);
-    match method {
-        Some(Method::SemanticRisk { .. }) => true,
-        Some(
-            Method::ControllerReceipt { .. }
-            | Method::ExistingCheck { .. }
-            | Method::TargetedCheck { .. },
-        ) => false,
-        _ => report.decision_units.as_ref().is_some_and(|u| {
-            u.requirements.iter().any(|r| {
-                r.id == id
-                    && r.obligation
-                        .as_ref()
-                        .is_some_and(|o| o.kind == ObligationKind::NonExecutable)
-            })
-        }),
+    if let Some(kind) = report.decision_units.as_ref().and_then(|units| {
+        units
+            .requirements
+            .iter()
+            .find(|r| r.id == id)
+            .and_then(|r| r.obligation.as_ref())
+            .map(|o| &o.kind)
+    }) {
+        return *kind == ObligationKind::NonExecutable;
     }
+    report.verification_contracts.as_ref().is_some_and(|items| {
+        items.iter().any(|item| {
+            item.requirement_id == id && matches!(item.method, Method::SemanticRisk { .. })
+        })
+    })
 }
 
 fn unresolved(report: &Report, assessment: &Value) -> BTreeSet<String> {
@@ -89,7 +83,9 @@ pub(super) fn guard_with(
         return Ok(false);
     }
     let record = record(root, request)?;
-    let snapshot = snapshot(root, &record, request, &ids, materialize)?;
+    let semantic_state = json!({"report":report,"assessment":assessment,"items":ids,
+        "routing":"Linked obligations own routing; suggested commands are evidence only for non-executable items."});
+    let snapshot = snapshot(root, &record, request, &ids, &semantic_state, materialize)?;
     crate::observer_review::queue::enqueue_once_at(
         root,
         &format!("semantic-resolution:{}", snapshot.id),
@@ -111,6 +107,7 @@ fn snapshot(
     record: &Path,
     request: &Request,
     ids: &BTreeSet<String>,
+    semantic_state: &Value,
     materialize: impl FnOnce(&mut Request) -> Result<()>,
 ) -> Result<Request> {
     if let Some(saved) = crate::observer_review::state::read::<Request>(record)? {
@@ -138,6 +135,12 @@ fn snapshot(
         crate::observer_review::capture::controller_events::add(root, &mut snapshot)?;
         crate::observer_review::capture::controller_receipts::add(&mut snapshot)?;
         materialize(&mut snapshot)?;
+        snapshot.documents.push(Document::new(
+            "semantic-state",
+            "controller_context",
+            &format!("kah:semantic-state:{}", request.id),
+            &serde_json::to_string(semantic_state)?,
+        ));
         snapshot.documents.push(Document::new("semantic-resolution", "controller_context", "kah:semantic-resolution",
             "Resolve the named non-admitted status/scope items from the full run history, complete delivered code and exact-SHA receipts. This is SAME-observer context work, not another verification round. Do not ask the user a status or interpretation question. Return satisfied with exact cited evidence, or a cited finding/unsupported claim. Do not silently pass an unsupported or unconfirmed claim."));
         source_store::save(

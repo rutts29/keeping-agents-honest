@@ -106,6 +106,9 @@ pub fn eligible(
 #[cfg(test)]
 #[path = "../../tests/observer_unit/semantic_admission.rs"]
 mod semantic_admission_tests;
+#[cfg(test)]
+#[path = "../../tests/observer_unit/semantic_obligation.rs"]
+mod semantic_obligation_tests;
 pub fn eligible_after_followup(
     request: &Request,
     report: &Report,
