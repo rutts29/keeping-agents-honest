@@ -39,6 +39,7 @@ pub mod report_revision;
 pub mod request_context;
 pub mod runtime;
 pub mod service;
+pub mod session_baseline;
 pub mod snapshot;
 pub mod source_store;
 pub mod state;

@@ -4,7 +4,7 @@ use super::{
     state::{State, Store},
 };
 use crate::Result;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -41,7 +41,18 @@ pub fn run(worker: &str) -> Result<()> {
             Err(error) if error.to_string().starts_with("REVIEW_WORKTREE_PENDING") => return Ok(()),
             Err(error) => return Err(error),
         };
-        sample_head(worker, &root, &refs)?;
+        let started = earliest(&paths)?;
+        let start = |head: &str| {
+            let time = git(&home, &state, &["show", "-s", "--format=%ct", head, "--"]);
+            let committed = time.ok().flatten().and_then(|t| t.trim().parse().ok());
+            Ok((committed, started))
+        };
+        sample_head(&root, &refs, start, |head| {
+            super::events::enqueue(
+                worker,
+                json!({"kind":"native_head","review_class":"commit","head":head,"source":"controller Git metadata","at_ms":kah_observer::session::now_ms()}),
+            )
+        })?;
         let current = refs
             .into_iter()
             .filter(|r| r.starts_with("refs/tags/"))
@@ -79,36 +90,69 @@ pub fn head(home: &Path, state: &State) -> Result<Option<String>> {
         .into_iter()
         .find_map(|r| r.strip_prefix("HEAD ").map(str::to_owned)))
 }
-fn sample_head(worker: &str, root: &Path, refs: &[String]) -> Result<()> {
+/// The first sample records the session-start HEAD (or its absence in a new
+/// repository). An existing HEAD there is the accepted baseline, never a change.
+/// `start` reads the HEAD commit time and the session start; `review` enqueues.
+pub fn sample_head(
+    root: &Path,
+    refs: &[String],
+    start: impl FnOnce(&str) -> Result<(Option<u64>, Option<u64>)>,
+    review: impl FnOnce(&str) -> Result<()>,
+) -> Result<()> {
     let head = refs.iter().find_map(|r| r.strip_prefix("HEAD "));
-    let previous: Option<String> = super::state::read(&root.join("git-head.json"))?;
-    if let Some(head) = head
-        && previous.as_deref() != Some(head)
-    {
-        super::events::enqueue(
-            worker,
-            json!({"kind":"native_head","review_class":"commit","head":head,"source":"controller Git metadata","at_ms":kah_observer::session::now_ms()}),
-        )?;
+    let previous: Option<Option<String>> = super::state::read(&root.join("git-head.json"))?;
+    let first = previous.is_none();
+    let changed = match head {
+        None => false,
+        Some(head) if first => {
+            let (committed, started) = start(head)?;
+            !super::session_baseline::accept(root, head, committed, started)?
+        }
+        Some(head) => previous.flatten().as_deref() != Some(head),
+    };
+    if let Some(head) = head.filter(|_| changed) {
+        review(head)?;
+    }
+    if first || changed {
         crate::unattended_report::save(root, "git-head.json", &json!(head))?;
     }
     Ok(())
 }
+fn earliest(paths: &[PathBuf]) -> Result<Option<u64>> {
+    let mut times = vec![];
+    for path in paths {
+        let event: Option<Value> = super::state::read(path)?;
+        times.extend(event.and_then(|e| e["at_ms"].as_u64()));
+    }
+    Ok(times.into_iter().min())
+}
 fn read_refs(home: &Path, state: &State) -> Result<Vec<String>> {
     let args = [
-        "git",
-        "-c",
-        "core.hooksPath=/dev/null",
-        "-c",
-        "core.fsmonitor=false",
         "for-each-ref",
         "--include-root-refs",
         "--format=%(refname) %(objectname)",
         "refs/tags",
         "HEAD",
     ];
+    Ok(git(home, state, &args)?
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect())
+}
+/// Read-only Git metadata. `None` when the project is not a Git repository.
+fn git(home: &Path, state: &State, args: &[&str]) -> Result<Option<String>> {
+    let mut command = vec![
+        "git",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.fsmonitor=false",
+    ];
+    command.extend_from_slice(args);
     let output = if state.worker.project.starts_with(home.join("repos/mine")) {
-        Command::new(args[0])
-            .args(&args[1..])
+        Command::new(command[0])
+            .args(&command[1..])
             .current_dir(&state.worker.project)
             .output()?
     } else {
@@ -122,18 +166,14 @@ fn read_refs(home: &Path, state: &State) -> Result<Vec<String>> {
         let executor =
             crate::native_setup::executor(home, &project, Default::default(), git.as_deref())?
                 .read_only_project();
-        executor
-            .command(&project.root, &args.map(str::to_owned))?
-            .output()?
+        let command = command.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>();
+        executor.command(&project.root, &command)?.output()?
     };
     if !output.status.success() {
         if !state.worker.project.join(".git").exists() {
-            return Ok(vec![]);
+            return Ok(None);
         }
         return Err("REVIEW_GIT_TAGS stage=tags: Git metadata could not be read".into());
     }
-    Ok(String::from_utf8(output.stdout)?
-        .lines()
-        .map(str::to_owned)
-        .collect())
+    Ok(Some(String::from_utf8(output.stdout)?))
 }
