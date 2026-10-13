@@ -1,6 +1,6 @@
 //! C5753c6: cumulative Option1 evidence is input, not the explicit gate decision.
 use super::super::{
-    capture, queue,
+    queue,
     state::{Purpose, Request, State, Store},
 };
 use crate::Result;
@@ -22,14 +22,19 @@ pub fn required(trigger: &Value) -> bool {
                 || event["kind"] == "native_phase_claim" && event["review_class"] == "gate"
         })
 }
-pub fn prepare(cumulative: &Request, mut captured: Request, rows: &[Row]) -> Result<Request> {
+pub fn prepare(cumulative: &Request, captured: Request, rows: &[Row]) -> Result<Request> {
     if !(required(&cumulative.trigger) || required(&captured.trigger))
         || cumulative.worker != captured.worker
-        || cumulative.head != captured.head
-        || cumulative.intent["revision"] != captured.intent["revision"]
     {
-        return Err("REVIEW_EXPLICIT_GATE_BINDING stage=checkpoint: cumulative input and typed decision must use the same worker, SHA and intent revision".into());
+        return Err("REVIEW_EXPLICIT_GATE_BINDING stage=checkpoint: continuation must retain the worker and a captured gate event".into());
     }
+    // Only the new request identity/event belongs to the continuation. Its
+    // code, authority and documents remain the complete immutable input scope.
+    let mut frozen = cumulative.clone();
+    frozen.id = captured.id;
+    frozen.turn = captured.turn;
+    frozen.trigger = captured.trigger;
+    let mut captured = frozen;
     captured.purpose = Purpose::Checkpoint;
     captured
         .trigger
@@ -61,7 +66,7 @@ pub(super) fn carry(
     let next = match super::super::state::read::<Request>(&saved.join(format!("{id}.json")))? {
         Some(next) => next,
         None => {
-            let captured = capture::request(state, Purpose::Checkpoint, turn, trigger)?;
+            let captured = continuation(&cumulative, turn, trigger);
             let next = prepare(&cumulative, captured, &rows)?;
             save_snapshot(&saved, &cumulative, &next)?;
             next
@@ -86,14 +91,19 @@ pub(super) fn carry(
         "typed_continuation":next.id,"new_cumulative_reviews":0}),
     )
 }
-pub(super) fn enqueue(store: &Store, state: &State, request: &Request, rows: &[Row]) -> Result<()> {
+pub(super) fn enqueue(
+    store: &Store,
+    _state: &State,
+    request: &Request,
+    rows: &[Row],
+) -> Result<()> {
     let root = store.directory.join("explicit-gate-inputs");
     let saved = root.join(format!("{}.json", request.id));
     let next = match super::super::state::read::<Request>(&saved)? {
         Some(next) => next,
         None => {
             let original = request.trigger["option1"]["original_trigger"].clone();
-            let captured = capture::request(state, Purpose::Checkpoint, &request.turn, original)?;
+            let captured = continuation(request, &request.turn, original);
             let next = prepare(request, captured, rows)?;
             save_snapshot(&root, request, &next)?;
             next
@@ -109,6 +119,17 @@ pub(super) fn enqueue(store: &Store, state: &State, request: &Request, rows: &[R
         },
     )?;
     Ok(())
+}
+fn continuation(scope: &Request, turn: &str, trigger: Value) -> Request {
+    let mut request = scope.clone();
+    request.id = format!(
+        "review-{}-{}",
+        kah_observer::session::now_ms(),
+        crate::relay_store::nonce()
+    );
+    request.turn = turn.into();
+    request.trigger = trigger;
+    request
 }
 fn save_snapshot(root: &std::path::Path, cumulative: &Request, next: &Request) -> Result<()> {
     kah_core::run_store::ensure_private_directory(root)?;

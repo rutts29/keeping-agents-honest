@@ -2,6 +2,8 @@
 mod config_audit;
 #[path = "track2_support/dialog.rs"]
 mod dialog;
+#[path = "track2_support/hook_events.rs"]
+mod hook_events;
 #[path = "track2_support/proof.rs"]
 mod proof;
 #[path = "track2_support/usage.rs"]
@@ -170,4 +172,12 @@ fn usage_skips_null_codex_counters_and_keeps_max_charge_of_claude_stream_revisio
         result,
         json!({"input":3,"cached_input":9,"cache_creation":4,"output":7})
     );
+}
+
+#[test]
+fn current_long_session_hooks_require_intake_and_stop_without_the_retired_tool_lane() {
+    let current = ["SessionStart", "UserPromptSubmit", "Stop"].map(|event| json!({"event":event}));
+    assert!(hook_events::complete(&current));
+    assert!(!hook_events::complete(&current[..2]));
+    assert!(!hook_events::complete(&[json!({"event":"PostToolUse"})]));
 }

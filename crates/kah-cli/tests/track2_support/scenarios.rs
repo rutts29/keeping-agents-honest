@@ -1,3 +1,5 @@
+#[path = "hook_events.rs"]
+mod hook_events;
 use super::{fixture::save, journey::Worker};
 use kah_cli::observer_review::{
     self as review,
@@ -158,10 +160,8 @@ fn hooks(worker: &Worker, state: &review::state::State) -> Value {
         .map(|l| serde_json::from_str::<Value>(l).unwrap())
         .collect::<Vec<_>>();
     // Claude does not expose the Codex HookRunSummary wire event. Require actual
-    // SessionStart, PostToolUse and Stop host receipts; absence is not a pass.
-    let events = ["SessionStart", "PostToolUse", "Stop"]
-        .iter()
-        .all(|name| observed.iter().any(|r| r["event"] == *name));
+    // Tracker39 removed per-tool Jev; require the current intake/stop path.
+    let events = hook_events::complete(&observed);
     let passed = events && errors.is_empty() && (worker.provider == "claude" || !native.is_empty());
     json!({"passed":passed,"native_hook_runs":native,"errors":errors,"host_event_count":observed.len(),
         "native_duration_source":if worker.provider=="codex" {"HookRunSummary.duration_ms"} else {"not exposed; completed short-timeout native hooks evidenced by host receipts"}})

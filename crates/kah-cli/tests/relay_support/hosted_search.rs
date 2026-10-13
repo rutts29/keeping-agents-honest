@@ -31,6 +31,7 @@ fn prepare(home: &Path, root: &Path) -> (kah_cli::Launch, crate::fixture::Fixtur
     ])
     .unwrap();
     let launch = kah_cli::Launch::prepare(home, home, args).unwrap();
+    kah_codex::overlay::write_settings(&launch.overlay, json!({"service_tier":"default"})).unwrap();
     let fixture = crate::fixture::Fixture {
         project: launch.project.root.clone(),
         overlay: launch.overlay.clone(),

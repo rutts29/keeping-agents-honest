@@ -126,7 +126,7 @@ fn retain_native_exit(fixture: &fixture::Fixture, audit: &Value) -> std::path::P
 
 fn entrypoint_test(mode: &str) -> &'static str {
     match mode {
-        "verify" | "lifecycle" => "early_verify_entrypoint",
+        "verify" | "search" | "relay" | "lifecycle" => "early_verify_entrypoint",
         "native5e" => "mine_claude_native_subagent",
         _ => "private_entrypoint",
     }

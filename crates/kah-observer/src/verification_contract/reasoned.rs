@@ -21,13 +21,65 @@ pub fn prepare(
     {
         return Err("REVIEW_CONTRACT_RECEIPT_BINDING stage=coverage".into());
     }
+    named(
+        item,
+        requirement,
+        checked,
+        input,
+        format!(
+            "Executed command {command} on {head} covers requirement: {}",
+            requirement.name
+        ),
+        "selected_host_check",
+        receipt,
+    )
+}
+
+/// Code has checked these controller properties; no shell receipt is fabricated.
+pub fn controller(
+    item: &Item,
+    requirement: &Requirement,
+    checked: &Value,
+    input: &Value,
+    facts: &Value,
+) -> Result<(Value, Questions), String> {
+    if !input["event"]["head"].is_string()
+        || facts["head"] != input["event"]["head"]
+        || facts["code_verified"] != true
+    {
+        return Err("REVIEW_CONTRACT_RECEIPT_BINDING stage=coverage".into());
+    }
+    let mut item = item.clone();
+    if let Thinking::Semantic { reasoning, .. } = &requirement.judgment {
+        item.coverage_reasoning = format!("{}\n{reasoning}", item.coverage_reasoning);
+    }
+    named(
+        &item,
+        requirement,
+        checked,
+        input,
+        format!(
+            "Code-checked controller properties {facts} cover requirement: {}",
+            requirement.name
+        ),
+        "selected_controller_receipts",
+        facts,
+    )
+}
+
+fn named(
+    item: &Item,
+    requirement: &Requirement,
+    checked: &Value,
+    input: &Value,
+    name: String,
+    field: &str,
+    receipt: &Value,
+) -> Result<(Value, Questions), String> {
     let mut r = requirement.clone();
     r.applicability = None;
     r.checks.clear(); // Host receipts below carry their own binding; no native check is fabricated.
-    r.name = format!(
-        "Executed command {command} on {head} covers requirement: {}",
-        requirement.name
-    );
+    r.name = name;
     r.judgment = Thinking::Semantic {
         decision: SemanticDecision::Satisfied,
         reasoning: item.coverage_reasoning.clone(),
@@ -38,7 +90,7 @@ pub fn prepare(
     let mut source = input.clone();
     source["decision"] = json!({"requirements":{&r.id:local}});
     let mut state = decision_units::context::decision(&source, &format!("requirement.{}", r.id))?;
-    state["event"]["selected_host_check"] = receipt.clone();
+    state["event"][field] = receipt.clone();
     let units = ReviewUnits {
         version: Some(11),
         requirements: vec![r],

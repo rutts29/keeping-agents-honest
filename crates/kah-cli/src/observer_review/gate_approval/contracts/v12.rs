@@ -38,6 +38,11 @@ pub(super) fn prepare(
             .iter()
             .find(|r| r["id"] == item.requirement_id)
             .unwrap();
+        if item.evidence_citations.is_empty() {
+            input["verification_contracts"][&item.requirement_id] =
+                json!({"gap":{"code":"REVIEW_CONTRACT_UNCITED","stage":"coverage"}});
+            continue;
+        }
         selected(item, checked)?;
         if matches!(
             requirement.judgment,
@@ -61,6 +66,9 @@ fn one(
     input: &mut Value,
     questions: &mut Questions,
 ) -> Result<()> {
+    if matches!(item.method, Method::ControllerReceipt { .. }) {
+        return controller(request, item, requirement, checked, proof, input, questions);
+    }
     let commands = proof
         .map(|p| {
             p.tests
@@ -97,11 +105,39 @@ fn one(
         &receipt.command,
         &serde_json::to_value(&receipt)?,
     )?;
+    add(item, input, questions, state, local);
+    Ok(())
+}
+fn controller(
+    request: &Request,
+    item: &Item,
+    requirement: &Requirement,
+    checked: &Value,
+    proof: Option<&DeliveryProof>,
+    input: &mut Value,
+    questions: &mut Questions,
+) -> Result<()> {
+    let Method::ControllerReceipt { facts } = &item.method else {
+        return Err("REVIEW_CONTRACT_METHOD stage=coverage".into());
+    };
+    if !proof.is_some_and(|p| super::super::contract_facts::verified(request, p, facts)) {
+        return Ok(());
+    }
+    let (state, local) = reasoned::controller(
+        item,
+        requirement,
+        checked,
+        input,
+        &json!({"head":request.head,"facts":facts,"code_verified":true}),
+    )?;
+    add(item, input, questions, state, local);
+    Ok(())
+}
+fn add(item: &Item, input: &mut Value, questions: &mut Questions, state: Value, local: Questions) {
     input["verification_contracts"][&item.requirement_id] = state;
     for (key, question) in local {
         questions.insert(format!("{key}.{}", item.requirement_id), question);
     }
-    Ok(())
 }
 fn receipt(
     request: &Request,

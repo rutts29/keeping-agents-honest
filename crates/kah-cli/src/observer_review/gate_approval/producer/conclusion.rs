@@ -11,6 +11,9 @@ pub(crate) fn finish(
     if request.trigger["verification_followup"]["stage"] != "checks_complete" {
         return Ok(false);
     }
+    if assessment["semantic_resolution"]["status"] == "pending" {
+        return Ok(true); // Durable SAME-observer context owns the next conclusion.
+    }
     if super::super::contract_results::send_back(root, request, assessment)? {
         return Ok(true);
     }
@@ -106,19 +109,7 @@ fn items(
         })
         .collect::<std::result::Result<BTreeSet<_>, _>>()?;
     for id in ids {
-        let requirement = units
-            .requirements
-            .iter()
-            .find(|r| r.id == id)
-            .ok_or("REVIEW_FOLLOWUP_REQUIREMENT_MISSING stage=verification")?;
-        let original = job
-            .report
-            .decision_units
-            .as_ref()
-            .and_then(|units| units.requirements.iter().find(|r| r.id == id));
-        if !preserves(original, requirement) {
-            return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification: preserve semantic/factual kind and linked authority".into());
-        }
+        let (_current, is_new) = linked_requirement(id, job, report)?;
         if ["not_due", "deferred"].iter().any(|key| {
             assessment[*key]
                 .as_array()
@@ -134,6 +125,10 @@ fn items(
                 decision_receipt: decision.clone(),
             });
         } else {
+            if super::super::semantic_resolution::needs_resolution(report, assessment, id) {
+                // The durable same-observer resolution owns this item, not a user risk.
+                continue;
+            }
             let explanation = super::super::interactive::report_risk(report, id)?;
             risks.push(checked_risk(
                 round,
@@ -141,11 +136,31 @@ fn items(
                 &explanation,
                 receipt,
                 units.version(),
-                original.is_none(),
+                is_new,
             )?);
         }
     }
     Ok((verified, risks))
+}
+fn linked_requirement<'a>(
+    id: &str,
+    job: &Job,
+    report: &'a Report,
+) -> Result<(&'a kah_observer::decision_units::Requirement, bool)> {
+    let current = report
+        .decision_units
+        .as_ref()
+        .and_then(|u| u.requirements.iter().find(|r| r.id == id))
+        .ok_or("REVIEW_FOLLOWUP_REQUIREMENT_MISSING stage=verification")?;
+    let original = job
+        .report
+        .decision_units
+        .as_ref()
+        .and_then(|u| u.requirements.iter().find(|r| r.id == id));
+    if !preserves(original, current) {
+        return Err("REVIEW_FOLLOWUP_REQUIREMENT_CHANGED stage=verification: preserve semantic/factual kind and linked authority".into());
+    }
+    Ok((current, original.is_none()))
 }
 fn positive_requirement(requirement: &kah_observer::decision_units::Requirement) -> bool {
     match &requirement.judgment {
