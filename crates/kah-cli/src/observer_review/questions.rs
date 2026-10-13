@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 mod answers;
+pub mod choice;
 mod lineage;
 mod scope;
 pub(super) use scope::matches as question_scope;
@@ -90,6 +91,7 @@ fn draft(
     else {
         return Ok(None);
     };
+    let options = &distinct_options(options);
     let identity = serde_json::to_vec(&native::identity(
         &request.worker,
         r,
@@ -97,7 +99,7 @@ fn draft(
         options,
         &source,
     ))?;
-    let id = format!("question-{:x}", Sha256::digest(identity));
+    let id = kah_core::intent_history::question_id(&Sha256::digest(identity));
     let mut value = json!({"id":id,"worker":request.worker,"requirement":r.id,"name":r.name,"request":request.id,"head":request.head,"intent_revision":request.intent["revision"],"reason":reason,"summary":summary,"question":question,"options":options,"ledger_review":ledger_review,"status":"pending","delivery":"queued","at_ms":kah_observer::session::now_ms(),"scope":"Only this decision waits; unrelated authorized work continues"});
     value["question_origin"] = if source.is_some() {
         "worker"
@@ -133,6 +135,18 @@ pub fn pending(root: &Path) -> Result<Vec<Value>> {
     }
     Ok(questions)
 }
+/// One option text appears once; whitespace-only differences are the same text.
+pub fn distinct_options(options: &[String]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    options
+        .iter()
+        .filter(|o| seen.insert(normalized(o)))
+        .cloned()
+        .collect()
+}
+pub fn normalized(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
 pub fn message(question: &Value) -> Result<String> {
     if question["kind"] == "checkpoint_claim" {
         return super::checkpoint_claim::question_message(question);
@@ -140,14 +154,20 @@ pub fn message(question: &Value) -> Result<String> {
     if question["kind"] == "checkpoint_approval" {
         return super::gate_approval::message(question);
     }
-    let options = serde_json::to_string(&question["options"])?;
+    let id = question["id"]
+        .as_str()
+        .ok_or("REVIEW_QUESTION_ID stage=question")?;
+    let covered = choice::covered(question);
     Ok(format!(
-        "[kah-builder] [kah-question] {} worker={} requirement={}\n{}{}{}\nThinker's summary: {}\nOptions: {}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. Relay the user's answer with this question id via kah steer; this is a question, not new user authority.",
-        question["id"]
-            .as_str()
-            .ok_or("REVIEW_QUESTION_ID stage=question")?,
+        "[kah-builder] [kah-question] {} worker={} requirement={}{}\n{}{}{}\nThinker's summary: {}\nOptions:{}\nExisting ledger checked: {}\nOnly this decision waits. Unrelated authorized work can continue. This is a question, not new user authority.\n{}",
+        id,
         question["worker"],
         question["requirement"],
+        if covered.len() > 1 {
+            format!(" covers={}", serde_json::to_string(&covered)?)
+        } else {
+            String::new()
+        },
         if question["lineage"]
             .as_array()
             .is_some_and(|a| !a.is_empty())
@@ -159,11 +179,39 @@ pub fn message(question: &Value) -> Result<String> {
         native::label(question),
         question["question"].as_str().unwrap_or(""),
         question["summary"].as_str().unwrap_or(""),
-        options,
+        numbered(question),
         question["ledger_review"]["reasoning"]
             .as_str()
-            .unwrap_or("")
+            .unwrap_or(""),
+        relay_command(question, id)
     ))
+}
+fn numbered(question: &Value) -> String {
+    let options = question["options"].as_array().cloned().unwrap_or_default();
+    if options.is_empty() {
+        return " none".into();
+    }
+    options
+        .iter()
+        .enumerate()
+        .map(|(i, o)| format!("\n  {}. {}", i + 1, o))
+        .collect()
+}
+/// The exact relay command for this question, with its printed id.
+fn relay_command(question: &Value, id: &str) -> String {
+    let worker = question["worker"].as_str().unwrap_or("SESSION");
+    if question["options"]
+        .as_array()
+        .is_some_and(|o| !o.is_empty())
+    {
+        format!(
+            "Relay the user's answer with exactly: kah steer {worker} \"<the user's words>\" --question {id} --choose <option number or exact option text>"
+        )
+    } else {
+        format!(
+            "Relay the user's answer with exactly: kah steer {worker} \"<the user's words; name {id}>\""
+        )
+    }
 }
 pub fn deliver(worker: &str) -> Result<()> {
     let root = super::state::Store::directory(worker)?;

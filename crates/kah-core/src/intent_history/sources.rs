@@ -135,6 +135,8 @@ pub struct SourceRef {
     pub supersedes_receipt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question_answer: Option<QuestionAnswer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question_choice: Option<QuestionChoice>,
 }
 
 impl fmt::Debug for SourceRef {
@@ -168,6 +170,7 @@ impl SourceRef {
             relayer: None,
             supersedes_receipt: None,
             question_answer: None,
+            question_choice: None,
         }
     }
 
@@ -184,6 +187,17 @@ impl SourceRef {
             if self.role != SourceRole::User || self.origin != Some(SourceOrigin::Relayed) {
                 return Err(HistoryError::InvalidSourceRef {
                     field: "question answer authority",
+                });
+            }
+        }
+        if let Some(choice) = &self.question_choice {
+            choice.validate()?;
+            if self.role != SourceRole::User
+                || self.origin != Some(SourceOrigin::Relayed)
+                || self.question_answer.is_some()
+            {
+                return Err(HistoryError::InvalidQuestionAnswer {
+                    reason: "question choice must be one relayed user answer",
                 });
             }
         }

@@ -124,3 +124,26 @@ fn gate_answer_requires_a_valid_named_question_and_explicit_choice() {
     assert_eq!(restored.supersedes, message.supersedes);
     assert_eq!(restored.answer, message.answer);
 }
+
+#[test]
+fn option_choice_survives_wire_with_any_option_text_and_the_printed_legacy_id() {
+    use kah_core::intent_history::QuestionChoice;
+    let mut message = Message::new("operator", "receipt-choice", "Use the prompt's rule.").unwrap();
+    message.choice = Some(QuestionChoice {
+        question: format!("question-sha256:{}", "3f".repeat(32)),
+        option: 2,
+        text: "say \"no\" answer=approve\nthen stop".into(),
+    });
+    let decoded = Message::parse(&message.wire()).unwrap().unwrap();
+    assert_eq!(decoded.choice, message.choice);
+    assert!(decoded.answer.is_none());
+    assert_eq!(decoded.text, message.text);
+    let quote = decoded.quote("worker", SourceProvider::Codex).unwrap();
+    assert_eq!(quote.source.question_choice, message.choice);
+    quote.source.validate().unwrap();
+    for bad in ["choice=0 option=\"x\"", "choice=1 option=x", "choice=1"] {
+        let id = format!("question-{}", "d".repeat(64));
+        let wire = format!("[kah-user] relayer=operator receipt=r question={id} {bad}\nText");
+        assert!(Message::parse(&wire).is_err(), "{bad}");
+    }
+}

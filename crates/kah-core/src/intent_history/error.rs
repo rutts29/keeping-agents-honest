@@ -16,6 +16,7 @@ pub enum HistoryError {
     UnknownEvidence { id: EvidenceId },
     MissingSourceRefs { event: &'static str },
     InvalidSourceRef { field: &'static str },
+    InvalidQuestionAnswer { reason: &'static str },
     UnauthorizedSource { event: &'static str },
     InvalidApproval { event: &'static str },
     InvalidTransition { event: &'static str, reason: String },
@@ -52,6 +53,7 @@ impl fmt::Display for HistoryError {
                 write!(formatter, "{event} requires nonempty source refs")
             }
             Self::InvalidSourceRef { field } => write!(formatter, "{field} must not be empty"),
+            Self::InvalidQuestionAnswer { reason } => formatter.write_str(reason),
             Self::UnauthorizedSource { event } => write!(
                 formatter,
                 "{event} requires a user source or explicit operator approval"
@@ -87,7 +89,9 @@ impl HistoryError {
             Self::UnknownConflict { .. } => "HISTORY_UNKNOWN_CONFLICT",
             Self::UnknownEvidence { .. } => "HISTORY_UNKNOWN_EVIDENCE",
             Self::MissingSourceRefs { .. } => "HISTORY_SOURCES_MISSING",
-            Self::InvalidSourceRef { .. } => "HISTORY_SOURCE_INVALID",
+            Self::InvalidSourceRef { .. } | Self::InvalidQuestionAnswer { .. } => {
+                "HISTORY_SOURCE_INVALID"
+            }
             Self::UnauthorizedSource { .. } => "HISTORY_AUTHORITY",
             Self::InvalidApproval { .. } => "HISTORY_APPROVAL",
             Self::InvalidTransition { .. } => "HISTORY_TRANSITION",

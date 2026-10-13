@@ -81,5 +81,23 @@ fn receive_user(binding: &Binding, prompt: &str) -> Result<bool> {
             &quote.text,
         )?;
     }
+    if message.choice.is_some() {
+        let quote = message.quote(&binding.session, endpoint.source_provider()?)?;
+        choose(&binding.session, &quote.source, &quote.text)?;
+    }
     Ok(true)
+}
+/// The user's words are already retained. A choice that no longer matches
+/// its question leaves the question open and tells the worker why.
+fn choose(worker: &str, source: &kah_core::intent_history::SourceRef, text: &str) -> Result<()> {
+    use crate::observer_review::{questions::choice, reminder_queue, state::Store};
+    let Err(error) = choice::close(worker, source, text) else {
+        return Ok(());
+    };
+    let question = source.question_choice.as_ref().map(|c| c.question.as_str());
+    reminder_queue::save(
+        &Store::directory(worker)?,
+        &json!({"purpose":"uncertainty","request":"question-choice","turn":"user-answer",
+        "system_notice":true,"text":format!("kah could not apply the user's choice for {}: {error}. The user's words are retained; the question stays open.",question.unwrap_or("?"))}),
+    )
 }

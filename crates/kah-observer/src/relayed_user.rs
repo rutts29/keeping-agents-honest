@@ -2,7 +2,8 @@
 use crate::{inherited::Quote, session::Store};
 use kah_core::{
     intent_history::{
-        GateDecision, QuestionAnswer, SourceOrigin, SourceProvider, SourceRef, SourceRole,
+        GateDecision, QuestionAnswer, QuestionChoice, SourceOrigin, SourceProvider, SourceRef,
+        SourceRole,
     },
     session_bundle::BundleRecord,
 };
@@ -19,6 +20,8 @@ pub struct Message {
     pub supersedes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer: Option<QuestionAnswer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice: Option<QuestionChoice>,
 }
 impl Message {
     pub fn new(relayer: &str, receipt: &str, text: &str) -> Result<Self, String> {
@@ -42,6 +45,7 @@ impl Message {
             text: text.into(),
             supersedes: None,
             answer: None,
+            choice: None,
         })
     }
     pub fn wire(&self) -> String {
@@ -56,6 +60,10 @@ impl Message {
             self.answer
                 .as_ref()
                 .map(|a| format!(" question={} answer={}", a.question, a.decision.as_str()))
+                .or_else(|| self.choice.as_ref().map(|c| {
+                    let text = serde_json::Value::String(c.text.clone());
+                    format!(" question={} choice={} option={text}", c.question, c.option)
+                }))
                 .unwrap_or_default(),
             self.text
         )
@@ -79,21 +87,39 @@ impl Message {
             .map_or((receipt, None), |(r, s)| (r, Some(s)));
         let mut message = Self::new(relayer, receipt, body)?;
         if let Some(answer) = answer {
-            let (question, decision) = answer
-                .split_once(" answer=")
-                .ok_or("STEER_ANSWER_FRAME stage=relayed_user")?;
-            let value = QuestionAnswer {
-                question: question.into(),
-                decision: GateDecision::parse(decision).map_err(|e| e.to_string())?,
-            };
-            value.validate().map_err(|e| e.to_string())?;
-            message.answer = Some(value);
+            message.read_answer(answer)?;
         }
         if let Some(target) = supersedes {
             Self::new(relayer, target, "validate receipt")?;
             message.supersedes = Some(target.into());
         }
         Ok(Some(message))
+    }
+    /// `ID answer=approve|reject` or `ID choice=N option="<json string>"`.
+    fn read_answer(&mut self, header: &str) -> Result<(), String> {
+        let frame = || "STEER_ANSWER_FRAME stage=relayed_user".to_owned();
+        let (question, rest) = header.split_once(' ').ok_or_else(frame)?;
+        if let Some(decision) = rest.strip_prefix("answer=") {
+            let value = QuestionAnswer {
+                question: question.into(),
+                decision: GateDecision::parse(decision).map_err(|e| e.to_string())?,
+            };
+            value.validate().map_err(|e| e.to_string())?;
+            self.answer = Some(value);
+            return Ok(());
+        }
+        let (option, text) = rest
+            .strip_prefix("choice=")
+            .and_then(|r| r.split_once(" option="))
+            .ok_or_else(frame)?;
+        let value = QuestionChoice {
+            question: question.into(),
+            option: option.parse().map_err(|_| frame())?,
+            text: serde_json::from_str(text).map_err(|_| frame())?,
+        };
+        value.validate().map_err(|e| e.to_string())?;
+        self.choice = Some(value);
+        Ok(())
     }
     pub fn quote(&self, session: &str, provider: SourceProvider) -> Result<Quote, String> {
         let record = format!("relayed-user:{}:{}", self.relayer, self.receipt);
@@ -110,6 +136,7 @@ impl Message {
         source.relayer = Some(self.relayer.clone());
         source.supersedes_receipt = self.supersedes.clone();
         source.question_answer = self.answer.clone();
+        source.question_choice = self.choice.clone();
         Ok(Quote {
             receipt: self.receipt.clone(),
             source,

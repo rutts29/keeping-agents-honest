@@ -24,14 +24,28 @@ pub fn answered(
     answer: kah_core::intent_history::QuestionAnswer,
 ) -> Result<Value> {
     answer.validate()?;
-    directive(session, text, receipt, None, Some(answer))
+    directive(session, text, receipt, None, Some(Answer::Gate(answer)))
+}
+/// The caller validated the choice against the stored question options.
+pub fn chosen(
+    session: &str,
+    text: &str,
+    receipt: &str,
+    choice: kah_core::intent_history::QuestionChoice,
+) -> Result<Value> {
+    choice.validate()?;
+    directive(session, text, receipt, None, Some(Answer::Choice(choice)))
+}
+enum Answer {
+    Gate(kah_core::intent_history::QuestionAnswer),
+    Choice(kah_core::intent_history::QuestionChoice),
 }
 fn directive(
     session: &str,
     text: &str,
     receipt: &str,
     supersedes: Option<&str>,
-    answer: Option<kah_core::intent_history::QuestionAnswer>,
+    answer: Option<Answer>,
 ) -> Result<Value> {
     let endpoint = relay_store::endpoint(session)?;
     let pane = endpoint
@@ -52,7 +66,11 @@ fn directive(
     }
     let relayer = relayer()?;
     let mut envelope = Message::new(&relayer, receipt, text)?;
-    envelope.answer = answer;
+    match answer {
+        Some(Answer::Gate(a)) => envelope.answer = Some(a),
+        Some(Answer::Choice(c)) => envelope.choice = Some(c),
+        None => {}
+    }
     if let Some(target) = supersedes {
         Message::new(&relayer, target, "validate receipt")?;
         envelope.supersedes = Some(target.into());

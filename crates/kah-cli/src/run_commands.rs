@@ -76,50 +76,71 @@ fn logs(base: &std::path::Path, id: &str) -> Result<String> {
     }
     Ok(commands::logs(base, id)?)
 }
-fn steer(args: &[String], id: &str) -> Result<()> {
+const STEER_USAGE: &str = "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID] [--supersedes RECEIPT | --question ID --answer approve|reject | --question ID --choose OPTION_NUMBER|EXACT_OPTION_TEXT]";
+#[derive(Default)]
+struct SteerFlags<'a> {
+    receipt: Option<&'a str>,
+    supersedes: Option<&'a str>,
+    question: Option<&'a str>,
+    answer: Option<&'a str>,
+    choose: Option<&'a str>,
+}
+fn steer_flags(args: &[String]) -> Result<SteerFlags<'_>> {
     if args.len() < 3 || !(args.len() - 3).is_multiple_of(2) {
-        return Err(
-            "SEND_ARGUMENTS stage=arguments: kah steer SESSION TEXT [--receipt ID] [--supersedes RECEIPT | --question ID --answer approve|reject]".into(),
-            );
+        return Err(STEER_USAGE.into());
     }
-    let mut receipt = None;
-    let mut supersedes = None;
-    let mut question = None;
-    let mut answer = None;
+    let mut flags = SteerFlags::default();
     for pair in args[3..].chunks_exact(2) {
-        match pair[0].as_str() {
-            "--receipt" => receipt = Some(pair[1].as_str()),
-            "--supersedes" => supersedes = Some(pair[1].as_str()),
-            "--question" => question = Some(pair[1].as_str()),
-            "--answer" => answer = Some(pair[1].as_str()),
-            _ => return Err("SEND_ARGUMENTS stage=arguments".into()),
-        }
+        let slot = match pair[0].as_str() {
+            "--receipt" => &mut flags.receipt,
+            "--supersedes" => &mut flags.supersedes,
+            "--question" => &mut flags.question,
+            "--answer" => &mut flags.answer,
+            "--choose" => &mut flags.choose,
+            _ => return Err(STEER_USAGE.into()),
+        };
+        *slot = Some(pair[1].as_str());
     }
-    if question.is_some() || answer.is_some() {
-        if supersedes.is_some() {
+    Ok(flags)
+}
+fn steer(args: &[String], id: &str) -> Result<()> {
+    let flags = steer_flags(args)?;
+    let generated = crate::relay_store::nonce();
+    let receipt = flags.receipt.unwrap_or(&generated);
+    if flags.question.is_some() || flags.answer.is_some() || flags.choose.is_some() {
+        if flags.supersedes.is_some() || flags.answer.is_some() && flags.choose.is_some() {
             return Err(
-                "STEER_ANSWER_LINK stage=arguments: use a question answer or supersedes link"
+                "STEER_ANSWER_LINK stage=arguments: use one of --answer, --choose or --supersedes"
                     .into(),
             );
         }
-        let directive = kah_core::intent_history::QuestionAnswer {
-            question: question
-                .ok_or("STEER_QUESTION_REQUIRED stage=arguments")?
-                .into(),
-            decision: kah_core::intent_history::GateDecision::parse(
-                answer.ok_or("STEER_ANSWER_REQUIRED stage=arguments")?,
-            )?,
+        let question = flags
+            .question
+            .ok_or("STEER_QUESTION_REQUIRED stage=arguments")?;
+        let questions = crate::observer_review::questions::choice::Relay {
+            worker: id,
+            question,
         };
-        let generated = crate::relay_store::nonce();
-        println!(
-            "{}",
-            crate::user_steer::answered(id, &args[2], receipt.unwrap_or(&generated), directive)?
-        );
+        let result = if let Some(option) = flags.choose {
+            crate::user_steer::chosen(id, &args[2], receipt, questions.choice(option)?)?
+        } else {
+            questions.gate_only()?;
+            let directive = kah_core::intent_history::QuestionAnswer {
+                question: question.into(),
+                decision: kah_core::intent_history::GateDecision::parse(
+                    flags
+                        .answer
+                        .ok_or("STEER_ANSWER_REQUIRED stage=arguments")?,
+                )?,
+            };
+            crate::user_steer::answered(id, &args[2], receipt, directive)?
+        };
+        println!("{result}");
         return Ok(());
     }
-    if let Some(target) = supersedes {
-        crate::send_cli::linked_user(id, &args[2], receipt, target)
+    if let Some(target) = flags.supersedes {
+        crate::send_cli::linked_user(id, &args[2], flags.receipt, target)
     } else {
-        crate::send_cli::user(id, &args[2], receipt)
+        crate::send_cli::user(id, &args[2], flags.receipt)
     }
 }
