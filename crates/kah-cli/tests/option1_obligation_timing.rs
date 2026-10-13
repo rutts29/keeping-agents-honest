@@ -1,6 +1,7 @@
 //! Prohibitions are judged on every commit; obligations on the delivered
 //! change; an explicit user instruction governs a conflicting standing file.
 use kah_cli::observer_review::{
+    delivered,
     option1::{checkpoint_outcome, input, precedence, protocol, requests},
     state::{Purpose, Request},
 };
@@ -117,7 +118,9 @@ fn a_unmet_obligation_on_an_intermediate_commit_is_pending_not_a_violation() {
 }
 #[test]
 fn b_the_same_obligation_unmet_at_completion_is_still_reported() {
-    let delivered = build("src/csv_export.py", true);
+    unmet_r7_is_reported(build("src/csv_export.py", true));
+}
+fn unmet_r7_is_reported(delivered: Input) {
     assert!(!delivered.rules["r7"].prohibition);
     assert!(delivered.carried.get("deferred_obligations").is_none());
     let mut rows: Vec<Value> = delivered
@@ -274,4 +277,61 @@ fn d_an_explicit_user_instruction_governs_a_conflicting_standing_rule() {
     let mut standing_only = asked.clauses[1].clone();
     standing_only.witnesses = vec![whole(file)];
     assert!(!precedence::user_governs(&standing_only, &input));
+}
+
+fn only_prohibitions() -> Resolved {
+    let mut set = rules();
+    set.rules.retain(|r| r.kind == cr::RuleKind::Prohibition);
+    set
+}
+fn marker(dir: &std::path::Path) -> Option<Value> {
+    std::fs::read(dir.join(delivered::MARKER))
+        .ok()
+        .map(|b| serde_json::from_slice(&b).unwrap())
+}
+#[test]
+fn e_turn_end_with_deferred_obligations_queues_one_checkpoint_per_head() {
+    let dir = std::env::temp_dir().join(format!("delivered-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let commit = build("src/csv_export.py", false);
+    delivered::record(&dir, &commit).unwrap();
+    let saved = marker(&dir).unwrap();
+    assert_eq!(saved, json!({"head":commit.revision,"rules":["r7"]}));
+    let base = json!({"head":"seed","covered_commits":[]});
+    assert!(delivered::due(Some(&saved), "c2", Some(&base), None));
+    // Not a commit-class wake: admission sets checkpoint=true and reads the
+    // checkpoint baseline, so the review covers the cumulative change.
+    let wake = delivered::wake("t", "c2", &saved);
+    assert_eq!(wake.purpose, Purpose::Checkpoint);
+    assert_ne!(wake.trigger["review_class"], "commit");
+    assert_eq!(wake.trigger["head"], "c2");
+    // The same HEAD is covered after its checkpoint ran, or at the baseline.
+    let ran = json!({"head":"c2","passed":false});
+    assert!(!delivered::due(Some(&saved), "c2", Some(&base), Some(&ran)));
+    assert!(delivered::due(Some(&saved), "c3", Some(&base), Some(&ran)));
+    let passed = json!({"head":"c2","covered_commits":[commit.revision]});
+    assert!(!delivered::due(Some(&saved), "c2", Some(&passed), None));
+    assert!(!delivered::due(Some(&saved), "seed", Some(&base), None));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
+fn f_a_session_without_deferred_obligations_queues_no_checkpoint() {
+    let dir = std::env::temp_dir().join(format!("undeferred-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let h = history("Fix the bugs.");
+    let commit = input::build(&h, &only_prohibitions(), &context("src/a.py"), false).unwrap();
+    assert!(commit.carried.get("deferred_obligations").is_none());
+    delivered::record(&dir, &commit).unwrap();
+    assert!(marker(&dir).is_none());
+    assert!(!delivered::due(None, "c2", None, None));
+    // A checkpoint input itself defers nothing.
+    delivered::record(&dir, &build("src/a.py", true)).unwrap();
+    assert!(marker(&dir).is_none());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+#[test]
+fn g_an_unmet_obligation_at_the_turn_end_checkpoint_is_reported() {
+    let wake = delivered::wake("t", "c2", &json!({"rules":["r7"]}));
+    let checkpoint = wake.trigger["review_class"] != "commit";
+    unmet_r7_is_reported(build("src/csv_export.py", checkpoint));
 }

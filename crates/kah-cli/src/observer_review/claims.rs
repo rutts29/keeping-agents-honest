@@ -22,15 +22,14 @@ pub fn review_class(judgment: &Judgment) -> Option<ReviewClass> {
 pub fn needs_review(judgment: &Judgment) -> bool {
     review_class(judgment).is_some()
 }
+/// Runs at every turn end, also without text: the job checks the
+/// delivered-change review after the claim screen.
 pub fn schedule(worker: &str, turn: &str, text: &str) -> Result<()> {
-    if text.trim().is_empty() {
-        return Ok(());
-    }
     let directory = Store::directory(worker)?.join("claim-events");
     kah_core::run_store::ensure_private_directory(&directory)?;
     let id = format!("{:x}", Sha256::digest(serde_json::to_vec(&(turn, text))?));
     let path = directory.join(format!("{id}.json"));
-    if !path.exists() && !directory.join(format!("{id}.done")).exists() {
+    if !text.trim().is_empty() && !path.exists() && !directory.join(format!("{id}.done")).exists() {
         crate::unattended_report::save(
             &directory,
             &format!("{id}.json"),
@@ -41,11 +40,15 @@ pub fn schedule(worker: &str, turn: &str, text: &str) -> Result<()> {
 }
 pub fn run(worker: &str) -> Result<()> {
     super::runtime::require_active(worker)?;
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("CHECKPOINT_HOME stage=trigger")?);
+    screen(worker, &home)?;
+    super::delivered::schedule(worker, &home)
+}
+fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
     let directory = Store::directory(worker)?.join("claim-events");
     if !directory.exists() {
         return Ok(());
     }
-    let home = PathBuf::from(std::env::var_os("HOME").ok_or("CHECKPOINT_HOME stage=trigger")?);
     let binding = kah_observer::session::Store::read(
         &kah_core::run_store::RunStore::default_state_root()?,
         worker,
@@ -62,12 +65,12 @@ pub fn run(worker: &str) -> Result<()> {
             super::state::read(&path)?.ok_or("CHECKPOINT_CLAIM_MISSING stage=trigger")?;
         crate::privacy::scrub(&mut input);
         let judgment =
-            judge::routing::evaluate(&home, binding.judge, &binding.jev_model, &input, &questions)?;
+            judge::routing::evaluate(home, binding.judge, &binding.jev_model, &input, &questions)?;
         if let Some(class) = review_class(&judgment) {
             let state = Store::read(worker)?.map(Ok).unwrap_or_else(|| {
-                super::state::State::new(crate::relay_store::endpoint(worker)?, &home)
+                super::state::State::new(crate::relay_store::endpoint(worker)?, home)
             })?;
-            let head = super::tags::head(&home, &state)?;
+            let head = super::tags::head(home, &state)?;
             let class = match class {
                 ReviewClass::Commit => "commit",
                 ReviewClass::Gate => "gate",

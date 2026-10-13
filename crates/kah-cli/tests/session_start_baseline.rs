@@ -1,5 +1,9 @@
 //! The session-start HEAD is the accepted baseline; only later commits are judged.
-use kah_cli::observer_review::{option1, state::State, tags};
+use kah_cli::observer_review::{
+    delivered, option1, queue,
+    state::{State, Store},
+    tags,
+};
 use kah_core::run_store::RunStore;
 use kah_observer::session::{self, Binding};
 use serde_json::{Value, json};
@@ -177,5 +181,47 @@ fn a_head_committed_after_the_session_start_stays_reviewed() {
     assert_eq!(sample(&review, &project, started), vec![agent]);
     assert!(!review.join("option1-baseline.json").exists());
     assert!(!review.join("option1-checkpoint-baseline.json").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn turn_end_queues_one_checkpoint_over_the_cumulative_change_per_head() {
+    let (root, project, _) = fixture("delivered-change");
+    let worker = format!("delivered-change-{}", std::process::id());
+    let fresh = state(&root, &project, &worker);
+    let store = Store::open(&worker).unwrap();
+    let review = store.directory.clone();
+    let seed = commit(
+        &project,
+        &[("AGENTS.md", RULE)],
+        Some("2026-01-01T00:00:00Z"),
+    );
+    assert!(sample(&review, &project, kah_observer::session::now_ms()).is_empty());
+    store.save(&fresh).unwrap();
+    drop(store);
+    // No deferral recorded: a turn end queues nothing and costs nothing.
+    assert!(!delivered::queue_due(&worker, &root).unwrap());
+    let first = commit(&project, &[("src/a.py", "fixed()\n")], None);
+    let last = commit(&project, &[("docs/CHANGES.md", "- fixed\n")], None);
+    let baseline = json!({"head":first,"reviewed":"commit"});
+    kah_cli::unattended_report::save(&review, "option1-baseline.json", &baseline).unwrap();
+    let marker = json!({"head":first,"rules":["r-doc-changelog"]});
+    kah_cli::unattended_report::save(&review, delivered::MARKER, &marker).unwrap();
+    assert!(delivered::queue_due(&worker, &root).unwrap());
+    let jobs = queue::entries(&worker).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].1.trigger["head"], last);
+    assert_ne!(jobs[0].1.trigger["review_class"], "commit");
+    // A second turn end at the same HEAD queues none.
+    assert!(!delivered::queue_due(&worker, &root).unwrap());
+    assert_eq!(queue::entries(&worker).unwrap().len(), 1);
+    // The checkpoint diff starts at the session baseline, not the last review.
+    let state = Store::read(&worker).unwrap().unwrap();
+    let whole = option1::direct::context_for(&root, &state, &review, &last, true).unwrap();
+    assert_eq!(whole["baseline"], seed);
+    assert_eq!(whole["touched_files"].as_array().unwrap().len(), 2);
+    let one = option1::direct::context_for(&root, &state, &review, &last, false).unwrap();
+    assert_eq!(one["baseline"], first);
+    fs::remove_dir_all(review.parent().unwrap()).unwrap();
     fs::remove_dir_all(root).unwrap();
 }

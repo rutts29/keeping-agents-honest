@@ -183,6 +183,7 @@ fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
 pub mod checkpoint;
 pub mod checkpoint_claim;
 pub mod claims;
+pub mod delivered;
 pub mod delivery;
 pub mod delivery_outcome;
 pub mod delivery_text;

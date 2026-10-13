@@ -24,7 +24,8 @@ pub fn submit(
         Err(e) => return Err(e),
     };
     let standing = kah_observer::current_rules::standing_sources(&b.project)?;
-    let mut context = context(home, &state, &store.directory, head)?;
+    let checkpoint = trigger["review_class"] != "commit";
+    let mut context = context_for(home, &state, &store.directory, head, checkpoint)?;
     super::binary::publish(&store, &state, &mut context)?;
     let (input, sources) = source_input(
         history.as_ref(),
@@ -45,7 +46,6 @@ pub fn submit(
     )?;
     let pending = primary.sources()?;
     drop(primary);
-    let checkpoint = trigger["review_class"] != "commit";
     let plan = if checkpoint {
         let files = input
             .files
@@ -71,8 +71,23 @@ pub fn submit(
     )
 }
 pub fn context(home: &Path, state: &State, directory: &Path, head: &str) -> Result<Value> {
-    let baseline: Option<Value> =
-        super::super::state::read(&directory.join("option1-baseline.json"))?;
+    context_for(home, state, directory, head, false)
+}
+/// A checkpoint judges the cumulative change from the checkpoint baseline, as
+/// the validated-set admission does; a commit review judges one commit.
+pub fn context_for(
+    home: &Path,
+    state: &State,
+    directory: &Path,
+    head: &str,
+    checkpoint: bool,
+) -> Result<Value> {
+    let name = if checkpoint {
+        "option1-checkpoint-baseline.json"
+    } else {
+        "option1-baseline.json"
+    };
+    let baseline: Option<Value> = super::super::state::read(&directory.join(name))?;
     let base = baseline.as_ref().and_then(|v| v["head"].as_str());
     capture::project(home, state, base, head)
 }
