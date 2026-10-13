@@ -40,7 +40,7 @@ pub fn require_active(worker: &str) -> Result<()> {
                 .into(),
         );
     }
-    Ok(())
+    super::delivery_outcome::observe(worker)
 }
 pub fn detect(provider: &str, path: &std::path::Path) -> Result<Option<NativeBlock>> {
     reader::detect(provider, path)
@@ -56,7 +56,7 @@ pub fn observe(worker: &str) -> Result<()> {
         retain(worker, Some(native), "native terminal policy error")?;
         return require_active(worker);
     }
-    Ok(())
+    super::delivery_outcome::observe(worker)
 }
 pub fn retain(worker: &str, native: Option<NativeBlock>, evidence: &str) -> Result<()> {
     if recorded(worker)?.is_some() {
@@ -109,7 +109,7 @@ fn pause(root: &std::path::Path) -> Result<()> {
     }
     Ok(())
 }
-fn reviewer(state: &Control, text: &str, root: &std::path::Path) -> Result<()> {
+pub(super) fn reviewer(state: &Control, text: &str, root: &std::path::Path) -> Result<()> {
     let sent = state.worker.socket.as_deref().map(|socket| {
         crate::run_pane::invoke_at(
             &[
@@ -129,7 +129,9 @@ fn reviewer(state: &Control, text: &str, root: &std::path::Path) -> Result<()> {
     )
 }
 pub fn stops_watch(error: &dyn std::fmt::Display) -> bool {
-    reason(error) || error.to_string().starts_with("REVIEW_PAUSED")
+    reason(error)
+        || super::delivery_outcome::reason(error)
+        || error.to_string().starts_with("REVIEW_PAUSED")
 }
 pub fn take_notice(worker: &str) -> Result<Option<Value>> {
     let Some(mut block) = recorded(worker)? else {

@@ -12,6 +12,8 @@ pub mod completion_replay;
 pub mod completion_review;
 pub mod dispatch;
 mod exact_verification;
+mod helper_processes;
+mod helper_upgrade;
 pub mod herdr;
 pub mod hook_output;
 pub mod inspection_cli;

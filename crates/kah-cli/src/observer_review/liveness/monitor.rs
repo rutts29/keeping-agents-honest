@@ -76,27 +76,6 @@ pub fn run(worker: &str) -> Result<()> {
     notify(&state, &progress)?;
     super::super::hook::spawn("__review-retry", worker)
 }
-pub fn watch(worker: &str) -> Result<()> {
-    loop {
-        if let Err(error) = run(worker) {
-            if super::super::provider_block::stops_watch(&error) {
-                return Ok(());
-            }
-            super::failure::record(worker, error.as_ref())?;
-        } else {
-            super::failure::recovered(worker)?;
-        }
-        // Keep the cheap host watcher across review handoffs; otherwise a
-        // publish/delivery crash while the worker is idle loses its watcher.
-        match Store::read(worker) {
-            Ok(state) if state.as_ref().is_none_or(|s| s.stopped) => return Ok(()),
-            Err(error) => super::failure::record(worker, error.as_ref())?,
-            _ => (),
-        }
-        // Filesystem sampling, no model polling or extra native turns.
-        std::thread::sleep(std::time::Duration::from_secs(15));
-    }
-}
 pub fn start(worker: &str) -> Result<()> {
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};

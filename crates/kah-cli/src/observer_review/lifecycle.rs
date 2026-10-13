@@ -39,6 +39,7 @@ pub fn start(worker: &str) -> Result<()> {
 }
 pub fn watch(worker: &str, pid: u32, stamp: &str) -> Result<()> {
     wait_exit(&Store::directory(worker)?, pid, stamp)?;
+    crate::helper_upgrade::between_samples(None)?;
     stop(worker, pid, stamp)
 }
 pub fn wait_exit(directory: &std::path::Path, pid: u32, stamp: &str) -> Result<()> {

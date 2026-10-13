@@ -121,6 +121,11 @@ fn route(args: &[String]) -> Option<crate::Result<()>> {
     }))
 }
 fn maintenance(args: &[String]) -> Option<crate::Result<()>> {
+    if args.len() == 1 && args[0] == "__helper-processes" {
+        return Some(crate::helper_processes::collect().map(|v| {
+            println!("{}", serde_json::json!({"long_lived_helpers":v}));
+        }));
+    }
     if let [name, from, to] = args
         && name == "__review-commit-ancestor"
     {
@@ -177,6 +182,8 @@ pub mod checkpoint;
 pub mod checkpoint_claim;
 pub mod claims;
 pub mod delivery;
+pub mod delivery_outcome;
+pub mod delivery_text;
 pub mod events;
 pub mod failure;
 mod failure_snapshot;

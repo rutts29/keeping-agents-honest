@@ -80,11 +80,25 @@ fn versioned_native_install_preserves_the_claude_process_name() {
         .unwrap()
         .spawn()
         .unwrap();
-    let name = fs::read_to_string(format!("/proc/{}/comm", child.id()));
+    let name = native_process_name(child.id(), &version);
     let _ = child.kill();
     child.wait().unwrap();
     fs::remove_dir_all(home).unwrap();
-    assert_eq!(name.unwrap().trim(), "claude");
+    assert_eq!(name.trim(), "claude");
+}
+
+fn native_process_name(pid: u32, executable: &std::path::Path) -> String {
+    let started = std::time::Instant::now();
+    loop {
+        if fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|p| p == executable) {
+            return fs::read_to_string(format!("/proc/{pid}/comm")).unwrap();
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "native exec never completed"
+        );
+        std::thread::yield_now();
+    }
 }
 
 fn fixture() -> PathBuf {

@@ -110,7 +110,11 @@ pub fn expand(value: Value, root: &Path) -> Result<Value> {
             Some("utf8") => Ok(Value::String(String::from_utf8(bytes)?)),
             Some("json") => expand(serde_json::from_slice(&bytes)?, root),
             Some("json_text") => canonical_text::restore(&bytes, root).map(Value::String),
-            _ => Err("REVIEW_SOURCE_ENCODING stage=source_store".into()),
+            _ => Err(format!(
+                "REVIEW_SOURCE_ENCODING stage=source_store: {}: unsupported encoding",
+                resolved(&root.join(digest), digest).display()
+            )
+            .into()),
         };
     }
     match value {

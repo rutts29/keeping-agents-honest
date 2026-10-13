@@ -6,6 +6,7 @@ pub fn run<T>(
     worker: &str,
     root: &Path,
     head: &str,
+    lease: &std::fs::File,
     mut action: impl FnMut() -> Result<T>,
 ) -> Result<T> {
     let pending: Option<serde_json::Value> = super::super::state::read(&root.join("pending.json"))?;
@@ -21,6 +22,7 @@ pub fn run<T>(
         .and_then(|v| v["next_retry_ms"].as_u64())
         .unwrap_or(0);
     loop {
+        crate::helper_upgrade::between_samples(Some(lease))?;
         if kah_observer::session::paused(
             &kah_core::run_store::RunStore::default_state_root()?,
             worker,

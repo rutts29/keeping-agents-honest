@@ -42,6 +42,7 @@ pub fn run(worker: &str) -> Result<()> {
     // Reuse the installed read-only helper, not an observer workspace/session.
     state.observer.workspace = home.join(".local");
     loop {
+        crate::helper_upgrade::between_samples(Some(_lease.lease()))?;
         if kah_observer::session::paused(
             &kah_core::run_store::RunStore::default_state_root()?,
             worker,
@@ -49,7 +50,7 @@ pub fn run(worker: &str) -> Result<()> {
             return Ok(());
         }
         if let Some(job) = state::read::<Job>(&root.join("job.json"))? {
-            finish(worker, &root, &home, &job)?;
+            finish(worker, &root, &home, &job, _lease.lease())?;
             fs::remove_file(root.join("job.json"))?;
         }
         let paths = host::entries(&root.join("events"))?;
@@ -65,7 +66,7 @@ pub fn run(worker: &str) -> Result<()> {
         if let Some(head) = head {
             let previous: Option<Value> = state::read(&root.join("baseline.json"))?;
             if previous.as_ref().is_none_or(|v| v["head"] != head) {
-                let job = retry::run(worker, &root, &head, || {
+                let job = retry::run(worker, &root, &head, _lease.lease(), || {
                     prepare(
                         worker,
                         &home,
@@ -148,10 +149,10 @@ fn prepared(
     let (requests, map) = option1::requests::build(&input, calibration.as_ref())?;
     Ok((input, requests, map))
 }
-fn finish(worker: &str, root: &Path, home: &Path, job: &Job) -> Result<()> {
+fn finish(worker: &str, root: &Path, home: &Path, job: &Job, lease: &fs::File) -> Result<()> {
     let rate = kah_core::run_store::RunStore::default_state_root()?.join("jev-rate");
     let batch = Batch::new(&root.join("literal").join(&job.head), &rate)?;
-    let report = retry::run(worker, root, &job.head, || {
+    let report = retry::run(worker, root, &job.head, lease, || {
         if let Some(reason) = &job.gap {
             gap(worker, &job.head, &job.policy, reason)
         } else {

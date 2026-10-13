@@ -28,7 +28,11 @@ pub(super) fn matches(stored: &Value, expected: &Value, root: &Path) -> Result<b
                 let text = serde_json::to_string(&super::expand(value, root)?)?;
                 Ok(expected.as_str() == Some(text.as_str()))
             }
-            _ => Err("REVIEW_SOURCE_ENCODING stage=source_store".into()),
+            _ => Err(format!(
+                "REVIEW_SOURCE_ENCODING stage=source_store: {}: unsupported encoding",
+                path.display()
+            )
+            .into()),
         };
     }
     match (stored, expected) {

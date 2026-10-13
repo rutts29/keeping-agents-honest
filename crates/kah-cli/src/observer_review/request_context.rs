@@ -84,12 +84,7 @@ pub fn read(
     }
 }
 fn parse(text: &str) -> Option<Context> {
-    let text = text.trim();
-    let text = if text.starts_with("<pasted_content id=\"") {
-        text.split_once("\">\n")?.1
-    } else {
-        text
-    };
+    let text = super::delivery_text::body(text);
     let (request, rest) = text
         .trim_start()
         .strip_prefix("kah review request ")?

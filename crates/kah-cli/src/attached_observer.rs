@@ -8,7 +8,7 @@ use kah_observer::{
     session::{Binding, Store},
 };
 use serde_json::json;
-use std::{fs, os::unix::fs::OpenOptionsExt, path::Path, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 pub fn watch(home: &Path, project: &Path, session: &str, timeout_secs: u64) -> Result<()> {
     if !(1..=300).contains(&timeout_secs) {
@@ -24,13 +24,7 @@ pub fn watch(home: &Path, project: &Path, session: &str, timeout_secs: u64) -> R
     let base = RunStore::default_state_root()?;
     drop(Store::open(&base, session, Duration::ZERO)?);
     let directory = Store::directory(&base, session);
-    let lease = fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .mode(0o600)
-        .open(directory.join("watch.lock"))?;
+    let lease = crate::helper_upgrade::open_lease(&directory.join("watch.lock"))?;
     lease
         .try_lock()
         .map_err(|e| format!("OBSERVER_ALREADY_ATTACHED stage=attach: {e}"))?;
@@ -45,7 +39,7 @@ pub fn watch(home: &Path, project: &Path, session: &str, timeout_secs: u64) -> R
         judge: Backend::Jev,
         jev_model: "jev-latest".into(),
     };
-    let result = watch_loop(&binding);
+    let result = watch_loop(&binding, &lease);
     if let Err(error) = &result {
         let mut store = Store::open(&base, session, Duration::from_secs(1))?;
         let mut state = store
@@ -58,7 +52,7 @@ pub fn watch(home: &Path, project: &Path, session: &str, timeout_secs: u64) -> R
     result
 }
 
-fn watch_loop(binding: &Binding) -> Result<()> {
+fn watch_loop(binding: &Binding, lease: &fs::File) -> Result<()> {
     let session = &binding.session;
     let mut client = Control::connect_daemon(
         &binding
@@ -81,6 +75,7 @@ fn watch_loop(binding: &Binding) -> Result<()> {
             eprintln!("kah observer detached: native goal is no longer active.");
             return Ok(());
         }
+        crate::helper_upgrade::between_samples(Some(lease))?;
         let snapshot = source::observe(&mut client, &binding.project, session)?;
         let turn = snapshot.action_digest.clone();
         let outcome = crate::observer_intake::snapshot(binding, &turn, snapshot)?;

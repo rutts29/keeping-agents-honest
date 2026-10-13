@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn unsupported_encoding_names_the_integrity_checked_source_path() {
+    let root = std::env::temp_dir().join(format!("encoding-path-{}", crate::relay_store::nonce()));
+    kah_core::run_store::ensure_private_directory(&root).unwrap();
+    let source = reference(&root, b"retained raw bytes", "unknown-format").unwrap();
+    let path = root.join(source["$kah_source"].as_str().unwrap());
+    for error in [
+        super::super::expand(source.clone(), &root).unwrap_err(),
+        matches(&source, &source, &root).unwrap_err(),
+    ] {
+        assert!(
+            error
+                .to_string()
+                .starts_with("REVIEW_SOURCE_ENCODING stage=source_store:")
+        );
+        assert!(error.to_string().contains(path.to_str().unwrap()));
+    }
+    assert_eq!(std::fs::read(path).unwrap(), b"retained raw bytes");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn streamed_comparison_rejects_changed_text_shape_and_scalar_without_a_full_mirror() {
     let root = std::env::temp_dir().join(format!("compare-source-{}", crate::relay_store::nonce()));
     kah_core::run_store::ensure_private_directory(&root).unwrap();

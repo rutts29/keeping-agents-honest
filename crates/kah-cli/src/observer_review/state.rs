@@ -149,6 +149,9 @@ impl Store {
     pub fn delivery_at(directory: &Path, wait: bool) -> Result<Self> {
         Self::lock_directory(directory.to_path_buf(), wait, "delivery-lock")
     }
+    pub(crate) fn lease(&self) -> &File {
+        &self._lock
+    }
     fn lock(worker: &str, wait: bool) -> Result<Self> {
         let directory = Self::directory(worker)?;
         Self::lock_directory(directory, wait, "lock")
@@ -162,13 +165,7 @@ impl Store {
         {
             return Err("REVIEW_LOCK_PRIVATE stage=review_state".into());
         }
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(path)?;
+        let file = crate::helper_upgrade::open_lease(&path)?;
         if wait {
             file.lock()?;
         } else {

@@ -72,7 +72,8 @@ fn arguments(state: &State, prompt: &str) -> Result<Arguments> {
             .extend(["--name".into(), state.observer.name.clone()]);
     }
     if !prompt.is_empty() {
-        args.native.extend(["--".into(), prompt.into()]);
+        args.native
+            .extend(["--".into(), super::delivery_text::cold(prompt)]);
     }
     Ok(args)
 }
