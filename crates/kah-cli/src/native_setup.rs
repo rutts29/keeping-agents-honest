@@ -6,7 +6,6 @@ use std::{
     fs,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 pub fn executor(
@@ -117,13 +116,8 @@ fn share(path: &Path, uid: u32) -> Result<()> {
     if path.is_dir() {
         kah_run::access::share_tree(path, uid, false)?;
     } else {
-        let output = Command::new("/usr/bin/setfacl")
-            .args(["-P", "-m", &format!("u:{uid}:r"), "--"])
-            .arg(path)
-            .output()?;
-        if !output.status.success() {
-            return Err("SETUP_FILE_ACCESS stage=setup: cannot share installed setup file".into());
-        }
+        kah_run::access::read_file(path, uid)
+            .map_err(|_| "SETUP_FILE_ACCESS stage=setup: cannot share installed setup file")?;
     }
     Ok(())
 }

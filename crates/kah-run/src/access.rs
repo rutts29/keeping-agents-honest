@@ -24,7 +24,12 @@ pub fn traverse(root: &Path, service_uid: u32) -> Result<(), String> {
     if !fs::symlink_metadata(root).map_err(io_error)?.is_dir() {
         return Err("RUN_SHARE_ROOT stage=worker_prepare: expected real directory".into());
     }
-    acl(root, &format!("u:{service_uid}:--x"))
+    grant(root, service_uid, 'x')
+}
+
+/// Grant read on one existing file without rewriting any other entry's rights.
+pub fn read_file(path: &Path, service_uid: u32) -> Result<(), String> {
+    grant(path, service_uid, 'r')
 }
 // Native programs replace files under a different mapped UID. Their inherited
 // ACL already grants operator access; only owners may edit the ACL itself.
@@ -76,21 +81,53 @@ fn operate(
     }
     Ok(())
 }
-fn acl(path: &Path, entries: &str) -> Result<(), String> {
-    let mut command = Command::new("/usr/bin/setfacl");
-    command.arg("-P");
-    let result = command
-        .args(["-m", entries, "--"])
+// Add one permission bit to a named user. The shared mask gets only that bit
+// on top of its prior value; it is never recalculated from other entries.
+fn grant(path: &Path, service_uid: u32, bit: char) -> Result<(), String> {
+    let text = getfacl(path)?;
+    let (user, mask) = (
+        field(&text, &format!("user:{service_uid}:")).unwrap_or("---"),
+        field(&text, "mask::").or_else(|| field(&text, "group::")),
+    );
+    let mask = mask.ok_or_else(|| acl_error("ACL has no mask or group entry".into()))?;
+    if user.contains(bit) && mask.contains(bit) {
+        return Ok(());
+    }
+    let with_bit = |bits: &str| -> String {
+        "rwx"
+            .chars()
+            .map(|c| if c == bit || bits.contains(c) { c } else { '-' })
+            .collect()
+    };
+    let entries = format!("u:{service_uid}:{},m::{}", with_bit(user), with_bit(mask));
+    let result = Command::new("/usr/bin/setfacl")
+        .args(["-P", "-n", "-m", &entries, "--"])
         .arg(path)
         .output()
         .map_err(io_error)?;
     if !result.status.success() {
-        return Err(format!(
-            "RUN_SHARE_ACL stage=worker_prepare: {}",
-            String::from_utf8_lossy(&result.stderr)
-        ));
+        return Err(acl_error(String::from_utf8_lossy(&result.stderr).into()));
     }
     Ok(())
+}
+fn getfacl(path: &Path) -> Result<String, String> {
+    let out = Command::new("/usr/bin/getfacl")
+        .args(["-cpn", "--"])
+        .arg(path)
+        .output()
+        .map_err(io_error)?;
+    if !out.status.success() {
+        return Err(acl_error(String::from_utf8_lossy(&out.stderr).into()));
+    }
+    String::from_utf8(out.stdout).map_err(|e| acl_error(e.to_string()))
+}
+fn field<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    text.lines()
+        .find_map(|line| line.strip_prefix(prefix))
+        .and_then(|rest| rest.split_whitespace().next())
+}
+fn acl_error(detail: String) -> String {
+    format!("RUN_SHARE_ACL stage=worker_prepare: {detail}")
 }
 fn io_error(error: std::io::Error) -> String {
     format!("RUN_SHARE_IO stage=worker_prepare: {error}")
