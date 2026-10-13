@@ -145,6 +145,7 @@ fn stale(
         || super::preparation::pending(worker, &decision)? && !context.preparation)
 }
 fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
+    super::delivery_outcome::observe(worker)?;
     if event == "SessionStart" {
         bind_name(state)?;
     }
@@ -299,6 +300,9 @@ pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
     record_gap(worker, error, super::failure::Origin::Host)
 }
 pub fn gap_error(worker: &str, error: &(dyn std::error::Error + 'static)) -> Result<()> {
+    if super::delivery_outcome::reason(error) {
+        return Ok(());
+    }
     if super::provider_block::reason(&error) {
         super::provider_block::retain(worker, None, "native precaution screen")?;
         return Ok(());
@@ -335,6 +339,9 @@ fn record_gap(
     error: &dyn std::fmt::Display,
     origin: super::failure::Origin,
 ) -> Result<()> {
+    if super::delivery_outcome::reason(error) {
+        return Ok(());
+    }
     if super::provider_block::reason(error) {
         super::provider_block::retain(worker, None, "native precaution screen")?;
         return Ok(());

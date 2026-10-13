@@ -43,7 +43,9 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if working(&store, &state, &request.id, &gap_path)? {
         return Ok(());
     }
-    prompt.push_str(&diagnostic(gap.as_ref().unwrap()));
+    if correction_needed(gap.as_ref().unwrap()) {
+        prompt.push_str(&diagnostic(gap.as_ref().unwrap()));
+    }
     let number = review::redelivery::begin_correction(&store, &request.id, gap.as_ref().unwrap())?;
     drop(store);
     let delivery = deliver(&home, &state, &prompt, true);
@@ -90,6 +92,21 @@ fn diagnostic(gap: &Value) -> String {
             gap["error"]
         )
     }
+}
+fn correction_needed(gap: &Value) -> bool {
+    // A missing reply is not a malformed report. Preserve the identical body
+    // so the two-unanswered-turn backstop can identify that delivery.
+    !gap["error"].as_str().is_some_and(|error| {
+        [
+            "REVIEW_OBSERVER_STALLED",
+            "REVIEW_REPORT_MISSING",
+            "REVIEW_PREPARATION_MISSING",
+            "REVIEW_SUBMISSION_UNCONFIRMED",
+            "REVIEW_NOT_IDLE",
+        ]
+        .iter()
+        .any(|code| error.starts_with(code))
+    })
 }
 fn refresh_rejection(store: &Store, state: &State, request: &str) -> Result<()> {
     let prior: Option<Value> =

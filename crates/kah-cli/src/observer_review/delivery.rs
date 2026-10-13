@@ -47,7 +47,7 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         .as_ref()
         .ok_or("REVIEW_TRANSCRIPT_MISSING stage=delivery")?;
     let offset = std::fs::metadata(path)?.len();
-    crate::run_pane::invoke_at(&["agent", "prompt", pane, prompt], Some(socket))?;
+    submit(state, prompt, &marker, offset, socket, pane)?;
     if wait_receipt(state, &marker, offset)? {
         return Ok(());
     }
@@ -66,6 +66,24 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
     }
     diagnostic(state, &marker, &text)?;
     Err(missing_receipt())
+}
+fn submit(
+    state: &State,
+    prompt: &str,
+    marker: &str,
+    offset: u64,
+    socket: &std::path::Path,
+    pane: &str,
+) -> Result<()> {
+    super::delivery_outcome::begin(
+        state,
+        marker.trim().strip_prefix("kah review request ").unwrap(),
+        prompt,
+        offset,
+    )?;
+    super::delivery_text::submit(pane, prompt, |args| {
+        crate::run_pane::invoke_at(args, Some(socket)).map(|_| ())
+    })
 }
 fn missing_receipt() -> Box<dyn std::error::Error> {
     "REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: native receipt absent; acknowledge this request's marker in your native turn, or remain idle for host delivery recovery. Host diagnostics are retained separately.".into()
@@ -173,6 +191,12 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
                 .as_ref()
                 .is_some_and(|p| p.exists())
         {
+            super::delivery_outcome::begin(
+                &current,
+                marker.trim().strip_prefix("kah review request ").unwrap(),
+                prompt,
+                0,
+            )?;
             if wait_receipt(&current, &marker, 0)? {
                 return Ok(());
             }
@@ -290,22 +314,8 @@ pub fn receipt(reader: impl BufRead, provider: &str, session: &str, marker: &str
     }
     Ok(false)
 }
-fn starts_request(text: &str, provider: &str, marker: &str) -> bool {
-    let text = text.trim();
-    // Claude persists bracketed pastes in a native wrapper. Only unwrap a
-    // leading, complete paste; quoted history elsewhere is not a receipt.
-    let text = if provider == "claude" && text.starts_with("<pasted_content id=\"") {
-        text.strip_prefix("<pasted_content id=\"")
-            .and_then(|paste| paste.split_once("\">\n"))
-            .and_then(|(id, body)| {
-                body.strip_suffix(format!("</pasted_content id=\"{id}\">").as_str())
-            })
-            .unwrap_or("")
-            .trim_start()
-    } else {
-        text
-    };
-    text.starts_with(marker)
+fn starts_request(text: &str, _provider: &str, marker: &str) -> bool {
+    super::delivery_text::body(text).starts_with(marker)
 }
 pub fn safe_keyboard(screen: &str) -> Result<()> {
     if super::provider_block::precaution(screen) {

@@ -13,6 +13,7 @@ pub use reviewer::notify;
 pub fn retryable(origin: super::failure::Origin, error: &str) -> bool {
     !super::failure::pending(&error)
         && !super::provider_block::reason(&error)
+        && !super::delivery_outcome::reason(&error)
         && (super::failure::correctable(origin, error)
             || origin == super::failure::Origin::Delivery
                 && !error.starts_with("REVIEW_SESSION_")

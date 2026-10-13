@@ -177,6 +177,8 @@ pub mod checkpoint;
 pub mod checkpoint_claim;
 pub mod claims;
 pub mod delivery;
+pub mod delivery_outcome;
+pub mod delivery_text;
 pub mod events;
 pub mod failure;
 mod failure_snapshot;
