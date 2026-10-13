@@ -41,7 +41,9 @@ pub fn origin(error: &(dyn Error + 'static)) -> Origin {
     }
     let mut cause = Some(error);
     while let Some(error) = cause {
-        if error.downcast_ref::<kah_observer::judge::Error>().is_some() {
+        if error.downcast_ref::<kah_observer::judge::Error>().is_some()
+            || error.downcast_ref::<std::io::Error>().is_some()
+        {
             return Origin::Host;
         }
         cause = error.source();
@@ -79,6 +81,6 @@ pub fn correctable(origin: Origin, error: &str) -> bool {
 pub fn pending(error: &dyn fmt::Display) -> bool {
     matches!(
         error.to_string().split_whitespace().next(),
-        Some("STORE_BUSY" | "REVIEW_REPORT_REVISION_SUPERSEDED")
+        Some("STORE_BUSY" | "REVIEW_REPORT_REVISION_SUPERSEDED" | "REVIEW_REPORT_PENDING")
     )
 }

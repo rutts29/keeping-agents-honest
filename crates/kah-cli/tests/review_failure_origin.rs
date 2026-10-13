@@ -19,7 +19,8 @@ fn every_review_code_is_classified_by_origin_with_only_explicit_identity_integri
                 || code == "REVIEW_CONTROLLER_FACT_BINDING"
                 || code == "REVIEW_QUESTION_REFERENCE_SCOPE"
                 || code == "REVIEW_PROVIDER_BLOCKED"
-                || code == "REVIEW_REPORT_REVISION_SUPERSEDED";
+                || code == "REVIEW_REPORT_REVISION_SUPERSEDED"
+                || code == "REVIEW_REPORT_PENDING";
             assert_eq!(correctable(origin, code), !fatal, "{origin:?}: {code}");
         }
     }

@@ -29,6 +29,12 @@ fn native_confirmation_has_a_judged_receipt_after_consumption() {
     fs::write(&report,json!({"request":request.id,"result":{"stage":"confirmation","rows":[{
         "requirement":"r","finding":"No content was cut.","status":"satisfied","kind":"not_violated","quotes":[]
     }]}}).to_string()).unwrap();
+    kah_cli::unattended_report::save(
+        &store.directory,
+        "report-ready.json",
+        &json!({"request":request.id}),
+    )
+    .unwrap();
     option1::consume::run(store, state, request).unwrap();
     let timing: Value = source_store::read(&root.join("stage-timings/review-1-1.json")).unwrap();
     let judged = timing["at_ms"]["judged"]

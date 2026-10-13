@@ -14,15 +14,7 @@ use kah_observer::{
 use serde_json::{Value, json};
 use std::fs;
 pub fn run(store: Store, mut state: State, request: Request) -> Result<()> {
-    let path = state
-        .observer
-        .workspace
-        .join("outbox")
-        .join(format!("submitted-{}.json", request.id));
-    let report =
-        super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
-            protocol::validate(&request, &super::super::consume::read_report(&path)?)
-        })?;
+    let (path, report) = read_ready(&state, &request)?;
     let session = state
         .observer
         .session
@@ -235,4 +227,21 @@ fn confirmation(
     );
     baseline(store, &input.revision)?;
     Ok(())
+}
+
+fn read_ready(state: &State, request: &Request) -> Result<(std::path::PathBuf, protocol::Report)> {
+    let path = state
+        .observer
+        .workspace
+        .join("outbox")
+        .join(format!("submitted-{}.json", request.id));
+    if !super::super::liveness::handoff::report_ready(state)? {
+        return Err(format!("REVIEW_REPORT_PENDING stage=consume: awaiting current-request native ACK and report {}", path.display()).into());
+    }
+    let bytes = super::super::consume::read_report(&path)?;
+    let report =
+        super::super::failure::validation(super::super::failure::Origin::ReportValidation, || {
+            protocol::validate(request, &bytes)
+        })?;
+    Ok((path, report))
 }

@@ -43,6 +43,12 @@ fn retained_nondiff_rows_finish_as_one_terminal_finding() {
         serde_json::to_vec(&end["report"]).unwrap(),
     )
     .unwrap();
+    kah_cli::unattended_report::save(
+        &store.directory,
+        "report-ready.json",
+        &json!({"request":request.id}),
+    )
+    .unwrap();
     option1::consume::run(store, state, request).unwrap();
     let saved = Store::read(&worker).unwrap().unwrap();
     assert!(saved.pending.is_none());
