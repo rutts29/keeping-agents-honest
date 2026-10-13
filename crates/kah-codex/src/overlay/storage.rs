@@ -48,6 +48,7 @@ pub fn prepare(original: &Path, directory: &Path, policy: &Policy<'_>) -> Result
         detail: e.to_string(),
     })?;
     write_private(&directory.join("config.toml"), text.as_bytes())?;
+    prepare_native_history(original)?;
     for name in [
         "auth.json",
         "sessions",
@@ -70,6 +71,23 @@ pub fn prepare(original: &Path, directory: &Path, policy: &Policy<'_>) -> Result
         ] {
             if original.join(name).exists() {
                 share(&original.join(name), &directory.join(name))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn prepare_native_history(original: &Path) -> Result<(), OverlayError> {
+    for name in ["sessions", "archived_sessions"] {
+        let path = original.join(name);
+        match DirBuilder::new().mode(0o700).create(&path) {
+            Ok(()) => (),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => {}
+            Err(error) => {
+                return Err(OverlayError {
+                    code: "OVERLAY_NATIVE_DIRECTORY",
+                    detail: format!("{}: {error}", path.display()),
+                });
             }
         }
     }

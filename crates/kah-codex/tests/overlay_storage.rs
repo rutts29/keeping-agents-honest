@@ -271,3 +271,67 @@ trusted_hash = 'never-copy'
         "toml-command"
     );
 }
+
+#[test]
+fn fresh_native_history_directories_exist_before_overlay_links_are_published() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new("fresh-native-history");
+    for name in ["sessions", "archived_sessions"] {
+        assert!(!f.0.join("original").join(name).exists());
+    }
+    f.prepare().unwrap();
+    for name in ["sessions", "archived_sessions"] {
+        let original = f.0.join("original").join(name);
+        let overlay = f.0.join("overlay").join(name);
+        assert!(
+            original.is_dir(),
+            "native target must exist before linking: {original:?}"
+        );
+        assert_eq!(
+            fs::metadata(&original).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(fs::read_link(&overlay).unwrap(), original);
+        fs::create_dir_all(overlay.join("2026/10/13")).unwrap();
+        fs::write(
+            overlay.join("2026/10/13/native.jsonl"),
+            b"retained native record\n",
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(original.join("2026/10/13/native.jsonl")).unwrap(),
+            b"retained native record\n"
+        );
+    }
+    f.prepare().unwrap();
+}
+
+#[test]
+fn existing_native_history_permissions_and_records_are_preserved() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new("existing-native-history");
+    let sessions = f.0.join("original/sessions");
+    fs::create_dir(&sessions).unwrap();
+    fs::set_permissions(&sessions, fs::Permissions::from_mode(0o750)).unwrap();
+    fs::write(sessions.join("native.jsonl"), b"existing evidence\n").unwrap();
+    f.prepare().unwrap();
+    assert_eq!(
+        fs::metadata(&sessions).unwrap().permissions().mode() & 0o777,
+        0o750
+    );
+    assert_eq!(
+        fs::read(sessions.join("native.jsonl")).unwrap(),
+        b"existing evidence\n"
+    );
+}
+
+#[test]
+fn a_native_history_file_is_rejected_without_replacing_its_evidence() {
+    let f = Fixture::new("invalid-native-history");
+    let path = f.0.join("original/sessions");
+    fs::write(&path, b"original evidence\n").unwrap();
+    let error = f.prepare().unwrap_err();
+    assert_eq!(error.code, "OVERLAY_NATIVE_DIRECTORY");
+    assert!(error.detail.contains(path.to_str().unwrap()));
+    assert_eq!(fs::read(path).unwrap(), b"original evidence\n");
+}
