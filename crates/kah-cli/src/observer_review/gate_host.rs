@@ -12,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 mod evaluation;
+mod revision;
 pub use evaluation::run;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -22,6 +23,8 @@ pub struct Job {
     pub report: Report,
     pub actions: Vec<Value>,
     pub submitted: PathBuf,
+    #[serde(default)]
+    pub report_revision: Option<super::report_revision::Submission>,
     pub native_tokens_end: Option<u64>,
     #[serde(default)]
     pub usage_gap: Option<String>,
@@ -43,7 +46,7 @@ pub fn handoff_locked(
     request: &Request,
     report: &Report,
     actions: &[Value],
-    submitted: &Path,
+    submitted: &super::report_revision::Submission,
     native_tokens_end: Result<u64>,
 ) -> Result<bool> {
     if request.purpose != Purpose::Checkpoint || super::commit_packet::is_commit(request) {
@@ -82,7 +85,7 @@ fn captured(
     request: &Request,
     report: &Report,
     actions: &[Value],
-    submitted: &Path,
+    submitted: &super::report_revision::Submission,
     native_tokens_end: Result<u64>,
 ) -> Job {
     let usage_gap = native_tokens_end
@@ -101,7 +104,8 @@ fn captured(
         pending,
         report: report.clone(),
         actions: actions.to_vec(),
-        submitted: submitted.into(),
+        submitted: submitted.path.clone(),
+        report_revision: Some(submitted.clone()),
         usage_gap,
         native_tokens_end: native_tokens_end.ok(),
     }
@@ -110,13 +114,25 @@ fn save_handoff_locked(store: &Store, root: &Path, job: Job) -> Result<()> {
     if store.directory != Store::directory(&job.request.worker)? {
         return Err("REVIEW_GATE_HOST_BINDING stage=handoff".into());
     }
+    let _driver = Store::delivery_at(&root.join("driver"), false).map_err(|e| {
+        if e.to_string().starts_with("REVIEW_BUSY") {
+            "STORE_BUSY stage=gate_revision: active host driver".into()
+        } else {
+            e
+        }
+    })?;
+    revision::require_current(&job)?;
     let saved = if let Some(mut old) = super::state::read::<Job>(&root.join("job.json"))? {
         if serde_json::to_value(&old.request)? != serde_json::to_value(&job.request)?
-            || serde_json::to_value(&old.report)? != serde_json::to_value(&job.report)?
             || old.state.observer.session != job.state.observer.session
         {
             return Err("REVIEW_GATE_HOST_CHANGED stage=handoff".into());
         }
+        if revision::changed(&old, &job)? {
+            revision::archive(root, &old)?;
+            return source_store::save(root, "job.json", &serde_json::to_value(&job)?);
+        }
+        old.report_revision = job.report_revision.clone().or(old.report_revision);
         // Continuation preserves the initial baseline/report. Only cumulative
         // native usage advances after another selection ACK in the same session.
         old.native_tokens_end = old.native_tokens_end.max(job.native_tokens_end);
@@ -194,6 +210,7 @@ pub fn merge_fresh(
     if state.observer.session != job.state.observer.session {
         return Err("REVIEW_GATE_HOST_OBSERVER stage=gate_merge: observer identity changed".into());
     }
+    revision::require_current(job)?;
     let mut assessment = assessment.clone();
     super::gate_approval::guard_report(
         &store.directory,
@@ -206,7 +223,7 @@ pub fn merge_fresh(
         "jev_state":input,"judgment":judgment,"assessment":assessment,
         "verified_question_set":super::consume::question_version(&job.request,&job.report),
         "native_tokens":job.native_tokens_end.zip(job.pending.native_tokens_before).map(|(n,b)|n.saturating_sub(b)),
-        "usage_gap":job.usage_gap,
+        "usage_gap":job.usage_gap,"report_revision":job.report_revision,
         "elapsed_ms":kah_observer::session::now_ms().saturating_sub(job.pending.created_ms)});
     super::consume::finish_gate_host(&store, &mut state, job, &result, input, judgment)?;
     source_store::save(&root, "finished.json", &result)?;
@@ -217,3 +234,7 @@ pub fn merge_fresh(
 #[cfg(test)]
 #[path = "../../tests/observer_integration/gate_interleaving.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../tests/observer_unit/report_revision.rs"]
+mod revision_tests;

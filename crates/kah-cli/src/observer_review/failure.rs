@@ -77,5 +77,8 @@ pub fn correctable(origin: Origin, error: &str) -> bool {
 
 /// Writer contention preserves the request; it is never report correction work.
 pub fn pending(error: &dyn fmt::Display) -> bool {
-    error.to_string().split_whitespace().next() == Some("STORE_BUSY")
+    matches!(
+        error.to_string().split_whitespace().next(),
+        Some("STORE_BUSY" | "REVIEW_REPORT_REVISION_SUPERSEDED")
+    )
 }

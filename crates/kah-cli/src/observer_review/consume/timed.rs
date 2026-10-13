@@ -23,7 +23,11 @@ pub(crate) fn record_effects(
 pub(super) fn evidence(
     state: &State,
     request: &super::super::state::Request,
-) -> Result<(PathBuf, Report, Vec<Value>)> {
+) -> Result<(
+    super::super::report_revision::Submission,
+    Report,
+    Vec<Value>,
+)> {
     super::super::timing::now(&request.worker, &request.id, "validation_started")?;
     let evidence = super::evidence(state, request)?;
     super::super::timing::now(&request.worker, &request.id, "validated")?;

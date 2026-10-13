@@ -34,6 +34,7 @@ pub mod recovery;
 pub mod redelivery;
 pub mod reminder;
 pub mod reminder_queue;
+pub mod report_revision;
 pub mod request_context;
 pub mod runtime;
 pub mod service;

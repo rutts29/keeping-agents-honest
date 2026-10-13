@@ -39,6 +39,12 @@ pub fn run(worker: &str) -> Result<()> {
                 }
                 super::super::queue::kick(worker)?;
             }
+            Err(e)
+                if e.to_string()
+                    .starts_with("REVIEW_REPORT_REVISION_SUPERSEDED") =>
+            {
+                revision::resume_latest(&job)?
+            }
             Err(e) if e.to_string().starts_with("REVIEW_BUSY") => (),
             Err(e) => retain_failure(&root, &job, e.as_ref())?,
         }
@@ -55,6 +61,7 @@ pub(crate) fn process_with(
     if let Some(result) = super::super::state::read(&root.join("finished.json"))? {
         return Ok(result);
     }
+    revision::require_current(job)?;
     resume_handoff(job)?;
     let _processing = super::super::liveness::processing(&job.request.worker, &job.request.id)?;
     let mut prepared = job.clone();
@@ -77,6 +84,7 @@ fn evaluate_unlocked(
         return Ok(saved);
     }
     let evaluated = evaluate(job)?;
+    revision::require_current(job)?;
     source_store::save(&root, "evaluated.json", &serde_json::to_value(&evaluated)?)?;
     Ok(evaluated)
 }
