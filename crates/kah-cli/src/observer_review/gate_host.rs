@@ -57,7 +57,10 @@ pub fn handoff_locked(
         .clone()
         .filter(|p| p.id == request.id)
         .ok_or("REVIEW_GATE_HOST_PENDING stage=handoff")?;
-    if !super::liveness::handoff::awaiting_host(state)? {
+    submitted.require_current()?;
+    if !super::liveness::handoff::awaiting_host(state)?
+        && !revision::owns_ack(state, request, &submitted.path)?
+    {
         return Err(
             "REVIEW_SUBMISSION_UNCONFIRMED stage=gate_handoff: native ACK not validated".into(),
         );

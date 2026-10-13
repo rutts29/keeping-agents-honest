@@ -102,7 +102,9 @@ fn resume_handoff(job: &Job) -> Result<()> {
         .as_ref()
         .is_some_and(|p| p.id == job.request.id)
     {
-        if !super::super::liveness::handoff::awaiting_host(&state)? {
+        if !super::super::liveness::handoff::awaiting_host(&state)?
+            && !revision::owns_ack(&state, &job.request, &job.submitted)?
+        {
             return Err("REVIEW_GATE_HOST_ACK stage=gate_handoff".into());
         }
         state.pending = None;

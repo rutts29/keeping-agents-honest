@@ -1,5 +1,25 @@
 //! Revised reports retain their old host job and resume without native redelivery.
 use super::*;
+/// A saved job was created only after its own ACK, before yielding the slot.
+/// A later normal request can overwrite the global report-ready marker.
+pub(super) fn owns_ack(state: &State, request: &Request, submitted: &Path) -> Result<bool> {
+    let root = directory(&request.worker, &request.id)?;
+    if root.join("finished.json").exists() {
+        return Ok(false);
+    }
+    let path = root.join("job.json");
+    let Some(old) = super::super::state::read::<Job>(&path)? else {
+        return Ok(false);
+    };
+    Ok(state.worker.session == request.worker
+        && old.pending.id == request.id
+        && serde_json::to_value(&old.request)? == serde_json::to_value(request)?
+        && state.observer.session.is_some()
+        && old.state.observer.session == state.observer.session
+        && old.state.observer.workspace == state.observer.workspace
+        && old.state.observer.pane == state.observer.pane
+        && old.submitted == submitted)
+}
 pub(super) fn key(job: &Job) -> Result<String> {
     Ok(match &job.report_revision {
         Some(revision) => revision.digest.clone(),
