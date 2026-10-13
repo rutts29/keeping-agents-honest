@@ -18,7 +18,9 @@ fn every_review_code_is_classified_by_origin_with_only_explicit_identity_integri
                 || code == "REVIEW_COMPLETION_RECEIPT_BINDING"
                 || code == "REVIEW_CONTROLLER_FACT_BINDING"
                 || code == "REVIEW_QUESTION_REFERENCE_SCOPE"
-                || code == "REVIEW_PROVIDER_BLOCKED";
+                || code == "REVIEW_PROVIDER_BLOCKED"
+                || code == "REVIEW_REPORT_REVISION_SUPERSEDED"
+                || code == "REVIEW_REPORT_PENDING";
             assert_eq!(correctable(origin, code), !fatal, "{origin:?}: {code}");
         }
     }
@@ -71,4 +73,23 @@ fn writer_contention_is_host_pending_for_every_validation_origin() {
     assert!(!failure::pending(
         &"REVIEW_SCHEMA stage=report: detail mentions STORE_BUSY"
     ));
+}
+
+#[test]
+fn superseded_report_is_pending_host_work_never_a_correction_or_redelivery() {
+    use kah_cli::observer_review::{failure, redelivery};
+    let error = "REVIEW_REPORT_REVISION_SUPERSEDED stage=handoff: newer bytes";
+    assert!(failure::pending(&error));
+    for origin in [
+        Origin::Host,
+        Origin::ReportValidation,
+        Origin::SelectionValidation,
+        Origin::Delivery,
+    ] {
+        assert!(!correctable(origin, error));
+        assert!(!redelivery::retryable(origin, error));
+    }
+    let wrapped =
+        failure::validation::<()>(Origin::ReportValidation, || Err(error.into())).unwrap_err();
+    assert_eq!(failure::origin(wrapped.as_ref()), Origin::Host);
 }

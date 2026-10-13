@@ -21,15 +21,7 @@ pub(crate) fn awaiting_host(state: &State) -> Result<bool> {
         // exact manifest on the host; no Jev call and no native re-prompt.
         return preparation::accept(&state.worker.session, &decision);
     }
-    let ready: Option<Value> = state::read(&root.join("report-ready.json"))?;
-    if !ready.is_some_and(|r| r["request"] == pending.id)
-        || !state
-            .observer
-            .workspace
-            .join("outbox")
-            .join(format!("submitted-{}.json", pending.id))
-            .is_file()
-    {
+    if !report_ready(state)? {
         return Ok(false);
     }
     let gap: Option<Value> = state::read(&root.join("gap.json"))?;
@@ -54,3 +46,19 @@ fn correction_required(error: &str) -> bool {
 #[cfg(test)]
 #[path = "../../../tests/observer_unit/ack_handoff.rs"]
 mod tests;
+
+/// Current native ACK and durable report; an old diagnostic cannot undo this receipt.
+pub(crate) fn report_ready(state: &State) -> Result<bool> {
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    let root = Store::directory(&state.worker.session)?;
+    let ready: Option<Value> = state::read(&root.join("report-ready.json"))?;
+    Ok(ready.is_some_and(|r| r["request"] == pending.id)
+        && state
+            .observer
+            .workspace
+            .join("outbox")
+            .join(format!("submitted-{}.json", pending.id))
+            .is_file())
+}

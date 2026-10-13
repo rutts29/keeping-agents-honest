@@ -6,14 +6,14 @@ pub(super) fn handoff_locked(
     request: &super::super::state::Request,
     report: &Report,
     actions: &[Value],
-    path: &Path,
+    submission: &super::super::report_revision::Submission,
 ) -> Result<bool> {
     if request.purpose != Purpose::Checkpoint || super::super::commit_packet::is_commit(request) {
         return Ok(false);
     }
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=handoff")?);
     let end = tokens(&home, store, state);
-    super::super::gate_host::handoff_locked(store, state, request, report, actions, path, end)
+    super::super::gate_host::handoff_locked(store, state, request, report, actions, submission, end)
 }
 pub(crate) fn gate_decision(
     home: &Path,

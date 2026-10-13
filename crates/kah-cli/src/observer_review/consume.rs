@@ -67,18 +67,26 @@ fn run_inner(worker: &str) -> Result<()> {
         drop(store);
         return super::queue::kick(worker);
     }
-    let (path, report, actions) = timed::evidence(&state, &request)?;
+    let (submission, report, actions) = timed::evidence(&state, &request)?;
     super::queue::memory::sample(worker, "consume_evidence_verified")?;
-    if super::failure_snapshot::unchanged(&store.directory, &request, &path)? {
+    if super::failure_snapshot::unchanged(&store.directory, &request, &submission.path)? {
         return retry_correction(store, worker);
     }
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=consume")?);
-    if gate::handoff_locked(&store, &mut state, &request, &report, &actions, &path)? {
+    if gate::handoff_locked(&store, &mut state, &request, &report, &actions, &submission)? {
         drop(store);
         super::hook::spawn("__gate-host", worker)?;
         return super::queue::kick(worker);
     }
-    native::finish(store, state, request, path, report, actions, &home)
+    native::finish(
+        store,
+        state,
+        request,
+        submission.path,
+        report,
+        actions,
+        &home,
+    )
 }
 
 fn loaded(worker: &str) -> Result<(Store, State)> {
@@ -142,13 +150,19 @@ pub fn question_version(request: &super::state::Request, report: &Report) -> u32
 fn evidence(
     state: &State,
     request: &super::state::Request,
-) -> Result<(PathBuf, Report, Vec<Value>)> {
+) -> Result<(super::report_revision::Submission, Report, Vec<Value>)> {
     let path = state
         .observer
         .workspace
         .join("outbox")
         .join(format!("submitted-{}.json", request.id));
-    let report = workspace::validate_report_bytes(request, &read_report(&path)?)?;
+    let bytes = read_report(&path)?;
+    let report = workspace::validate_report_bytes(request, &bytes)?;
+    let submission = super::report_revision::Submission::capture(
+        &Store::directory(&request.worker)?,
+        &path,
+        &bytes,
+    )?;
     if report.reminder.is_some() {
         super::reminder::text(state, request, &report)?;
     }
@@ -159,7 +173,7 @@ fn evidence(
         .enumerate()
         .map(|(i, v)| json!({"id":format!("verified-{i}"),"kind":"verifiedEvidence","evidence":v}))
         .collect();
-    Ok((path, report, actions))
+    Ok((submission, report, actions))
 }
 
 pub fn archive(directory: &Path, request: &str, result: &Value) -> Result<()> {

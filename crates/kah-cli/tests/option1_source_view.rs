@@ -31,19 +31,8 @@ fn ordinary_option1_consume_releases_its_view_and_preserves_private_evidence() {
         "whole retained evidence",
     )
     .unwrap();
-    fs::write(
-        root.join("outbox")
-            .join(format!("submitted-{}.json", request.id)),
-        serde_json::to_vec(
-            &json!({"request":request.id,"result":{"stage":"checkpoint","rows":[]}}),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    for name in ["gap.json", "delivered-gap.json"] {
-        kah_cli::unattended_report::save(&store.directory, name, &json!({"request":request.id,"error":"REVIEW_IO stage=review: No such file or directory (os error 2)"})).unwrap();
-    }
     let private = store.directory.clone();
+    submit_and_ack(&private, &root, &request);
     option1::consume::run(store, state, request).unwrap();
     assert!(
         !private.join("gap.json").exists(),
@@ -140,4 +129,21 @@ fn every_pending_transition_releases_only_the_previous_view() {
     drop(store);
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(private.parent().unwrap()).unwrap();
+}
+
+fn submit_and_ack(private: &Path, root: &Path, request: &Request) {
+    fs::write(
+        root.join("outbox")
+            .join(format!("submitted-{}.json", request.id)),
+        serde_json::to_vec(
+            &json!({"request":request.id,"result":{"stage":"checkpoint","rows":[]}}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for name in ["gap.json", "delivered-gap.json"] {
+        kah_cli::unattended_report::save(private, name, &json!({"request":request.id,"error":"REVIEW_IO stage=review: No such file or directory (os error 2)"})).unwrap();
+    }
+    kah_cli::unattended_report::save(private, "report-ready.json", &json!({"request":request.id}))
+        .unwrap();
 }
