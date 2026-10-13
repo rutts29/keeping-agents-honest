@@ -51,6 +51,7 @@ impl Source for CurrentSet<'_> {
                     predicate: r.predicate.clone(),
                     scope: r.scope.clone(),
                     diff_checkable: r.diff_checkable,
+                    kind: r.kind.unwrap_or_default(),
                     sources,
                     permissions: r
                         .permissions

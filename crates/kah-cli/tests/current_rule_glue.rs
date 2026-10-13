@@ -118,6 +118,7 @@ fn candidate(r: &kah_core::run_store::RuleRebuild) -> RuleSet {
                 predicate: c.words.quote.clone(),
                 scope: "this project".into(),
                 diff_checkable: true,
+                kind: Some(kah_core::current_rules::RuleKind::Prohibition),
                 clauses: vec![c.id.clone()],
                 permissions: vec![],
             })

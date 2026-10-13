@@ -61,6 +61,7 @@ pub fn check(job: &Value, report: &Report) -> Result<()> {
             let rebuild: kah_core::run_store::RuleRebuild =
                 serde_json::from_value(job["rebuild"].clone())?;
             candidate.validate_report(&rebuild.input, rebuild.previous.as_ref())?;
+            super::precedence::check(candidate, &rebuild.input)?;
         }
         (Answer::Rules { rules }, Some("rules")) => {
             let items: Vec<Item> = serde_json::from_value(job["items"].clone())?;
@@ -89,7 +90,7 @@ pub fn schema(stage: &str) -> Value {
         value["checkability_criterion"] = CHECKABILITY.into();
         value["result"]["candidate"] = serde_json::json!({
             "schema_version":1,"input_digest":"copy option1.input_digest","previous_digest":"copy rebuild.previous_digest (null on first set)",
-            "rules":[{"id":"stable rule id","predicate":"literal whole rule","scope":"explicit scope","diff_checkable":true,"clauses":["clause id"],"permissions":[{"source":"source id","start":"UTF-8 byte offset","end":"UTF-8 byte offset","quote":"exact exception words"}]}],
+            "rules":[{"id":"stable rule id","predicate":"literal whole rule","scope":"explicit scope","diff_checkable":true,"kind":"prohibition|obligation|per_commit_obligation","clauses":["clause id"],"permissions":[{"source":"source id","start":"UTF-8 byte offset","end":"UTF-8 byte offset","quote":"exact exception words"}]}],
             "clauses":[{"id":"unique clause id","words":{"source":"source id","start":"UTF-8 byte offset","end":"UTF-8 byte offset","quote":"exact source words"},"disposition":"contributes|merged|superseded|expired_under_condition|withdrawn|context|rejected_junk|unresolved_conflict","reason":"source-grounded reason","rules":["linked rule id"],"witnesses":[]}]
         });
     }

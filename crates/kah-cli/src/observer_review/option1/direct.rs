@@ -118,7 +118,7 @@ fn from_sources(
         source_words:sources.iter().map(|s|(s.id.clone(),s.text.clone())).collect(),
         rules:sources.iter().filter(|s|!s.text.trim().is_empty()).map(|s|Rule {
             id:format!("source:{}",s.id),predicate:s.text.clone(),scope:"Unvalidated source: determine applicability from its exact History lifecycle and standing scope; historical context is not a new current obligation".into(),
-            diff_checkable:false,sources:vec![Link {source_id:s.id.clone(),quote:s.text.clone()}],permissions:vec![],
+            diff_checkable:false,sources:vec![Link {source_id:s.id.clone(),quote:s.text.clone()}],permissions:vec![],kind:Default::default(),
         }).collect(),
     }
 }

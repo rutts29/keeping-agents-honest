@@ -1,5 +1,6 @@
 //! Source-linked predicates plus exact whole-file Git patches; no per-commit matrix.
 use crate::Result;
+use kah_core::current_rules::RuleKind;
 use kah_observer::{
     commit_check::{self, Authority, CodeFile, Hunk, Input, Rule},
     rule_source::Resolved,
@@ -23,6 +24,7 @@ pub fn build(
     let (hunks, files) = files(context, head)?;
     let hunk_ids = hunks.keys().cloned().collect::<BTreeSet<_>>();
     let selected = select(&mut intent, rules, checkpoint, &hunk_ids)?;
+    let deferred = deferred_obligations(rules, checkpoint);
     let mut input = Input {
         revision: head.into(),
         baseline: context["baseline_tree"].as_str().map(str::to_owned),
@@ -41,10 +43,27 @@ pub fn build(
             .revision
     );
     input.carried["binary_sources"] = super::binary::descriptors(context);
-    if checkpoint || input.rules.is_empty() {
+    if !deferred.is_empty() {
+        input.carried["deferred_obligations"] = json!({"rules":deferred,
+            "reason":"An obligation is judged on the delivered change at the completion or checkpoint review, not on this intermediate commit."});
+    }
+    // Deferred obligations are pending, not absent: no goal rows on this commit.
+    if checkpoint || input.rules.is_empty() && deferred.is_empty() {
         completion_requirements(history, &mut input);
     }
     Ok(input)
+}
+/// Obligations judged on the delivered change: kept out of a per-commit review.
+fn deferred_obligations(rules: &Resolved, checkpoint: bool) -> Vec<String> {
+    if checkpoint {
+        return vec![];
+    }
+    rules
+        .rules
+        .iter()
+        .filter(|r| r.diff_checkable && r.kind == RuleKind::Obligation)
+        .map(|r| r.id.clone())
+        .collect()
 }
 /// Native startup can precede intake's first accepted History. Preserve standing
 /// words; absence of a ledger is a controller fact, never a fabricated goal.
@@ -167,7 +186,7 @@ fn select(
 ) -> Result<BTreeMap<String, Rule>> {
     let mut selected = BTreeMap::new();
     for rule in &rules.rules {
-        if !rule.diff_checkable && !checkpoint {
+        if !checkpoint && (!rule.diff_checkable || rule.kind == RuleKind::Obligation) {
             continue;
         }
         for link in &rule.sources {
@@ -182,12 +201,13 @@ fn select(
             }
         }
         let authority = install(intent, rule);
+        let prohibition = rule.kind == RuleKind::Prohibition;
         selected.insert(
             rule.id.clone(),
             Rule {
                 authority,
-                unconditional_prohibition: true,
-                prohibition: true,
+                unconditional_prohibition: prohibition,
+                prohibition,
                 literal_check: rule.diff_checkable,
                 hunks: hunk_ids.clone(),
             },

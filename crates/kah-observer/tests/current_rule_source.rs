@@ -65,6 +65,7 @@ fn candidate(input: &Input, previous: Option<&ValidatedSet>) -> RuleSet {
                 predicate: c.words.quote.clone(),
                 scope: "changed code in this project".into(),
                 diff_checkable: true,
+                kind: Some(kah_core::current_rules::RuleKind::Prohibition),
                 clauses: vec![c.id.clone()],
                 permissions: vec![],
             })

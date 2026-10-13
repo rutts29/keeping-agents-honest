@@ -14,6 +14,7 @@ pub mod fold;
 pub mod input;
 pub mod journal;
 pub mod native;
+pub mod precedence;
 pub mod prompt;
 pub mod protocol;
 pub mod report_scope;

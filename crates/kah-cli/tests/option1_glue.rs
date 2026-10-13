@@ -44,6 +44,7 @@ fn source() -> Resolved {
             id: "rule-whole".into(),
             predicate: "Never cut evidence.".into(),
             diff_checkable: true,
+            kind: Default::default(),
             scope: String::new(),
             permissions: vec![],
             sources: vec![Link {

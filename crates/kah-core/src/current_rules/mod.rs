@@ -34,12 +34,27 @@ pub struct Clause {
     pub rules: Vec<String>,
     pub witnesses: Vec<Words>,
 }
+/// When a rule is judged. A prohibition is checked on every commit. An
+/// obligation is judged on the delivered change, unless its words or the user
+/// say per commit.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleKind {
+    #[default]
+    Prohibition,
+    Obligation,
+    PerCommitObligation,
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Rule {
     pub id: String,
     pub predicate: String,
     pub scope: String,
     pub diff_checkable: bool,
+    /// Absent in sets stored before rule kinds; absent means prohibition, and
+    /// stays absent so stored set digests do not change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<RuleKind>,
     pub clauses: Vec<String>,
     /// Only exact permission/exception words linked to this rule.
     pub permissions: Vec<Words>,

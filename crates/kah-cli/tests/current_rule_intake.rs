@@ -103,6 +103,7 @@ fn candidate(r: &kah_core::run_store::RuleRebuild) -> RuleSet {
             predicate: c.words.quote.clone(),
             scope: "original source scope".into(),
             diff_checkable: true,
+            kind: Some(kah_core::current_rules::RuleKind::Prohibition),
             clauses: vec![c.id.clone()],
             permissions: vec![],
         })
@@ -203,6 +204,7 @@ fn legacy_delegate_records_cannot_support_rules_even_if_the_model_calls_them_use
         predicate: clause.words.quote.clone(),
         scope: "claimed user scope".into(),
         diff_checkable: true,
+        kind: Some(kah_core::current_rules::RuleKind::Prohibition),
         clauses: vec![clause.id.clone()],
         permissions: vec![],
     });

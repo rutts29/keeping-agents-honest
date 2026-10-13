@@ -22,6 +22,8 @@ pub struct Rule {
     pub scope: String,
     #[serde(default)]
     pub permissions: Vec<Link>,
+    #[serde(default)]
+    pub kind: kah_core::current_rules::RuleKind,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Resolved {
@@ -60,6 +62,7 @@ impl Source for RuleList {
                     diff_checkable: r.diff_checkable,
                     scope: String::new(),
                     permissions: vec![],
+                    kind: Default::default(),
                     sources: vec![Link {
                         source_id: r.source_intent_id.clone(),
                         quote: r.source_quote.clone(),
