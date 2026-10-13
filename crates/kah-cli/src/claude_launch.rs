@@ -16,6 +16,8 @@ pub fn prepare_project(home: &Path, project: Project, args: Arguments) -> Result
     validate(&args, project.domain != Domain::Mine)?;
     if project.needs_creation {
         project.initialize()?;
+    } else if project.ensure_identity()? {
+        eprintln!("kah set git user.name/email for this project from your global config");
     }
     let binary = home.join(".local/bin/claude");
     binary

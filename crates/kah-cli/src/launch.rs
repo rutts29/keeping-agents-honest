@@ -34,6 +34,8 @@ impl Launch {
         args.validate_native(project.domain)?;
         if project.needs_creation {
             project.initialize()?;
+        } else if project.ensure_identity()? {
+            eprintln!("kah set git user.name/email for this project from your global config");
         }
         let cwd = project.root.join(&project.relative_cwd);
         let restricted = project.domain != Domain::Mine;

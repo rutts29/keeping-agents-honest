@@ -39,3 +39,97 @@ fn initialize_leaves_guidance_uncommitted_and_never_reinitializes_an_existing_pr
             .success()
     );
 }
+
+fn git(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn existing(f: &Fixture, domain: Domain, dir: &str, name: &str) -> Project {
+    let root = f.0.join(dir).join(name);
+    fs::create_dir_all(&root).unwrap();
+    assert!(
+        Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["init", "-q"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    Project::select(&f.0, &root, Some((domain, name))).unwrap()
+}
+
+fn global_config(f: &Fixture, body: &str) -> PathBuf {
+    let path = f.0.join("gitconfig");
+    fs::write(&path, body).unwrap();
+    path
+}
+
+const GLOBAL: &str =
+    "[user]\n\tname = Global Me\n\temail = me@example.com\n[credential]\n\thelper = store\n";
+
+#[test]
+fn existing_research_repo_without_identity_gets_only_the_global_identity() {
+    let f = Fixture(std::env::temp_dir().join(format!("kah-ident-a-{}", std::process::id())));
+    let project = existing(&f, Domain::Research, "research", "demo");
+    let global = global_config(&f, GLOBAL);
+    assert!(project.ensure_identity_from(&global).unwrap());
+    assert_eq!(
+        git(&project.root, &["config", "--local", "user.name"]),
+        "Global Me"
+    );
+    assert_eq!(
+        git(&project.root, &["config", "--local", "user.email"]),
+        "me@example.com"
+    );
+    assert_eq!(
+        git(&project.root, &["config", "--local", "credential.helper"]),
+        ""
+    );
+    assert!(!project.ensure_identity_from(&global).unwrap());
+}
+
+#[test]
+fn existing_local_identity_is_never_overwritten() {
+    let f = Fixture(std::env::temp_dir().join(format!("kah-ident-b-{}", std::process::id())));
+    let project = existing(&f, Domain::Research, "research", "demo");
+    git(&project.root, &["config", "user.name", "Local Me"]);
+    git(
+        &project.root,
+        &["config", "user.email", "local@example.com"],
+    );
+    let global = global_config(&f, GLOBAL);
+    assert!(!project.ensure_identity_from(&global).unwrap());
+    assert_eq!(
+        git(&project.root, &["config", "--local", "user.name"]),
+        "Local Me"
+    );
+    assert_eq!(
+        git(&project.root, &["config", "--local", "user.email"]),
+        "local@example.com"
+    );
+}
+
+#[test]
+fn mine_repo_is_untouched() {
+    let f = Fixture(std::env::temp_dir().join(format!("kah-ident-c-{}", std::process::id())));
+    let project = existing(&f, Domain::Mine, "mine", "demo");
+    let global = global_config(&f, GLOBAL);
+    assert!(!project.ensure_identity_from(&global).unwrap());
+    assert_eq!(git(&project.root, &["config", "--local", "user.name"]), "");
+}
+
+#[test]
+fn missing_global_identity_changes_nothing_and_does_not_fail() {
+    let f = Fixture(std::env::temp_dir().join(format!("kah-ident-d-{}", std::process::id())));
+    let project = existing(&f, Domain::Untrusted, "untrusted", "demo");
+    let global = global_config(&f, "");
+    assert!(!project.ensure_identity_from(&global).unwrap());
+    assert_eq!(git(&project.root, &["config", "--local", "user.name"]), "");
+}

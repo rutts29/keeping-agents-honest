@@ -3,6 +3,7 @@ use std::{
     fs::{DirBuilder, OpenOptions},
     io::Write,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt, symlink},
+    path::Path,
     process::{Command, Output},
 };
 
@@ -36,20 +37,51 @@ impl Project {
         if self.domain != Domain::Mine {
             self.git(&["config", "core.sharedRepository", "group"])?;
         }
+        self.copy_missing_identity(None)?;
+        Ok(())
+    }
+
+    /// Sandboxed commands cannot see ~/.gitconfig. Copy only the user's global
+    /// name and email into the project's local config, and only where the
+    /// local config has none. Mine runs on the host and is left alone.
+    /// Returns true when anything was written.
+    pub fn ensure_identity(&self) -> Result<bool, Error> {
+        if self.domain == Domain::Mine {
+            return Ok(false);
+        }
+        self.copy_missing_identity(None)
+    }
+
+    fn copy_missing_identity(&self, global: Option<&Path>) -> Result<bool, Error> {
+        let mut changed = false;
         for key in ["user.name", "user.email"] {
-            let output = Command::new("git")
+            let local = self.git(&["config", "--local", "--get", key]);
+            if local.is_ok_and(|o| !o.stdout.trim_ascii().is_empty()) {
+                continue;
+            }
+            let mut read = Command::new("git");
+            if let Some(path) = global {
+                read.env("GIT_CONFIG_GLOBAL", path);
+            }
+            let output = read
                 .args(["config", "--global", "--get", key])
                 .output()
                 .map_err(init_error)?;
-            if output.status.success() {
-                self.git(&[
-                    "config",
-                    key,
-                    String::from_utf8_lossy(&output.stdout).trim(),
-                ])?;
+            let value = String::from_utf8_lossy(&output.stdout);
+            if output.status.success() && !value.trim().is_empty() {
+                self.git(&["config", "--local", key, value.trim()])?;
+                changed = true;
             }
         }
-        Ok(())
+        Ok(changed)
+    }
+
+    #[doc(hidden)]
+    pub fn ensure_identity_from(&self, global: &Path) -> Result<bool, Error> {
+        if self.domain == Domain::Mine {
+            return Ok(false);
+        }
+        self.copy_missing_identity(Some(global))
     }
 
     fn write_guidance(&self) -> Result<(), Error> {
