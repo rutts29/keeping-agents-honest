@@ -23,6 +23,7 @@ pub mod launch;
 pub mod light_commit;
 pub mod light_report;
 pub mod liveness;
+pub mod native_receipt;
 pub mod option1;
 pub mod packet_references;
 pub mod preparation;

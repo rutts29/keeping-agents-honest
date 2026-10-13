@@ -5,6 +5,10 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if review::service::blocked(worker)? {
         return Ok(());
     }
+    review::native_receipt::ensure(worker)?;
+    retry_bound(worker)
+}
+fn retry_bound(worker: &str) -> Result<()> {
     let _waiting = review::liveness::waiting(worker)?;
     let store = Store::open_wait(worker)?;
     let Some(mut state) = store.load()? else {

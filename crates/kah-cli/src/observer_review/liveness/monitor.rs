@@ -20,6 +20,12 @@ pub fn run(worker: &str) -> Result<()> {
     if super::super::service::blocked(worker)? {
         return Ok(());
     }
+    super::super::native_receipt::ensure(worker)?;
+    super::super::provider_block::observe(worker)?;
+    super::super::runtime::require_active(worker)?;
+    sample_bound(worker)
+}
+fn sample_bound(worker: &str) -> Result<()> {
     let root = Store::directory(worker)?.join("liveness");
     let _lock = match Store::delivery_at(&root, false) {
         Ok(lock) => lock,

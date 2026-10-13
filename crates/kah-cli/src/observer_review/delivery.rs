@@ -182,6 +182,11 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
     let marker = prompt_marker(prompt, &pending.id, &active)?;
     let started = Instant::now();
     loop {
+        if let Err(error) = super::native_receipt::ensure(&state.worker.session)
+            && !error.to_string().starts_with("REVIEW_NATIVE_UNBOUND")
+        {
+            return Err(error);
+        }
         let current =
             Store::read(&state.worker.session)?.ok_or("REVIEW_STATE_MISSING stage=delivery")?;
         if current.observer.session.is_some()
@@ -209,7 +214,7 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
                 "cold launch: native binding absent",
                 &screen(&current)?,
             )?;
-            return Err("REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: cold native binding absent; request retained".into());
+            return Err("REVIEW_NATIVE_UNBOUND stage=observer_binding: no verified native receipt; request retained without redelivery".into());
         }
         runtime::require_active(&state.worker.session)?;
         std::thread::sleep(Duration::from_millis(100));
