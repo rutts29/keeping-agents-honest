@@ -116,15 +116,16 @@ fn per_invocation_settings_preserve_hooks_and_argument_boundaries() {
     .unwrap();
     fs::set_permissions(&native, fs::Permissions::from_mode(0o700)).unwrap();
     invocation::install(&path, &native);
-    let output = Command::new(path.join(".local/bin/claude"))
-        .args([
+    let output = invocation::output_retrying_text_file_busy(|| {
+        let mut command = Command::new(path.join(".local/bin/claude"));
+        command.args([
             "--settings",
             r#"{"hooks":{"Stop":[{"fixture":true}]}}"#,
             "--",
             "prompt with 'quotes' $literal",
-        ])
-        .output()
-        .unwrap();
+        ]);
+        command
+    });
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
     let lines = text.lines().collect::<Vec<_>>();
