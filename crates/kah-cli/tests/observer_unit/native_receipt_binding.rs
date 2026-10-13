@@ -409,3 +409,97 @@ fn a_later_report_without_its_exact_native_request_receipt_stays_unbound() {
     assert!(!root.join("review/report-ready.json").exists());
     std::fs::remove_dir_all(root).unwrap();
 }
+
+fn launched_views(state: &crate::observer_review::state::State) -> [serde_json::Value; 3] {
+    let cwd = &state.observer.workspace;
+    [
+        json!({"pane_id":"w999:p1","agent":null,"foreground_cwd":cwd}),
+        json!({"pane_id":"w999:p1","agent":"codex","foreground_cwd":cwd}),
+        json!({"pane_id":"w999:p1","agent":"codex","foreground_cwd":cwd,
+            "agent_session":{"kind":"id","source":"herdr:codex","value":SESSION}}),
+    ]
+}
+
+#[test]
+fn a_launching_observer_binds_through_its_shell_and_unpublished_session_phases() {
+    let (store, state, _) = binding_fixture();
+    let [shell, unpublished, published] = launched_views(&state);
+    assert_eq!(
+        recovery::starting(&state, &shell),
+        Some("native agent not yet detected")
+    );
+    assert_eq!(
+        recovery::starting(&state, &unpublished),
+        Some("native session not yet published")
+    );
+    assert_eq!(recovery::starting(&state, &published), None);
+    assert_eq!(recovery::pane_session(&state, &published).unwrap(), SESSION);
+    // Each first-seen phase restarts the cold window; repeats and other errors do not.
+    let mut seen = Vec::new();
+    let phase = format!("{STARTING} stage=observer_binding: native agent not yet detected");
+    assert_eq!(startup_progress(&mut seen, &phase), Some(true));
+    assert_eq!(startup_progress(&mut seen, &phase), Some(false));
+    let unbound =
+        "REVIEW_NATIVE_UNBOUND stage=observer_binding: exact request has no native receipt yet";
+    assert_eq!(startup_progress(&mut seen, &unbound), Some(true));
+    assert_eq!(
+        startup_progress(&mut seen, &"REVIEW_STATE_MISSING stage=delivery"),
+        None
+    );
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_different_agent_cwd_process_or_bound_session_is_never_starting() {
+    let (store, mut state, _) = binding_fixture();
+    let [shell, unpublished, published] = launched_views(&state);
+    let mut other = unpublished.clone();
+    other["agent"] = json!("claude");
+    assert_eq!(recovery::starting(&state, &other), None);
+    let field = crate::observer_review::control::pane_mismatch(&state, &other).unwrap();
+    assert_eq!(
+        (field["field"].clone(), field["observed"].clone()),
+        (json!("agent"), json!("claude"))
+    );
+    for view in [&shell, &unpublished] {
+        let mut outside = view.clone();
+        outside["foreground_cwd"] = json!("/");
+        assert_eq!(recovery::starting(&state, &outside), None);
+    }
+    let mut wrong = published.clone();
+    wrong["agent_session"]["source"] = json!("pid-file");
+    assert_eq!(recovery::starting(&state, &wrong), None);
+    let error = recovery::pane_session(&state, &wrong)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.ends_with("pane identity is not the owned native observer: agent_session"),
+        "{error}"
+    );
+    let saved: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(store.directory.join("identity-mismatch.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved["observed"]["source"], "pid-file");
+    assert_eq!(saved["check"], "pane_session");
+    // A recorded process that no longer matches its stamp is a replacement.
+    state.observer.pid = Some(std::process::id());
+    state.observer.process_stamp = kah_observer::session::process_stamp(std::process::id());
+    assert!(crate::observer_review::control::pane_mismatch(&state, &unpublished).is_none());
+    state.observer.process_stamp = Some("replaced".into());
+    assert_eq!(recovery::starting(&state, &shell), None);
+    assert_eq!(
+        crate::observer_review::control::pane_mismatch(&state, &unpublished).unwrap()["field"],
+        "process_stamp"
+    );
+    // Once a session is bound, startup phases are mismatches again.
+    state.observer.pid = None;
+    state.observer.session = Some(SESSION.into());
+    assert_eq!(recovery::starting(&state, &shell), None);
+    assert_eq!(recovery::starting(&state, &unpublished), None);
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}

@@ -183,12 +183,14 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
         .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
     let active = super::preparation::active_decision(&state.worker.session, &pending.id)?;
     let marker = prompt_marker(prompt, &pending.id, &active)?;
-    let started = Instant::now();
+    let (mut started, mut seen) = (Instant::now(), Vec::new());
     loop {
-        if let Err(error) = super::native_receipt::ensure(&state.worker.session)
-            && !error.to_string().starts_with("REVIEW_NATIVE_UNBOUND")
-        {
-            return Err(error);
+        if let Err(error) = super::native_receipt::ensure(&state.worker.session) {
+            match super::native_receipt::startup_progress(&mut seen, &error) {
+                None => return Err(error),
+                Some(true) => started = Instant::now(),
+                Some(false) => (),
+            }
         }
         let current =
             Store::read(&state.worker.session)?.ok_or("REVIEW_STATE_MISSING stage=delivery")?;

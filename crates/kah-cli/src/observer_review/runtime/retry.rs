@@ -5,7 +5,9 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if review::service::blocked(worker)? {
         return Ok(());
     }
-    review::native_receipt::ensure(worker)?;
+    if !review::native_receipt::ensure_started(worker)? {
+        return Ok(());
+    }
     retry_bound(worker)
 }
 fn retry_bound(worker: &str) -> Result<()> {

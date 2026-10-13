@@ -20,7 +20,9 @@ pub fn run(worker: &str) -> Result<()> {
     if super::super::service::blocked(worker)? {
         return Ok(());
     }
-    super::super::native_receipt::ensure(worker)?;
+    if !super::super::native_receipt::ensure_started(worker)? {
+        return Ok(());
+    }
     super::super::provider_block::observe(worker)?;
     super::super::runtime::require_active(worker)?;
     sample_bound(worker)

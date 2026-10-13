@@ -31,18 +31,21 @@ pub fn ensure(worker: &str) -> Result<()> {
         }
         return continue_ready(worker, acknowledge_bound(&state)?);
     }
-    review::control::owned_pane(&state).map_err(unbound)?;
     let pane = state
         .observer
         .pane
         .as_deref()
-        .ok_or_else(|| unbound("owned pane missing"))?;
+        .ok_or_else(|| unbound("REVIEW_PANE_MISSING stage=observer"))?;
     let socket = state
         .worker
         .socket
         .as_deref()
-        .ok_or_else(|| unbound("owned socket missing"))?;
+        .ok_or_else(|| unbound("REVIEW_HERDR_REQUIRED stage=observer"))?;
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
+    if let Some(phase) = starting(&state, &view["result"]["pane"]) {
+        return Err(format!("{} stage=observer_binding: {phase}", super::STARTING).into());
+    }
+    review::control::owned_pane(&state).map_err(unbound)?;
     let session = pane_session(&state, &view["result"]["pane"])?;
     let (path, proof) = read_proof(&state, &session)?;
     // Recheck ownership after reading: neither a replaced pane nor newer request
@@ -93,16 +96,58 @@ fn recheck_bound_pane(state: &State) -> Result<()> {
     pane_session(state, &view["result"]["pane"])?;
     Ok(())
 }
-pub(super) fn pane_session(state: &State, pane: &Value) -> Result<String> {
-    if pane["pane_id"].as_str() != state.observer.pane.as_deref()
-        || pane["agent"] != "codex"
-        || pane["agent_session"]["source"] != "herdr:codex"
-        || pane["agent_session"]["kind"] != "id"
+fn session_mismatch(state: &State, pane: &Value) -> Option<Value> {
+    let field = |field: &str, observed: &Value, expected: Value| {
+        Some(json!({"field":field,"observed":observed,"expected":expected}))
+    };
+    let session = &pane["agent_session"];
+    if pane["pane_id"].as_str() != state.observer.pane.as_deref() {
+        return field("pane_id", &pane["pane_id"], json!(state.observer.pane));
+    }
+    if pane["agent"] != "codex" {
+        return field("agent", &pane["agent"], json!("codex"));
+    }
+    if session["source"] != "herdr:codex" || session["kind"] != "id" {
+        return field(
+            "agent_session",
+            session,
+            json!({"source":"herdr:codex","kind":"id"}),
+        );
+    }
+    pane["foreground_cwd"]
+        .as_str()
+        .is_none_or(|s| !review::control::contains_workspace(&state.observer.workspace, s))
+        .then(|| json!({"field":"foreground_cwd","observed":pane["foreground_cwd"],"expected":state.observer.workspace}))
+}
+/// Before any native session is bound, the pane kah launched first shows its
+/// shell (no agent yet), then Codex before Herdr publishes the session id.
+/// Neither confers a binding and neither is a replacement. Any other identity,
+/// a cwd outside the workspace or a changed process stays a mismatch.
+pub(super) fn starting(state: &State, pane: &Value) -> Option<&'static str> {
+    if state.observer.session.is_some()
+        || pane["pane_id"].as_str() != state.observer.pane.as_deref()
         || pane["foreground_cwd"]
             .as_str()
             .is_none_or(|s| !review::control::contains_workspace(&state.observer.workspace, s))
+        || state.observer.pid.is_some_and(|pid| {
+            kah_observer::session::process_stamp(pid) != state.observer.process_stamp
+        })
     {
-        return Err(unbound("pane identity is not the owned native observer"));
+        return None;
+    }
+    if pane["agent"].is_null() {
+        return Some("native agent not yet detected");
+    }
+    (pane["agent"] == "codex" && pane["agent_session"].is_null())
+        .then_some("native session not yet published")
+}
+pub(super) fn pane_session(state: &State, pane: &Value) -> Result<String> {
+    if let Some(mismatch) = session_mismatch(state, pane) {
+        review::control::record_mismatch(state, "pane_session", &mismatch);
+        return Err(unbound(format!(
+            "pane identity is not the owned native observer: {}",
+            mismatch["field"].as_str().unwrap_or("identity")
+        )));
     }
     let id = pane["agent_session"]["value"]
         .as_str()

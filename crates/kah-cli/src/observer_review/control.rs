@@ -182,18 +182,50 @@ pub fn owned_pane(state: &State) -> Result<crate::run_pane::Pane> {
         .as_deref()
         .ok_or("REVIEW_HERDR_REQUIRED stage=observer")?;
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
-    let view = &view["result"]["pane"];
-    if view["agent"] != state.worker.provider
-        || !view["foreground_cwd"]
-            .as_str()
-            .is_some_and(|p| contains_workspace(&state.observer.workspace, p))
-        || state.observer.pid.is_some_and(|pid| {
-            kah_observer::session::process_stamp(pid) != state.observer.process_stamp
-        })
-    {
-        return Err("REVIEW_PANE_REPLACED stage=observer".into());
+    if let Some(mismatch) = pane_mismatch(state, &view["result"]["pane"]) {
+        record_mismatch(state, "owned_pane", &mismatch);
+        return Err(format!(
+            "REVIEW_PANE_REPLACED stage=observer: {}",
+            mismatch["field"].as_str().unwrap_or("identity")
+        )
+        .into());
     }
     Ok(crate::run_pane::Pane { id: pane.into() })
+}
+/// Names the first failed ownership check with its observed and expected value.
+pub fn pane_mismatch(state: &State, view: &Value) -> Option<Value> {
+    let workspace = &state.observer.workspace;
+    if view["agent"] != state.worker.provider {
+        return Some(
+            json!({"field":"agent","observed":view["agent"],"expected":state.worker.provider}),
+        );
+    }
+    if !view["foreground_cwd"]
+        .as_str()
+        .is_some_and(|p| contains_workspace(workspace, p))
+    {
+        return Some(
+            json!({"field":"foreground_cwd","observed":view["foreground_cwd"],"expected":workspace}),
+        );
+    }
+    let pid = state.observer.pid?;
+    let observed = kah_observer::session::process_stamp(pid);
+    (observed != state.observer.process_stamp).then(|| {
+        json!({"field":"process_stamp","pid":pid,"observed":observed,"expected":state.observer.process_stamp})
+    })
+}
+/// Keeps the failed identity field and values out of the stable error text, so
+/// watch-error deduplication and reviewer notices do not vary with them.
+pub fn record_mismatch(state: &State, check: &str, mismatch: &Value) {
+    let Ok(root) = Store::directory(&state.worker.session) else {
+        return;
+    };
+    let mut record = mismatch.clone();
+    record["check"] = json!(check);
+    record["pane"] = json!(state.observer.pane);
+    record["at_ms"] = json!(kah_observer::session::now_ms());
+    // Diagnostics must never mask the identity error itself.
+    let _ = crate::unattended_report::save(&root, "identity-mismatch.json", &record);
 }
 pub fn contains_workspace(root: &std::path::Path, cwd: &str) -> bool {
     PathBuf::from(cwd)
