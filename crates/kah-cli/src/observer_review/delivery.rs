@@ -157,12 +157,7 @@ pub fn in_progress(state: &State) -> Result<bool> {
     let Some(pending) = &state.pending else {
         return Ok(false);
     };
-    let (socket, _) = runtime::transport(state)?;
-    let Some(pane) = state.observer.pane.as_deref() else {
-        return Ok(false);
-    };
-    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
-    if view["result"]["pane"]["agent_status"] != "working" {
+    if !native_working(state)? {
         return Ok(false);
     }
     let decision = super::preparation::active_decision(&state.worker.session, &pending.id)?;
@@ -170,6 +165,14 @@ pub fn in_progress(state: &State) -> Result<bool> {
         super::request_context::capture(state, &serde_json::json!({"hook_event_name":"Stop"}))?
             .is_some_and(|context| context.bound_to(&pending.id, &decision)),
     )
+}
+pub fn native_working(state: &State) -> Result<bool> {
+    let (socket, _) = runtime::transport(state)?;
+    let Some(pane) = state.observer.pane.as_deref() else {
+        return Ok(false);
+    };
+    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
+    Ok(view["result"]["pane"]["agent_status"] == "working")
 }
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
 /// record prove it; an idle client with no receipt gets the same original wake.
@@ -372,4 +375,18 @@ fn prompt_marker(prompt: &str, review: &str, active: &str) -> Result<String> {
         }
     }
     Err("REVIEW_PROMPT_BINDING stage=delivery: wake names neither owning review nor active decision".into())
+}
+
+/// A live native turn or an unbound submission belongs to recovery, never resend.
+pub fn retry_held(state: &State, native_active: bool) -> bool {
+    native_active
+        || (state.observer.session.is_none() || state.observer.transcript.is_none())
+            && state.pending.as_ref().is_some_and(|p| {
+                state
+                    .observer
+                    .workspace
+                    .join("outbox")
+                    .join(format!("submitted-{}.json", p.id))
+                    .is_file()
+            })
 }

@@ -151,6 +151,9 @@ fn working(store: &Store, state: &State, request: &str, gap: &Path) -> Result<bo
         review::hook::spawn("__review-consume", &state.worker.session)?;
         return Ok(true);
     }
+    if review::delivery::retry_held(state, review::delivery::native_working(state)?) {
+        return Ok(true);
+    }
     if !review::delivery::in_progress(state).unwrap_or(false) {
         return Ok(false);
     }

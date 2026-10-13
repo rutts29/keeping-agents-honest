@@ -66,7 +66,7 @@ fn sample_bound(worker: &str) -> Result<()> {
     if !progress.stalled {
         return Ok(());
     }
-    if sample.native_active || sample.host_owned {
+    if super::super::delivery::retry_held(&state, sample.native_active) || sample.host_owned {
         // Advisory only. A human decides whether to interrupt a Working pane.
         return notify(&state, &progress);
     }
@@ -128,7 +128,7 @@ fn sample(state: &State) -> Result<Sample> {
     // Working can belong to the previous review's closing native turn. It is
     // not record progress, but still must never be automatically interrupted
     // or re-prompted while a later request waits for that pane.
-    let native_active = pane_working(state).unwrap_or(false);
+    let native_active = super::super::delivery::native_working(state).unwrap_or(false);
     let host_owned = super::awaiting_host(state)?;
     let mut controller_active = processing_active(&root, &pending.id)? && !host_owned;
     let outbox = state.observer.workspace.join("outbox");
@@ -170,14 +170,6 @@ fn sample(state: &State) -> Result<Sample> {
         report_version: super::host_progress::combined(&root, &outbox, &pending.id, &report)?,
         cause,
     })
-}
-fn pane_working(state: &State) -> Result<bool> {
-    let (socket, _) = super::super::runtime::transport(state)?;
-    let Some(pane) = state.observer.pane.as_deref() else {
-        return Ok(false);
-    };
-    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
-    Ok(view["result"]["pane"]["agent_status"] == "working")
 }
 pub(super) fn version(path: &Path) -> Option<(u64, u64)> {
     let meta = fs::metadata(path).ok()?;
@@ -371,7 +363,7 @@ fn validation_notice(state: &State, progress: &Progress) -> Result<()> {
     crate::unattended_report::save(&root, "gap.json", &gap)?;
     notify(state, progress)?;
     if super::super::redelivery::gap_retryable(&gap)
-        && !progress.sample.native_active
+        && !super::super::delivery::retry_held(state, progress.sample.native_active)
         && (!progress.sample.controller_active || host_expansion(&progress.sample))
     {
         super::super::hook::spawn("__review-retry", &state.worker.session)?;

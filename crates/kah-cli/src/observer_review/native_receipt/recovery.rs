@@ -21,10 +21,11 @@ pub fn ensure(worker: &str) -> Result<()> {
         return Ok(());
     }
     if state.observer.session.is_some() && state.observer.transcript.is_some() {
-        if Store::directory(worker)?
-            .join("native-binding-receipts")
-            .join(format!("{}.json", state.pending.as_ref().unwrap().id))
-            .is_file()
+        if submitted_without_ack(&state)?
+            || Store::directory(worker)?
+                .join("native-binding-receipts")
+                .join(format!("{}.json", state.pending.as_ref().unwrap().id))
+                .is_file()
         {
             recheck_bound_pane(&state)?;
         }
@@ -61,6 +62,20 @@ fn continue_ready(worker: &str, ready: bool) -> Result<()> {
         review::hook::spawn("__review-consume", worker)?;
     }
     Ok(())
+}
+fn submitted_without_ack(state: &State) -> Result<bool> {
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    let ready: Option<Value> =
+        review::state::read(&Store::directory(&state.worker.session)?.join("report-ready.json"))?;
+    Ok(!ready.is_some_and(|r| r["request"] == pending.id)
+        && state
+            .observer
+            .workspace
+            .join("outbox")
+            .join(format!("submitted-{}.json", pending.id))
+            .is_file())
 }
 fn recheck_bound_pane(state: &State) -> Result<()> {
     review::control::owned_pane(state).map_err(unbound)?;
@@ -195,6 +210,9 @@ fn read_proof(state: &State, session: &str) -> Result<(PathBuf, Proof)> {
     .binding;
     let path = locate(&binding.codex_home.join("sessions"), session)?
         .ok_or_else(|| unbound(format!("native rollout missing for {session}")))?;
+    proof_at(state, session, path)
+}
+fn proof_at(state: &State, session: &str, path: PathBuf) -> Result<(PathBuf, Proof)> {
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW)
@@ -203,8 +221,10 @@ fn read_proof(state: &State, session: &str) -> Result<(PathBuf, Proof)> {
     if !file.metadata()?.is_file() {
         return Err(unbound("native source is not a regular file"));
     }
-    let decision =
-        review::preparation::active_decision(worker, &state.pending.as_ref().unwrap().id)?;
+    let decision = review::preparation::active_decision(
+        &state.worker.session,
+        &state.pending.as_ref().unwrap().id,
+    )?;
     let marker = format!("kah review request {decision} ");
     let proof = verify(
         BufReader::new(file),
@@ -239,8 +259,27 @@ pub(super) fn acknowledge_bound(state: &State) -> Result<bool> {
             .join(format!("{}.json", pending.id)),
     )?;
     let Some(record) = record else {
-        return Ok(false);
+        let session = state
+            .observer
+            .session
+            .as_deref()
+            .ok_or_else(|| unbound("bound native session missing"))?;
+        let path = state
+            .observer
+            .transcript
+            .clone()
+            .ok_or_else(|| unbound("bound native source missing"))?;
+        let (path, proof) = proof_at(state, session, path)?;
+        return persist(state, &path, &proof);
     };
+    let (path, proof) = saved_proof(state, &record)?;
+    persist(state, &path, &proof)
+}
+fn saved_proof(state: &State, record: &Value) -> Result<(PathBuf, Proof)> {
+    let pending = state
+        .pending
+        .as_ref()
+        .ok_or_else(|| unbound("pending request missing"))?;
     if record["request"] != pending.id
         || record["session"].as_str() != state.observer.session.as_deref()
         || record["pane"].as_str() != state.observer.pane.as_deref()
@@ -267,5 +306,5 @@ pub(super) fn acknowledge_bound(state: &State) -> Result<bool> {
     if proof.metadata_digest != old.metadata_digest || proof.receipt_digest != old.receipt_digest {
         return Err(unbound("saved native source bytes changed"));
     }
-    persist(state, path, &proof)
+    Ok((path.clone(), proof))
 }

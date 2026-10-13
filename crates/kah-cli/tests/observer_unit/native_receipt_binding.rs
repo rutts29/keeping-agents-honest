@@ -265,3 +265,147 @@ fn submission_arriving_after_native_binding_is_acknowledged_without_a_callback()
     drop(store);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn warm_submission_gets_its_own_receipt_after_the_first_request_was_consumed() {
+    let (store, state, path) = binding_fixture();
+    let worker = state.worker.session.clone();
+    let first = transcript().replace("/observer", state.observer.workspace.to_str().unwrap());
+    std::fs::write(&path, &first).unwrap();
+    let proof = verify(
+        Cursor::new(&first),
+        SESSION,
+        &state.observer.workspace,
+        &format!("kah review request {REQUEST} "),
+    )
+    .unwrap()
+    .unwrap();
+    drop(store);
+    recovery::persist(&state, &path, &proof).unwrap();
+    let store = crate::observer_review::state::Store::open(&worker).unwrap();
+    let mut bound = store.load().unwrap().unwrap();
+    let next = "review-1000000000016-1";
+    bound.pending.as_mut().unwrap().id = next.into();
+    store.save(&bound).unwrap();
+    let submitted = bound
+        .observer
+        .workspace
+        .join("outbox")
+        .join(format!("submitted-{next}.json"));
+    let bytes = serde_json::to_vec(&json!({"request":next})).unwrap();
+    std::fs::write(&submitted, &bytes).unwrap();
+    let later = first.lines().nth(1).unwrap().replace(REQUEST, next);
+    std::fs::write(&path, format!("{first}{later}\n")).unwrap();
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    assert!(
+        recovery::acknowledge_bound(&bound).unwrap(),
+        "later submitted request must hand off"
+    );
+    assert!(!recovery::acknowledge_bound(&bound).unwrap());
+    assert_eq!(std::fs::read(&submitted).unwrap(), bytes);
+    assert!(crate::observer_review::liveness::handoff::awaiting_host(&bound).unwrap());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn working_or_unbound_submitted_requests_are_never_visibly_redelivered() {
+    let (store, mut state, _) = binding_fixture();
+    assert!(crate::observer_review::delivery::retry_held(&state, true));
+    assert!(!crate::observer_review::delivery::retry_held(&state, false));
+    let submitted = state
+        .observer
+        .workspace
+        .join("outbox")
+        .join(format!("submitted-{REQUEST}.json"));
+    std::fs::write(&submitted, b"{}").unwrap();
+    assert!(crate::observer_review::delivery::retry_held(&state, false));
+    state.observer.session = Some(SESSION.into());
+    assert!(crate::observer_review::delivery::retry_held(&state, false));
+    state.observer.transcript = Some(store.directory.join("native.jsonl"));
+    assert!(!crate::observer_review::delivery::retry_held(&state, false));
+    std::fs::remove_dir_all(store.directory.parent().unwrap()).unwrap();
+}
+
+#[test]
+#[ignore = "private retained native corpus; no model or provider call"]
+fn retained_startup5_warm_submission_hands_off_existing_bytes() {
+    let root = std::path::PathBuf::from(std::env::var_os("KAH_STARTUP5_CORPUS").unwrap());
+    let session = "00000000-0000-4000-8000-100000000007";
+    let first = "review-1000000000015-1";
+    let next = "review-1000000000016-1";
+    let native = root.join(format!(
+        "home/.codex/sessions/2000/01/02/rollout-2000-01-02T00-00-00-{session}.jsonl"
+    ));
+    let text = std::fs::read_to_string(&native).unwrap();
+    assert_eq!(successful_submissions(&text, next), 4);
+    let (store, mut state, _) = binding_fixture();
+    state.observer.workspace = root.join("home/.cache/kah-observers/000000000000000000000003");
+    state.pending.as_mut().unwrap().id = first.into();
+    store.save(&state).unwrap();
+    let first_proof = verify(
+        Cursor::new(&text),
+        session,
+        &state.observer.workspace,
+        &format!("kah review request {first} "),
+    )
+    .unwrap()
+    .unwrap();
+    let worker = state.worker.session.clone();
+    drop(store);
+    recovery::persist(&state, &native, &first_proof).unwrap();
+    let store = crate::observer_review::state::Store::open(&worker).unwrap();
+    let mut bound = store.load().unwrap().unwrap();
+    bound.pending.as_mut().unwrap().id = next.into();
+    store.save(&bound).unwrap();
+    let submitted = bound
+        .observer
+        .workspace
+        .join("outbox")
+        .join(format!("submitted-{next}.json"));
+    let before = std::fs::read(&submitted).unwrap();
+    let private_root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    assert!(recovery::acknowledge_bound(&bound).unwrap());
+    assert!(crate::observer_review::liveness::handoff::awaiting_host(&bound).unwrap());
+    assert!(!recovery::acknowledge_bound(&bound).unwrap());
+    assert_eq!(std::fs::read(&submitted).unwrap(), before);
+    assert!(!private_root.join("review/hook-events").exists());
+    std::fs::remove_dir_all(private_root).unwrap();
+}
+
+fn successful_submissions(text: &str, request: &str) -> usize {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|row| {
+            row["type"] == "event_msg"
+                && row["payload"]["type"] == "task_complete"
+                && row["payload"]["last_agent_message"]
+                    .as_str()
+                    .is_some_and(|s| s.contains(request))
+        })
+        .count()
+}
+
+#[test]
+fn a_later_report_without_its_exact_native_request_receipt_stays_unbound() {
+    let (store, mut state, path) = binding_fixture();
+    state.observer.session = Some(SESSION.into());
+    state.observer.transcript = Some(path.clone());
+    state.pending.as_mut().unwrap().id = "review-not-delivered".into();
+    store.save(&state).unwrap();
+    let text = transcript().replace("/observer", state.observer.workspace.to_str().unwrap());
+    std::fs::write(&path, text).unwrap();
+    let submitted = state
+        .observer
+        .workspace
+        .join("outbox/submitted-review-not-delivered.json");
+    std::fs::write(&submitted, b"{}").unwrap();
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    let error = recovery::acknowledge_bound(&state).unwrap_err().to_string();
+    assert!(error.starts_with("REVIEW_NATIVE_UNBOUND"), "{error}");
+    assert!(std::fs::read(&submitted).is_ok());
+    assert!(!root.join("review/report-ready.json").exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
