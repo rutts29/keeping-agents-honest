@@ -58,3 +58,60 @@ fn retained_claude_checkpoint_report_creates_its_typed_snapshot_directory() {
     save_snapshot(&directory, &cumulative, &next).unwrap();
     fs::remove_dir_all(base).unwrap();
 }
+
+#[test]
+fn captured_055_scope_survives_live_910_head_without_mixing_code_intent_or_docs() {
+    let value: Value = serde_json::from_str(include_str!(
+        "../../../../docs/gates/evidence/phase3-explicit-scope/timeline.json"
+    ))
+    .unwrap();
+    let cumulative = scope_request(&value, "before", "captured_head");
+    let mut fresh = scope_request(&value, "after", "new_head");
+    fresh.id = "review-new-typed".into();
+    let next = prepare(&cumulative, fresh, &[]).unwrap();
+    assert_eq!(next.head, cumulative.head);
+    assert_eq!(next.intent, cumulative.intent);
+    assert_eq!(
+        serde_json::to_value(&next.documents[..cumulative.documents.len()]).unwrap(),
+        serde_json::to_value(&cumulative.documents).unwrap()
+    );
+    assert_eq!(next.worker, cumulative.worker);
+    assert_eq!(next.id, "review-new-typed");
+    assert_ne!(next.head, value["new_head"].as_str().map(str::to_owned));
+    assert!(next.trigger["option1"].is_null());
+    assert_eq!(
+        next.trigger["option1_cumulative_input"]["intent_revision"],
+        90
+    );
+}
+fn scope_request(value: &Value, body: &str, head: &str) -> Request {
+    Request {
+        id: "review-1700000000000-1".into(),
+        worker: value["worker"].as_str().unwrap().into(),
+        purpose: Purpose::Checkpoint,
+        turn: "scope-replay".into(),
+        head: value[head].as_str().map(str::to_owned),
+        // Explicit fixture intent: this tests whole-object identity, not a
+        // synthesized copy of the live History or new user authority.
+        intent: json!({"revision":90,"goal":"Retain the captured scope","items":[]}),
+        trigger: json!({"option1":{"original_trigger":{"kind":"native_phase_claim","review_class":"gate"}}}),
+        documents: value["documents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| {
+                Document::new(
+                    d["path"].as_str().unwrap(),
+                    "committed_source",
+                    &format!(
+                        "git:{}:{}",
+                        value[head].as_str().unwrap(),
+                        d["path"].as_str().unwrap()
+                    ),
+                    d[body].as_str().unwrap(),
+                )
+            })
+            .collect(),
+        created_ms: 1791850695198,
+    }
+}

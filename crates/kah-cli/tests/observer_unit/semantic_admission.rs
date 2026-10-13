@@ -242,7 +242,13 @@ fn stage_context(
 ) -> Request {
     let tree = code_fixture(root, request.head.as_deref().unwrap());
     let attach = |snapshot: &mut Request| {
-        semantic_resolution::append_code(&tree, request.head.as_deref().unwrap(), snapshot)?;
+        semantic_resolution::append_code(
+            &tree,
+            request.head.as_deref().unwrap(),
+            root,
+            &root.join("workspace"),
+            snapshot,
+        )?;
         snapshot.trigger["semantic_resolution"]["observer_session"] =
             "00000000-0000-4000-8000-100000000009".into();
         Ok(())

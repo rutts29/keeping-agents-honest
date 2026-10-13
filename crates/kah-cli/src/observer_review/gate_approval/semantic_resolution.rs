@@ -184,7 +184,13 @@ fn full_evidence(request: &Request, snapshot: &mut Request) -> Result<()> {
         .as_deref()
         .ok_or("REVIEW_GATE_HEAD_MISSING stage=semantic_resolution")?;
     let tree = super::checks::planned_candidate(&state, head, request)?;
-    append_code(&tree, head, snapshot)?;
+    append_code(
+        &tree,
+        head,
+        &Store::directory(&request.worker)?,
+        &state.observer.workspace,
+        snapshot,
+    )?;
     let proof = captured(request)?.ok_or("REVIEW_GATE_PROOF_MISSING stage=semantic_resolution")?;
     snapshot.documents.push(Document::new(
         "semantic-check-receipts",
@@ -198,6 +204,8 @@ fn full_evidence(request: &Request, snapshot: &mut Request) -> Result<()> {
 pub(super) fn append_code(
     tree: &kah_run::worktree::Worktree,
     head: &str,
+    private: &Path,
+    workspace: &Path,
     snapshot: &mut Request,
 ) -> Result<()> {
     for (path, blob) in crate::observer_review::artifact_collect::committed(&tree.path, head)? {
@@ -209,7 +217,17 @@ pub(super) fn append_code(
         let body = match String::from_utf8(bytes) {
             Ok(text) => json!({"path":path,"blob":blob,"text":text}),
             Err(error) => {
-                json!({"path":path,"blob":blob,"encoding":"bytes","bytes":error.into_bytes()})
+                let bytes = error.into_bytes();
+                let source = source_store::binary::store(private, &bytes)?;
+                let digest = source["$kah_source"]
+                    .as_str()
+                    .ok_or("REVIEW_SOURCE_ID stage=semantic_binary")?;
+                // Structural reachability lets the existing publisher expose
+                // only this complete blob in the current read-only source view.
+                snapshot.trigger["semantic_resolution"]["binary_sources"][&path] = source.clone();
+                json!({"path":path,"git_blob":blob,"encoding":"binary","size":bytes.len(),
+                    "sha256":digest,"source":source,"read_path":workspace.join("sources").join(digest),
+                    "read_command":"bin/kah observe read-blob READ_PATH > outbox/binary-source"})
             }
         };
         let id = format!("semantic-code-{:x}", Sha256::digest(path.as_bytes()));
