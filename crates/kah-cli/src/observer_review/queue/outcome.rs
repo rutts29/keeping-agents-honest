@@ -92,7 +92,7 @@ fn blocked(worker: &str, root: &Path, reason: &str) -> Result<()> {
                 &[
                     "agent",
                     "prompt",
-                    "kah-reviewer",
+                    crate::reviewer_agent::reviewer_agent(),
                     &format!("[kah-builder] {text}"),
                 ],
                 Some(&socket),

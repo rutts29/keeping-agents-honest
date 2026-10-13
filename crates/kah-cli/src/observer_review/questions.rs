@@ -176,7 +176,12 @@ pub fn deliver(worker: &str) -> Result<()> {
         .filter(|q| q["delivery"] != "submitted")
     {
         crate::run_pane::invoke_at(
-            &["agent", "prompt", "kah-reviewer", &message(&question)?],
+            &[
+                "agent",
+                "prompt",
+                crate::reviewer_agent::reviewer_agent(),
+                &message(&question)?,
+            ],
             Some(socket),
         )?;
         question["delivery"] = "submitted".into();

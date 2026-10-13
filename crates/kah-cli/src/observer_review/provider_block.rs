@@ -115,7 +115,7 @@ pub(super) fn reviewer(state: &Control, text: &str, root: &std::path::Path) -> R
             &[
                 "agent",
                 "prompt",
-                "kah-reviewer",
+                crate::reviewer_agent::reviewer_agent(),
                 &format!("[kah-builder] {text}"),
             ],
             Some(socket),

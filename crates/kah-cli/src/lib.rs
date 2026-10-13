@@ -30,6 +30,7 @@ pub mod relay_hook;
 pub mod relay_store;
 pub mod relay_transport;
 pub mod resume;
+pub mod reviewer_agent;
 pub mod session_policy;
 pub use arguments::Arguments;
 pub use launch::Launch;

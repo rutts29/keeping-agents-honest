@@ -103,7 +103,7 @@ fn notice(state: &State, epoch: Value, prior: Option<&Value>) -> Result<()> {
             &[
                 "agent",
                 "prompt",
-                "kah-reviewer",
+                crate::reviewer_agent::reviewer_agent(),
                 &format!("[kah-builder] [kah-observer-service] {text}"),
             ],
             Some(socket),

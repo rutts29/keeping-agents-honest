@@ -28,7 +28,15 @@ pub fn notify(state: &State) -> Result<()> {
         .as_deref()
         .ok_or_else(|| "REVIEW_HERDR_REQUIRED stage=notice".into())
         .and_then(|socket| {
-            crate::run_pane::invoke_at(&["agent", "prompt", "kah-reviewer", &text], Some(socket))
+            crate::run_pane::invoke_at(
+                &[
+                    "agent",
+                    "prompt",
+                    crate::reviewer_agent::reviewer_agent(),
+                    &text,
+                ],
+                Some(socket),
+            )
         });
     crate::unattended_report::save(
         &root,

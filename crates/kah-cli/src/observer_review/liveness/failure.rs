@@ -21,7 +21,15 @@ pub(super) fn record(worker: &str, error: &dyn std::fmt::Display) -> Result<()> 
             .socket
             .as_deref()
             .ok_or("REVIEW_HERDR_REQUIRED stage=watch_error")?;
-        crate::run_pane::invoke_at(&["agent", "prompt", "kah-reviewer", &text], Some(socket))
+        crate::run_pane::invoke_at(
+            &[
+                "agent",
+                "prompt",
+                crate::reviewer_agent::reviewer_agent(),
+                &text,
+            ],
+            Some(socket),
+        )
     });
     crate::unattended_report::save(
         &root,
