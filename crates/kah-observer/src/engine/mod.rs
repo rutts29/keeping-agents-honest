@@ -148,6 +148,12 @@ pub fn projection_wait(state: &State) -> Result<Option<ActiveProjection>, String
 }
 
 fn read_source(binding: &Binding) -> Result<ObservationSnapshot, String> {
+    let mut client = native_control(binding)?;
+    source::observe(&mut client, &binding.project, &binding.session).map_err(|e| e.to_string())
+}
+
+/// The restricted native control client every Codex intake reads through.
+pub fn native_control(binding: &Binding) -> Result<Control, String> {
     let home = env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or("OBSERVER_HOME stage=observe: HOME is absent")?;
@@ -170,14 +176,13 @@ fn read_source(binding: &Binding) -> Result<ObservationSnapshot, String> {
     } else {
         home.join(".local/bin/codex")
     };
-    let mut client = Control::connect(
+    Control::connect(
         &native,
         &directory,
         &binding.project,
         Duration::from_secs(10),
     )
-    .map_err(|e| e.to_string())?;
-    source::observe(&mut client, &binding.project, &binding.session).map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())
 }
 
 fn validate_snapshot(binding: &Binding, snapshot: &ObservationSnapshot) -> Result<(), String> {

@@ -61,6 +61,7 @@ fn run() -> Result<()> {
 fn internal(args: &[String]) -> Option<Result<()>> {
     match args.first().map(String::as_str) {
         Some("__native-run") => Some(kah_cli::native_controller::run_cli(args)),
+        Some("__prompt-intake") if args.len() == 2 => Some(kah_cli::prompt_intake::run(&args[1])),
         _ => kah_cli::observer_review::command(args),
     }
 }

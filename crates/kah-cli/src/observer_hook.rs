@@ -62,6 +62,10 @@ fn early(binding: &Binding, input: &Value) -> Result<Option<Value>, String> {
     validate_cwd(input, binding)?;
     let base = RunStore::default_state_root().map_err(|e| e.to_string())?;
     initialize(&base, binding)?;
+    // Before any early return: a turn-long first prompt has no Stop for intake.
+    if let Err(error) = crate::prompt_intake::schedule(binding, input) {
+        eprintln!("kah prompt intake: {error}");
+    }
     crate::relay_hook::handle(binding, input, "codex").map_err(|e| e.to_string())?;
     crate::observer_review::untrusted::host::schedule(binding, input).map_err(|e| e.to_string())?;
     if let Some(output) = crate::observer_review::dispatch::register(binding, input, "codex")

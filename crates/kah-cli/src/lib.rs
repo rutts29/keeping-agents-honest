@@ -24,6 +24,7 @@ pub mod observer_intake;
 pub mod observer_notice;
 pub mod observer_review;
 mod privacy;
+pub mod prompt_intake;
 pub mod relay;
 pub mod relay_hook;
 pub mod relay_store;
