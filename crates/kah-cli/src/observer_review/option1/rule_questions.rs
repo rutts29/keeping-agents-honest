@@ -13,7 +13,7 @@ pub fn store(root: &Path, request: &Request, set: &RuleSet) -> Result<()> {
     let directory = root.join("questions");
     kah_core::run_store::ensure_private_directory(&directory)?;
     let _lock = state::Store::delivery_at(&directory, true)?;
-    let mut stored = conflict_questions(&directory, &request.worker)?;
+    let mut stored = fold(&directory, &request.worker, None)?;
     for c in set
         .clauses
         .iter()
@@ -77,6 +77,52 @@ fn cover(question: &mut Value, requirement: &str, c: &kah_core::current_rules::C
         list.push(witnesses(requirement, c));
     }
     true
+}
+/// Earlier runs stored one question per clause. Pending questions that ask the
+/// same conflict fold into one (`prefer` names it, else the first id); the
+/// others close as `merged` and their requirement ids move to it. The caller
+/// holds the questions delivery lock. Returns the stored questions after folding.
+pub fn fold(directory: &Path, worker: &str, prefer: Option<&str>) -> Result<Vec<Value>> {
+    let mut stored = conflict_questions(directory, worker)?;
+    if let Some(id) = prefer
+        && let Some(i) = stored.iter().position(|q| q["id"] == id)
+    {
+        let preferred = stored.remove(i);
+        stored.insert(0, preferred);
+    }
+    for i in 0..stored.len() {
+        if stored[i]["status"] != "pending" {
+            continue;
+        }
+        let key = option_key(&stored[i]);
+        let mut changed = false;
+        for j in i + 1..stored.len() {
+            if stored[j]["status"] != "pending" || option_key(&stored[j]) != key {
+                continue;
+            }
+            let mut covered = super::super::questions::choice::covered(&stored[i]);
+            for r in super::super::questions::choice::covered(&stored[j]) {
+                if !covered.contains(&r) {
+                    covered.push(r);
+                }
+            }
+            stored[i]["requirements"] = covered.into();
+            stored[j]["status"] = "merged".into();
+            stored[j]["merged_into"] = stored[i]["id"].clone();
+            save(directory, &stored[j])?;
+            changed = true;
+        }
+        if changed {
+            save(directory, &stored[i])?;
+        }
+    }
+    Ok(stored)
+}
+fn save(directory: &Path, question: &Value) -> Result<()> {
+    let id = question["id"]
+        .as_str()
+        .ok_or("REVIEW_QUESTION_ID stage=question")?;
+    source_store::save(directory, &format!("{id}.json"), question)
 }
 /// All stored rule-conflict questions of this worker, open or closed.
 fn conflict_questions(directory: &Path, worker: &str) -> Result<Vec<Value>> {

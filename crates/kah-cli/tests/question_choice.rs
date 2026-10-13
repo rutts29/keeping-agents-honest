@@ -300,3 +300,74 @@ fn position(question: &Value, text: &str) -> usize {
         .position(|o| o == text)
         .unwrap()
 }
+
+/// The live v5 state: three stored legacy questions for one conflict.
+fn stored_legacy(worker: &str) -> Vec<String> {
+    let directory = Store::directory(worker).unwrap().join("questions");
+    kah_core::run_store::ensure_private_directory(&directory).unwrap();
+    let shapes = [
+        ("3f", "c-user-1-6", json!([DO_NOT, EVERY])),
+        ("69", "c-user-2-6", json!([DO_NOT, EVERY])),
+        ("d5", "c-standing-changelog", json!([EVERY, DO_NOT, DO_NOT])),
+    ];
+    shapes
+        .iter()
+        .map(|(hex, clause, options)| {
+            let id = format!("question-sha256:{}", hex.repeat(32));
+            let q = json!({"id":id,"kind":"current_rule_conflict","worker":worker,"request":"review-1","requirement":format!("rule_conflict:{clause}"),"options":options,"status":"pending","delivery":"submitted","question":"Which instruction should govern this scope?"});
+            kah_cli::observer_review::source_store::save(&directory, &format!("{id}.json"), &q)
+                .unwrap();
+            id
+        })
+        .collect()
+}
+
+#[test]
+fn stored_duplicate_questions_fold_into_one_on_the_next_rebuild() {
+    let w = worker();
+    let ids = stored_legacy(&w);
+    let root = Store::directory(&w).unwrap();
+    rule_questions::store(&root, &request(&w), &live_conflict()).unwrap();
+    let pending = questions::pending(&root).unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0]["id"], ids[0]);
+    assert_eq!(pending[0]["requirements"].as_array().unwrap().len(), 3);
+    let chosen = choice::Relay {
+        worker: &w,
+        question: &ids[0],
+    }
+    .choice("1")
+    .unwrap();
+    let quote = relayed(&w, "receipt-fold", chosen);
+    choice::close(&w, &quote.source, &quote.text).unwrap();
+    assert!(questions::pending(&root).unwrap().is_empty());
+}
+
+#[test]
+fn one_answer_closes_stored_duplicates_before_any_rebuild() {
+    let w = worker();
+    let ids = stored_legacy(&w);
+    let chosen = choice::Relay {
+        worker: &w,
+        question: &ids[1],
+    }
+    .choice(EVERY)
+    .unwrap();
+    let quote = relayed(&w, "receipt-direct", chosen);
+    let closed = choice::close(&w, &quote.source, &quote.text).unwrap();
+    assert_eq!(
+        closed["resolution"]["requirements"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let root = Store::directory(&w).unwrap();
+    assert!(questions::pending(&root).unwrap().is_empty());
+    let merged: Value = serde_json::from_str(
+        &fs::read_to_string(root.join("questions").join(format!("{}.json", ids[0]))).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(merged["status"], "merged");
+    assert_eq!(merged["merged_into"], ids[1]);
+}

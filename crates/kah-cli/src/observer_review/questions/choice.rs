@@ -98,6 +98,17 @@ pub fn close(worker: &str, source: &SourceRef, text: &str) -> Result<Value> {
     let name = format!("{}.json", choice.question);
     let mut question: Value =
         state::read(&directory.join(&name))?.ok_or("REVIEW_QUESTION_UNKNOWN stage=question")?;
+    if question["kind"] == "current_rule_conflict" && question["status"] == "pending" {
+        // Stored duplicates of this conflict join it before the one answer closes it.
+        let worker = question["worker"].as_str().unwrap_or_default().to_owned();
+        crate::observer_review::option1::rule_questions::fold(
+            &directory,
+            &worker,
+            Some(&choice.question),
+        )?;
+        question =
+            state::read(&directory.join(&name))?.ok_or("REVIEW_QUESTION_UNKNOWN stage=question")?;
+    }
     if question["worker"] != source.session_private() {
         return Err("REVIEW_QUESTION_SCOPE stage=question".into());
     }
