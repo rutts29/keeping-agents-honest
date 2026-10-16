@@ -93,3 +93,23 @@ fn compact_transport_does_not_change_the_generated_jev_questions() {
         kah_observer::decision_units::ObligationKind::NonExecutable
     );
 }
+
+#[test]
+fn report_type_errors_name_the_field_the_observer_must_correct() {
+    // A/B v1apic: "invalid type: map, expected usize" gave no field path.
+    let mut req = request();
+    req.trigger = json!({});
+    let report = json!({"request_id":"review-light","findings":[{"topic":"intent",
+        "claim":"c","citations":[{"source":"s","digest":"d","quote":"q","occurrence":{"index":1}}]}]});
+    let error = light_report::decode(&req, &serde_json::to_vec(&report).unwrap())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.starts_with("REVIEW_REPORT_JSON stage=report: "),
+        "{error}"
+    );
+    assert!(
+        error.contains("findings[0].citations[0].occurrence: invalid type: map, expected usize"),
+        "{error}"
+    );
+}
