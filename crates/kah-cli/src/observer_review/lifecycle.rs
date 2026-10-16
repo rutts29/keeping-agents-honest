@@ -72,7 +72,9 @@ pub fn wait_exit(directory: &std::path::Path, pid: u32, stamp: &str) -> Result<(
     }
     Ok(())
 }
-fn stop(worker: &str, pid: u32, stamp: &str) -> Result<()> {
+/// Marks the review stopped for an exited worker. The worker's tab may close
+/// the observer pane first; a failed close must not leave the review active.
+pub fn stop(worker: &str, pid: u32, stamp: &str) -> Result<()> {
     if Store::read(worker)?.is_none() {
         return Ok(());
     }
@@ -84,12 +86,18 @@ fn stop(worker: &str, pid: u32, stamp: &str) -> Result<()> {
     if config.pid != Some(pid) || config.process_stamp.as_deref() != Some(stamp) {
         return Ok(());
     }
-    if state.observer.pane.is_some() {
-        let pane = control::owned_pane(&state)?;
-        let (socket, _) = super::runtime::transport(&state)?;
-        crate::run_pane::invoke_at(&["pane", "close", &pane.id], Some(socket))?;
+    if state.observer.pane.is_some()
+        && let Err(error) = close_pane(&state)
+    {
+        eprintln!("kah observer pane not closed after worker exit: {error}");
     }
     state.observer.pane = None;
     state.stopped = true;
     store.save(&state)
+}
+fn close_pane(state: &super::state::State) -> Result<()> {
+    let pane = control::owned_pane(state)?;
+    let (socket, _) = super::runtime::transport(state)?;
+    crate::run_pane::invoke_at(&["pane", "close", &pane.id], Some(socket))?;
+    Ok(())
 }
