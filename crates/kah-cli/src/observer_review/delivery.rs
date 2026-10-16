@@ -175,7 +175,7 @@ pub fn native_working(state: &State) -> Result<bool> {
     Ok(view["result"]["pane"]["agent_status"] == "working")
 }
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
-/// record prove it; an idle client with no receipt gets the same original wake.
+/// record prove it. The window measures a launch with no pane progress.
 pub fn cold(state: &State, prompt: &str) -> Result<()> {
     let pending = state
         .pending
@@ -183,7 +183,7 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
         .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
     let active = super::preparation::active_decision(&state.worker.session, &pending.id)?;
     let marker = prompt_marker(prompt, &pending.id, &active)?;
-    let (mut started, mut seen) = (Instant::now(), Vec::new());
+    let (mut started, mut seen, mut phase) = (Instant::now(), Vec::new(), None);
     loop {
         if let Err(error) = super::native_receipt::ensure(&state.worker.session) {
             match super::native_receipt::startup_progress(&mut seen, &error) {
@@ -212,6 +212,9 @@ pub fn cold(state: &State, prompt: &str) -> Result<()> {
             }
             diagnostic(&current, &marker, &screen(&current)?)?;
             return warm(&current, prompt);
+        }
+        if super::cold_progress::observed(&current, &mut phase) {
+            started = Instant::now();
         }
         if started.elapsed() >= Duration::from_secs(15) {
             diagnostic(
