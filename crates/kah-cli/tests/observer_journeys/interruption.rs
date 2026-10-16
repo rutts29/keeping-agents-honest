@@ -41,6 +41,7 @@ pub fn run() {
     let killed = kill_observer(id_a);
     finish(&mut first, id_a);
     let status = gap_status(id_a);
+    let journaled = interruption_record(id_a);
     let turn=first.turn(id_a,"Keep RESEARCH_ONLY in marker.txt and also create continued.txt containing WORKING. Use native apply_patch only, then stop.");
     assert_eq!(turn["status"], "completed");
     let state_a = state(id_a);
@@ -60,7 +61,7 @@ pub fn run() {
         "WORKING"
     );
     assert_config(&home, &before);
-    let report = json!({"observerKilled":killed,"gapVisibleInStatus":status[0]["gap"],"mainSessionContinued":true,"concurrentSeparateLedgers":true,"research":state_a,"untrusted":state_b,"globalConfigUnchanged":true,"passed":true});
+    let report = json!({"observerKilled":killed,"gapVisibleInStatus":status[0]["gap"],"interruptionJournaled":journaled,"mainSessionContinued":true,"concurrentSeparateLedgers":true,"research":state_a,"untrusted":state_b,"globalConfigUnchanged":true,"passed":true});
     fs::write(
         evidence_directory().join("interruption-concurrency.json"),
         serde_json::to_string_pretty(&report).unwrap() + "\n",
@@ -113,6 +114,27 @@ fn gap_status(id: &str) -> Value {
         .unwrap();
     assert!(status.status.success());
     let status: Value = serde_json::from_slice(&status.stdout).unwrap();
-    assert_eq!(status[0]["gap"]["code"], "OBSERVER_INTERRUPTED", "{status}");
+    // A later successful observation may already have cleared the live gap.
+    assert!(
+        status[0]["gap"].is_null() || status[0]["gap"]["code"] == "OBSERVER_INTERRUPTED",
+        "{status}"
+    );
     status
+}
+
+/// Every recovery path (engine, hook start, status) journals the interruption.
+fn interruption_record(id: &str) -> Value {
+    let journal = fs::read_to_string(
+        Store::directory(&RunStore::default_state_root().unwrap(), id).join("observations.jsonl"),
+    )
+    .unwrap();
+    journal
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|r| {
+            r["kind"] == "gap"
+                && r["source"] == "observer"
+                && r["gap"]["code"] == "OBSERVER_INTERRUPTED"
+        })
+        .unwrap_or_else(|| panic!("interruption left no journal record: {journal}"))
 }

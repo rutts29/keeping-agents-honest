@@ -59,7 +59,10 @@ fn observe_with(
     if state.binding.project != binding.project {
         return Err("OBSERVER_BINDING stage=observe: session project changed".into());
     }
-    state.recover_interrupted();
+    // The next success clears the gap, so journal it first, as the hook does.
+    if state.recover_interrupted() {
+        store.append(&json!({"kind":"gap","source":"observer","gap":state.gap}))?;
+    }
     state.binding = binding.clone();
     state.begin(turn);
     store.save(&state)?;
