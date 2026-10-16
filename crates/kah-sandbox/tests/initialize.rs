@@ -133,3 +133,34 @@ fn missing_global_identity_changes_nothing_and_does_not_fail() {
     assert!(!project.ensure_identity_from(&global).unwrap());
     assert_eq!(git(&project.root, &["config", "--local", "user.name"]), "");
 }
+
+#[test]
+fn observer_workspace_without_a_repository_launches_with_a_global_identity() {
+    // OBS-ACCEPT lab-cp1 (real HOME): the observer workspace is a plain
+    // directory; writing identity there failed every Claude observer launch.
+    let f = Fixture(std::env::temp_dir().join(format!("kah-ident-ws-{}", std::process::id())));
+    let root = f.0.join("research").join("observer-workspace");
+    fs::create_dir_all(&root).unwrap();
+    let workspace =
+        Project::select(&f.0, &root, Some((Domain::Research, "observer-workspace"))).unwrap();
+    let global = global_config(&f, GLOBAL);
+    assert!(!workspace.ensure_identity_from(&global).unwrap());
+    assert!(!root.join(".git").exists());
+}
+
+#[test]
+fn a_directory_inside_another_repository_never_edits_that_repository() {
+    let f = Fixture(std::env::temp_dir().join(format!("kah-ident-nest-{}", std::process::id())));
+    let parent = existing(&f, Domain::Research, "research", "parent");
+    let root = parent.root.join("nested");
+    fs::create_dir_all(&root).unwrap();
+    let nested = Project {
+        domain: Domain::Research,
+        root,
+        relative_cwd: PathBuf::new(),
+        needs_creation: false,
+    };
+    let global = global_config(&f, GLOBAL);
+    assert!(!nested.ensure_identity_from(&global).unwrap());
+    assert_eq!(git(&parent.root, &["config", "--local", "user.name"]), "");
+}
