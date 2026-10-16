@@ -48,6 +48,15 @@ pub fn verify(home: &Path, f: &Fixture, id: &str, terminal: &Terminal) -> Value 
     let overlay_socket = f.overlay.join("app-server-control/app-server-control.sock");
     let local = Control::connect_daemon(&overlay_socket, Duration::from_secs(2));
     let socket = local.is_ok();
+    assert!(
+        !socket,
+        "embedded TUI unexpectedly has an overlay control socket"
+    );
+    let delivery = send_probe(id, terminal);
+    json!({"kahSend":"delegate message delivered through Herdr; embedded TUI has no control socket","kahSendDelivery":delivery,"warningsAbsent":true,"observerAttached":true,"hookFileRegular":true,"mergedEventNames":hooks["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(),"configContainsOnlyHookState":true,"mode":"embedded","globalDaemonLoaded":is_loaded,"globalHistoryReadable":metadata["thread"]["id"]==id,"overlayControlSocketConnects":socket,"globalSocketAlias":global,"globalSocketTarget":fs::read_link(&global).ok(),"overlaySocket":overlay_socket})
+}
+
+fn send_probe(id: &str, terminal: &Terminal) -> Value {
     let sender = std::process::Command::new(env!("CARGO_BIN_EXE_kah"))
         .args([
             "send",
@@ -60,7 +69,27 @@ pub fn verify(home: &Path, f: &Fixture, id: &str, terminal: &Terminal) -> Value 
         ])
         .output()
         .unwrap();
-    assert!(!sender.status.success());
-    assert!(String::from_utf8_lossy(&sender.stderr).contains("CODEX_RPC_SOCKET"));
-    json!({"kahSend":"fails closed: embedded TUI has no control socket","warningsAbsent":true,"observerAttached":true,"hookFileRegular":true,"mergedEventNames":hooks["hooks"].as_object().unwrap().keys().collect::<Vec<_>>(),"configContainsOnlyHookState":true,"mode":"embedded","globalDaemonLoaded":is_loaded,"globalHistoryReadable":metadata["thread"]["id"]==id,"overlayControlSocketConnects":socket,"globalSocketAlias":global,"globalSocketTarget":fs::read_link(&global).ok(),"overlaySocket":overlay_socket})
+    // Since 985814f (10-06) a TUI without a control socket receives delegate
+    // messages through native Herdr agent prompt, never as user authority.
+    assert!(
+        sender.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sender.stderr)
+    );
+    let delivery: Value = serde_json::from_slice(&sender.stdout).unwrap();
+    assert_eq!(delivery["transport"], "herdr");
+    assert_eq!(delivery["status"], "submitted");
+    wait_shown(terminal, "gate-probe] Visibility probe");
+    delivery
+}
+
+fn wait_shown(terminal: &Terminal, text: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(45);
+    while !terminal.output().contains(text) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "embedded TUI did not show {text}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
