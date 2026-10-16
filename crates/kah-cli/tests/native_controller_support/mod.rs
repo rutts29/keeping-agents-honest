@@ -114,8 +114,17 @@ fn checkpoint_proof(record: &Record) -> Value {
     )
     .unwrap()
     .unwrap();
-    assert_eq!(result["assessment"]["passed"], true);
-    assert_eq!(result["judgment"]["backend"], "jev");
+    // Run-completion checkpoints go through Option1,
+    // whose archive nests the result under `latest` and has no Jev judgment.
+    if result["option1"] == true {
+        let latest = &result["latest"];
+        assert_eq!(latest["assessment"]["passed"], true);
+        assert_eq!(latest["request"], checkpoint["request"]);
+        assert_eq!(latest["head"], checkpoint["head"]);
+    } else {
+        assert_eq!(result["assessment"]["passed"], true);
+        assert_eq!(result["judgment"]["backend"], "jev");
+    }
     json!({"checkpoint":checkpoint,"result":result})
 }
 fn consent_result(
