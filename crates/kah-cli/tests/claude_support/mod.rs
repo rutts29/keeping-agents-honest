@@ -76,8 +76,9 @@ impl Fixture {
         };
         let extra = extra.iter().map(|s| quote(s)).collect::<Vec<_>>().join(" ");
         let command = format!(
-            "cd {} && {} --agent claude {} -- {} {}",
+            "cd {} && {}{} --agent claude {} -- {} {}",
             quote(self.root.to_str().unwrap()),
+            inherited_claude_unset(),
             quote(env!("CARGO_BIN_EXE_kah")),
             choices,
             native,
@@ -191,6 +192,22 @@ impl Fixture {
                         })
                 })
         });
+    }
+}
+
+/// A tester shell inside Claude Code exports its own session identity, e.g.
+/// CLAUDE_CODE_CHILD_SESSION, which stops the fixture writing a transcript.
+/// Drop every inherited CLAUDE* name except the user's config root.
+fn inherited_claude_unset() -> String {
+    let names = std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| name.starts_with("CLAUDE") && name != "CLAUDE_CONFIG_DIR")
+        .map(|name| format!("-u {name} "))
+        .collect::<String>();
+    if names.is_empty() {
+        String::new()
+    } else {
+        format!("env {names}")
     }
 }
 
