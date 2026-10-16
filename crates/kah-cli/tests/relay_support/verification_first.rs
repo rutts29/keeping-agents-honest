@@ -359,7 +359,7 @@ fn start_courier(home: &Path) -> (crate::fixture::Fixture, Panes, Vec<String>) {
     let (launch, mut fixture) = crate::fixture::prepare(home, courier_domain(), false);
     let mut command = launch.command(false);
     command
-        .args(["-c", "service_tier=\"default\"", "--no-alt-screen", COURIER])
+        .args(["-c", "service_tier=\"fast\"", "--no-alt-screen", COURIER])
         .env_remove("CODEX_THREAD_ID");
     let courier_args = command
         .get_args()

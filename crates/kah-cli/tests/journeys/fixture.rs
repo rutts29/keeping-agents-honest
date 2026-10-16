@@ -86,13 +86,9 @@ pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixtu
     }
     let args = Arguments::parse(input).unwrap();
     let launch = Launch::prepare(home, home, args).unwrap();
-    // Native source: openai/codex rust-v0.160.0 core/config/config_tests.rs,
-    // default_service_tier_override_uses_default_request_value. Fixture only.
-    kah_codex::overlay::write_settings(
-        &launch.overlay,
-        serde_json::json!({"service_tier":"default"}),
-    )
-    .unwrap();
+    // Codex always runs on the fast tier (user rule). Fixture overlay only.
+    kah_codex::overlay::write_settings(&launch.overlay, serde_json::json!({"service_tier":"fast"}))
+        .unwrap();
     let f = Fixture {
         project: launch.project.root.clone(),
         overlay: launch.overlay.clone(),

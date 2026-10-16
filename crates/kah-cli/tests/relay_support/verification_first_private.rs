@@ -37,7 +37,7 @@ fn create(home: &Path, project: &Path, provider: &str, task: &str, verify: &str)
     let mut native = kah_run::native::Native::new(provider).unwrap();
     native.name = Some(kah_run::native::session_name(&id, task));
     if provider == "codex" {
-        native.codex_config.push("service_tier=\"default\"".into());
+        native.codex_config.push("service_tier=\"fast\"".into());
     }
     let record = kah_run::store::Record {
         native: Some(native),

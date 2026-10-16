@@ -204,8 +204,8 @@ pub(crate) fn launch(
 ) -> String {
     let mut command = Command::new(home.join(".local/bin/kah"));
     if agent == "codex" {
-        // Native 0.160.0 service_tier default: fixture cost/parity, no global write.
-        command.args(["run", "-c", "service_tier=\"default\""]);
+        // This fixture selects the fast tier per launch without global configuration writes.
+        command.args(["run", "-c", "service_tier=\"fast\""]);
     } else {
         command.arg("run");
     }

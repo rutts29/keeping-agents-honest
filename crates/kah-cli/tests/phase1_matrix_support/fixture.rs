@@ -102,7 +102,7 @@ fn native_home(actual: &Path, home: &Path) {
     .unwrap();
     fs::write(
         home.join(".codex/config.toml"),
-        "model=\"gpt-6.1-sol\"\nmodel_reasoning_effort=\"low\"\nservice_tier=\"default\"\n",
+        "model=\"gpt-6.1-sol\"\nmodel_reasoning_effort=\"low\"\nservice_tier=\"fast\"\n",
     )
     .unwrap();
 }

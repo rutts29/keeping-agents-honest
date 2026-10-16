@@ -85,7 +85,7 @@ impl Fixture {
         }
         fs::write(
             self.home.join(".codex/config.toml"),
-            "model=\"gpt-6.1-sol\"\nmodel_reasoning_effort=\"low\"\nservice_tier=\"default\"\n",
+            "model=\"gpt-6.1-sol\"\nmodel_reasoning_effort=\"low\"\nservice_tier=\"fast\"\n",
         )
         .unwrap();
         save(

@@ -312,7 +312,7 @@ pub fn native(
         args.native.extend([
             "--no-alt-screen".into(),
             "-c".into(),
-            "service_tier=\"default\"".into(),
+            "service_tier=\"fast\"".into(),
         ]);
     } else {
         args.native.extend([

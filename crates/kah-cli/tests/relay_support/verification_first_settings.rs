@@ -16,7 +16,7 @@ pub fn record(
     assert!(
         courier_args
             .iter()
-            .any(|arg| arg == "service_tier=\"default\"")
+            .any(|arg| arg == "service_tier=\"fast\"")
     );
     let mut records = vec![settings(
         home,
@@ -32,7 +32,7 @@ pub fn record(
             native
                 .codex_config
                 .iter()
-                .any(|setting| setting == "service_tier=\"default\"")
+                .any(|setting| setting == "service_tier=\"fast\"")
         );
         let tier = json!({"source":"kah persisted native invocation overrides; observer forwards the same service_tier via launch::run_settings","settings":native.codex_config,"executionTierClaim":false});
         let worker = native.session.unwrap();
@@ -59,7 +59,7 @@ fn settings(home: &Path, role: &str, project: &Path, session: &str, tier: Value)
     // core/session/mod.rs InitialHistory::New defers the initial turn context;
     // protocol/src/protocol.rs TurnContextItem carries model/effort, not tier.
     // Fresh sessions need not emit ThreadSettingsApplied.
-    // core/config/config_tests.rs default_service_tier_override_uses_default_request_value: native -c service_tier="default".
+    // The fixtures request native -c service_tier="fast" (user rule: Codex always fast).
     // config/read on this separate history client is NOT the TUI's runtime tier.
     // app-server-protocol/src/protocol/v2/thread_data.rs Thread.path.
     let directory = Reviews::directory(session).unwrap();
