@@ -53,7 +53,13 @@ fn context(provider: &str, path: &str, row: &Value) -> Value {
         .as_array()
         .map(|a| a.iter().map(|v| v["type"].clone()).collect::<Vec<_>>())
         .unwrap_or_default();
-    json!({"provider":provider,"path":path,"native_transport_only":true,"record_type":item["type"],"record_id":if provider=="codex" {&item["id"]}else{&item["uuid"]},"turn_id":row["turnId"],"native_timestamp":row["timestamp"],"message_role":item["message"]["role"],"content_types":content_types,"is_meta":item["isMeta"],"is_sidechain":item["isSidechain"],"status":item["status"],"exit_code":item["exitCode"]})
+    let mut context = json!({"provider":provider,"path":path,"native_transport_only":true,"record_type":item["type"],"record_id":if provider=="codex" {&item["id"]}else{&item["uuid"]},"turn_id":row["turnId"],"native_timestamp":row["timestamp"],"message_role":item["message"]["role"],"content_types":content_types,"is_meta":item["isMeta"],"is_sidechain":item["isSidechain"],"status":item["status"],"exit_code":item["exitCode"]});
+    // Claude attachments carry their kind only here, e.g. queued_command for
+    // input delivered during a running turn. Other records stay unchanged.
+    if let Some(kind) = item["attachment"]["type"].as_str() {
+        context["attachment_type"] = kind.into();
+    }
+    context
 }
 fn walk(
     value: &Value,

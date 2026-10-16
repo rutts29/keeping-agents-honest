@@ -143,10 +143,9 @@ fn new_primary_reply<'a>(
     current: &'a kah_observer::review_evidence::Document,
     receipt: &str,
 ) -> Option<&'a kah_observer::review_evidence::NativeRecord> {
-    // openai/codex rust-v0.160.0 protocol TurnItem::UserMessage; Claude
-    // native message.role user. Only native prompt rows establish ask receipt.
+    // Only native prompt rows establish ask receipt.
     let ask = current.native_records.iter().find(|r| {
-        (r.context["record_type"] == "userMessage" || r.context["message_role"] == "user")
+        prompt_row(&r.context)
             && r.context["is_meta"] != true
             && r.context["is_sidechain"] != true
             && !r.context["content_types"]
@@ -162,6 +161,14 @@ fn new_primary_reply<'a>(
         .iter()
         .rev()
         .find(|record| record.start_byte >= ask.end_byte && is_new_primary(record, before))
+}
+/// openai/codex rust-v0.160.0 protocol TurnItem::UserMessage; Claude native
+/// message.role user; or Claude's queued_command attachment, the form Claude
+/// Code uses for input that arrives during a running turn.
+fn prompt_row(context: &Value) -> bool {
+    context["record_type"] == "userMessage"
+        || context["message_role"] == "user"
+        || context["record_type"] == "attachment" && context["attachment_type"] == "queued_command"
 }
 fn is_new_primary(
     record: &kah_observer::review_evidence::NativeRecord,

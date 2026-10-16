@@ -83,3 +83,27 @@ fn an_assistant_reply_before_the_ask_snapshot_cannot_end_the_evidence_wait() {
         .is_some()
     );
 }
+
+#[test]
+fn claude_mid_turn_queued_ask_bounds_a_reply_that_omits_the_full_receipt() {
+    // A/B v1apic: Claude Code delivered the evidence request during a running
+    // turn as a queued_command attachment; the reply cited a shortened id.
+    let receipt = "followup-d09028c6ebf455c0-builder";
+    let enqueued = json!({"type":"queue-operation","operation":"enqueue",
+        "content":format!("[kah-observer] kah evidence request {receipt}")});
+    let ask = json!({"type":"attachment","uuid":"ask","isSidechain":false,
+        "attachment":{"type":"queued_command","commandMode":"prompt",
+        "prompt":format!("[kah-observer] kah evidence request {receipt}: reply with this receipt")}});
+    let reply = json!({"type":"assistant","uuid":"reply","isSidechain":false,
+        "message":{"role":"assistant","content":[{"type":"text","text":"Receipts for followup-d09028c6 follow."}]}});
+    let native = |rows: Value| {
+        crate::observer_review::capture::native_document("claude", "worker", &rows).unwrap()
+    };
+    let before = native(json!([enqueued.clone(), ask.clone()]));
+    let current = native(json!([enqueued.clone(), ask, reply.clone()]));
+    assert!(response(&before, &current, receipt).is_none());
+    assert!(new_primary_reply(&before, &current, receipt).is_some());
+    // Enqueued but never delivered input is not an ask.
+    let undelivered = native(json!([enqueued, reply]));
+    assert!(new_primary_reply(&before, &undelivered, receipt).is_none());
+}
