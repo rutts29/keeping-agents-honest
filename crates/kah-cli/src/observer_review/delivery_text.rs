@@ -9,7 +9,19 @@ pub fn cold(prompt: &str) -> String {
     format!("{INSTRUCTION}{prompt}")
 }
 
-pub fn submit(pane: &str, prompt: &str, mut send: impl FnMut(&[&str]) -> Result<()>) -> Result<()> {
+pub fn submit(
+    provider: &str,
+    pane: &str,
+    prompt: &str,
+    mut send: impl FnMut(&[&str]) -> Result<()>,
+) -> Result<()> {
+    // openai/codex codex-rs/tui/src/bottom_pane/paste_burst.rs holds fast
+    // typed characters in a burst buffer, and clear_after_explicit_paste()
+    // drops them when a bracketed paste arrives first. Codex therefore gets the
+    // same single instruction+request text as a cold launch, in one paste.
+    if provider == "codex" {
+        return send(&["agent", "prompt", pane, &cold(prompt)]);
+    }
     // herdrdev/herdr v0.9.3 src/app/api/panes.rs handle_pane_send_text sends
     // literal bytes. api_helpers.rs encode_api_submission_parts wraps only the
     // agent-prompt body and queues its Enter. No manual terminal escapes.

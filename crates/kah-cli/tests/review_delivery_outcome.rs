@@ -120,7 +120,7 @@ fn records(provider: &str, prompt: &str, reply: &str) -> Vec<Value> {
 fn fixed_instruction_is_outside_paste_and_preserves_receipt_and_hook_binding() {
     let prompt = body(&retained()[0]);
     let mut sent = vec![];
-    delivery_text::submit("private-pane", &prompt, |args| {
+    delivery_text::submit("claude", "private-pane", &prompt, |args| {
         sent.push(args.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         Ok(())
     })
@@ -308,4 +308,41 @@ fn incomplete_work_other_session_and_changed_body_are_not_terminal_refusals() {
     );
     assert_eq!(unmatched.unanswered, 0);
     fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn codex_receives_instruction_and_request_in_one_paste_so_no_typed_text_is_dropped() {
+    // The provider paste-burst buffer can drop the typed
+    // instruction's tail when the request paste arrived, so the native row
+    // contain an incomplete instruction and no matching receipt.
+    let prompt = body(&retained()[0]);
+    let mut sent = vec![];
+    delivery_text::submit("codex", "private-pane", &prompt, |args| {
+        sent.push(args.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(
+        sent,
+        vec![vec![
+            "agent".to_string(),
+            "prompt".into(),
+            "private-pane".into(),
+            delivery_text::cold(&prompt)
+        ]]
+    );
+    let marker = format!("kah review request {REQUEST} ");
+    let row = |text: String| {
+        format!(
+            "{}\n",
+            json!({"type":"response_item","payload":{"type":"message","role":"user",
+                "content":[{"type":"input_text","text":text}]}})
+        )
+    };
+    let whole = row(delivery_text::cold(&prompt));
+    assert!(delivery::receipt(Cursor::new(&whole), "codex", SESSION, &marker).unwrap());
+    // A damaged instruction is still not accepted as proof of this request.
+    let cut = delivery_text::INSTRUCTION.find("reason>").unwrap();
+    let damaged = row(format!("{}{prompt}", &delivery_text::INSTRUCTION[..cut]));
+    assert!(!delivery::receipt(Cursor::new(&damaged), "codex", SESSION, &marker).unwrap());
 }

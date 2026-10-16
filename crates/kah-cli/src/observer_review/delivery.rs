@@ -81,7 +81,7 @@ fn submit(
         prompt,
         offset,
     )?;
-    super::delivery_text::submit(pane, prompt, |args| {
+    super::delivery_text::submit(&state.worker.provider, pane, prompt, |args| {
         crate::run_pane::invoke_at(args, Some(socket)).map(|_| ())
     })
 }
