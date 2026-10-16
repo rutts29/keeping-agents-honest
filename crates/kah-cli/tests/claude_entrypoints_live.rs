@@ -56,13 +56,7 @@ fn claude_herdr_and_new_project() {
             .unwrap()
             .contains(&json!("working"))
     );
-    let commit = Command::new("git")
-        .arg("-C")
-        .arg(f.project())
-        .args(["rev-parse", "--verify", "HEAD"])
-        .output()
-        .unwrap();
-    assert!(commit.status.success());
+    assert_initialized_without_commit(f.project());
     assert!(f.project().join("AGENTS.md").is_file());
     assert!(f.project().join("CLAUDE.md").is_file());
     assert!(Store::read(&f.base, &f.id).unwrap().unwrap().gap.is_none());
@@ -78,8 +72,26 @@ fn claude_herdr_and_new_project() {
     );
     fs::write(f.evidence.join("herdr-new-project.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
         "passed":true,"fixtureModel":"claude-sonnet-5-5","agent":capture["pane"]["agent"],"sessionIdentityMatched":true,"states":capture["states"],
-        "newProjectFirstCommit":String::from_utf8(commit.stdout).unwrap().trim(),"guidanceFilesPresent":true,"nativeWrite":true,"observerGap":false,
+        "newProjectInitializedWithoutCommit":true,"guidanceFilesPresent":true,"nativeWrite":true,"observerGap":false,
         "globalSettingsUnchanged":true})).unwrap()).unwrap();
+}
+
+/// Since 0eaa4f3 (10-02) kah initializes new projects without a commit;
+/// the agent owns the first commit.
+fn assert_initialized_without_commit(project: &std::path::Path) {
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .arg("-C")
+            .arg(project)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    assert!(git(&["rev-parse", "--git-dir"]).status.success());
+    assert!(
+        !git(&["rev-parse", "--verify", "HEAD"]).status.success(),
+        "kah must leave new projects uncommitted"
+    );
 }
 
 fn launch(f: &Fixture, probe: &herdr_probe::Probe) -> String {
