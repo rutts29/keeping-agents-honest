@@ -96,11 +96,12 @@ fn assert_initialized_without_commit(project: &std::path::Path) {
 
 fn launch(f: &Fixture, probe: &herdr_probe::Probe) -> String {
     format!(
-        "test \"$HERDR_ENV\" = 1 && (KAH_HERDR_CAPTURE={} KAH_HERDR_MARKER={} {} --exact herdr_capture_entrypoint --nocapture > {} 2>&1 &) && {} --agent claude mine {} --model claude-sonnet-5-5 --effort low -- --session-id {} --permission-mode acceptEdits",
+        "test \"$HERDR_ENV\" = 1 && (KAH_HERDR_CAPTURE={} KAH_HERDR_MARKER={} {} --exact herdr_capture_entrypoint --nocapture > {} 2>&1 &) && {}{} --agent claude mine {} --model claude-sonnet-5-5 --effort low -- --session-id {} --permission-mode acceptEdits",
         quote(probe.root.join("capture.json").to_str().unwrap()),
         quote(f.project().join("herdr-proof.txt").to_str().unwrap()),
         quote(std::env::current_exe().unwrap().to_str().unwrap()),
         quote(probe.root.join("helper.log").to_str().unwrap()),
+        claude_support::inherited_claude_unset(),
         quote(env!("CARGO_BIN_EXE_kah")),
         quote(f.project().file_name().unwrap().to_str().unwrap()),
         quote(&f.id)

@@ -198,10 +198,16 @@ impl Fixture {
 /// A tester shell inside Claude Code exports its own session identity, e.g.
 /// CLAUDE_CODE_CHILD_SESSION, which stops the fixture writing a transcript.
 /// Drop every inherited CLAUDE* name except the user's config root.
-fn inherited_claude_unset() -> String {
-    let names = std::env::vars_os()
+pub(crate) fn inherited_claude_names() -> Vec<String> {
+    std::env::vars_os()
         .filter_map(|(name, _)| name.into_string().ok())
         .filter(|name| name.starts_with("CLAUDE") && name != "CLAUDE_CONFIG_DIR")
+        .collect()
+}
+/// Shell prefix form of [`inherited_claude_names`] for command strings.
+pub(crate) fn inherited_claude_unset() -> String {
+    let names = inherited_claude_names()
+        .iter()
         .map(|name| format!("-u {name} "))
         .collect::<String>();
     if names.is_empty() {

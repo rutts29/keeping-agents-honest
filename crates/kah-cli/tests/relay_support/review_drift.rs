@@ -111,7 +111,19 @@ fn claude_command(home: &Path, fixture: &crate::claude_support::Fixture) -> Comm
         task("Bash"),
     ])
     .unwrap();
-    kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap()
+    let mut command = kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap();
+    // Keep variables kah itself sets (e.g. CLAUDE_CODE_SHELL_PREFIX).
+    let set = command
+        .get_envs()
+        .filter(|(_, value)| value.is_some())
+        .map(|(name, _)| name.to_os_string())
+        .collect::<Vec<_>>();
+    for name in crate::claude_support::inherited_claude_names() {
+        if !set.iter().any(|s| *s == *name) {
+            command.env_remove(name);
+        }
+    }
+    command
 }
 
 fn consent(pane: &Pane, provider: &str, accepted: &mut BTreeSet<String>) {
