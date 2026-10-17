@@ -68,6 +68,17 @@ pub fn catch_up_applies(project: &Path) -> bool {
     super::execution_fact::run_domain(project).is_none()
 }
 
+/// Whether a failed checkpoint's notice is pushed into the worker's pane. A
+/// delivered-change review runs after an interactive worker's turn ended, so
+/// no hook would take a queued reminder. Other checkpoints and
+/// kah run workers keep the queued reminder.
+pub fn push_notice(trigger: &Value, project: &Path) -> bool {
+    std::iter::once(trigger)
+        .chain(trigger["events"].as_array().into_iter().flatten())
+        .any(|event| event["kind"] == "delivered_change")
+        && catch_up_applies(project)
+}
+
 /// Whether a native turn ended at or after the commit. Git's commit time has
 /// one-second precision, so a previous turn's end earlier in the commit's own
 /// second also counts. That needs a new prompt plus a commit within one

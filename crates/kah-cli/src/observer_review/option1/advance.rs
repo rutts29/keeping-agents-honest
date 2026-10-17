@@ -54,7 +54,11 @@ pub fn correction(
         request.worker
     );
     super::super::reminder::validate_native(&state.worker.provider, &message)?;
+    prompt(state, &message)
+}
+/// Put an observer message straight into the worker's pane.
+pub fn prompt(state: &State, message: &str) -> Result<()> {
     let (socket, pane) = super::super::runtime::transport(state)?;
-    crate::relay_transport::herdr(socket, &["agent", "prompt", pane, &message])?;
+    crate::relay_transport::herdr(socket, &["agent", "prompt", pane, message])?;
     Ok(())
 }
