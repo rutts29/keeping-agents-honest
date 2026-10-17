@@ -16,6 +16,8 @@ pub fn submit(
     job: Value,
     trigger: Value,
 ) -> Result<Value> {
+    let job =
+        super::super::execution_fact::attach(job, super::super::execution_fact::fact(home, &state));
     let mut trigger = trigger;
     trigger["option1"] = job.clone();
     let mut request = Request {
