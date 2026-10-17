@@ -50,7 +50,7 @@ pub(super) fn run(_root: &Path) -> Value {
     json!({"passed":true,"versions":versions(&home),"fixtureModel":"claude-sonnet-5-5","observer":crate::claude_support::observer::evidence(),
         "lane":"commit review (mid-turn Purpose::Drift retired in d4a209b)",
         "workerCommits":commits.iter().map(|c| json!({"commit":c.0,"answerTxt":c.1})).collect::<Vec<_>>(),
-        "reminderInWorkerTranscript":reminder,"reviews":review_ids(&claude.id),
+        "reminderInWorkerTranscript":reminder,"deliveredChange":format!("{:?}", delivered_change(&claude.id)),"reviews":review_ids(&claude.id),
         "finalMarker":"BETA","humanInputs":inputs.len(),"observerUsage":state.usage,
         "workerIsHerdrPane":true,"privateHerdr":true,"wallElapsedMs":started.elapsed().as_millis()})
 }
@@ -153,14 +153,39 @@ fn launch_command(home: &Path, claude: &crate::claude_support::Fixture) -> Comma
     kah_cli::claude_launch::prepare(home, claude.project(), args).unwrap()
 }
 
+/// A skipped delivered-change review must fail with its facts, not as a timeout
+/// of the whole journey: the deferred obligation is only judged there.
+const DELIVERED_DEADLINE: Duration = Duration::from_secs(600);
+
 fn settle(claude: &crate::claude_support::Fixture, pane: &Pane) {
     // Haiku chain: direct submit, current-rules wake, confirmation wake, Jev, re-commit.
     let deadline = Instant::now() + Duration::from_secs(900);
+    let mut omega_seen: Option<Instant> = None;
+    let mut delivered = None;
+    let mut checked = Instant::now();
     while !(claude.has_file("answer.txt", "BETA")
         && worker_commits(claude.project()).len() >= 2
         && claude.is_settled(TASK))
     {
         observer_consent(&claude.id);
+        if omega_seen.is_none() && !worker_commits(claude.project()).is_empty() {
+            omega_seen = Some(Instant::now());
+        }
+        if let Some(seen) = omega_seen
+            && !delivered.as_ref().is_some_and(DeliveredChange::ran)
+            && checked.elapsed() >= Duration::from_secs(5)
+        {
+            checked = Instant::now();
+            let now = delivered_change(&claude.id);
+            assert!(
+                now.ran() || seen.elapsed() < DELIVERED_DEADLINE,
+                "no delivered-change review ran for the drifted head {} within {} s: {now:?}\n{}",
+                now.head,
+                DELIVERED_DEADLINE.as_secs(),
+                stall(claude, pane)
+            );
+            delivered = Some(now);
+        }
         assert!(
             Instant::now() < deadline,
             "seeded drift never settled: {}",
@@ -168,6 +193,76 @@ fn settle(claude: &crate::claude_support::Fixture, pane: &Pane) {
         );
         std::thread::sleep(Duration::from_millis(200));
     }
+    let last = delivered_change(&claude.id);
+    assert!(
+        last.ran(),
+        "corrected without a delivered-change review: {last:?}"
+    );
+}
+
+/// What kah did with the deferred obligation for the drifted (OMEGA) head.
+#[derive(Debug)]
+struct DeliveredChange {
+    head: String,
+    /// Its receipt name is in a queue directory, or a request carries the event.
+    receipt: bool,
+    request: Option<String>,
+    result: bool,
+}
+impl DeliveredChange {
+    fn ran(&self) -> bool {
+        self.receipt && self.result
+    }
+}
+
+fn receipt_name(head: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!(
+        "receipt-{:x}.json",
+        Sha256::digest(format!("delivered-change:{head}").as_bytes())
+    )
+}
+
+fn delivered_change(id: &str) -> DeliveredChange {
+    let head = omega_head(id).unwrap_or_default();
+    let mut found = DeliveredChange {
+        head: head.clone(),
+        receipt: false,
+        request: None,
+        result: false,
+    };
+    let Ok(directory) = kah_cli::observer_review::state::Store::directory(id) else {
+        return found;
+    };
+    let name = receipt_name(&head);
+    found.receipt = [
+        "queued",
+        "covered-triggers",
+        "queue-retired",
+        "queue-supersessions",
+        "queue-transfers",
+        "queue-receipts",
+    ]
+    .iter()
+    .any(|place| directory.join(place).join(&name).exists());
+    // Requests are read through the product reader: large values are stored by reference.
+    for entry in fs::read_dir(directory.join("requests"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let request: Value = kah_cli::observer_review::state::read(&entry.path())
+            .ok()
+            .flatten()
+            .unwrap_or(Value::Null);
+        let text = request["trigger"].to_string();
+        if !head.is_empty() && text.contains("delivered_change") && text.contains(&head) {
+            found.receipt = true;
+            found.result = directory.join("results").join(entry.file_name()).exists();
+            found.request = request["id"].as_str().map(str::to_owned);
+        }
+    }
+    found
 }
 /// Everything needed to see where the journey stopped.
 fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
@@ -199,6 +294,7 @@ fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
         "reviews": review_ids(&claude.id),
         "reviewDirectory": review_directory(&claude.id),
         "workerTimeline": worker_timeline(claude),
+        "deliveredChange": format!("{:?}", delivered_change(&claude.id)),
         "paneStatus": pane.inspect().ok().map(|v| v["agent_status"].clone()),
         "paneScreen": pane.logs("claude", None, None).ok().map(|s| s.chars().rev().take(900).collect::<Vec<_>>().into_iter().rev().collect::<String>()),
         "observer": kah_cli::observer_review::state::Store::read(&claude.id).ok().flatten().map(|r| json!({"pending":r.pending.as_ref().map(|p| p.turn.clone()),"latestPurpose":r.latest.as_ref().map(|v| v["purpose"].clone()),"observerSession":r.observer.session,"wakes":r.wakes})),
@@ -305,14 +401,10 @@ fn mtime_ms(path: &Path) -> Option<u64> {
 /// name is receipt-<sha256("delivered-change:<head>")>.json (queue.rs
 /// enqueue_once_at). Absent from every queue directory means it was never queued.
 fn receipt_check(id: &str, directory: &Path) -> Value {
-    use sha2::{Digest, Sha256};
     let Some(omega) = omega_head(id) else {
         return json!("no OMEGA commit");
     };
-    let name = format!(
-        "receipt-{:x}.json",
-        Sha256::digest(format!("delivered-change:{omega}").as_bytes())
-    );
+    let name = receipt_name(&omega);
     let places = [
         "queued",
         "covered-triggers",
