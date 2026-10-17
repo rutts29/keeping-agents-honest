@@ -198,6 +198,7 @@ fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
         "workerCommits": worker_commits(claude.project()),
         "reviews": review_ids(&claude.id),
         "reviewDirectory": review_directory(&claude.id),
+        "workerTimeline": worker_timeline(claude),
         "paneStatus": pane.inspect().ok().map(|v| v["agent_status"].clone()),
         "paneScreen": pane.logs("claude", None, None).ok().map(|s| s.chars().rev().take(900).collect::<Vec<_>>().into_iter().rev().collect::<String>()),
         "observer": kah_cli::observer_review::state::Store::read(&claude.id).ok().flatten().map(|r| json!({"pending":r.pending.as_ref().map(|p| p.turn.clone()),"latestPurpose":r.latest.as_ref().map(|v| v["purpose"].clone()),"observerSession":r.observer.session,"wakes":r.wakes})),
@@ -208,7 +209,8 @@ fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
 /// Where the commit review stopped: the observer's review directory, with the
 /// small state files that decide whether a HEAD change was sampled and admitted.
 fn review_directory(id: &str) -> Value {
-    const SHOWN: [&str; 15] = [
+    const SHOWN: [&str; 16] = [
+        "hook-observations.jsonl",
         "deferred-obligations.json",
         "admission-outcomes.jsonl",
         "consume-outcomes.jsonl",
@@ -226,7 +228,9 @@ fn review_directory(id: &str) -> Value {
         "config.json",
     ];
     // Directories whose files explain a queued wake that never became a review.
-    const CONTENT: [&str; 7] = [
+    const CONTENT: [&str; 9] = [
+        "claim-events",
+        "hook-events",
         "checkpoint-events",
         "queue-retired",
         "queue-supersessions",
@@ -249,9 +253,16 @@ fn review_directory(id: &str) -> Value {
         } else {
             json!(entry.metadata().map(|m| m.len()).ok())
         };
-        listing.insert(name, value);
+        listing.insert(
+            name,
+            json!({"mtimeMs":mtime_ms(&entry.path()),"value":value}),
+        );
     }
     listing.insert("journalTail".into(), journal_tail(id));
+    listing.insert(
+        "deliveredChangeReceipt".into(),
+        receipt_check(id, &directory),
+    );
     listing.insert("diagnosis".into(), diagnosis(id, &directory));
     Value::Object(listing)
 }
@@ -260,7 +271,7 @@ fn excerpt(path: &Path) -> String {
     fs::read_to_string(path)
         .unwrap_or_default()
         .chars()
-        .take(900)
+        .take(3500)
         .collect()
 }
 
@@ -275,10 +286,96 @@ fn listed(directory: &Path, content: bool) -> Value {
             .map(|e| {
                 let name = e.file_name().to_string_lossy().into_owned();
                 if content {
-                    json!({"file":name,"content":excerpt(&e.path())})
+                    json!({"file":name,"mtimeMs":mtime_ms(&e.path()),"content":excerpt(&e.path())})
                 } else {
-                    json!(name)
+                    json!({"file":name,"mtimeMs":mtime_ms(&e.path())})
                 }
+            })
+            .collect::<Vec<_>>()
+    )
+}
+
+fn mtime_ms(path: &Path) -> Option<u64> {
+    let modified = fs::metadata(path).ok()?.modified().ok()?;
+    let since = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    u64::try_from(since.as_millis()).ok()
+}
+
+/// Whether the delivered-change wake for the OMEGA head ever existed: its receipt
+/// name is receipt-<sha256("delivered-change:<head>")>.json (queue.rs
+/// enqueue_once_at). Absent from every queue directory means it was never queued.
+fn receipt_check(id: &str, directory: &Path) -> Value {
+    use sha2::{Digest, Sha256};
+    let Some(omega) = omega_head(id) else {
+        return json!("no OMEGA commit");
+    };
+    let name = format!(
+        "receipt-{:x}.json",
+        Sha256::digest(format!("delivered-change:{omega}").as_bytes())
+    );
+    let places = [
+        "queued",
+        "covered-triggers",
+        "queue-retired",
+        "queue-supersessions",
+        "queue-transfers",
+        "queue-receipts",
+    ];
+    let found = places
+        .iter()
+        .map(|place| {
+            let files = fs::read_dir(directory.join(place))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .collect::<Vec<_>>();
+            let by_name = files.iter().any(|e| e.file_name().to_string_lossy() == name);
+            let mentioning = files
+                .iter()
+                .filter(|e| excerpt(&e.path()).contains("delivered_change") || excerpt(&e.path()).contains(&omega))
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            (place.to_string(), json!({"receiptNamePresent":by_name,"filesMentioningDeliveredChangeOrHead":mentioning}))
+        })
+        .collect::<serde_json::Map<_, _>>();
+    json!({"omegaHead":omega,"receiptName":name,"places":found})
+}
+
+/// The first worker commit after the fixture baseline.
+fn omega_head(id: &str) -> Option<String> {
+    let project = kah_cli::observer_review::state::Store::read(id)
+        .ok()
+        .flatten()?
+        .worker
+        .project;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&project)
+        .args(["rev-list", "--reverse", "HEAD"])
+        .output()
+        .ok()?;
+    String::from_utf8(output.stdout)
+        .ok()?
+        .lines()
+        .nth(1)
+        .map(str::to_owned)
+}
+
+/// Transcript rows with their timestamps (ISO, ms): tool uses, hook attachments and
+/// the turn end, so the Stop time can be ordered against kah's queue files.
+fn worker_timeline(claude: &crate::claude_support::Fixture) -> Value {
+    json!(
+        claude
+            .rows()
+            .iter()
+            .filter(|r| r["timestamp"].is_string())
+            .map(|r| {
+                let tool = r["message"]["content"]
+                    .as_array()
+                    .and_then(|parts| parts.iter().find(|p| p["type"] == "tool_use"))
+                    .map(|p| p["name"].clone());
+                let hook = r["attachment"]["hookEvent"].clone();
+                json!({"type":r["type"],"at":r["timestamp"],"tool":tool,"hook":hook,"subtype":r["subtype"]})
             })
             .collect::<Vec<_>>()
     )
