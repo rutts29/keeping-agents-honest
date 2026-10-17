@@ -82,10 +82,10 @@ fn claude_native_model_switch() {
     .unwrap();
     let mut terminal = f.start(false);
     f.ready(&mut terminal);
-    let prompt = "Use native Write to create before-model.txt containing MODEL_BEFORE. No other tools or files; report and stop.";
+    let prompt = "Use native Write to create before-switch.txt containing SWITCH_BEFORE. No other tools or files; report and stop.";
     f.prompt(&mut terminal, prompt);
     f.wait(&mut terminal, || {
-        f.has_file("before-model.txt", "MODEL_BEFORE")
+        f.has_file("before-switch.txt", "SWITCH_BEFORE")
     });
     f.settled(&mut terminal, prompt);
     let assistant_before = f.rows().iter().filter(|r| r["type"] == "assistant").count();
