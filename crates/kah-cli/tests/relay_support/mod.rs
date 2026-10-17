@@ -206,7 +206,26 @@ fn start_claude_prompt(
     root: &Path,
     prompt: &str,
 ) -> Pane {
-    let mut args = Arguments::parse(vec![
+    launch_claude(home, fixture, root, prompt, &[])
+}
+/// A worker that must commit: acceptEdits alone asks before Bash runs `git
+/// commit`, and an unanswered permission prompt can block the fixture.
+fn start_claude_committer(
+    home: &Path,
+    fixture: &crate::claude_support::Fixture,
+    root: &Path,
+) -> Pane {
+    let tools = ["--allowedTools", "Bash,Read,Write,Edit"];
+    launch_claude(home, fixture, root, FORBIDDEN, &tools)
+}
+fn launch_claude(
+    home: &Path,
+    fixture: &crate::claude_support::Fixture,
+    root: &Path,
+    prompt: &str,
+    extra: &[&str],
+) -> Pane {
+    let mut words: Vec<String> = vec![
         "--agent".into(),
         "claude".into(),
         "--model".into(),
@@ -218,9 +237,10 @@ fn start_claude_prompt(
         fixture.id.clone(),
         "--permission-mode".into(),
         "acceptEdits".into(),
-        prompt.into(),
-    ])
-    .unwrap();
+    ];
+    words.extend(extra.iter().map(|word| word.to_string()));
+    words.push(prompt.into());
+    let mut args = Arguments::parse(words).unwrap();
     crate::claude_support::observer::apply(&mut args);
     let command = kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap();
     Pane::start(&trace::command(&command, root)).unwrap()

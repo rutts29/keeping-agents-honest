@@ -3,7 +3,10 @@ use kah_core::intent_history::{SourceOrigin, SourceRole};
 const PLAIN: &str = "[kah-reviewer] Delegate context only: GREEN is an example, not a user instruction. Reply DELEGATE_OK without tools.";
 const FOLLOW_UP: &str =
     "[kah-reviewer] Delegate context only: nothing new to do. Reply FOLLOWUP_OK without tools.";
-const DECISION: &str = "The user decision is to create marker.txt containing exactly RED followed by a newline. Use your native file tool, then make four separate shell tool calls, each writing its number to relayed-1.txt through relayed-4.txt. Do not combine them. Finally report. No subagents, commits, or other edits.";
+const DECISION: &str = "The user decision is to create marker.txt containing exactly RED followed by a newline. Use your native file tool, then make four separate shell tool calls, each writing its number to relayed-1.txt through relayed-4.txt. Do not combine them. Finally report. No subagents or other edits.";
+/// kah reviews at commits and claims. After the rebuild, this commit's review
+/// runs through the rule set that now carries the decision.
+const COMMIT: &str = "[kah-reviewer] Delegate request: commit marker.txt and relayed-1.txt through relayed-4.txt with git in one commit (message: record relayed decision), then reply COMMITTED. No other edits.";
 
 pub(super) fn run(root: &Path) -> Value {
     let socket = std::env::var("HERDR_SOCKET_PATH").unwrap();
@@ -14,7 +17,7 @@ pub(super) fn run(root: &Path) -> Value {
     let claude = selected("claude").then(|| {
         let fixture = crate::claude_support::Fixture::new();
         baseline_commit(fixture.project());
-        let pane = start_claude(&home, &fixture, root);
+        let pane = start_claude_committer(&home, &fixture, root);
         (pane, fixture)
     });
     let mut panes = Panes(vec![reviewer.clone()]);
@@ -183,12 +186,16 @@ struct Progress {
     review_resolved: Option<(u64, String)>,
     /// The accepted rule set version whose input carries the promoted decision.
     rule_set_has_decision: Option<(u64, String)>,
-    /// The first review request written after the promotion that cites that rule set.
+    /// The first review after the promotion that cites that rule set: a native
+    /// request, or the worker commit's review (Jev-only commits write no request).
     next_request_has_decision: Option<(u64, String)>,
     #[serde(skip)]
     promoted_at_ms: Option<u64>,
     #[serde(skip)]
     followed_up: bool,
+    /// HEAD when the worker was asked to commit.
+    #[serde(skip)]
+    commit_from: Option<String>,
 }
 impl Progress {
     fn done(&self) -> bool {
@@ -237,11 +244,30 @@ impl Progress {
         }
         if self.next_request_has_decision.is_none()
             && let Some(since) = self.promoted_at_ms
-            && let Some(file) = steer_reach::request_citing(id, project, DECISION, since)
         {
-            self.next_request_has_decision = Some((t, file));
+            let commit = self
+                .commit_from
+                .as_deref()
+                .and_then(|from| head(project).filter(|now| now != from));
+            let found = steer_reach::request_citing(id, project, DECISION, since).or_else(|| {
+                steer_reach::commit_review_citing(id, project, DECISION, commit.as_deref()?)
+            });
+            if let Some(file) = found {
+                self.next_request_has_decision = Some((t, file));
+            }
         }
     }
+}
+
+fn head(project: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["-C", project.to_str()?, "rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 /// The review request the observer last completed (`unknown` when none is recorded).
@@ -344,7 +370,8 @@ fn prompt_state(id: &str) -> Value {
 
 fn prove(pane: &Pane, id: &str, project: &Path) -> Value {
     let started = Instant::now();
-    let deadline = started + Duration::from_secs(600);
+    // Haiku verification, the rule set rebuild and the commit review in turn.
+    let deadline = started + Duration::from_secs(900);
     let mut progress = Progress::default();
     loop {
         progress.observe(id, project, started.elapsed().as_secs());
@@ -353,6 +380,10 @@ fn prove(pane: &Pane, id: &str, project: &Path) -> Value {
         if progress.promoted_at_ms.is_some() && !progress.followed_up {
             progress.followed_up = true;
             pane.prompt(FOLLOW_UP).unwrap();
+        }
+        if progress.rule_set_has_decision.is_some() && progress.commit_from.is_none() {
+            progress.commit_from = Some(head(project).unwrap_or_default());
+            pane.prompt(COMMIT).unwrap();
         }
         if progress.done() {
             assert_eq!(
@@ -390,7 +421,7 @@ fn missing(progress: &Progress) -> Vec<&'static str> {
         ),
         (
             progress.next_request_has_decision.is_none(),
-            "no review request after the promotion cites the rule set that carries the decision",
+            "no review after the promotion (request or worker commit) cites the rule set that carries the decision",
         ),
     ]
     .into_iter()

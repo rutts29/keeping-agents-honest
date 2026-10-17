@@ -1,7 +1,8 @@
 //! Under Option1 a promoted steer reaches the observer through its rule set and
 //! its review requests, not through the legacy history projection. A request
 //! carries the rule set by digest and rules by id. These read both from the
-//! stores kah wrote.
+//! stores kah wrote. Stored requests keep `trigger` as a source-store reference,
+//! so they are read through `source_store::read`, never as raw JSON.
 use super::*;
 
 /// The steer text as stored in JSON strings (it has nothing to escape).
@@ -44,7 +45,7 @@ fn requests(id: &str) -> Vec<(String, u64, String, Vec<String>)> {
         .flatten()
         .flatten()
         .filter_map(|entry| {
-            let value: Value = serde_json::from_slice(&fs::read(entry.path()).ok()?).ok()?;
+            let value: Value = kah_cli::observer_review::source_store::read(&entry.path()).ok()?;
             let input = &value["trigger"]["option1"]["input"];
             Some((
                 value["id"].as_str()?.to_owned(),
@@ -77,6 +78,27 @@ pub(super) fn request_citing(
         .map(|(request, _, cited, rules)| {
             format!("{request} cites {cited}; rules {}", rules.join(","))
         })
+}
+
+/// The commit review of `head` when it used a rule set version carrying the
+/// decision. Every Option1 admission through the current rule set records the
+/// set digest it used; a commit that Jev clears writes no native request.
+pub(super) fn commit_review_citing(
+    id: &str,
+    project: &Path,
+    decision: &str,
+    head: &str,
+) -> Option<String> {
+    let directory = run_directory(id, project)?;
+    let root = kah_cli::observer_review::state::Store::directory(id).ok()?;
+    let record: Value = serde_json::from_slice(
+        &fs::read(root.join(format!("current-rules-commit-{head}.json"))).ok()?,
+    )
+    .ok()?;
+    let digest = record["set_digest"].as_str()?;
+    let hash = digest.strip_prefix("sha256:")?;
+    version_has(&directory, &format!("{hash}.json"), decision)
+        .then(|| format!("commit {head} reviewed with rule set {digest}"))
 }
 
 /// For timeout reports: every request with its age and the rule set it cites.
