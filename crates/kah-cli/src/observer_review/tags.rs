@@ -167,7 +167,7 @@ fn git(home: &Path, state: &State, args: &[&str]) -> Result<Option<String>> {
             crate::native_setup::executor(home, &project, Default::default(), git.as_deref())?
                 .read_only_project();
         let command = command.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>();
-        executor.command(&project.root, &command)?.output()?
+        kah_sandbox::output_retrying_start(&mut executor.command(&project.root, &command)?)?
     };
     if !output.status.success() {
         if !state.worker.project.join(".git").exists() {

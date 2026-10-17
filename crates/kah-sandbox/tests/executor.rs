@@ -142,3 +142,58 @@ fn readonly_parent_promotes_nested_binds_without_duplicate_targets() {
     assert!(mounts.iter().all(|m| m.ends_with(",readonly")));
     assert!(executor.args.contains(&environment));
 }
+
+#[test]
+fn only_the_runsc_sandbox_start_failure_is_a_start_failure() {
+    use kah_sandbox::sandbox_start_failed;
+    // Container startup errors can occur during Git and bundle operations.
+    let start = "docker: Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: creating container: cannot create sandbox: cannot read client sync file: waiting for sandbox to start: EOF\n\nRun 'docker run --help' for more information\n";
+    assert!(sandbox_start_failed(start));
+    assert!(!sandbox_start_failed(""));
+    assert!(!sandbox_start_failed("fatal: not a git repository"));
+    assert!(!sandbox_start_failed(
+        "docker: Error response from daemon: OCI runtime create failed: creating container: invalid mount config"
+    ));
+    assert!(!sandbox_start_failed(
+        "docker: Error response from daemon: Conflict. The container name is already in use"
+    ));
+}
+
+#[test]
+fn a_start_failure_is_retried_once_and_other_failures_are_not() {
+    use kah_sandbox::output_retrying_start;
+    let dir = std::env::temp_dir().join(format!("kah-start-retry-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let count = dir.join("count");
+    let start = "OCI runtime create failed: creating container: cannot create sandbox: cannot read client sync file: waiting for sandbox to start: EOF";
+    // Fails with the start error on the first call only.
+    let script = format!(
+        "n=$(cat {c} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {c}; if [ $n = 1 ]; then echo '{start}' >&2; exit 125; fi; echo ok",
+        c = count.display()
+    );
+    let output =
+        output_retrying_start(std::process::Command::new("sh").args(["-c", &script])).unwrap();
+    assert!(output.status.success());
+    assert_eq!(std::fs::read_to_string(&count).unwrap().trim(), "2");
+    // Any other failure is returned at once.
+    std::fs::remove_file(&count).unwrap();
+    let other = format!(
+        "echo x >> {c}; echo 'permission denied' >&2; exit 1",
+        c = count.display()
+    );
+    let output =
+        output_retrying_start(std::process::Command::new("sh").args(["-c", &other])).unwrap();
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read_to_string(&count).unwrap().lines().count(), 1);
+    // A second start failure is returned, not retried again.
+    std::fs::remove_file(&count).unwrap();
+    let always = format!(
+        "echo x >> {c}; echo '{start}' >&2; exit 125",
+        c = count.display()
+    );
+    let output =
+        output_retrying_start(std::process::Command::new("sh").args(["-c", &always])).unwrap();
+    assert!(!output.status.success());
+    assert_eq!(std::fs::read_to_string(&count).unwrap().lines().count(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}

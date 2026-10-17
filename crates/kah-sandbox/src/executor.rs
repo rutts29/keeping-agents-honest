@@ -217,6 +217,30 @@ impl Executor {
     }
 }
 
+/// runsc could not start the sandbox (seen under host CPU pressure). docker
+/// fails at container create, before anything runs inside it.
+pub fn sandbox_start_failed(stderr: &str) -> bool {
+    stderr.contains("OCI runtime create failed")
+        && stderr.contains(
+            "cannot create sandbox: cannot read client sync file: waiting for sandbox to start: EOF",
+        )
+}
+
+/// Runs a gVisor command to completion. Only that start failure is retried,
+/// once, after a short pause: the container never started, so nothing ran
+/// twice. Containers are --rm and unnamed, so a retry cannot collide. Any
+/// other failure, or a second start failure, is returned unchanged.
+pub fn output_retrying_start(
+    command: &mut std::process::Command,
+) -> std::io::Result<std::process::Output> {
+    let first = command.output()?;
+    if first.status.success() || !sandbox_start_failed(&String::from_utf8_lossy(&first.stderr)) {
+        return Ok(first);
+    }
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    command.output()
+}
+
 fn mount_path(path: &Path) -> Result<&str, Error> {
     let text = path
         .to_str()

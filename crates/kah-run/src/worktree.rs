@@ -305,7 +305,8 @@ fn command() -> Command {
     cmd
 }
 fn run(cmd: &mut Command) -> Result<Output, String> {
-    let output = cmd.output().map_err(io_error)?;
+    // Host git never prints the runsc start error, so only sandbox git retries.
+    let output = kah_sandbox::output_retrying_start(cmd).map_err(io_error)?;
     if !output.status.success() {
         return Err(format!(
             "RUN_GIT stage=worktree: {}",

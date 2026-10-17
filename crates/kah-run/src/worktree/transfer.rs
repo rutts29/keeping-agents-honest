@@ -76,12 +76,10 @@ impl Worktree {
             .mode(0o600)
             .open(bundle)
             .map_err(io_error)?;
-        let result = self
-            .sandbox_git(executor)?
-            .args(["bundle", "create", "-", "HEAD"])
-            .stdout(file)
-            .output()
-            .map_err(io_error)?;
+        let mut create = self.sandbox_git(executor)?;
+        create.args(["bundle", "create", "-", "HEAD"]).stdout(file);
+        // A start failure writes nothing, so the retry fills the same new file.
+        let result = kah_sandbox::output_retrying_start(&mut create).map_err(io_error)?;
         if !result.status.success() {
             let _ = fs::remove_file(bundle);
             return Err(format!(
