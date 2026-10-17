@@ -104,3 +104,72 @@ fn read_file_adds_only_read_to_the_prior_mask() {
     assert_eq!(effective(&after, "user:65533:"), "r--", "{after}");
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn only_files_that_vanished_under_the_root_are_tolerated() {
+    use kah_run::access::vanished_only;
+    let root = Path::new("/home/u/.claude/plugins");
+    // 5h-f on 436807d: plugin sync removed this file during the walk.
+    let vanished = "/usr/bin/find: /home/u/.claude/plugins/synced/419e/.last-complete-round: No such file or directory\n";
+    assert!(vanished_only(vanished, root));
+    assert!(vanished_only(
+        "setfacl: ./.last-complete-round: No such file or directory\n",
+        root
+    ));
+    assert!(vanished_only(
+        "/usr/bin/find: ‘/home/u/.claude/plugins/x’: No such file or directory\n",
+        root
+    ));
+    assert!(vanished_only(
+        "/usr/bin/find: '/home/u/.claude/plugins/x': No such file or directory\n",
+        root
+    ));
+    assert!(!vanished_only("", root));
+    assert!(!vanished_only(
+        "/usr/bin/find: /elsewhere/x: No such file or directory\n",
+        root
+    ));
+    assert!(!vanished_only(
+        "/usr/bin/find: /home/u/.claude/plugins/a: Permission denied\n",
+        root
+    ));
+    assert!(!vanished_only(
+        "setfacl: ./a: Operation not permitted\n",
+        root
+    ));
+    // One real failure among vanished files still fails the share step.
+    let mixed = format!("{vanished}setfacl: ./b: Operation not permitted\n");
+    assert!(!vanished_only(&mixed, root));
+}
+
+#[test]
+fn files_deleted_during_the_share_walk_do_not_fail_it() {
+    let root = std::env::temp_dir().join(format!("kah-run-vanish-{}", std::process::id()));
+    let tree = root.join("tree");
+    for round in 0..5 {
+        for i in 0..400 {
+            let dir = tree.join(format!("d{}", i % 20));
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join(format!("f{round}-{i}")), "x").unwrap();
+        }
+        let deleting = tree.clone();
+        let remover = std::thread::spawn(move || {
+            for entry in walk(&deleting) {
+                let _ = fs::remove_file(entry);
+            }
+        });
+        share_tree(&tree, 42420, true).unwrap();
+        remover.join().unwrap();
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn walk(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut files = vec![];
+    for dir in fs::read_dir(root).unwrap().flatten() {
+        if let Ok(entries) = fs::read_dir(dir.path()) {
+            files.extend(entries.flatten().map(|e| e.path()));
+        }
+    }
+    files
+}

@@ -71,15 +71,40 @@ fn operate(
             "+",
         ])
         .env("PATH", "/usr/bin:/bin")
+        // Untranslated messages, so a vanished file can be recognized.
+        .env("LC_ALL", "C")
         .output()
         .map_err(io_error)?;
-    if !result.status.success() {
-        return Err(format!(
-            "RUN_SHARE_ACL stage=worker_prepare: {}",
-            String::from_utf8_lossy(&result.stderr)
-        ));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    if !result.status.success() && !vanished_only(&stderr, root) {
+        return Err(format!("RUN_SHARE_ACL stage=worker_prepare: {stderr}"));
     }
     Ok(())
+}
+/// True when every error line reports a path under `root` that vanished while
+/// it was traversed (native plugin sync deletes files mid-walk, which
+/// -ignore_readdir_race does not cover for -execdir). find names the absolute
+/// path; setfacl run by -execdir names it relative ("./..."). Any other error,
+/// such as EACCES or an ACL failure, still fails the share step.
+pub fn vanished_only(stderr: &str, root: &Path) -> bool {
+    let root = root.to_string_lossy();
+    let mut lines = stderr.lines().filter(|l| !l.trim().is_empty()).peekable();
+    lines.peek().is_some()
+        && lines.all(|line| {
+            let Some(rest) = line.strip_suffix(": No such file or directory") else {
+                return false;
+            };
+            let unquote = |p: &str| {
+                p.trim_matches(|c| matches!(c, '\'' | '"' | '‘' | '’'))
+                    .to_owned()
+            };
+            rest.strip_prefix("/usr/bin/find: ")
+                .or_else(|| rest.strip_prefix("find: "))
+                .is_some_and(|path| unquote(path).starts_with(root.as_ref()))
+                || rest
+                    .strip_prefix("setfacl: ")
+                    .is_some_and(|path| unquote(path).starts_with("./"))
+        })
 }
 // Add one permission bit to a named user. The shared mask gets only that bit
 // on top of its prior value; it is never recalculated from other entries.
