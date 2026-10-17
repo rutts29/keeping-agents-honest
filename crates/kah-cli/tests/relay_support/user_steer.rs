@@ -65,7 +65,7 @@ pub(super) fn run(root: &Path) -> Value {
 
 /// The tool-batch checkpoint admission needs a HEAD (`COMMIT_HEAD_MISSING
 /// stage=admission` otherwise); the empty commit leaves the worker's files alone.
-fn baseline_commit(project: &Path) {
+pub(super) fn baseline_commit(project: &Path) {
     let status = Command::new("git")
         .args([
             "-C",
