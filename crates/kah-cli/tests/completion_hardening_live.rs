@@ -56,7 +56,10 @@ fn the_labeled_reconstruction_has_both_completion_views() {
 #[ignore = "aggregate the five fixed paired live trials per provider"]
 fn summarize_completion_trials() {
     let mut providers = vec![];
-    for agent in ["claude", "codex"] {
+    // The demos set KAH_GATE_AGENTS (default both); a Claude-only run summarizes Claude only.
+    let selected = std::env::var("KAH_GATE_AGENTS").unwrap_or_else(|_| "claude codex".into());
+    let agents = selected.split_whitespace().collect::<Vec<_>>();
+    for agent in agents.iter() {
         let rows = (1..=5)
             .map(|trial| {
                 let path = completion_support::evidence()
@@ -70,5 +73,5 @@ fn summarize_completion_trials() {
         );
         providers.push(json!({"provider":agent,"trials":rows.len(),"oldFalseStops":rows.iter().filter(|r|r["oldFalseStop"]==true).count(),"newFalseStops":rows.iter().filter(|r|r["newFalseStop"]==true).count(),"actualControllerStops":rows.iter().filter(|r|r["controllerStatus"]=="stopped").count(),"versions":rows.iter().map(|r|r["version"].clone()).collect::<Vec<_>>(),"fixtureModels":rows.iter().map(|r|r["fixtureModel"].clone()).collect::<Vec<_>>() }));
     }
-    fs::write(completion_support::evidence().join("paired-summary.json"),serde_json::to_vec_pretty(&json!({"passed":true,"providers":providers,"pairedDesign":"same verified candidate and shared first judgment; old repeats the activity view, new uses the artifact view","thresholdsChanged":false,"limitations":"Five selected simple tasks per provider, not a general accuracy estimate. Original 0.83/0.84 request state was not available."})).unwrap()).unwrap();
+    fs::write(completion_support::evidence().join("paired-summary.json"),serde_json::to_vec_pretty(&json!({"passed":true,"agents":agents,"providers":providers,"pairedDesign":"same verified candidate and shared first judgment; old repeats the activity view, new uses the artifact view","thresholdsChanged":false,"limitations":"Five selected simple tasks per provider, not a general accuracy estimate. Original 0.83/0.84 request state was not available."})).unwrap()).unwrap();
 }

@@ -20,7 +20,10 @@ use std::{fs, path::PathBuf};
 fn git_controls_stay_host_owned() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let claude_before = claude_support::settings::snapshot(&home);
-    let codex_before = fs::read(home.join(".codex/config.toml")).unwrap();
+    let codex = std::env::var("KAH_GATE_AGENTS")
+        .ok()
+        .is_none_or(|agents| agents.split_whitespace().any(|a| a == "codex"));
+    let codex_before = codex.then(|| fs::read(home.join(".codex/config.toml")).unwrap());
     for domain in ["research", "untrusted"] {
         let f = Fixture::new_domain(domain);
         prepare(f.project());
@@ -34,7 +37,9 @@ fn git_controls_stay_host_owned() {
         prove(&f, &config);
         drop(terminal);
         fresh_claude(&f);
-        fresh_codex(&home, f.project());
+        if codex {
+            fresh_codex(&home, f.project());
+        }
         git(f.project(), &["status", "--porcelain"]);
         git(f.project(), &["log", "-1", "--oneline"]);
         assert!(!f.project().join("HOST_CANARY").exists());
@@ -42,19 +47,18 @@ fn git_controls_stay_host_owned() {
         save(
             &format!("git-controls-{domain}.json"),
             json!({
-                "claudeVersion":version("claude"),"codexVersion":version("codex"),
+                "claudeVersion":version("claude"),"codexVersion":codex.then(|| version("codex")),"codexSelected":codex,
                 "fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":domain,
                 "codexFixtureModel":"gpt-6.1-sol","codexFixtureEffort":"low",
                 "fsmonitorAndPagerChangesDenied":true,"hookWriteDenied":true,
                 "configWorktreeAndCommondirWritesDenied":true,"gitDirectoryReplacementDenied":true,
                 "nativeClaudeWriteDenied":true,"sandboxCommitSucceeded":true,
-                "freshClaudeAndCodexLaunches":true,"hostStatusAndLog":true,"hostCanaryAbsent":true,"passed":true
+                "freshClaudeLaunch":true,"freshCodexLaunch":codex,"hostStatusAndLog":true,"hostCanaryAbsent":true,"passed":true
             }),
         );
     }
     assert_eq!(claude_before, claude_support::settings::snapshot(&home));
-    assert_eq!(
-        codex_before,
-        fs::read(home.join(".codex/config.toml")).unwrap()
-    );
+    if let Some(before) = codex_before {
+        assert_eq!(before, fs::read(home.join(".codex/config.toml")).unwrap());
+    }
 }
