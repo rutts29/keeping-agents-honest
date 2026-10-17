@@ -102,49 +102,131 @@ fn typed_by_jev(id: &str, input: &kah_observer::intake::Input) -> &'static str {
     }
 }
 
-fn prove(id: &str, project: &Path) -> Value {
-    let base = RunStore::default_state_root().unwrap();
-    let directory = Store::directory(&base, id);
-    let deadline = Instant::now() + Duration::from_secs(600);
-    loop {
-        if let Ok(store) = Store::open(&base, id, Duration::ZERO)
-            && let Ok(inputs) = store.sources()
-            && let Some(input) = inputs
-                .iter()
-                .find(|i| i.text == DECISION && i.decision.is_some())
+/// Seconds since the steer was submitted at which each milestone was first seen.
+#[derive(Default, serde::Serialize)]
+struct Progress {
+    steer_row: Option<u64>,
+    decided: Option<(u64, &'static str)>,
+    file_4: Option<u64>,
+    tripwire: Option<u64>,
+    prompt_has_decision: Option<u64>,
+}
+impl Progress {
+    fn done(&self) -> bool {
+        self.decided.is_some()
+            && self.file_4.is_some()
+            && self.tripwire.is_some()
+            && self.prompt_has_decision.is_some()
+    }
+    fn observe(&mut self, id: &str, project: &Path, t: u64) {
+        let base = RunStore::default_state_root().unwrap();
+        let Ok(store) = Store::open(&base, id, Duration::ZERO) else {
+            return;
+        };
+        if let Ok(inputs) = store.sources()
+            && let Some(input) = inputs.iter().find(|i| i.text == DECISION)
         {
-            assert_eq!(input.source.role, SourceRole::User);
-            assert_eq!(input.source.origin, Some(SourceOrigin::Relayed));
-            assert_eq!(input.source.relayer.as_deref(), Some("kah-reviewer"));
-            assert!(inputs.iter().all(|i| i.text != PLAIN));
-            let kind = typed_by_jev(id, input);
-            let state = store.load().unwrap().unwrap();
-            let projection = kah_observer::engine::projection(&state).unwrap().unwrap();
-            let rows = fs::read_to_string(directory.join("observations.jsonl")).unwrap();
-            let tripwire = rows
-                .lines()
-                .filter_map(|s| serde_json::from_str::<Value>(s).ok())
-                .any(|v| {
-                    v["kind"] == "assessment"
-                        && v["turn"]
-                            .as_str()
-                            .is_some_and(|s| s.starts_with("tool-batch:"))
-                });
-            if project.join("relayed-4.txt").exists()
-                && tripwire
-                && projection.rendered_prompt().contains(DECISION)
-            {
-                assert_eq!(
-                    fs::read_to_string(project.join("marker.txt")).unwrap(),
-                    "RED\n"
-                );
-                return json!({"session":id,"origin":"relayed","relayer":"kah-reviewer","verbatim":true,"typedByJev":true,"decision":kind,"plainPrefixNotUserIntent":true,"tripwireRan":true,"passed":true});
+            if self.steer_row.is_none() {
+                assert_eq!(input.source.role, SourceRole::User);
+                assert_eq!(input.source.origin, Some(SourceOrigin::Relayed));
+                assert_eq!(input.source.relayer.as_deref(), Some("kah-reviewer"));
+                assert!(inputs.iter().all(|i| i.text != PLAIN));
+                self.steer_row = Some(t);
             }
+            if self.decided.is_none() && input.decision.is_some() {
+                self.decided = Some((t, typed_by_jev(id, input)));
+            }
+        }
+        if project.join("relayed-4.txt").exists() {
+            self.file_4.get_or_insert(t);
+        }
+        let rows = fs::read_to_string(Store::directory(&base, id).join("observations.jsonl"))
+            .unwrap_or_default();
+        if rows
+            .lines()
+            .filter_map(|s| serde_json::from_str::<Value>(s).ok())
+            .any(|v| {
+                v["kind"] == "assessment"
+                    && v["turn"]
+                        .as_str()
+                        .is_some_and(|s| s.starts_with("tool-batch:"))
+            })
+        {
+            self.tripwire.get_or_insert(t);
+        }
+        if let Ok(Some(state)) = store.load()
+            && let Ok(Some(projection)) = kah_observer::engine::projection(&state)
+            && projection.rendered_prompt().contains(DECISION)
+        {
+            self.prompt_has_decision.get_or_insert(t);
+        }
+    }
+}
+
+fn loadavg() -> String {
+    fs::read_to_string("/proc/loadavg")
+        .unwrap_or_default()
+        .split_whitespace()
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What the full-context observer is doing for this worker, for timeout reports.
+fn observer_state(id: &str) -> Value {
+    let verification = kah_observer::verification::enabled(id).ok();
+    let review = kah_cli::observer_review::state::Store::read(id)
+        .ok()
+        .flatten()
+        .map(|state| {
+            json!({"pending":state.pending.as_ref().map(|p| json!({"id":p.id,"turn":p.turn,"age_ms":kah_observer::session::now_ms().saturating_sub(p.created_ms)})),
+            "latestPurpose":state.latest.as_ref().map(|v| v["purpose"].clone()),"wakes":state.wakes,"observerSession":state.observer.session})
+        });
+    json!({"verificationEnabled":verification,"review":review})
+}
+
+fn prove(id: &str, project: &Path) -> Value {
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(600);
+    let mut progress = Progress::default();
+    loop {
+        progress.observe(id, project, started.elapsed().as_secs());
+        if progress.done() {
+            assert_eq!(
+                fs::read_to_string(project.join("marker.txt")).unwrap(),
+                "RED\n"
+            );
+            let kind = progress.decided.map(|d| d.1);
+            return json!({"session":id,"origin":"relayed","relayer":"kah-reviewer","verbatim":true,"typedByJev":true,"decision":kind,"plainPrefixNotUserIntent":true,"tripwireRan":true,"milestonesSecondsAfterSteer":progress,"loadavgAtEnd":loadavg(),"passed":true});
         }
         assert!(
             Instant::now() < deadline,
-            "reviewer steering/ledger/tripwire did not complete for {id}"
+            "reviewer steering/ledger/tripwire did not complete for {id} after {} s: {}",
+            started.elapsed().as_secs(),
+            json!({"milestonesSecondsAfterSteer":progress,"missing":missing(&progress),"observer":observer_state(id),"loadavg":loadavg()})
         );
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+fn missing(progress: &Progress) -> Vec<&'static str> {
+    [
+        (progress.steer_row.is_none(), "steer not in the ledger"),
+        (progress.decided.is_none(), "no decision on the steer"),
+        (
+            progress.file_4.is_none(),
+            "worker never wrote relayed-4.txt",
+        ),
+        (
+            progress.tripwire.is_none(),
+            "no tool-batch tripwire assessment",
+        ),
+        (
+            progress.prompt_has_decision.is_none(),
+            "observer prompt lacks the decision",
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(absent, what)| absent.then_some(what))
+    .collect()
 }
