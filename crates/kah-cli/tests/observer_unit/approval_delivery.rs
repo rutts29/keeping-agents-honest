@@ -69,3 +69,45 @@ fn a_terminal_unconfirmed_checkpoint_is_a_decided_non_pass_for_its_delivery() {
     pending["terminal"] = Value::Null;
     assert!(!unconfirmed_terminal(&pending, &key, 2));
 }
+
+#[test]
+fn a_confirmed_task_completes_with_only_standing_rules_unconfirmed() {
+    // A confirmed task can complete when only standing rules remain unconfirmed.
+    let authorities = json!({"goal":"goal","user-1":"user-1",
+        "r-review-staged":"derived_rule:r-review-staged","r-secrets":"derived_rule:r-secrets"});
+    let rows = |goal: &str, user: &str, rule: &str| {
+        json!({"result":{"rows":[
+            {"requirement":"goal","status":goal},
+            {"requirement":"user-1","status":user},
+            {"requirement":"r-review-staged","status":rule},
+            {"requirement":"r-secrets","status":"satisfied"}]}})
+    };
+    // 1. Task confirmed, only a standing rule unclear: complete, rule named.
+    assert_eq!(
+        accepted_unconfirmed(&rows("satisfied", "satisfied", "unclear"), &authorities),
+        Some(vec!["r-review-staged".to_string()])
+    );
+    // 2. A goal or user-requirement row unclear: not complete.
+    assert_eq!(
+        accepted_unconfirmed(&rows("unclear", "satisfied", "unclear"), &authorities),
+        None
+    );
+    assert_eq!(
+        accepted_unconfirmed(&rows("satisfied", "unclear", "satisfied"), &authorities),
+        None
+    );
+    // 3. Any violated row: not complete, even a standing rule.
+    assert_eq!(
+        accepted_unconfirmed(&rows("satisfied", "satisfied", "violated"), &authorities),
+        None
+    );
+    // A rule without derived_rule authority never counts as standing.
+    let unknown = json!({"goal":"goal","user-1":"user-1"});
+    assert_eq!(
+        accepted_unconfirmed(&rows("satisfied", "satisfied", "unclear"), &unknown),
+        None
+    );
+    // No task row at all: the task is not confirmed.
+    let only_rules = json!({"result":{"rows":[{"requirement":"r-secrets","status":"unclear"}]}});
+    assert_eq!(accepted_unconfirmed(&only_rules, &authorities), None);
+}

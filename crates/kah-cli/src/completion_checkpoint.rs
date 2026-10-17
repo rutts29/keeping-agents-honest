@@ -91,6 +91,10 @@ fn decided(
         // A terminal Option1 verdict with unconfirmed rows is final for this
         // delivery. Waiting for a pass that cannot come stalled the run.
         if unconfirmed_terminal(checkpoint, key, revision) {
+            if let Some(rules) = accepted_unconfirmed(checkpoint, &rule_authorities(state)?) {
+                record_unconfirmed(directory, &state.worker.session, checkpoint, &rules)?;
+                return Ok(Some(Status::Passed));
+            }
             return Ok(Some(Status::Failed(checkpoint.clone())));
         }
     }
@@ -104,6 +108,76 @@ fn unconfirmed_terminal(checkpoint: &Value, key: &Key, revision: u64) -> bool {
         && checkpoint["passed"].is_null()
         && checkpoint["head"] == key.commit
         && checkpoint["intent_revision"] == revision
+}
+
+/// The task is confirmed when every goal and user
+/// row is satisfied and no row is violated. Then a terminal checkpoint whose
+/// only unconfirmed rows are standing rules (derived_rule authority) completes,
+/// and those rules are reported as not confirmed. Anything else is not a pass.
+fn accepted_unconfirmed(checkpoint: &Value, authorities: &Value) -> Option<Vec<String>> {
+    let rows = checkpoint["result"]["rows"].as_array()?;
+    let authority = |row: &Value| authorities[row["requirement"].as_str().unwrap_or("")].as_str();
+    let task = |row: &&Value| authority(row).is_some_and(|a| a == "goal" || a.starts_with("user-"));
+    if rows.iter().any(|r| r["status"] == "violated")
+        || !rows.iter().any(|r| task(&r))
+        || rows.iter().filter(task).any(|r| r["status"] != "satisfied")
+    {
+        return None;
+    }
+    let unconfirmed = rows
+        .iter()
+        .filter(|r| r["status"] != "satisfied")
+        .collect::<Vec<_>>();
+    unconfirmed
+        .iter()
+        .all(|r| authority(r).is_some_and(|a| a.starts_with("derived_rule:")))
+        .then(|| {
+            unconfirmed
+                .iter()
+                .filter_map(|r| r["requirement"].as_str().map(str::to_owned))
+                .collect()
+        })
+}
+
+/// requirement id -> authority, from the checkpoint request's Option1 input.
+fn rule_authorities(state: &observer_review::state::State) -> Result<Value> {
+    let Some(request) = state
+        .checkpoint
+        .as_ref()
+        .and_then(|c| c["request"].as_str())
+    else {
+        return Ok(Value::Null);
+    };
+    let path = Store::directory(&state.worker.session)?
+        .join("requests")
+        .join(format!("{request}.json"));
+    let value: Value = observer_review::source_store::read(&path)?;
+    let rules = &value["trigger"]["option1"]["input"]["rules"];
+    Ok(Value::Object(
+        rules
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(k, v)| (k.clone(), v["authority"].clone()))
+            .collect(),
+    ))
+}
+
+/// The run report and the session journal name the rules kah did not confirm.
+fn record_unconfirmed(
+    directory: &Path,
+    worker: &str,
+    checkpoint: &Value,
+    rules: &[String],
+) -> Result<()> {
+    let record = json!({"kind":"unconfirmed_standing_rules","request":checkpoint["request"],
+        "commit":checkpoint["head"],"rules":rules,
+        "meaning":"task confirmed; these standing rules were not confirmed by the observer"});
+    crate::unattended_report::save(directory, "unconfirmed-standing-rules.json", &record)?;
+    let base = kah_core::run_store::RunStore::default_state_root()?;
+    kah_observer::session::Store::open(&base, worker, std::time::Duration::from_secs(10))?
+        .append(&record)?;
+    Ok(())
 }
 
 fn same_delivery(value: &Value, key: &Key) -> bool {
