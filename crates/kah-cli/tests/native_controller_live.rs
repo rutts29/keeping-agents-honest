@@ -62,12 +62,19 @@ fn journey(agent: &str) {
         .args(["session", "stop", &probe.name, "--json"])
         .output();
     drop(terminal);
-    native_controller_support::cleanup(&probe.root);
+    if evidence["passed"] != true {
+        eprintln!("PRIMARY FAILURE (reported before cleanup): {evidence}");
+    }
+    // A cleanup panic must not hide the journey's own failure.
+    let cleanup = std::panic::catch_unwind(|| native_controller_support::cleanup(&probe.root));
     if evidence["passed"] != true {
         panic!(
             "native run journey failed: {}",
             diagnostic.unwrap().display()
         );
+    }
+    if let Err(panic) = cleanup {
+        std::panic::resume_unwind(panic);
     }
     if evidence["consentRequired"] != false {
         assert!(

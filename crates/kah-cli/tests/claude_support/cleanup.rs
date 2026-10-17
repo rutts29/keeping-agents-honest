@@ -16,7 +16,7 @@ pub(super) fn command(project: &Path, created: &Path) -> Result<Command, String>
         );
     }
     let mut command = Command::new("claude");
-    command.args(["project", "purge", "--yes"]).arg(project);
+    command.args(["purge", "--yes"]).arg(project);
     Ok(command)
 }
 
@@ -33,7 +33,11 @@ fn native_purge_accepts_only_the_exact_created_fixture_path() {
     fs::create_dir(&user).unwrap();
     let native = command(&fixture, &fixture).unwrap();
     assert_eq!(native.get_args().last().unwrap(), fixture.as_os_str());
-    assert_eq!(native.get_args().count(), 4);
+    // 'claude purge --yes <path>' (2.1.302 renamed 'claude project purge').
+    assert_eq!(
+        native.get_args().collect::<Vec<_>>(),
+        ["purge", "--yes", fixture.as_os_str().to_str().unwrap()]
+    );
     assert!(command(&user, &fixture).is_err());
     assert!(command(&user, &user).is_err());
     fs::remove_dir(&fixture).unwrap();

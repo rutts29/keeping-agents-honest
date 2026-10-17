@@ -234,14 +234,15 @@ pub(crate) fn launch(
     String::from_utf8(result.stdout).unwrap()
 }
 fn wait(base: &Path, id: &str, agent: &str) -> Record {
-    let mut accepted = false;
+    // When the dialog survives an answer, answer again after 10 s.
+    let mut accepted: Option<Instant> = None;
     let mut stopped = false;
     let mut observer_consents = std::collections::BTreeSet::new();
     loop {
         let record = Store::read(base, id).unwrap();
         observer_consent(&record, &mut observer_consents);
         if std::env::var_os("KAH_GATE_CONSENT_ONLY").is_some()
-            && accepted
+            && accepted.is_some()
             && !stopped
             && record.native.as_ref().unwrap().source_cursor > 0
             && record.native.as_ref().unwrap().waiting.is_none()
@@ -264,13 +265,13 @@ fn wait(base: &Path, id: &str, agent: &str) -> Record {
                 .output()
                 .unwrap();
             let screen = String::from_utf8_lossy(&output.stdout);
-            if !accepted
+            if accepted.is_none_or(|at| at.elapsed() > Duration::from_secs(10))
                 && record.native.as_ref().unwrap().waiting.is_some()
                 && (screen.contains("Open restricted")
                     || screen.contains("Yes, I trust this folder"))
             {
                 accept_consent(id, pane, agent);
-                accepted = true;
+                accepted = Some(Instant::now());
             }
             if !matches!(
                 record.published_status(),
@@ -331,6 +332,9 @@ pub(crate) fn accept_consent(id: &str, pane: &str, agent: &str) {
 }
 pub(crate) fn native_consent(pane: &str, agent: &str) {
     std::thread::sleep(Duration::from_millis(400));
+    if agent == "claude" && screen(pane).contains("Yes, I trust this folder") {
+        return claude_trust(pane);
+    }
     let keys: &[&str] = if agent == "claude" {
         &["Down", "Enter"]
     } else {
@@ -339,6 +343,35 @@ pub(crate) fn native_consent(pane: &str, agent: &str) {
     for key in keys {
         send_key(pane, key);
     }
+}
+/// Claude's trust dialog starts on "No, exit" and ignores keys during its
+/// input guard. A dropped Down can make Enter exit Claude, so
+/// press Enter only once the cursor is shown on "Yes, I trust this folder".
+fn claude_trust(pane: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        let text = screen(pane);
+        if !text.contains("Yes, I trust this folder") {
+            return;
+        }
+        if text
+            .lines()
+            .any(|l| l.contains('❯') && l.contains("Yes, I trust this folder"))
+        {
+            send_key(pane, "Enter");
+            return;
+        }
+        send_key(pane, "Down");
+    }
+}
+fn screen(pane: &str) -> String {
+    let output = Command::new("herdr")
+        .args([
+            "pane", "read", pane, "--source", "visible", "--format", "text",
+        ])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&output.stdout).into_owned()
 }
 fn send_key(pane: &str, key: &str) {
     let output = Command::new("herdr")

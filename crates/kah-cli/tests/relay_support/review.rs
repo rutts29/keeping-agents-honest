@@ -326,7 +326,7 @@ fn cleanup_observer(home: &Path, state: &kah_cli::observer_review::state::State)
     assert_eq!(workspace.canonicalize().unwrap(), *workspace);
     if state.worker.provider == "claude" && state.observer.session.is_some() {
         let output = Command::new(home.join(".local/bin/claude"))
-            .args(["project", "purge", "--yes"])
+            .args(["purge", "--yes"])
             .arg(workspace)
             .output()
             .unwrap();

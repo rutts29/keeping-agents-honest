@@ -75,7 +75,7 @@ fn cleanup_native(base: &Path, record: &Record) {
 }
 fn purge(project: &Path) {
     let output = Command::new("claude")
-        .args(["project", "purge", "--yes"])
+        .args(["purge", "--yes"])
         .arg(project)
         .output()
         .unwrap();
@@ -90,13 +90,14 @@ fn purge(project: &Path) {
     );
 }
 
+/// Claude may print notices (e.g. 2.1.302's rename notice) around the result.
 fn already_purged(project: &Path, text: &str) -> bool {
-    text.trim()
-        == format!(
-            "No Claude Code project state found for {} under {}.",
-            project.display(),
-            std::env::var("HOME").unwrap() + "/.claude"
-        )
+    let expected = format!(
+        "No Claude Code project state found for {} under {}.",
+        project.display(),
+        std::env::var("HOME").unwrap() + "/.claude"
+    );
+    text.lines().any(|line| line.trim() == expected)
 }
 
 fn remove_owned(path: &Path) {
@@ -131,4 +132,25 @@ fn cleanup_session(base: &Path, record: &Record, id: &str) {
                 .success()
         );
     }
+}
+
+#[test]
+fn an_already_purged_project_is_recognized_among_other_notice_lines() {
+    let project = Path::new("/var/tmp/kah-runs/run-1/worktree");
+    let home = std::env::var("HOME").unwrap();
+    let result = format!(
+        "No Claude Code project state found for {} under {home}/.claude.",
+        project.display()
+    );
+    // Claude 2.1.302 prints a rename notice first (5h-d on 8558946).
+    let text = format!(
+        "'claude project purge' is now 'claude purge'. The old name still works for now.\n{result}\n"
+    );
+    assert!(already_purged(project, &text));
+    assert!(already_purged(project, &result));
+    assert!(!already_purged(
+        project,
+        "'claude project purge' is now 'claude purge'.\n"
+    ));
+    assert!(!already_purged(Path::new("/other"), &text));
 }

@@ -137,8 +137,15 @@ fn relay_and_dispatch() {
         .output()
         .unwrap();
     drop(terminal);
-    native_controller_support::cleanup(&probe.root);
+    if evidence["passed"] != true {
+        eprintln!("PRIMARY FAILURE (reported before cleanup): {evidence}");
+    }
+    // A cleanup panic must not hide the journey's own failure.
+    let cleanup = std::panic::catch_unwind(|| native_controller_support::cleanup(&probe.root));
     assert_eq!(evidence["passed"], true, "{evidence}");
+    if let Err(panic) = cleanup {
+        std::panic::resume_unwind(panic);
+    }
     retain_version_failure(&versions, &evidence);
     for (n, agent) in ["codex", "claude"].iter().enumerate() {
         versions[n].verify(&evidence["versions"][agent]);
