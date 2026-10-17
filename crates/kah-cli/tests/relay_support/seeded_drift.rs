@@ -208,13 +208,32 @@ fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
 /// Where the commit review stopped: the observer's review directory, with the
 /// small state files that decide whether a HEAD change was sampled and admitted.
 fn review_directory(id: &str) -> Value {
-    const SHOWN: [&str; 6] = [
+    const SHOWN: [&str; 15] = [
+        "deferred-obligations.json",
+        "admission-outcomes.jsonl",
+        "consume-outcomes.jsonl",
+        "queue-metadata.json",
+        "queue-order.json",
+        "last-admitted-lane.json",
+        "state.json",
+        "report-ready.json",
         "git-head.json",
         "option1-baseline.json",
         "option1-checkpoint-baseline.json",
         "admission-blocked.json",
         "gap.json",
         "git-tags.json",
+        "config.json",
+    ];
+    // Directories whose files explain a queued wake that never became a review.
+    const CONTENT: [&str; 7] = [
+        "checkpoint-events",
+        "queue-retired",
+        "queue-supersessions",
+        "queue-transfers",
+        "covered-triggers",
+        "commit-reviews",
+        "stage-timings",
     ];
     let Ok(directory) = kah_cli::observer_review::state::Store::directory(id) else {
         return Value::Null;
@@ -223,8 +242,8 @@ fn review_directory(id: &str) -> Value {
     for entry in fs::read_dir(&directory).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let value = if entry.path().is_dir() {
-            // checkpoint-events hold the unprocessed HEAD events: show their content.
-            json!(listed(&entry.path(), name == "checkpoint-events"))
+            // Show the content of the queue directories: they hold the events and their fate.
+            json!(listed(&entry.path(), CONTENT.contains(&name.as_str())))
         } else if SHOWN.contains(&name.as_str()) {
             json!(excerpt(&entry.path()))
         } else {
@@ -241,7 +260,7 @@ fn excerpt(path: &Path) -> String {
     fs::read_to_string(path)
         .unwrap_or_default()
         .chars()
-        .take(600)
+        .take(900)
         .collect()
 }
 
