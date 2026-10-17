@@ -24,6 +24,7 @@ pub mod light_commit;
 pub mod light_report;
 pub mod liveness;
 pub mod native_receipt;
+pub mod native_turn_end;
 pub mod option1;
 pub mod packet_references;
 pub mod preparation;

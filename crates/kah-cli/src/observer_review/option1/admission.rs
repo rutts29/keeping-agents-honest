@@ -56,7 +56,7 @@ pub fn submit(
     super::binary::publish(&store, &state, &mut context)?;
     let input = input::build(&history, &source, &context, checkpoint)?;
     if !checkpoint {
-        super::super::delivered::record(&store.directory, &input)?;
+        super::super::delivered::admitted(home, &state, &store.directory, &input)?;
     }
     if super::binary::present(&context) {
         return super::binary::wake(store, state, home, turn, input, trigger);

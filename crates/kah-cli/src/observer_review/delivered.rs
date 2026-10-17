@@ -14,15 +14,55 @@ pub const MARKER: &str = "deferred-obligations.json";
 const BASELINE: &str = "option1-checkpoint-baseline.json";
 
 /// Record the deferral of a commit review. Nothing is written without one.
-pub fn record(directory: &Path, input: &kah_observer::commit_check::Input) -> Result<()> {
+/// Returns whether a deferral was recorded.
+pub fn record(directory: &Path, input: &kah_observer::commit_check::Input) -> Result<bool> {
     let Some(deferred) = input.carried.get("deferred_obligations") else {
-        return Ok(());
+        return Ok(false);
     };
     crate::unattended_report::save(
         directory,
         MARKER,
         &json!({"head":input.revision,"rules":deferred["rules"]}),
-    )
+    )?;
+    Ok(true)
+}
+
+/// Commit admission: record the deferral. If the commit's own turn already
+/// ended, that turn's end check ran before the deferral existed (5f on
+/// an earlier admission waited behind the cold current_rules review), so run
+/// the check here. Only the worker's native transcript tells, never kah's Stop
+/// path; the review is still queued once per HEAD.
+pub fn admitted(
+    home: &Path,
+    state: &super::state::State,
+    root: &Path,
+    input: &kah_observer::commit_check::Input,
+) -> Result<()> {
+    if record(root, input)? {
+        // Best effort: any failure keeps today's behaviour, with no new error,
+        // gap or stage failure on the admission path.
+        let _ = recheck(home, state, &input.revision);
+    }
+    Ok(())
+}
+fn recheck(home: &Path, state: &super::state::State, head: &str) -> Result<()> {
+    let worker = &state.worker.session;
+    if turn_ended_since(
+        &super::native_turn_end::worker(home, state),
+        super::tags::committed_ms(home, state, head),
+    ) && queue_due(worker, home)?
+    {
+        queue::schedule(worker)?;
+    }
+    Ok(())
+}
+
+/// Whether a native turn ended at or after the commit. Git's commit time has
+/// one-second precision, so a previous turn's end earlier in the commit's own
+/// second also counts. That needs a new prompt plus a commit within one
+/// second; the cost is an early delivered-change review, never a missed one.
+pub fn turn_ended_since(turn_ends_ms: &[u64], committed_ms: Option<u64>) -> bool {
+    committed_ms.is_some_and(|commit| turn_ends_ms.iter().any(|&end| end >= commit))
 }
 
 /// Pure decision. `marker` is the deferral record, `baseline` the checkpoint

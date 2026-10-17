@@ -140,6 +140,14 @@ fn read_refs(home: &Path, state: &State) -> Result<Vec<String>> {
         .map(str::to_owned)
         .collect())
 }
+/// When `head` was committed, in ms (second precision); `None` when unreadable.
+pub fn committed_ms(home: &Path, state: &State, head: &str) -> Option<u64> {
+    git(home, state, &["show", "-s", "--format=%ct", head, "--"])
+        .ok()
+        .flatten()
+        .and_then(|t| t.trim().parse::<u64>().ok())
+        .map(|s| s.saturating_mul(1000))
+}
 /// Read-only Git metadata. `None` when the project is not a Git repository.
 fn git(home: &Path, state: &State, args: &[&str]) -> Result<Option<String>> {
     let mut command = vec![
