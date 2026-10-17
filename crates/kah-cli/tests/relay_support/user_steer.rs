@@ -86,6 +86,22 @@ fn steer(reviewer: &Pane, session: &str) {
     );
 }
 
+/// Uncertain supersession routes a Jev-typed steer to the full-context observer
+/// (Decision::Verification); both variants carry Jev's judgment.
+fn typed_by_jev(id: &str, input: &kah_observer::intake::Input) -> &'static str {
+    use kah_observer::intake::Decision;
+    match &input.decision {
+        Some(Decision::Jev { judgment }) if judgment.backend == "jev" => "jev",
+        Some(Decision::Verification { judgment }) if judgment.backend == "jev" => {
+            "jev-verification"
+        }
+        other => panic!(
+            "relayed steer for {id} was not typed by Jev: {}",
+            format!("{other:?}").chars().take(600).collect::<String>()
+        ),
+    }
+}
+
 fn prove(id: &str, project: &Path) -> Value {
     let base = RunStore::default_state_root().unwrap();
     let directory = Store::directory(&base, id);
@@ -93,16 +109,15 @@ fn prove(id: &str, project: &Path) -> Value {
     loop {
         if let Ok(store) = Store::open(&base, id, Duration::ZERO)
             && let Ok(inputs) = store.sources()
-            && let Some(input) = inputs.iter().find(|i| i.text == DECISION)
+            && let Some(input) = inputs
+                .iter()
+                .find(|i| i.text == DECISION && i.decision.is_some())
         {
             assert_eq!(input.source.role, SourceRole::User);
             assert_eq!(input.source.origin, Some(SourceOrigin::Relayed));
             assert_eq!(input.source.relayer.as_deref(), Some("kah-reviewer"));
             assert!(inputs.iter().all(|i| i.text != PLAIN));
-            assert!(matches!(
-                input.decision,
-                Some(kah_observer::intake::Decision::Jev { .. })
-            ));
+            let kind = typed_by_jev(id, input);
             let state = store.load().unwrap().unwrap();
             let projection = kah_observer::engine::projection(&state).unwrap().unwrap();
             let rows = fs::read_to_string(directory.join("observations.jsonl")).unwrap();
@@ -123,7 +138,7 @@ fn prove(id: &str, project: &Path) -> Value {
                     fs::read_to_string(project.join("marker.txt")).unwrap(),
                     "RED\n"
                 );
-                return json!({"session":id,"origin":"relayed","relayer":"kah-reviewer","verbatim":true,"typedByJev":true,"plainPrefixNotUserIntent":true,"tripwireRan":true,"passed":true});
+                return json!({"session":id,"origin":"relayed","relayer":"kah-reviewer","verbatim":true,"typedByJev":true,"decision":kind,"plainPrefixNotUserIntent":true,"tripwireRan":true,"passed":true});
             }
         }
         assert!(
