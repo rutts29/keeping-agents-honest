@@ -31,6 +31,9 @@ pub(super) fn run(_root: &Path) -> Value {
             "acceptEdits",
             "--append-system-prompt",
             FAULT,
+            // The task is the launch prompt: the observer records a run only once
+            // it sees a user prompt, which ready() waits for.
+            TASK,
         ]
         .map(String::from)
         .into(),
@@ -40,7 +43,6 @@ pub(super) fn run(_root: &Path) -> Value {
     let command = kah_cli::claude_launch::prepare(&home, claude.project(), args).unwrap();
     let panes = Panes(vec![Pane::start(&command).unwrap()]);
     assert_eq!(ready(&panes.0[0], "claude"), claude.id);
-    panes.0[0].prompt(TASK).unwrap();
     settle(&claude);
     let state = Observer::read(&claude.base, &claude.id).unwrap().unwrap();
     assert!(state.gap.is_none(), "{:?}", state.gap);

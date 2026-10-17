@@ -64,6 +64,9 @@ impl<'a> CompactorConfig<'a> {
                 "OBSERVER_EFFORT stage=observer_config: effort must be low or higher".into(),
             );
         }
+        if model == "claude-haiku-5-5" && matches!(reasoning, "low" | "medium") {
+            return Err("OBSERVER_EFFORT stage=observer_config: claude-haiku-5-5 needs high effort or more (permanent model floor)".into());
+        }
         if model.starts_with("claude-") && reasoning == "ultra" {
             return Err(
                 "OBSERVER_EFFORT stage=observer_config: Claude effort supports low through max"

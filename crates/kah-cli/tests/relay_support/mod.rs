@@ -249,21 +249,41 @@ fn ready(pane: &Pane, agent: &str) -> String {
         if let Some(id) = view["agent_session"]["value"].as_str() {
             observer_consent(id);
         }
-        if matches!(view["agent_status"].as_str(), Some("idle" | "done"))
-            && let Some(id) = view["agent_session"]["value"].as_str()
-            && let Ok(Some(state)) = Store::read(&RunStore::default_state_root().unwrap(), id)
-            && state.run_id.is_some()
-            && state.inflight.is_none()
-            && state.gap.is_none()
-        {
-            return id.into();
+        let missing = not_ready(&view);
+        if missing.is_empty() {
+            return view["agent_session"]["value"].as_str().unwrap().into();
         }
         assert!(
             Instant::now() < deadline,
-            "native session not ready: {view} {screen}"
+            "native session not ready ({missing}): {view} {screen}"
         );
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+/// Which `ready` condition fails for this pane, empty when all hold.
+fn not_ready(view: &Value) -> String {
+    if !matches!(view["agent_status"].as_str(), Some("idle" | "done")) {
+        return format!("agent_status is {}, not idle/done", view["agent_status"]);
+    }
+    let Some(id) = view["agent_session"]["value"].as_str() else {
+        return "Herdr reports no agent session id".into();
+    };
+    let state = match Store::read(&RunStore::default_state_root().unwrap(), id) {
+        Ok(Some(state)) => state,
+        Ok(None) => return format!("kah observer store for {id} does not exist"),
+        Err(e) => return format!("kah observer store for {id} unreadable: {e}"),
+    };
+    if state.run_id.is_none() {
+        // Set only when the observer reconciles a user prompt.
+        return "run_id unset: no user prompt has been recorded yet".into();
+    }
+    if state.inflight.is_some() {
+        return "observer request still inflight".into();
+    }
+    if let Some(gap) = &state.gap {
+        return format!("observer gap {gap:?}");
+    }
+    String::new()
 }
 /// kah starts each worker's review observer in its own pane, and Claude shows its
 /// native trust dialog for that kah-generated workspace. Answer it as the

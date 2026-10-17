@@ -130,3 +130,20 @@ fn claude_haiku_5_5_is_an_allowed_observer_but_legacy_haiku_still_upgrades() {
             .contains("claude-haiku-5-5")
     );
 }
+
+#[test]
+fn claude_haiku_5_5_below_high_effort_is_rejected_with_the_floor() {
+    for effort in [None, Some("low"), Some("medium")] {
+        let error = CompactorConfig::requested("claude-haiku-5-5", effort).unwrap_err();
+        assert!(
+            error.starts_with("OBSERVER_EFFORT stage=observer_config"),
+            "{error}"
+        );
+        assert!(error.contains("high effort or more"), "{error}");
+        assert!(CompactorConfig::new("claude-haiku-5-5", effort).is_err());
+    }
+    for effort in ["high", "xhigh", "max"] {
+        assert!(CompactorConfig::requested("claude-haiku-5-5", Some(effort)).is_ok());
+    }
+    assert!(CompactorConfig::requested("claude-sonnet-5-5", Some("low")).is_ok());
+}
