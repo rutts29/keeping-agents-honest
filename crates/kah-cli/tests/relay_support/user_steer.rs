@@ -183,10 +183,10 @@ struct Progress {
     review_resolved: Option<(u64, String)>,
     /// The accepted rule set version whose input carries the promoted decision.
     rule_set_has_decision: Option<(u64, String)>,
-    /// The first review request written after the promotion that carries it.
+    /// The first review request written after the promotion that cites that rule set.
     next_request_has_decision: Option<(u64, String)>,
     #[serde(skip)]
-    promoted_at: Option<std::time::SystemTime>,
+    promoted_at_ms: Option<u64>,
     #[serde(skip)]
     followed_up: bool,
 }
@@ -223,21 +223,21 @@ impl Progress {
                     "dismissed"
                 };
                 self.review_resolved = Some((t, format!("{action} by {}", latest_review(id))));
-                self.promoted_at = Some(std::time::SystemTime::now());
+                self.promoted_at_ms = Some(kah_observer::session::now_ms());
             }
         }
         if project.join("relayed-4.txt").exists() {
             self.file_4.get_or_insert(t);
         }
         if self.rule_set_has_decision.is_none()
-            && self.promoted_at.is_some()
+            && self.promoted_at_ms.is_some()
             && let Some(file) = steer_reach::rule_set_with(id, project, DECISION)
         {
             self.rule_set_has_decision = Some((t, file));
         }
         if self.next_request_has_decision.is_none()
-            && let Some(since) = self.promoted_at
-            && let Some(file) = steer_reach::request_after(id, DECISION, since)
+            && let Some(since) = self.promoted_at_ms
+            && let Some(file) = steer_reach::request_citing(id, project, DECISION, since)
         {
             self.next_request_has_decision = Some((t, file));
         }
@@ -338,7 +338,7 @@ fn prompt_state(id: &str) -> Value {
         "steerSource": steer.as_ref().map(|i| json!({"record":i.source.record,"promoted":i.promoted,"dismissed":i.dismissed,"ruleSetResolution":i.rule_set_resolution})),
         "stateLoaded": state.is_some(),
         "projection": projection.as_ref().map(|p| json!({"revision":p.revision,"sourceHead":p.source_head.record,"pendingSequence":p.source_head.pending_sequence,"compacted":p.compaction.is_some(),"promptBytes":p.rendered_prompt().len(),"items":items})),
-        "requestsMentioningDecision": steer_reach::request_ages(id, DECISION),
+        "requestCitations": steer_reach::request_citations(id),
     })
 }
 
@@ -350,7 +350,7 @@ fn prove(pane: &Pane, id: &str, project: &Path) -> Value {
         progress.observe(id, project, started.elapsed().as_secs());
         // A later native event gives the observer its next review request,
         // which now carries the promoted decision.
-        if progress.promoted_at.is_some() && !progress.followed_up {
+        if progress.promoted_at_ms.is_some() && !progress.followed_up {
             progress.followed_up = true;
             pane.prompt(FOLLOW_UP).unwrap();
         }
@@ -390,7 +390,7 @@ fn missing(progress: &Progress) -> Vec<&'static str> {
         ),
         (
             progress.next_request_has_decision.is_none(),
-            "no review request after the promotion carries the decision",
+            "no review request after the promotion cites the rule set that carries the decision",
         ),
     ]
     .into_iter()
