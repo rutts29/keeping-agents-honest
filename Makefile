@@ -25,8 +25,12 @@ gates: disk-check
 install-hooks:
 	git config core.hooksPath .githooks
 
+# Parallel gate runs install at once: an identical file is left alone, and a
+# changed one lands by atomic rename, never as a partly written executable.
+place = cmp -s "$(1)" "$(3)" || { install -Dm$(2) "$(1)" "$(3).tmp.$$$$" && mv -f "$(3).tmp.$$$$" "$(3)"; }
+
 install:
 	cargo build --release -p kah-cli
-	install -Dm755 "$(CARGO_TARGET_DIR)/release/kah" "$(HOME)/.local/bin/kah"
-	install -Dm644 assets/shell/kah.sh "$(HOME)/.local/share/kah/shell.sh"
-	install -Dm755 assets/shell/cx "$(HOME)/.local/bin/cx"
+	$(call place,$(CARGO_TARGET_DIR)/release/kah,755,$(HOME)/.local/bin/kah)
+	$(call place,assets/shell/kah.sh,644,$(HOME)/.local/share/kah/shell.sh)
+	$(call place,assets/shell/cx,755,$(HOME)/.local/bin/cx)
