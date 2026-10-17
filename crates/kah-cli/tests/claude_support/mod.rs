@@ -138,6 +138,20 @@ impl Fixture {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
+    /// Move a native picker's `❯` cursor up to the row whose label starts with
+    /// `label`; rows are found by text, never by number.
+    pub fn move_cursor_to(&self, terminal: &mut Terminal, label: &str, offset: usize) {
+        for _ in 0..12 {
+            terminal.respond_to_cursor_queries();
+            let output = terminal.output();
+            if output.len() > offset && cursor_on(&screen(&output), label) {
+                return;
+            }
+            terminal.send("\x1b[A");
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        panic!("native picker cursor never reached {label}");
+    }
     pub fn rows(&self) -> Vec<serde_json::Value> {
         fs::read_to_string(transcript::path(self))
             .unwrap_or_default()
@@ -215,6 +229,15 @@ pub(crate) fn inherited_claude_unset() -> String {
     } else {
         format!("env {names}")
     }
+}
+
+/// The flattened screen shows the cursor row as `❯ 2. Opus 5.5 ...`.
+fn cursor_on(flat: &str, label: &str) -> bool {
+    flat.split("❯ ").skip(1).any(|rest| {
+        rest.trim_start_matches(|c: char| c.is_ascii_digit())
+            .strip_prefix(". ")
+            .is_some_and(|row| row.starts_with(label))
+    })
 }
 
 fn screen(raw: &str) -> String {

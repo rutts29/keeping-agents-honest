@@ -92,23 +92,19 @@ fn claude_native_model_switch() {
     let offset = terminal.log_size();
     terminal.submit("/model");
     f.wait_text(&mut terminal, "session", offset);
-    f.wait_text(&mut terminal, "3. Sonnet 5.5", offset);
-    f.wait_text(&mut terminal, "❯ 5.", offset);
+    f.wait_text(&mut terminal, "Sonnet 5.5 ✔", offset);
     std::thread::sleep(Duration::from_millis(350));
-    terminal.send("\x1b[A");
-    std::thread::sleep(Duration::from_millis(250));
-    terminal.send("\x1b[A");
-    std::thread::sleep(Duration::from_millis(250));
+    f.move_cursor_to(&mut terminal, "Opus 5.5", offset);
     terminal.send("s");
     f.wait_text(&mut terminal, "Switch model?", offset);
-    f.wait_text(&mut terminal, "Yes, switch to Sonnet", offset);
+    f.wait_text(&mut terminal, "Yes, switch to Opus", offset);
     std::thread::sleep(Duration::from_millis(350));
     terminal.send("\r");
     f.wait(&mut terminal, || {
         model_event(&capture).is_some_and(|v| v["from_model"] != v["to_model"])
     });
     let event = model_event(&capture).unwrap();
-    assert!(event["to_model"].as_str().unwrap().contains("sonnet"));
+    assert!(event["to_model"].as_str().unwrap().contains("opus"));
     assert_eq!(event["session_id"], f.id);
     assert_eq!(event["hook_event_name"], "PostModelSwitch");
     terminal.submit("/exit");
@@ -124,7 +120,7 @@ fn claude_native_model_switch() {
     );
     fs::write(f.evidence.join("model-switch.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
         "passed":true,"nativeTaskBeforeSwitch":true,"fromModel":event["from_model"],"toModel":event["to_model"],
-        "nativeModelControl":"/model picker, explicit Sonnet row then s (session only), native cache confirmation","inferenceAfterSwitch":false,"globalSettingsUnchanged":true})).unwrap()).unwrap();
+        "nativeModelControl":"/model picker, Opus 5.5 row chosen by label then s (session only), native cache confirmation","inferenceAfterSwitch":false,"globalSettingsUnchanged":true})).unwrap()).unwrap();
 }
 
 fn model_event(path: &std::path::Path) -> Option<serde_json::Value> {
