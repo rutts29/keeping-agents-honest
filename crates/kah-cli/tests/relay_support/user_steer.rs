@@ -182,7 +182,8 @@ struct Progress {
     steer_row: Option<u64>,
     decided: Option<(u64, &'static str)>,
     file_4: Option<u64>,
-    /// When the verification review resolved the steer, and how (with its review id).
+    /// When the steer was resolved, and how: by the verification review (with
+    /// its review id), or applied at once on the direct Jev route.
     review_resolved: Option<(u64, String)>,
     /// The accepted rule set version whose input carries the promoted decision.
     rule_set_has_decision: Option<(u64, String)>,
@@ -223,13 +224,10 @@ impl Progress {
             if self.decided.is_none() && input.decision.is_some() {
                 self.decided = Some((t, typed_by_jev(id, input)));
             }
-            if self.review_resolved.is_none() && (input.promoted || input.dismissed) {
-                let action = if input.promoted {
-                    "promoted"
-                } else {
-                    "dismissed"
-                };
-                self.review_resolved = Some((t, format!("{action} by {}", latest_review(id))));
+            if self.review_resolved.is_none()
+                && let Some(how) = resolution(id, input)
+            {
+                self.review_resolved = Some((t, how));
                 self.promoted_at_ms = Some(kah_observer::session::now_ms());
             }
         }
@@ -268,6 +266,24 @@ fn head(project: &Path) -> Option<String> {
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// How the steer was resolved, if it was. A verification-routed steer waits for
+/// the review to promote or dismiss it. On the direct Jev route reconciliation
+/// applies the steer to the intent history at once (`Decision::records_intent`)
+/// and leaves promoted/dismissed false; the rule set check then proves it.
+fn resolution(id: &str, input: &kah_observer::intake::Input) -> Option<String> {
+    use kah_observer::intake::Decision;
+    if input.promoted || input.dismissed {
+        let action = if input.promoted {
+            "promoted"
+        } else {
+            "dismissed"
+        };
+        return Some(format!("{action} by {}", latest_review(id)));
+    }
+    matches!(&input.decision, Some(decision @ Decision::Jev { .. }) if decision.records_intent())
+        .then(|| "applied at once on the direct Jev route".into())
 }
 
 /// The review request the observer last completed (`unknown` when none is recorded).
