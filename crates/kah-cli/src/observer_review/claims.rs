@@ -41,8 +41,17 @@ pub fn schedule(worker: &str, turn: &str, text: &str) -> Result<()> {
 pub fn run(worker: &str) -> Result<()> {
     super::runtime::require_active(worker)?;
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("CHECKPOINT_HOME stage=trigger")?);
-    screen(worker, &home)?;
-    super::delivered::schedule(worker, &home)
+    let lease = super::job_lease::lease(worker, "__checkpoint-claims")?;
+    run_with(worker, &lease, || {
+        screen(worker, &home)?;
+        super::delivered::schedule(worker, &home)
+    })
+}
+/// A Stop that writes its claim while a screen runs starts no job, so the
+/// running job settles: an idle worker's last claim is never left unscreened.
+pub fn run_with(worker: &str, lease: &fs::File, pass: impl FnMut() -> Result<()>) -> Result<()> {
+    let directory = Store::directory(worker)?.join("claim-events");
+    super::job_lease::until_settled(lease, pass, || super::job_lease::has_json(&directory))
 }
 fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
     let directory = Store::directory(worker)?.join("claim-events");

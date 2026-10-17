@@ -19,6 +19,7 @@ pub mod gate_host;
 pub mod hook;
 pub mod hook_queue;
 pub mod indexed_sources;
+pub mod job_lease;
 pub mod launch;
 pub mod light_commit;
 pub mod light_report;

@@ -75,3 +75,50 @@ fn doubtful_claim_requires_thinker_selected_native_assistant_evidence() {
     let claim = json!({"topic":"claim","citations":[{"native_records":[{"message_role":"assistant","native_transport_only":true}]}]});
     checkpoint_claim::require_evidence(&request, &[claim]).unwrap();
 }
+
+#[test]
+fn a_claim_written_while_the_claims_job_holds_its_lock_is_not_stranded() {
+    // The checkpoint-worker lost wakeup (5f, 2026-10-17) in the claims job: a
+    // Stop writes its claim while the previous Jev screen still runs, so
+    // hook::spawn starts nothing. An idle worker's last claim was never screened.
+    let worker = format!("claims-wakeup-unit-{}", std::process::id());
+    let root = kah_cli::observer_review::state::Store::directory(&worker).unwrap();
+    let events = root.join("claim-events");
+    kah_core::run_store::ensure_private_directory(&events).unwrap();
+    kah_cli::unattended_report::save(&events, "first.json", &serde_json::json!({"turn":"1"}))
+        .unwrap();
+    let lock = root.join("job-__checkpoint-claims.lock");
+    let open = || {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock)
+            .unwrap()
+    };
+    let lease = open();
+    lease.try_lock().unwrap();
+    let mut passes = 0;
+    kah_cli::observer_review::claims::run_with(&worker, &lease, || {
+        passes += 1;
+        // The screen: every claim present is judged and removed.
+        for entry in std::fs::read_dir(&events).unwrap() {
+            std::fs::remove_file(entry.unwrap().path()).unwrap();
+        }
+        if passes == 1 {
+            let claim = serde_json::json!({"turn":"2","native_assistant_text":"Phase done."});
+            kah_cli::unattended_report::save(&events, "second.json", &claim).unwrap();
+            // hook::spawn would skip here: the running job holds the lock.
+            assert!(open().try_lock().is_err());
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        !kah_cli::observer_review::job_lease::has_json(&events).unwrap(),
+        "the last claim was stranded"
+    );
+    assert_eq!(passes, 2);
+    std::fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}

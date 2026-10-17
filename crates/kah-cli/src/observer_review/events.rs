@@ -31,34 +31,25 @@ pub fn pending(worker: &str) -> Result<bool> {
     Ok(false)
 }
 pub fn run(worker: &str) -> Result<()> {
-    let lease = crate::helper_upgrade::open_lease(
-        &Store::directory(worker)?.join("job-__checkpoint-worker.lock"),
-    )?;
+    let lease = super::job_lease::lease(worker, "__checkpoint-worker")?;
     drain_all(worker, &lease, |w| super::queue::drain(w).map(|_| ()))
 }
-/// hook::spawn starts nothing while this job holds its lock, so an event written
-/// during a drain can have no job left to transfer it (a worker
-/// commit was never reviewed). After each drain the job releases its lock and
-/// checks again; it continues only if it takes the lock back, so a job spawned
-/// in between owns that work and nothing is processed twice.
+/// hook::spawn starts nothing while this job holds its lock, so an event
+/// written during a drain had no job left to transfer it (5f, 2026-10-17: a
+/// worker commit was never reviewed). The job settles instead of exiting.
 pub fn drain_all(
     worker: &str,
     lease: &fs::File,
     mut drain: impl FnMut(&str) -> Result<()>,
 ) -> Result<()> {
-    loop {
-        transfer(worker)?;
-        drain(worker)?;
-        lease.unlock()?;
-        if !pending(worker)? {
-            return Ok(());
-        }
-        match lease.try_lock() {
-            Ok(()) => (),
-            Err(fs::TryLockError::WouldBlock) => return Ok(()),
-            Err(fs::TryLockError::Error(e)) => return Err(e.into()),
-        }
-    }
+    super::job_lease::until_settled(
+        lease,
+        || {
+            transfer(worker)?;
+            drain(worker)
+        },
+        || pending(worker),
+    )
 }
 /// Transfer before choosing a queued review, including when another is active.
 /// The separate lock prevents concurrent wakes from transferring a batch twice.
