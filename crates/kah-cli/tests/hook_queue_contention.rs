@@ -139,3 +139,46 @@ fn native_pre_tool_hook_returns_while_admission_mutex_is_held() {
         "{response}"
     );
 }
+
+#[test]
+fn a_hook_event_written_after_the_last_empty_check_is_not_stranded() {
+    // The job applies events until its directory is empty and then exits. A
+    // hook that writes its event after that last check, while the job still
+    // holds its lock, starts no job (hook::spawn), so the event waited for the
+    // next hook. The pass here ends exactly in that window.
+    let worker = format!("hook-events-wakeup-unit-{}", std::process::id());
+    let root = kah_cli::observer_review::state::Store::directory(&worker).unwrap();
+    let events = root.join("hook-events");
+    kah_core::run_store::ensure_private_directory(&events).unwrap();
+    let lock = root.join("job-__review-hook-events.lock");
+    let open = || {
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock)
+            .unwrap()
+    };
+    let lease = open();
+    lease.try_lock().unwrap();
+    let mut passes = 0;
+    kah_cli::observer_review::hook_queue::run_with(&worker, &lease, || {
+        passes += 1;
+        for entry in fs::read_dir(&events).unwrap() {
+            fs::remove_file(entry.unwrap().path()).unwrap();
+        }
+        if passes == 1 {
+            kah_cli::unattended_report::save(&events, "late.json", &json!({"late":true})).unwrap();
+            assert!(open().try_lock().is_err());
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        !kah_cli::observer_review::job_lease::has_json(&events).unwrap(),
+        "the late hook event was stranded"
+    );
+    assert_eq!(passes, 2);
+    fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}

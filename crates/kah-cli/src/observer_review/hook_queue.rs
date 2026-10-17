@@ -63,8 +63,18 @@ pub fn run(worker: &str) -> Result<()> {
     if !root.exists() {
         return Ok(());
     }
+    let lease = super::job_lease::lease(worker, "__review-hook-events")?;
+    run_with(worker, &lease, || apply_all(worker, &root))
+}
+/// A hook that writes its event after the last empty check starts no job while
+/// this one holds its lock, so the job settles instead of exiting.
+pub fn run_with(worker: &str, lease: &fs::File, pass: impl FnMut() -> Result<()>) -> Result<()> {
+    let root = Store::directory(worker)?.join("hook-events");
+    super::job_lease::until_settled(lease, pass, || super::job_lease::has_json(&root))
+}
+fn apply_all(worker: &str, root: &std::path::Path) -> Result<()> {
     loop {
-        let files = entries(&root)?;
+        let files = entries(root)?;
         if files.is_empty() {
             return Ok(());
         }
