@@ -70,7 +70,18 @@ fn start(installed: &Path, home: &Path, inherited: bool) -> OwnedChild {
         lease.try_lock().unwrap();
         command.stdin(std::process::Stdio::from(lease));
     }
-    OwnedChild(command.spawn().unwrap())
+    // The parallel test may fork while our just-copied binary is still open
+    // for writing in its child; retry only that ETXTBSY, at most 3 tries.
+    for attempt in 1.. {
+        match command.spawn() {
+            Ok(child) => return OwnedChild(child),
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 3 => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => panic!("{e}"),
+        }
+    }
+    unreachable!()
 }
 
 fn compile(source: &Path, output: &Path, legacy: bool) {
