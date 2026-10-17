@@ -45,10 +45,14 @@ fn journey(agent: &str) {
     let mut terminal = pty::Terminal::start(&command, &probe.root.join("terminal.log"));
     terminal.wait_for("KAH_HERDR_SHELL_READY");
     terminal.submit(&format!("env -u CODEX_THREAD_ID KAH_NATIVE_RUN_PROBE={} KAH_NATIVE_RUN_AGENT={} {} --exact native_run_probe_entrypoint --nocapture > {} 2>&1", pty::quote(probe.root.to_str().unwrap()), pty::quote(agent), pty::quote(std::env::current_exe().unwrap().to_str().unwrap()), pty::quote(probe.root.join("helper.log").to_str().unwrap())));
+    let (deadline, secs) = herdr_probe::journey_deadline();
     let evidence = loop {
         terminal.respond_to_cursor_queries();
         if let Ok(bytes) = fs::read(probe.root.join("result.json")) {
             break serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
+        }
+        if std::time::Instant::now() >= deadline {
+            break herdr_probe::timeout_evidence("native_run", secs);
         }
         std::thread::sleep(Duration::from_millis(200));
     };

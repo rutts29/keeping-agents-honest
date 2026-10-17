@@ -39,23 +39,8 @@ pub fn request(
         if state.pending.is_some() {
             return Ok(Status::Pending);
         }
-        if let Some(checkpoint) = &state.checkpoint
-            && approval_delivery(directory, checkpoint, key)?
-            && observer_review::gate_approval::approved_authority(&state, revision)?
-        {
-            return Ok(Status::Passed);
-        }
-        if state
-            .checkpoint
-            .as_ref()
-            .is_some_and(|c| same_delivery(&c["completion_key"], key))
-            && let Some(passed) = observer_review::checkpoint::covers(&state, &key.commit, revision)
-        {
-            return Ok(if passed {
-                Status::Passed
-            } else {
-                Status::Failed(state.checkpoint.unwrap())
-            });
+        if let Some(status) = decided(directory, &state, key, revision)? {
+            return Ok(status);
         }
     }
     let path = directory.join("completion-checkpoint-request.json");
@@ -76,6 +61,49 @@ pub fn request(
         )?;
     }
     Ok(Status::Pending)
+}
+
+/// The stored checkpoint's verdict for this exact delivery, if it has one.
+fn decided(
+    directory: &Path,
+    state: &observer_review::state::State,
+    key: &Key,
+    revision: u64,
+) -> Result<Option<Status>> {
+    if let Some(checkpoint) = &state.checkpoint
+        && approval_delivery(directory, checkpoint, key)?
+        && observer_review::gate_approval::approved_authority(state, revision)?
+    {
+        return Ok(Some(Status::Passed));
+    }
+    if let Some(checkpoint) = state
+        .checkpoint
+        .as_ref()
+        .filter(|c| same_delivery(&c["completion_key"], key))
+    {
+        if let Some(passed) = observer_review::checkpoint::covers(state, &key.commit, revision) {
+            return Ok(Some(if passed {
+                Status::Passed
+            } else {
+                Status::Failed(checkpoint.clone())
+            }));
+        }
+        // A terminal Option1 verdict with unconfirmed rows is final for this
+        // delivery. Waiting for a pass that cannot come stalled the run.
+        if unconfirmed_terminal(checkpoint, key, revision) {
+            return Ok(Some(Status::Failed(checkpoint.clone())));
+        }
+    }
+    Ok(None)
+}
+
+/// Option1 records `passed: null` with `terminal: true` when rows stay
+/// unconfirmed; that verdict is not a pass and is never re-judged.
+fn unconfirmed_terminal(checkpoint: &Value, key: &Key, revision: u64) -> bool {
+    checkpoint["terminal"] == true
+        && checkpoint["passed"].is_null()
+        && checkpoint["head"] == key.commit
+        && checkpoint["intent_revision"] == revision
 }
 
 fn same_delivery(value: &Value, key: &Key) -> bool {

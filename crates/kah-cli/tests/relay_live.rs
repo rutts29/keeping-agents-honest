@@ -196,8 +196,12 @@ fn evidence_name(reviewer_notified: bool) -> &'static str {
 
 fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> (Value, bool) {
     let mut notified = false;
+    let (deadline, secs) = herdr_probe::journey_deadline();
     loop {
         terminal.respond_to_cursor_queries();
+        if std::time::Instant::now() >= deadline {
+            return (herdr_probe::timeout_evidence("relay", secs), notified);
+        }
         if !notified && root.join("steer-ready.json").exists() {
             notify_reviewer(root);
             notified = true;
