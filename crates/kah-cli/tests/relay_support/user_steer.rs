@@ -11,6 +11,7 @@ pub(super) fn run(root: &Path) -> Value {
     let codex = selected("codex").then(|| start_codex(&home));
     let claude = selected("claude").then(|| {
         let fixture = crate::claude_support::Fixture::new();
+        baseline_commit(fixture.project());
         let pane = start_claude(&home, &fixture, root);
         (pane, fixture)
     });
@@ -55,6 +56,32 @@ pub(super) fn run(root: &Path) -> Value {
     }
     let agents = workers.iter().map(|w| w.0).collect::<Vec<_>>();
     json!({"passed":true,"agents":agents,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"claudeObserver":claude.is_some().then(crate::claude_support::observer::evidence),"privateHerdr":true,"userSteering":results,"reviewerSent":"fixture pane named kah-reviewer in the private Herdr"})
+}
+
+/// The tool-batch checkpoint admission needs a HEAD (`COMMIT_HEAD_MISSING
+/// stage=admission` otherwise); the empty commit leaves the worker's files alone.
+fn baseline_commit(project: &Path) {
+    let status = Command::new("git")
+        .args([
+            "-C",
+            project.to_str().unwrap(),
+            "-c",
+            "user.name=fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "fixture source baseline",
+        ])
+        .status()
+        .unwrap();
+    assert!(status.success(), "baseline commit failed");
 }
 
 fn start_codex(home: &Path) -> (Pane, crate::fixture::Fixture, String) {
