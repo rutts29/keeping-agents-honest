@@ -16,7 +16,7 @@ pub(super) fn run(_root: &Path) -> Value {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let started = Instant::now();
     let claude = crate::claude_support::Fixture::new();
-    let args = Arguments::parse(
+    let mut args = Arguments::parse(
         [
             "--agent",
             "claude",
@@ -36,6 +36,7 @@ pub(super) fn run(_root: &Path) -> Value {
         .into(),
     )
     .unwrap();
+    crate::claude_support::observer::apply(&mut args);
     let command = kah_cli::claude_launch::prepare(&home, claude.project(), args).unwrap();
     let panes = Panes(vec![Pane::start(&command).unwrap()]);
     assert_eq!(ready(&panes.0[0], "claude"), claude.id);
@@ -52,7 +53,7 @@ pub(super) fn run(_root: &Path) -> Value {
         .unwrap();
     assert_eq!(inputs.len(), 1);
     assert_eq!(inputs[0].text, TASK);
-    json!({"passed":true,"versions":versions(&home),"fixtureModel":"claude-sonnet-5-5","seededWrongWrite":"OMEGA",
+    json!({"passed":true,"versions":versions(&home),"fixtureModel":"claude-sonnet-5-5","observer":crate::claude_support::observer::evidence(),"seededWrongWrite":"OMEGA",
         "finalMarker":"BETA","reminders":state.reminders,"humanInputs":inputs.len(),"observerUsage":state.usage,
         "workerIsHerdrPane":true,"privateHerdr":true,"wallElapsedMs":started.elapsed().as_millis()})
 }

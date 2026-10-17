@@ -9,6 +9,9 @@ use std::{
     time::{Duration, Instant},
 };
 mod capture;
+#[allow(clippy::duplicate_mod)]
+#[path = "../terminal_support/claude_observer.rs"]
+pub mod claude_observer;
 mod cleanup;
 mod comparison;
 #[allow(dead_code)]
@@ -94,7 +97,7 @@ fn completion(root: &Path, agent: &str) -> Value {
     for (path, bytes) in before {
         assert_eq!(bytes, fs::read(path).unwrap());
     }
-    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"checkpointReview":checkpoint_proof(&record),"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
+    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","observer":(agent=="claude").then(claude_observer::evidence),"sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"checkpointReview":checkpoint_proof(&record),"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
 }
 fn checkpoint_proof(record: &Record) -> Value {
     use kah_cli::observer_review::state::Store as Reviews;
@@ -222,6 +225,11 @@ pub(crate) fn launch(
         .args([
             "--agent", agent, "--model", model, "--effort", "low", "--test", verify, task,
         ])
+        .args(if agent == "claude" {
+            claude_observer::run_args()
+        } else {
+            vec![]
+        })
         .args(options)
         .current_dir(project)
         .output()

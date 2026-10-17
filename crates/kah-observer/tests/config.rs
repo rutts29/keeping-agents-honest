@@ -101,3 +101,32 @@ fn explicit_below_floor_models_fail_while_saved_bindings_upgrade() {
         );
     }
 }
+
+#[test]
+fn claude_haiku_5_5_is_an_allowed_observer_but_legacy_haiku_still_upgrades() {
+    let config = CompactorConfig::new("claude-haiku-5-5", Some("high")).unwrap();
+    assert_eq!(config.model(), "claude-haiku-5-5");
+    assert_eq!(config.reasoning(), "high");
+    assert_eq!(
+        CompactorConfig::requested("claude-haiku-5-5", Some("high"))
+            .unwrap()
+            .model(),
+        "claude-haiku-5-5"
+    );
+    for legacy in ["haiku", "claude-haiku-4-5-20251001"] {
+        assert_eq!(
+            CompactorConfig::new(legacy, Some("high")).unwrap().model(),
+            "claude-sonnet-5-5",
+            "{legacy}"
+        );
+        assert!(
+            CompactorConfig::requested(legacy, None).is_err(),
+            "{legacy}"
+        );
+    }
+    assert!(
+        CompactorConfig::requested("claude-haiku-4-5", None)
+            .unwrap_err()
+            .contains("claude-haiku-5-5")
+    );
+}

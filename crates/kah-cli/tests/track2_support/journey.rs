@@ -292,6 +292,9 @@ pub fn native(
         "low".into(),
     ])
     .unwrap();
+    if provider == "claude" {
+        super::claude_observer::apply(&mut args);
+    }
     if provider == "claude" && resume.is_none() {
         claude_identity(&mut args, home, root);
     }

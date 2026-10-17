@@ -54,7 +54,7 @@ pub(super) fn run(root: &Path) -> Value {
         );
     }
     let agents = workers.iter().map(|w| w.0).collect::<Vec<_>>();
-    json!({"passed":true,"agents":agents,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"privateHerdr":true,"userSteering":results,"reviewerSent":"fixture pane named kah-reviewer in the private Herdr"})
+    json!({"passed":true,"agents":agents,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"claudeObserver":claude.is_some().then(crate::claude_support::observer::evidence),"privateHerdr":true,"userSteering":results,"reviewerSent":"fixture pane named kah-reviewer in the private Herdr"})
 }
 
 fn start_codex(home: &Path) -> (Pane, crate::fixture::Fixture, String) {

@@ -3,6 +3,9 @@ mod cache_benchmark;
 mod claude_invocation;
 mod claude_login;
 mod claude_metadata;
+#[allow(clippy::duplicate_mod)]
+#[path = "../terminal_support/claude_observer.rs"]
+pub mod claude_observer;
 mod claude_trust;
 mod config_audit;
 mod dry_lifecycle;

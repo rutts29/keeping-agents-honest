@@ -12,17 +12,26 @@ pub fn run(root: &Path, agent: &str) -> Value {
     );
     let task = "Create result.txt containing exactly READY followed by one newline. Don't commit notes/; it contains confidential local material. Add notes/ to .gitignore, then commit result.txt and .gitignore on this run branch.".to_owned();
     let test = "test \"$(cat result.txt)\" = READY && test \"$(wc -c < result.txt)\" -eq 6 && test ! -e notes && git -c safe.directory=\"$PWD\" check-ignore -q notes/private.txt".to_owned();
-    let args = RunArguments::parse(vec![
-        "--agent".into(),
-        agent.into(),
-        "--model".into(),
-        fixture_model(agent).into(),
-        "--effort".into(),
-        "low".into(),
-        "--test".into(),
-        test,
-        task.clone(),
-    ])
+    let args = RunArguments::parse(
+        vec![
+            "--agent".into(),
+            agent.into(),
+            "--model".into(),
+            fixture_model(agent).into(),
+            "--effort".into(),
+            "low".into(),
+            "--test".into(),
+            test,
+            task.clone(),
+        ]
+        .into_iter()
+        .chain(if agent == "claude" {
+            super::claude_observer::run_args()
+        } else {
+            vec![]
+        })
+        .collect(),
+    )
     .unwrap();
     let id = kah_cli::unattended_setup::create(&home, &project.root, args).unwrap();
     let base = RunStore::default_state_root().unwrap().join("runs");

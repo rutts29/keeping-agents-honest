@@ -60,7 +60,7 @@ fn claude_native_effort_choice() {
         "global settings changed"
     );
     fs::write(f.evidence.join("effort.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
-        "passed":true,"fixtureInitialModel":"claude-sonnet-5-5","fixtureInitialEffort":"low","nativeEffortControl":"/effort slider, Right then s (session only)",
+        "observer":claude_support::observer::evidence(),"passed":true,"fixtureInitialModel":"claude-sonnet-5-5","fixtureInitialEffort":"low","nativeEffortControl":"/effort slider, Right then s (session only)",
         "observedModel":row["message"]["model"],"observedEffort":row["effort"],"observedPerTurnEffort":row["perTurnEffort"],"globalSettingsUnchanged":true})).unwrap()).unwrap();
 }
 
@@ -119,7 +119,7 @@ fn claude_native_model_switch() {
         f.rows().iter().filter(|r| r["type"] == "assistant").count()
     );
     fs::write(f.evidence.join("model-switch.json"), serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),
-        "passed":true,"nativeTaskBeforeSwitch":true,"fromModel":event["from_model"],"toModel":event["to_model"],
+        "observer":claude_support::observer::evidence(),"passed":true,"nativeTaskBeforeSwitch":true,"fromModel":event["from_model"],"toModel":event["to_model"],
         "nativeModelControl":"/model picker, Opus 5.5 row chosen by label then s (session only), native cache confirmation","inferenceAfterSwitch":false,"globalSettingsUnchanged":true})).unwrap()).unwrap();
 }
 

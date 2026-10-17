@@ -154,7 +154,7 @@ fn ordinary_run(root: &Path) -> Value {
     for (path, bytes) in before {
         assert_eq!(fs::read(path).unwrap(), bytes);
     }
-    json!({"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"forward":forward,"reverse":reverse,"dispatch":dispatched,"privateHerdr":true,"globalConfigUnchanged":true,"passed":true})
+    json!({"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"claudeObserver":crate::claude_support::observer::evidence(),"forward":forward,"reverse":reverse,"dispatch":dispatched,"privateHerdr":true,"globalConfigUnchanged":true,"passed":true})
 }
 /// KAH_GATE_AGENTS (default both) lists the agents this gate starts and proves.
 pub fn selected(agent: &str) -> bool {
@@ -205,7 +205,7 @@ fn start_claude_prompt(
     root: &Path,
     prompt: &str,
 ) -> Pane {
-    let args = Arguments::parse(vec![
+    let mut args = Arguments::parse(vec![
         "--agent".into(),
         "claude".into(),
         "--model".into(),
@@ -220,6 +220,7 @@ fn start_claude_prompt(
         prompt.into(),
     ])
     .unwrap();
+    crate::claude_support::observer::apply(&mut args);
     let command = kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap();
     Pane::start(&trace::command(&command, root)).unwrap()
 }

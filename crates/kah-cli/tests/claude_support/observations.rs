@@ -22,7 +22,8 @@ pub fn finish(terminal: &mut pty::Terminal) {
     terminal.submit("/exit");
     terminal.wait_exit(false);
 }
-pub fn write(f: &Fixture, name: &str, value: Value) {
+pub fn write(f: &Fixture, name: &str, mut value: Value) {
+    value["observer"] = super::claude_support::observer::evidence();
     fs::write(
         f.evidence.join(name),
         serde_json::to_vec_pretty(&value).unwrap(),

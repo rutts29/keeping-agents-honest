@@ -116,7 +116,7 @@ pub(super) fn command(
         (GOAL, FAULT)
     };
     if let Some(fixture) = fixture {
-        let args = Arguments::parse(vec![
+        let mut args = Arguments::parse(vec![
             "--agent".into(),
             "claude".into(),
             "--model".into(),
@@ -135,6 +135,7 @@ pub(super) fn command(
             goal.into(),
         ])
         .unwrap();
+        crate::claude_support::observer::apply(&mut args);
         kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap()
     } else {
         let mut command = launch.command(false);

@@ -9,6 +9,9 @@ use std::{
 };
 mod cleanup;
 mod completion;
+#[allow(clippy::duplicate_mod)]
+#[path = "../terminal_support/claude_observer.rs"]
+pub mod observer;
 pub mod settings;
 pub mod subagent_completion;
 mod transcript;
@@ -72,7 +75,12 @@ impl Fixture {
         let choices = if resume {
             String::new()
         } else {
-            format!("--model {} --effort {}", quote(model), quote(effort))
+            format!(
+                "--model {} --effort {} {}",
+                quote(model),
+                quote(effort),
+                observer::shell()
+            )
         };
         let extra = extra.iter().map(|s| quote(s)).collect::<Vec<_>>().join(" ");
         let command = format!(

@@ -48,11 +48,12 @@ impl<'a> CompactorConfig<'a> {
             model,
             "gpt-6.1-sol"
                 | "gpt-6-astra"
+                | "claude-haiku-5-5"
                 | "claude-sonnet-5-5"
                 | "claude-opus-5-5"
                 | "claude-fable-5-1"
         ) {
-            return Err("OBSERVER_MODEL stage=observer_config: choose gpt-6.1-sol, gpt-6-astra, claude-sonnet-5-5, claude-opus-5-5 or claude-fable-5-1 (permanent model floor)".into());
+            return Err("OBSERVER_MODEL stage=observer_config: choose gpt-6.1-sol, gpt-6-astra, claude-haiku-5-5 (high effort or more), claude-sonnet-5-5, claude-opus-5-5 or claude-fable-5-1 (permanent model floor)".into());
         }
         let reasoning = reasoning.unwrap_or("low");
         if !matches!(

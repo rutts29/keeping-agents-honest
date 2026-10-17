@@ -92,7 +92,7 @@ fn codex_command(launch: &kah_cli::Launch) -> Command {
 }
 
 fn claude_command(home: &Path, fixture: &crate::claude_support::Fixture) -> Command {
-    let args = Arguments::parse(vec![
+    let mut args = Arguments::parse(vec![
         "--agent".into(),
         "claude".into(),
         "--model".into(),
@@ -111,6 +111,7 @@ fn claude_command(home: &Path, fixture: &crate::claude_support::Fixture) -> Comm
         task("Bash"),
     ])
     .unwrap();
+    crate::claude_support::observer::apply(&mut args);
     let mut command = kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap();
     // Keep variables kah itself sets (e.g. CLAUDE_CODE_SHELL_PREFIX).
     let set = command
