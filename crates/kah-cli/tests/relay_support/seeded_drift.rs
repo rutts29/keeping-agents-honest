@@ -223,21 +223,107 @@ fn review_directory(id: &str) -> Value {
     for entry in fs::read_dir(&directory).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let value = if entry.path().is_dir() {
-            let names = fs::read_dir(entry.path())
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .take(20)
-                .collect::<Vec<_>>();
-            json!(names)
+            // checkpoint-events hold the unprocessed HEAD events: show their content.
+            json!(listed(&entry.path(), name == "checkpoint-events"))
         } else if SHOWN.contains(&name.as_str()) {
-            let text = fs::read_to_string(entry.path()).unwrap_or_default();
-            json!(text.chars().take(400).collect::<String>())
+            json!(excerpt(&entry.path()))
         } else {
             json!(entry.metadata().map(|m| m.len()).ok())
         };
         listing.insert(name, value);
     }
+    listing.insert("journalTail".into(), journal_tail(id));
+    listing.insert("diagnosis".into(), diagnosis(id, &directory));
     Value::Object(listing)
+}
+
+fn excerpt(path: &Path) -> String {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .chars()
+        .take(600)
+        .collect()
+}
+
+/// File names in a directory, with their content when asked (at most 20 files).
+fn listed(directory: &Path, content: bool) -> Value {
+    json!(
+        fs::read_dir(directory)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .take(20)
+            .map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if content {
+                    json!({"file":name,"content":excerpt(&e.path())})
+                } else {
+                    json!(name)
+                }
+            })
+            .collect::<Vec<_>>()
+    )
+}
+
+/// The last session-journal rows, shortened.
+fn journal_tail(id: &str) -> Value {
+    let base = RunStore::default_state_root().unwrap();
+    let rows = fs::read_to_string(Observer::directory(&base, id).join("observations.jsonl"))
+        .unwrap_or_default();
+    json!(
+        rows.lines()
+            .rev()
+            .take(15)
+            .map(|l| l.chars().take(300).collect::<String>())
+            .collect::<Vec<_>>()
+    )
+}
+
+/// Diagnostic rule for a commit that produced no review.
+fn diagnosis(id: &str, directory: &Path) -> Value {
+    let read = |name: &str| -> Value {
+        fs::read(directory.join(name))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null)
+    };
+    let Some(project) = kah_cli::observer_review::state::Store::read(id)
+        .ok()
+        .flatten()
+        .map(|s| s.worker.project)
+    else {
+        return json!("no review state");
+    };
+    let omega = Command::new("git")
+        .arg("-C")
+        .arg(&project)
+        .args(["rev-list", "--reverse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|t| t.lines().nth(1).map(str::to_owned));
+    let (head, baseline) = (read("git-head.json"), read("option1-baseline.json"));
+    let queued = fs::read_dir(directory.join("checkpoint-events"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            omega
+                .as_ref()
+                .is_some_and(|o| excerpt(&e.path()).contains(o))
+        });
+    let at_omega = omega.as_deref().is_some_and(|o| head.as_str() == Some(o));
+    json!(if at_omega && queued {
+        "lost wakeup: the OMEGA head event is still in checkpoint-events and git-head.json is the OMEGA head (product)"
+    } else if baseline["reviewed"] == "jev_only" {
+        "Jev cleared it: option1-baseline reviewed jev_only"
+    } else if baseline["reviewed"] == "session_start"
+        && baseline["head"].as_str() == omega.as_deref()
+    {
+        "baseline race: option1-baseline is session_start at the OMEGA head"
+    } else if !at_omega {
+        "HEAD never sampled: git-head.json is not the OMEGA head"
+    } else {
+        "unclassified"
+    })
 }
