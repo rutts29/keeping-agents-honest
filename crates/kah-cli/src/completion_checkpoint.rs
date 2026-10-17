@@ -29,6 +29,12 @@ pub fn request(
     if !config.enabled {
         return Ok(Status::Passed);
     }
+    let retired = Store::directory(worker)?
+        .join(RETIRED)
+        .join(retirement_name(key, revision)?);
+    if let Some(result) = observer_review::state::read(&retired)? {
+        return Ok(Status::Failed(result));
+    }
     let mut invalidation = Value::Null;
     if let Some(state) = Store::read(worker)? {
         invalidation = state
@@ -61,6 +67,37 @@ pub fn request(
         )?;
     }
     Ok(Status::Pending)
+}
+
+/// Retired completions outlive later pending jobs and checkpoint replacements.
+pub(crate) fn retire(root: &Path, result: &Value) -> Result<()> {
+    let key: Key = serde_json::from_value(result["completion_key"].clone())
+        .map_err(|_| "RUN_CHECKPOINT_RETIREMENT stage=completion: invalid key")?;
+    let revision = result["intent_revision"]
+        .as_u64()
+        .ok_or("RUN_CHECKPOINT_RETIREMENT stage=completion: missing revision")?;
+    crate::unattended_report::save(
+        &root.join(RETIRED),
+        &retirement_name(&key, revision)?,
+        result,
+    )
+}
+
+const RETIRED: &str = "retired-completions";
+
+fn retirement_name(key: &Key, revision: u64) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    // Match Key::same_delivery: controller restarts and evidence-only replies
+    // do not turn a retired delivery into a new completion attempt.
+    let identity = (
+        &key.commit,
+        key.user_sequence,
+        &key.command,
+        key.online,
+        revision,
+    );
+    let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&identity)?));
+    Ok(format!("{digest}.json"))
 }
 
 /// The stored checkpoint's verdict for this exact delivery, if it has one.

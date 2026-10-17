@@ -85,7 +85,8 @@ pub fn retire(worker: &str, request: &str, gap: &Gap) -> Result<()> {
     let Some(pending) = state.pending.clone().filter(|p| p.id == request) else {
         return Ok(());
     };
-    let result = not_reviewed(request, &json!(pending.head), gap);
+    let mut result = not_reviewed(request, &json!(pending.head), gap);
+    completion_result(&store.directory, &pending, gap, &mut result)?;
     crate::unattended_report::save(
         &store.directory.join("results"),
         &format!("{request}.json"),
@@ -98,12 +99,43 @@ pub fn retire(worker: &str, request: &str, gap: &Gap) -> Result<()> {
             "origin":super::failure::Origin::Host}),
     )?;
     state.latest = Some(result.clone());
+    if result["terminal"] == true {
+        // A retirement is terminal for its delivery, not a reusable review verdict.
+        crate::completion_checkpoint::retire(&store.directory, &result)?;
+    }
     state.pending = None;
     store.save(&state)?;
     drop(store);
     super::timing::now(worker, request, "not_reviewed")?;
     journal(worker, &result)?;
     super::queue::kick(worker)
+}
+
+/// Only accepted completion requests are terminal. Undelivered triggers remain
+/// queued and must still be admitted as fresh requests.
+fn completion_result(
+    directory: &Path,
+    pending: &super::state::Pending,
+    gap: &Gap,
+    result: &mut Value,
+) -> Result<()> {
+    if gap.code != NO_REPORT.code || pending.purpose != super::state::Purpose::Checkpoint {
+        return Ok(());
+    }
+    let request: super::state::Request = super::source_store::read(
+        &directory
+            .join("requests")
+            .join(format!("{}.json", pending.id)),
+    )?;
+    if let Some(event) = request.trigger["events"]
+        .as_array()
+        .and_then(|events| events.iter().find(|e| e["kind"] == "run_completion"))
+    {
+        result["completion_key"] = event["completion_key"].clone();
+        result["intent_revision"] = request.intent["revision"].clone();
+        result["terminal"] = true.into();
+    }
+    Ok(())
 }
 
 fn journal(worker: &str, result: &Value) -> Result<()> {
