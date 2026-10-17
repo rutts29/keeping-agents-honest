@@ -42,11 +42,7 @@ pub fn run(worker: &str) -> Result<()> {
             Err(error) => return Err(error),
         };
         let started = earliest(&paths)?;
-        let start = |head: &str| {
-            let time = git(&home, &state, &["show", "-s", "--format=%ct", head, "--"]);
-            let committed = time.ok().flatten().and_then(|t| t.trim().parse().ok());
-            Ok((committed, started))
-        };
+        let start = |head: &str| Ok((committed_ms(&home, &state, head), started));
         sample_head(&root, &refs, start, |head| {
             super::events::enqueue(
                 worker,
@@ -90,9 +86,9 @@ pub fn head(home: &Path, state: &State) -> Result<Option<String>> {
         .into_iter()
         .find_map(|r| r.strip_prefix("HEAD ").map(str::to_owned)))
 }
-/// The first sample records the session-start HEAD (or its absence in a new
-/// repository). An existing HEAD there is the accepted baseline, never a change.
-/// `start` reads the HEAD commit time and the session start; `review` enqueues.
+/// Compare the first sample with the session-start baseline
+/// (session_baseline::accept; `start` is its fallback). Later samples review
+/// changed HEADs. `review` enqueues the sampled commit.
 pub fn sample_head(
     root: &Path,
     refs: &[String],
@@ -104,10 +100,7 @@ pub fn sample_head(
     let first = previous.is_none();
     let changed = match head {
         None => false,
-        Some(head) if first => {
-            let (committed, started) = start(head)?;
-            !super::session_baseline::accept(root, head, committed, started)?
-        }
+        Some(head) if first => !super::session_baseline::accept(root, head, start)?,
         Some(head) => previous.flatten().as_deref() != Some(head),
     };
     if let Some(head) = head.filter(|_| changed) {
@@ -118,6 +111,7 @@ pub fn sample_head(
     }
     Ok(())
 }
+/// The earliest pending sample request: the session start for `start`.
 fn earliest(paths: &[PathBuf]) -> Result<Option<u64>> {
     let mut times = vec![];
     for path in paths {

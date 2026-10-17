@@ -57,13 +57,17 @@ fn committed(root: &Path, head: &str) -> u64 {
         .unwrap()
 }
 /// One sample: returns every HEAD the sample sent to commit review.
-fn sample(review: &Path, project: &Path, started_ms: u64) -> Vec<String> {
+fn sample(review: &Path, project: &Path) -> Vec<String> {
+    sample_started(review, project, None)
+}
+/// One sample whose fallback session start is `started_ms`.
+fn sample_started(review: &Path, project: &Path, started_ms: Option<u64>) -> Vec<String> {
     let reviewed = RefCell::new(vec![]);
-    let start = |head: &str| Ok((Some(committed(project, head)), Some(started_ms)));
     let enqueue = |head: &str| {
         reviewed.borrow_mut().push(head.to_owned());
         Ok(())
     };
+    let start = |head: &str| Ok((Some(committed(project, head) * 1000), started_ms));
     tags::sample_head(review, &refs(project), start, enqueue).unwrap();
     reviewed.into_inner()
 }
@@ -76,7 +80,7 @@ fn fixture(name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::Pa
     fs::create_dir_all(&project).unwrap();
     git(&project, &["init", "-q"], None);
     let review = root.join("review");
-    fs::create_dir_all(&review).unwrap();
+    fs::create_dir_all(review.join("sources")).unwrap();
     (root, project, review)
 }
 fn state(root: &Path, project: &Path, worker: &str) -> State {
@@ -122,9 +126,9 @@ fn seed_violation_is_the_accepted_baseline_and_a_later_agent_violation_is_review
         ],
         Some("2026-01-01T00:00:00Z"),
     );
-    let started = kah_observer::session::now_ms();
+    capture_start(&review, &project);
     // (a) The session-start HEAD breaks AGENTS.md, but it is not agent work.
-    assert!(sample(&review, &project, started).is_empty());
+    assert!(sample(&review, &project).is_empty());
     assert_eq!(read(&review.join("git-head.json")), json!(seed));
     let baseline = read(&review.join("option1-baseline.json"));
     assert_eq!(baseline["head"], seed);
@@ -132,13 +136,13 @@ fn seed_violation_is_the_accepted_baseline_and_a_later_agent_violation_is_review
     let checkpoint = read(&review.join("option1-checkpoint-baseline.json"));
     assert_eq!(checkpoint["head"], seed);
     assert_eq!(checkpoint["covered_commits"], json!([]));
-    assert!(sample(&review, &project, started).is_empty());
+    assert!(sample(&review, &project).is_empty());
     let state = state(&root, &project, "session-start-baseline-worker");
     let start = option1::direct::context(&root, &state, &review, &seed).unwrap();
     assert_eq!(start["touched_files"], json!([]));
     // (b) An agent commit with the same violation is reviewed as a diff only.
     let agent = commit(&project, &[("src/summary.py", WRAPPER)], None);
-    assert_eq!(sample(&review, &project, started), vec![agent.clone()]);
+    assert_eq!(sample(&review, &project), vec![agent.clone()]);
     let context = option1::direct::context(&root, &state, &review, &agent).unwrap();
     assert_eq!(context["baseline"], seed);
     let touched = context["touched_files"].as_array().unwrap();
@@ -156,14 +160,15 @@ fn seed_violation_is_the_accepted_baseline_and_a_later_agent_violation_is_review
 #[test]
 fn first_commit_in_a_new_repository_is_agent_work() {
     let (root, project, review) = fixture("session-start-unborn");
-    assert!(sample(&review, &project, kah_observer::session::now_ms()).is_empty());
+    capture_start(&review, &project);
+    assert!(sample(&review, &project).is_empty());
     assert_eq!(read(&review.join("git-head.json")), Value::Null);
     let first = commit(
         &project,
         &[("AGENTS.md", RULE), ("src/report.py", WRAPPER)],
         None,
     );
-    assert_eq!(sample(&review, &project, 0), vec![first.clone()]);
+    assert_eq!(sample(&review, &project), vec![first.clone()]);
     assert!(!review.join("option1-baseline.json").exists());
     assert_eq!(read(&review.join("git-head.json")), json!(first));
     fs::remove_dir_all(root).unwrap();
@@ -172,13 +177,13 @@ fn first_commit_in_a_new_repository_is_agent_work() {
 #[test]
 fn a_head_committed_after_the_session_start_stays_reviewed() {
     let (root, project, review) = fixture("session-start-race");
-    let started = kah_observer::session::now_ms();
+    capture_start(&review, &project);
     let agent = commit(
         &project,
         &[("src/report.py", WRAPPER)],
         Some("2099-01-01T00:00:00Z"),
     );
-    assert_eq!(sample(&review, &project, started), vec![agent]);
+    assert_eq!(sample(&review, &project), vec![agent]);
     assert!(!review.join("option1-baseline.json").exists());
     assert!(!review.join("option1-checkpoint-baseline.json").exists());
     fs::remove_dir_all(root).unwrap();
@@ -196,7 +201,8 @@ fn turn_end_queues_one_checkpoint_over_the_cumulative_change_per_head() {
         &[("AGENTS.md", RULE)],
         Some("2026-01-01T00:00:00Z"),
     );
-    assert!(sample(&review, &project, kah_observer::session::now_ms()).is_empty());
+    capture_start(&review, &project);
+    assert!(sample(&review, &project).is_empty());
     store.save(&fresh).unwrap();
     drop(store);
     // No deferral recorded: a turn end queues nothing and costs nothing.
@@ -223,5 +229,131 @@ fn turn_end_queues_one_checkpoint_over_the_cumulative_change_per_head() {
     let one = option1::direct::context_for(&root, &state, &review, &last, false).unwrap();
     assert_eq!(one["baseline"], first);
     fs::remove_dir_all(review.parent().unwrap()).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn capture_start(review: &Path, project: &Path) {
+    use kah_cli::observer_review::source_store;
+    let directory = review.join("artifact-baseline");
+    let _lock = Store::delivery_at(&directory, true).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kah"))
+        .arg("__review-artifact-baseline")
+        .current_dir(project)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let mut baseline: Value = serde_json::from_slice(&output.stdout).unwrap();
+    baseline["initial"] = true.into();
+    source_store::save(&directory, "baseline.json", &baseline).unwrap();
+}
+
+#[test]
+fn same_second_post_start_commit_is_not_the_captured_baseline() {
+    let (root, project, review) = fixture("same-second-start");
+    let seed = commit(
+        &project,
+        &[("seed.txt", "seed")],
+        Some("1970-01-01T00:16:40Z"),
+    );
+    capture_start(&review, &project);
+    let agent = commit(
+        &project,
+        &[("agent.txt", "work")],
+        Some("1970-01-01T00:16:40Z"),
+    );
+    assert_eq!(committed(&project, &seed), 1000);
+    assert_eq!(committed(&project, &agent), 1000);
+    assert_eq!(sample(&review, &project), vec![agent]);
+    for name in ["option1-baseline.json", "option1-checkpoint-baseline.json"] {
+        let stored: Value =
+            kah_cli::observer_review::source_store::read(&review.join(name)).unwrap();
+        assert_eq!(stored["head"], seed);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn the_captured_head_is_accepted_regardless_of_its_commit_timestamp() {
+    let (root, project, review) = fixture("captured-start");
+    let seed = commit(
+        &project,
+        &[("seed.txt", "seed")],
+        Some("2099-01-01T00:00:00Z"),
+    );
+    capture_start(&review, &project);
+    assert!(sample(&review, &project).is_empty());
+    for name in ["option1-baseline.json", "option1-checkpoint-baseline.json"] {
+        let stored: Value =
+            kah_cli::observer_review::source_store::read(&review.join(name)).unwrap();
+        assert_eq!(stored["head"], seed);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn an_unborn_start_does_not_accept_a_commit_before_the_first_sample() {
+    let (root, project, review) = fixture("unborn-late-sample");
+    capture_start(&review, &project);
+    let agent = commit(
+        &project,
+        &[("agent.txt", "work")],
+        Some("1970-01-01T00:16:40Z"),
+    );
+    assert_eq!(sample(&review, &project), vec![agent]);
+    assert!(!review.join("option1-baseline.json").exists());
+    assert!(!review.join("option1-checkpoint-baseline.json").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn without_a_start_capture_a_head_committed_before_the_start_is_accepted() {
+    // A resumed session (or a failed capture) has no initial HEAD record.
+    let (root, project, review) = fixture("uncaptured-start");
+    let seed = commit(
+        &project,
+        &[("seed.txt", "seed")],
+        Some("2026-01-01T00:00:00Z"),
+    );
+    let started = committed(&project, &seed) * 1000 + 500;
+    assert!(sample_started(&review, &project, Some(started)).is_empty());
+    for name in ["option1-baseline.json", "option1-checkpoint-baseline.json"] {
+        assert_eq!(read(&review.join(name))["head"], seed);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn without_a_start_capture_a_head_committed_after_the_start_stays_reviewed() {
+    let (root, project, review) = fixture("uncaptured-late");
+    let agent = commit(
+        &project,
+        &[("agent.txt", "work")],
+        Some("2026-01-01T00:00:01Z"),
+    );
+    let started = committed(&project, &agent) * 1000 - 1;
+    assert_eq!(
+        sample_started(&review, &project, Some(started)),
+        vec![agent]
+    );
+    assert!(!review.join("option1-baseline.json").exists());
+    assert!(!review.join("option1-checkpoint-baseline.json").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_capture_whose_head_read_failed_uses_the_timestamp_fallback() {
+    use kah_cli::observer_review::source_store;
+    let (root, project, review) = fixture("headless-capture");
+    let seed = commit(
+        &project,
+        &[("seed.txt", "seed")],
+        Some("2026-01-01T00:00:00Z"),
+    );
+    // The inventory was captured, but its HEAD read failed: no `head` field.
+    let capture = json!({"initial":true,"blobs":{},"unsupported":{},"captured_ms":1});
+    source_store::save(&review.join("artifact-baseline"), "baseline.json", &capture).unwrap();
+    let started = committed(&project, &seed) * 1000 + 500;
+    assert!(sample_started(&review, &project, Some(started)).is_empty());
+    assert_eq!(read(&review.join("option1-baseline.json"))["head"], seed);
     fs::remove_dir_all(root).unwrap();
 }

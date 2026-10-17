@@ -10,6 +10,8 @@ pub fn baseline(root: &Path) -> Result<Value> {
             json!({"blobs":{},"unsupported":{"repository":"no Git inventory exists before work"},"captured_ms":kah_observer::session::now_ms()}),
         );
     }
+    // A failed HEAD read keeps the inventory; acceptance then uses its fallback.
+    let head = head(root).ok();
     let raw = git(
         root,
         &[
@@ -52,10 +54,28 @@ pub fn baseline(root: &Path) -> Result<Value> {
         }
     }
     hash_regular(root, regular, &mut blobs)?;
-    Ok(
-        json!({"blobs":blobs,"unsupported":unsupported,"captured_ms":kah_observer::session::now_ms()}),
-    )
+    let mut baseline = json!({"blobs":blobs,"unsupported":unsupported,"captured_ms":kah_observer::session::now_ms()});
+    if let Some(head) = head {
+        baseline["head"] = json!(head);
+    }
+    Ok(baseline)
 }
+fn head(root: &Path) -> Result<Option<String>> {
+    let refs = String::from_utf8(git(
+        root,
+        &[
+            "for-each-ref",
+            "--include-root-refs",
+            "--format=%(refname) %(objectname)",
+            "HEAD",
+        ],
+        None,
+    )?)?;
+    Ok(refs
+        .lines()
+        .find_map(|r| r.strip_prefix("HEAD ").map(str::to_owned)))
+}
+
 fn hash_regular(
     root: &Path,
     regular: Vec<String>,
