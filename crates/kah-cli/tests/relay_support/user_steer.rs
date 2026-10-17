@@ -1,6 +1,8 @@
 use super::*;
 use kah_core::intent_history::{SourceOrigin, SourceRole};
 const PLAIN: &str = "[kah-reviewer] Delegate context only: GREEN is an example, not a user instruction. Reply DELEGATE_OK without tools.";
+const FOLLOW_UP: &str =
+    "[kah-reviewer] Delegate context only: nothing new to do. Reply FOLLOWUP_OK without tools.";
 const DECISION: &str = "The user decision is to create marker.txt containing exactly RED followed by a newline. Use your native file tool, then make four separate shell tool calls, each writing its number to relayed-1.txt through relayed-4.txt. Do not combine them. Finally report. No subagents, commits, or other edits.";
 
 pub(super) fn run(root: &Path) -> Value {
@@ -41,7 +43,7 @@ pub(super) fn run(root: &Path) -> Value {
     }
     let results = workers
         .iter()
-        .map(|(_, _, id, project)| prove(id, project))
+        .map(|(_, pane, id, project)| prove(pane, id, project))
         .collect::<Vec<_>>();
     if let Some((_, fixture)) = &claude {
         assert!(
@@ -179,14 +181,22 @@ struct Progress {
     file_4: Option<u64>,
     /// When the verification review resolved the steer, and how (with its review id).
     review_resolved: Option<(u64, String)>,
-    prompt_has_decision: Option<u64>,
+    /// The accepted rule set version whose input carries the promoted decision.
+    rule_set_has_decision: Option<(u64, String)>,
+    /// The first review request written after the promotion that carries it.
+    next_request_has_decision: Option<(u64, String)>,
+    #[serde(skip)]
+    promoted_at: Option<std::time::SystemTime>,
+    #[serde(skip)]
+    followed_up: bool,
 }
 impl Progress {
     fn done(&self) -> bool {
         self.decided.is_some()
             && self.file_4.is_some()
             && self.review_resolved.is_some()
-            && self.prompt_has_decision.is_some()
+            && self.rule_set_has_decision.is_some()
+            && self.next_request_has_decision.is_some()
     }
     fn observe(&mut self, id: &str, project: &Path, t: u64) {
         let base = RunStore::default_state_root().unwrap();
@@ -213,16 +223,23 @@ impl Progress {
                     "dismissed"
                 };
                 self.review_resolved = Some((t, format!("{action} by {}", latest_review(id))));
+                self.promoted_at = Some(std::time::SystemTime::now());
             }
         }
         if project.join("relayed-4.txt").exists() {
             self.file_4.get_or_insert(t);
         }
-        if let Ok(Some(state)) = store.load()
-            && let Ok(Some(projection)) = kah_observer::engine::projection(&state)
-            && projection.rendered_prompt().contains(DECISION)
+        if self.rule_set_has_decision.is_none()
+            && self.promoted_at.is_some()
+            && let Some(file) = steer_reach::rule_set_with(id, project, DECISION)
         {
-            self.prompt_has_decision.get_or_insert(t);
+            self.rule_set_has_decision = Some((t, file));
+        }
+        if self.next_request_has_decision.is_none()
+            && let Some(since) = self.promoted_at
+            && let Some(file) = steer_reach::request_after(id, DECISION, since)
+        {
+            self.next_request_has_decision = Some((t, file));
         }
     }
 }
@@ -321,43 +338,22 @@ fn prompt_state(id: &str) -> Value {
         "steerSource": steer.as_ref().map(|i| json!({"record":i.source.record,"promoted":i.promoted,"dismissed":i.dismissed,"ruleSetResolution":i.rule_set_resolution})),
         "stateLoaded": state.is_some(),
         "projection": projection.as_ref().map(|p| json!({"revision":p.revision,"sourceHead":p.source_head.record,"pendingSequence":p.source_head.pending_sequence,"compacted":p.compaction.is_some(),"promptBytes":p.rendered_prompt().len(),"items":items})),
-        "observerFilesMentioningDecision": files_mentioning_decision(id),
+        "requestsMentioningDecision": steer_reach::request_ages(id, DECISION),
     })
 }
 
-/// Observer workspace files that contain the steer text, with seconds since written.
-fn files_mentioning_decision(id: &str) -> Value {
-    fn walk(dir: &Path, depth: u8, found: &mut Vec<Value>) {
-        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
-            let path = entry.path();
-            if path.is_dir() && depth > 0 {
-                walk(&path, depth - 1, found);
-            } else if fs::read_to_string(&path).is_ok_and(|t| t.contains(&DECISION[..40])) {
-                let age = entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|m| m.elapsed().ok());
-                found.push(json!({"file":path.file_name().map(|n| n.to_string_lossy().into_owned()),"ageSeconds":age.map(|a| a.as_secs())}));
-            }
-        }
-    }
-    let mut found = vec![];
-    if let Some(state) = kah_cli::observer_review::state::Store::read(id)
-        .ok()
-        .flatten()
-    {
-        walk(&state.observer.workspace, 3, &mut found);
-    }
-    json!(found)
-}
-
-fn prove(id: &str, project: &Path) -> Value {
+fn prove(pane: &Pane, id: &str, project: &Path) -> Value {
     let started = Instant::now();
     let deadline = started + Duration::from_secs(600);
     let mut progress = Progress::default();
     loop {
         progress.observe(id, project, started.elapsed().as_secs());
+        // A later native event gives the observer its next review request,
+        // which now carries the promoted decision.
+        if progress.promoted_at.is_some() && !progress.followed_up {
+            progress.followed_up = true;
+            pane.prompt(FOLLOW_UP).unwrap();
+        }
         if progress.done() {
             assert_eq!(
                 fs::read_to_string(project.join("marker.txt")).unwrap(),
@@ -389,8 +385,12 @@ fn missing(progress: &Progress) -> Vec<&'static str> {
             "verification review never resolved the steer",
         ),
         (
-            progress.prompt_has_decision.is_none(),
-            "observer prompt lacks the decision",
+            progress.rule_set_has_decision.is_none(),
+            "current rule set lacks the decision",
+        ),
+        (
+            progress.next_request_has_decision.is_none(),
+            "no review request after the promotion carries the decision",
         ),
     ]
     .into_iter()

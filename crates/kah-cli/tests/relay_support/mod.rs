@@ -20,6 +20,7 @@ mod review_drift;
 mod review_liveness;
 mod review_trace;
 mod seeded_drift;
+mod steer_reach;
 mod trace;
 mod uncertain_steer;
 mod user_steer;
