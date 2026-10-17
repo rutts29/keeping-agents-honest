@@ -156,22 +156,40 @@ fn ordinary_run(root: &Path) -> Value {
     }
     json!({"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"forward":forward,"reverse":reverse,"dispatch":dispatched,"privateHerdr":true,"globalConfigUnchanged":true,"passed":true})
 }
+/// KAH_GATE_AGENTS (default both) lists the agents this gate starts and proves.
+pub fn selected(agent: &str) -> bool {
+    std::env::var("KAH_GATE_AGENTS")
+        .ok()
+        .is_none_or(|agents| agents.split_whitespace().any(|a| a == agent))
+}
+/// The ordinary relay/dispatch journey (5h-d, 5h-d1) relays between a Codex and a
+/// Claude worker and dispatches runs inheriting the Codex worker's intent, so it
+/// cannot run on one agent; fail before anything starts rather than fake it.
+pub fn require_agents() {
+    assert!(
+        special_run().is_some() || (selected("codex") && selected("claude")),
+        "GATE_AGENTS_UNSUPPORTED stage=relay: the two-way relay and inherited dispatch need both a Codex and a Claude worker; this phase belongs to the Codex tag"
+    );
+}
 fn versions(home: &Path) -> Value {
-    let versions = ["codex", "claude"].map(|agent| {
-        (
-            agent,
-            String::from_utf8(
-                Command::new(home.join(".local/bin").join(agent))
-                    .arg("--version")
-                    .output()
-                    .unwrap()
-                    .stdout,
+    let versions = ["codex", "claude"]
+        .into_iter()
+        .filter(|a| selected(a))
+        .map(|agent| {
+            (
+                agent,
+                String::from_utf8(
+                    Command::new(home.join(".local/bin").join(agent))
+                        .arg("--version")
+                        .output()
+                        .unwrap()
+                        .stdout,
+                )
+                .unwrap()
+                .trim()
+                .to_owned(),
             )
-            .unwrap()
-            .trim()
-            .to_owned(),
-        )
-    });
+        });
     json!(
         versions
             .into_iter()

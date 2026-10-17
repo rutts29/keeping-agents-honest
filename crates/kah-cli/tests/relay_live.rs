@@ -95,16 +95,8 @@ fn early_verify_entrypoint() {
 #[test]
 #[ignore = "two-way native relay and both native worker dispatches in a private Herdr server"]
 fn relay_and_dispatch() {
-    let versions = [
-        version::Version::capture("codex"),
-        version::Version::capture("claude"),
-    ];
-    fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
-            .join("native-versions-before.json"),
-        serde_json::to_vec_pretty(&json!({"codex":versions[0],"claude":versions[1]})).unwrap(),
-    )
-    .unwrap();
+    relay_support::require_agents();
+    let versions = capture_versions();
     let probe = herdr_probe::setup();
     let command = format!(
         "HERDR_CONFIG_PATH={} herdr --session {}",
@@ -147,8 +139,8 @@ fn relay_and_dispatch() {
         std::panic::resume_unwind(panic);
     }
     retain_version_failure(&versions, &evidence);
-    for (n, agent) in ["codex", "claude"].iter().enumerate() {
-        versions[n].verify(&evidence["versions"][agent]);
+    for (agent, version) in &versions {
+        version.verify(&evidence["versions"][agent]);
     }
     fs::write(
         PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(evidence_name()),
@@ -156,11 +148,30 @@ fn relay_and_dispatch() {
     )
     .unwrap();
 }
-fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value) {
-    if ["codex", "claude"]
+fn capture_versions() -> Vec<(&'static str, version::Version)> {
+    let versions = ["codex", "claude"]
+        .into_iter()
+        .filter(|agent| relay_support::selected(agent))
+        .map(|agent| (agent, version::Version::capture(agent)))
+        .collect::<Vec<_>>();
+    fs::write(
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
+            .join("native-versions-before.json"),
+        serde_json::to_vec_pretty(
+            &versions
+                .iter()
+                .map(|(agent, version)| (*agent, json!(version)))
+                .collect::<std::collections::BTreeMap<_, _>>(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    versions
+}
+fn retain_version_failure(versions: &[(&str, version::Version)], evidence: &Value) {
+    if versions
         .iter()
-        .enumerate()
-        .any(|(i, agent)| !versions[i].matches(&evidence["versions"][agent]))
+        .any(|(agent, version)| !version.matches(&evidence["versions"][agent]))
     {
         let mut retained = evidence.clone();
         retained["passed"] = false.into();

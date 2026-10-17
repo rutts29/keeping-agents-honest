@@ -7,10 +7,58 @@ pub(super) fn run(root: &Path) -> Value {
     let socket = std::env::var("HERDR_SOCKET_PATH").unwrap();
     assert!(socket.contains("kah-gate-"));
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let (launch, mut codex) = crate::fixture::prepare(&home, "research", false);
-    let claude = crate::claude_support::Fixture::new();
-    let (reviewer, _courier) = start_reviewer(&home);
+    let (reviewer, _courier) = start_reviewer(&home, root);
+    let codex = selected("codex").then(|| start_codex(&home));
+    let claude = selected("claude").then(|| {
+        let fixture = crate::claude_support::Fixture::new();
+        let pane = start_claude(&home, &fixture, root);
+        (pane, fixture)
+    });
     let mut panes = Panes(vec![reviewer.clone()]);
+    let mut workers = vec![];
+    if let Some((pane, fixture, id)) = &codex {
+        panes.0.push(pane.clone());
+        workers.push(("codex", pane.clone(), id.clone(), fixture.project.clone()));
+    }
+    if let Some((pane, fixture)) = &claude {
+        panes.0.push(pane.clone());
+        assert_eq!(ready(pane, "claude"), fixture.id);
+        workers.push((
+            "claude",
+            pane.clone(),
+            fixture.id.clone(),
+            fixture.project().into(),
+        ));
+    }
+    for (agent, pane, _, _) in &workers {
+        pane.prompt(PLAIN).unwrap();
+        std::thread::sleep(Duration::from_secs(2));
+        ready(pane, agent);
+    }
+    for (_, _, id, _) in &workers {
+        steer(&reviewer, id);
+    }
+    let results = workers
+        .iter()
+        .map(|(_, _, id, project)| prove(id, project))
+        .collect::<Vec<_>>();
+    if let Some((_, fixture)) = &claude {
+        assert!(
+            fixture
+                .rows()
+                .iter()
+                .filter(|r| r["type"] == "assistant")
+                .all(|r| r["message"]["model"]
+                    .as_str()
+                    .is_none_or(|m| m.starts_with("claude-sonnet-5-5")))
+        );
+    }
+    let agents = workers.iter().map(|w| w.0).collect::<Vec<_>>();
+    json!({"passed":true,"agents":agents,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"privateHerdr":true,"userSteering":results,"reviewerSent":"fixture pane named kah-reviewer in the private Herdr"})
+}
+
+fn start_codex(home: &Path) -> (Pane, crate::fixture::Fixture, String) {
+    let (launch, mut fixture) = crate::fixture::prepare(home, "research", false);
     let mut command = launch.command(false);
     command
         .args([
@@ -18,51 +66,45 @@ pub(super) fn run(root: &Path) -> Value {
             "Reply READY, then wait. Do not use tools or create files.",
         ])
         .env_remove("CODEX_THREAD_ID");
-    panes.0.push(Pane::start(&command).unwrap());
-    let codex_id = ready(&panes.0[1], "codex");
-    codex.sessions.push(codex_id.clone());
+    let pane = Pane::start(&command).unwrap();
+    let id = ready(&pane, "codex");
+    fixture.sessions.push(id.clone());
     assert!(
         !launch
             .overlay
             .join("app-server-control/app-server-control.sock")
             .exists()
     );
-    panes.0.push(start_claude(&home, &claude, root));
-    assert_eq!(ready(&panes.0[2], "claude"), claude.id);
-    for (pane, agent) in [(&panes.0[1], "codex"), (&panes.0[2], "claude")] {
-        pane.prompt(PLAIN).unwrap();
-        std::thread::sleep(Duration::from_secs(2));
-        ready(pane, agent);
-    }
-    for id in [&codex_id, &claude.id] {
-        steer(&reviewer, id);
-    }
-    let results = [
-        (&codex_id, codex.project.as_path()),
-        (&claude.id, claude.project()),
-    ]
-    .map(|(id, project)| prove(id, project));
-    assert!(
-        claude
-            .rows()
-            .iter()
-            .filter(|r| r["type"] == "assistant")
-            .all(|r| r["message"]["model"]
-                .as_str()
-                .is_none_or(|m| m.starts_with("claude-sonnet-5-5")))
-    );
-    json!({"passed":true,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"privateHerdr":true,"userSteering":results,"reviewerSent":"fixture pane named kah-reviewer in the private Herdr"})
+    (pane, fixture, id)
+}
+
+/// Keeps a courier's fixture state alive until the journey ends.
+enum Courier {
+    Codex(#[allow(dead_code)] crate::fixture::Fixture),
+    Claude(#[allow(dead_code)] crate::claude_support::Fixture),
 }
 
 /// A disposable agent pane renamed `kah-reviewer`: `kah steer` records the relayer
 /// from the live Herdr name of the pane it runs in, and research workers cannot
 /// reach the Herdr socket, so the fixture issues the host commands in its name.
-fn start_reviewer(home: &Path) -> (Pane, crate::fixture::Fixture) {
-    let (launch, mut courier) = crate::fixture::prepare(home, "research", false);
-    let mut command = launch.command(false);
-    command.args(["--no-alt-screen", "You are a disposable courier in a live fixture. Reply READY, then wait. Do not use tools or create files."]).env_remove("CODEX_THREAD_ID");
-    let pane = Pane::start(&command).unwrap();
-    courier.sessions.push(ready(&pane, "codex"));
+/// A Claude-only run uses a Claude courier so Codex is never started.
+fn start_reviewer(home: &Path, root: &Path) -> (Pane, Courier) {
+    const TASK: &str = "You are a disposable courier in a live fixture. Reply READY, then wait. Do not use tools or create files.";
+    let (pane, courier) = if selected("codex") {
+        let (launch, mut fixture) = crate::fixture::prepare(home, "research", false);
+        let mut command = launch.command(false);
+        command
+            .args(["--no-alt-screen", TASK])
+            .env_remove("CODEX_THREAD_ID");
+        let pane = Pane::start(&command).unwrap();
+        fixture.sessions.push(ready(&pane, "codex"));
+        (pane, Courier::Codex(fixture))
+    } else {
+        let fixture = crate::claude_support::Fixture::new();
+        let pane = start_claude_prompt(home, &fixture, root, TASK);
+        assert_eq!(ready(&pane, "claude"), fixture.id);
+        (pane, Courier::Claude(fixture))
+    };
     assert!(
         Command::new("herdr")
             .args(["agent", "rename", &pane.id, "kah-reviewer"])
