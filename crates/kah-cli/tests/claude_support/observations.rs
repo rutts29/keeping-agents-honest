@@ -36,7 +36,10 @@ pub fn native_usage(f: &Fixture) -> Value {
         .map(|r| r["modelUsage"].clone())
         .unwrap_or(Value::Null)
 }
-pub fn kill_observer(f: &Fixture) -> u32 {
+/// Kills the in-flight observer hook and returns its pid with the session
+/// store lock. While the caller holds the lock, no later observation can
+/// recover and then clear the gap before `kah status` reports it.
+pub fn kill_observer(f: &Fixture) -> (u32, Store) {
     let deadline = Instant::now() + Duration::from_secs(90);
     loop {
         if let Some(state) = Store::read(&f.base, &f.id).unwrap()
@@ -59,7 +62,9 @@ pub fn kill_observer(f: &Fixture) -> u32 {
                         .unwrap()
                         .success()
                 );
-                return flight.pid;
+                // SIGKILL releases the killed hook's lock; take it at once.
+                let held = Store::open(&f.base, &f.id, Duration::from_secs(5)).unwrap();
+                return (flight.pid, held);
             }
         }
         assert!(

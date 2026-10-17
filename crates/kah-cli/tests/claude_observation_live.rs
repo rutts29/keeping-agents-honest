@@ -119,8 +119,9 @@ fn claude_observer_interruption() {
     f.ready(&mut terminal);
     let task = "Create interrupted.txt containing BEFORE_KILL with native Write. No other tools or files; then report and stop.";
     f.prompt(&mut terminal, task);
-    let killed = kill_observer(&f);
+    let (killed, held) = kill_observer(&f);
     let gap = gap_status(&f);
+    drop(held);
     f.wait(&mut terminal, || {
         f.has_file("interrupted.txt", "BEFORE_KILL")
     });
