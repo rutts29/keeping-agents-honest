@@ -223,6 +223,9 @@ fn ready(pane: &Pane, agent: &str) -> String {
             accepted = true;
         }
         let view = pane.inspect().unwrap();
+        if let Some(id) = view["agent_session"]["value"].as_str() {
+            observer_consent(id);
+        }
         if matches!(view["agent_status"].as_str(), Some("idle" | "done"))
             && let Some(id) = view["agent_session"]["value"].as_str()
             && let Ok(Some(state)) = Store::read(&RunStore::default_state_root().unwrap(), id)
@@ -237,6 +240,34 @@ fn ready(pane: &Pane, agent: &str) -> String {
             "native session not ready: {view} {screen}"
         );
         std::thread::sleep(Duration::from_millis(200));
+    }
+}
+/// kah starts each worker's review observer in its own pane, and Claude shows its
+/// native trust dialog for that kah-generated workspace. Answer it as the
+/// native-controller harness does (observer_consent); ordinary_run only
+/// answered the worker panes, so the 5h-d observer sat at the dialog.
+fn observer_consent(worker: &str) {
+    let Ok(Some(state)) = kah_cli::observer_review::state::Store::read(worker) else {
+        return;
+    };
+    let (Some(pane), None) = (state.observer.pane, state.observer.session) else {
+        return;
+    };
+    static ANSWERED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    if ANSWERED.lock().unwrap().contains(&pane) {
+        return;
+    }
+    let pane = Pane { id: pane };
+    let screen = pane
+        .logs(&state.worker.provider, None, None)
+        .unwrap_or_default();
+    if screen.contains("Yes, I trust this folder")
+        || screen.contains("Quick safety check:")
+        || screen.contains("Open restricted")
+    {
+        crate::native_controller_support::native_consent(&pane.id, &state.worker.provider);
+        ANSWERED.lock().unwrap().insert(pane.id);
     }
 }
 fn relay(from: &str, to: &str, quote: &str, paraphrase: &str, supported: bool) -> Value {
@@ -269,6 +300,8 @@ fn relay(from: &str, to: &str, quote: &str, paraphrase: &str, supported: bool) -
         )
         .and_then(|s| s.sources())
         .unwrap_or_default();
+        observer_consent(from);
+        observer_consent(to);
         if directory.join(format!("received-{id}.json")).exists()
             && let Some(input) = sources.iter().find(|i| i.text == quote)
         {
