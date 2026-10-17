@@ -43,7 +43,7 @@ pub(super) fn run(_root: &Path) -> Value {
     let command = kah_cli::claude_launch::prepare(&home, claude.project(), args).unwrap();
     let panes = Panes(vec![Pane::start(&command).unwrap()]);
     assert_eq!(ready(&panes.0[0], "claude"), claude.id);
-    settle(&claude);
+    settle(&claude, &panes.0[0]);
     let state = Observer::read(&claude.base, &claude.id).unwrap().unwrap();
     assert!(state.gap.is_none(), "{:?}", state.gap);
     assert!(state.judgments.iter().all(|j| j.backend == "jev"));
@@ -60,13 +60,49 @@ pub(super) fn run(_root: &Path) -> Value {
         "workerIsHerdrPane":true,"privateHerdr":true,"wallElapsedMs":started.elapsed().as_millis()})
 }
 
-fn settle(claude: &crate::claude_support::Fixture) {
+fn settle(claude: &crate::claude_support::Fixture, pane: &Pane) {
     let deadline = Instant::now() + Duration::from_secs(180);
     while !(claude.has_file("answer.txt", "BETA") && claude.is_settled(TASK)) {
         observer_consent(&claude.id);
-        assert!(Instant::now() < deadline, "seeded drift never settled");
+        assert!(
+            Instant::now() < deadline,
+            "seeded drift never settled: {}",
+            stall(claude, pane)
+        );
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+/// Everything needed to see where the journey stopped.
+fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
+    let state = Observer::read(&claude.base, &claude.id).ok().flatten();
+    let sources = Observer::open(&claude.base, &claude.id, Duration::from_secs(2))
+        .and_then(|s| s.sources())
+        .unwrap_or_default();
+    let writes = claude
+        .rows()
+        .iter()
+        .flat_map(|r| {
+            r["message"]["content"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter(|p| p["type"] == "tool_use")
+        .map(|p| json!({"tool":p["name"],"content":p["input"]["content"]}))
+        .collect::<Vec<_>>();
+    json!({
+        "answerTxt": fs::read_to_string(claude.project().join("answer.txt")).ok(),
+        "reminders": state.as_ref().map(|s| s.reminders),
+        "inflight": state.as_ref().map(|s| s.inflight.is_some()),
+        "gap": state.as_ref().map(|s| format!("{:?}", s.gap)),
+        "judgments": state.as_ref().map(|s| s.judgments.len()),
+        "sources": sources.iter().map(|i| json!({"text":i.text.chars().take(60).collect::<String>(),"decided":i.decision.is_some()})).collect::<Vec<_>>(),
+        "workerToolUses": writes,
+        "paneStatus": pane.inspect().ok().map(|v| v["agent_status"].clone()),
+        "paneScreen": pane.logs("claude", None, None).ok().map(|s| s.chars().rev().take(900).collect::<Vec<_>>().into_iter().rev().collect::<String>()),
+        "observer": kah_cli::observer_review::state::Store::read(&claude.id).ok().flatten().map(|r| json!({"pending":r.pending.as_ref().map(|p| p.turn.clone()),"latestPurpose":r.latest.as_ref().map(|v| v["purpose"].clone()),"observerSession":r.observer.session,"wakes":r.wakes})),
+        "loadavg": fs::read_to_string("/proc/loadavg").ok(),
+    })
 }
 fn wrote_omega(claude: &crate::claude_support::Fixture) -> bool {
     claude.rows().iter().any(|r| {

@@ -224,7 +224,41 @@ fn observer_state(id: &str) -> Value {
             json!({"pending":state.pending.as_ref().map(|p| json!({"id":p.id,"turn":p.turn,"age_ms":kah_observer::session::now_ms().saturating_sub(p.created_ms)})),
             "latestPurpose":state.latest.as_ref().map(|v| v["purpose"].clone()),"wakes":state.wakes,"observerSession":state.observer.session})
         });
-    json!({"verificationEnabled":verification,"review":review})
+    json!({"verificationEnabled":verification,"review":review,"steerInput":steer_input(id),"reviewResults":review_results(id)})
+}
+
+/// The steer's ledger row after review: resolved (promoted/dismissed) or still open.
+fn steer_input(id: &str) -> Value {
+    let base = RunStore::default_state_root().unwrap();
+    let Ok(store) = Store::open(&base, id, Duration::ZERO) else {
+        return Value::Null;
+    };
+    store
+        .sources()
+        .unwrap_or_default()
+        .iter()
+        .find(|i| i.text == DECISION)
+        .map_or(Value::Null, |i| json!({"promoted":i.promoted,"dismissed":i.dismissed,"decided":i.decision.is_some()}))
+}
+
+/// Every review result the observer wrote: purpose, status, gap and intake resolution.
+fn review_results(id: &str) -> Value {
+    let Ok(directory) = kah_cli::observer_review::state::Store::directory(id) else {
+        return Value::Null;
+    };
+    let mut results = vec![];
+    for entry in fs::read_dir(directory.join("results"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let value: Value = fs::read(entry.path())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null);
+        results.push(json!({"file":entry.file_name().to_string_lossy(),"status":value["status"],"gap":value["gap"],"intakeResolution":value["intake_resolution"],"purpose":value["purpose"]}));
+    }
+    json!(results)
 }
 
 fn prove(id: &str, project: &Path) -> Value {
