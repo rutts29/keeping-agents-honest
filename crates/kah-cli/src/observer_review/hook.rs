@@ -152,60 +152,72 @@ fn handle_event(worker: &str, state: &State, event: &str) -> Result<()> {
     if matches!(event, "Stop" | "PostToolUse")
         && let Some(pending) = &state.pending
     {
-        let decision = super::preparation::active_decision(worker, &pending.id)?;
-        if super::preparation::pending(worker, &decision)? {
-            if state
-                .observer
-                .workspace
-                .join("outbox")
-                .join(format!("selected-{decision}.json"))
-                .exists()
-            {
-                spawn("__review-consume", worker)?;
-            } else if event == "Stop" {
-                record_gap(
-                    worker,
-                    &format!(
-                        "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection for {decision}; request retained"
-                    ),
-                    super::failure::Origin::Delivery,
-                )?;
-            }
-            return Ok(());
-        }
-        if rejected_report(state, &pending.id) {
-            // Reproduce this rejection in a fresh detached host job. Never rely
-            // on a long-lived watcher compiled before this report protocol.
-            return spawn("__review-retry", worker);
-        }
-        if state
-            .observer
-            .workspace
-            .join("outbox")
-            .join(format!("submitted-{}.json", pending.id))
-            .exists()
-        {
-            super::timing::now(&state.worker.session, &pending.id, "acknowledged")?;
-            let store = Store::open(worker)?;
-            crate::unattended_report::save(
-                &store.directory,
-                "report-ready.json",
-                &json!({"request":pending.id}),
-            )?;
-            drop(store);
-            spawn("__review-consume", worker)?;
-        } else if event == "Stop" {
-            record_gap(
-                worker,
-                &"REVIEW_REPORT_MISSING stage=observer: native turn ended without a submitted evidence report; focus the observer to inspect it",
-                super::failure::Origin::Delivery,
-            )?;
-        }
+        pending_event(worker, state, event, &pending.id)?;
     }
     if state.pending.is_none() {
         // A queued wake can lose a nonblocking store race with this hook.
         // The writer has released the store; complete that handoff now.
         super::queue::kick(worker)?;
+    }
+    Ok(())
+}
+/// The observer's turn events for its pending request: consume a submitted
+/// report, retry a rejected one, or handle a turn that ended without one.
+fn pending_event(worker: &str, state: &State, event: &str, request: &str) -> Result<()> {
+    let decision = super::preparation::active_decision(worker, request)?;
+    if super::preparation::pending(worker, &decision)? {
+        if state
+            .observer
+            .workspace
+            .join("outbox")
+            .join(format!("selected-{decision}.json"))
+            .exists()
+        {
+            spawn("__review-consume", worker)?;
+        } else if event == "Stop" {
+            record_gap(
+                worker,
+                &format!(
+                    "REVIEW_PREPARATION_MISSING stage=observer: native turn ended without an acknowledged selection for {decision}; request retained"
+                ),
+                super::failure::Origin::Delivery,
+            )?;
+        }
+        return Ok(());
+    }
+    if rejected_report(state, request) {
+        // Reproduce this rejection in a fresh detached host job. Never rely
+        // on a long-lived watcher compiled before this report protocol.
+        return spawn("__review-retry", worker);
+    }
+    if state
+        .observer
+        .workspace
+        .join("outbox")
+        .join(format!("submitted-{}.json", request))
+        .exists()
+    {
+        super::timing::now(&state.worker.session, request, "acknowledged")?;
+        let store = Store::open(worker)?;
+        crate::unattended_report::save(
+            &store.directory,
+            "report-ready.json",
+            &json!({"request":request}),
+        )?;
+        drop(store);
+        spawn("__review-consume", worker)?;
+    } else if event == "Stop" {
+        use super::missing_report::{Next, next, retire};
+        if next(&Store::directory(worker)?, request)? == Next::Retire {
+            return retire(worker, request);
+        }
+        record_gap(
+            worker,
+            &"REVIEW_REPORT_MISSING stage=observer: native turn ended without a submitted evidence report; focus the observer to inspect it",
+            super::failure::Origin::Delivery,
+        )?;
+        // A fresh observer turn on the same request, once.
+        spawn("__review-retry", worker)?;
     }
     Ok(())
 }
