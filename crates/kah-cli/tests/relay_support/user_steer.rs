@@ -177,14 +177,15 @@ struct Progress {
     steer_row: Option<u64>,
     decided: Option<(u64, &'static str)>,
     file_4: Option<u64>,
-    tripwire: Option<u64>,
+    /// When the verification review resolved the steer, and how (with its review id).
+    review_resolved: Option<(u64, String)>,
     prompt_has_decision: Option<u64>,
 }
 impl Progress {
     fn done(&self) -> bool {
         self.decided.is_some()
             && self.file_4.is_some()
-            && self.tripwire.is_some()
+            && self.review_resolved.is_some()
             && self.prompt_has_decision.is_some()
     }
     fn observe(&mut self, id: &str, project: &Path, t: u64) {
@@ -205,23 +206,17 @@ impl Progress {
             if self.decided.is_none() && input.decision.is_some() {
                 self.decided = Some((t, typed_by_jev(id, input)));
             }
+            if self.review_resolved.is_none() && (input.promoted || input.dismissed) {
+                let action = if input.promoted {
+                    "promoted"
+                } else {
+                    "dismissed"
+                };
+                self.review_resolved = Some((t, format!("{action} by {}", latest_review(id))));
+            }
         }
         if project.join("relayed-4.txt").exists() {
             self.file_4.get_or_insert(t);
-        }
-        let rows = fs::read_to_string(Store::directory(&base, id).join("observations.jsonl"))
-            .unwrap_or_default();
-        if rows
-            .lines()
-            .filter_map(|s| serde_json::from_str::<Value>(s).ok())
-            .any(|v| {
-                v["kind"] == "assessment"
-                    && v["turn"]
-                        .as_str()
-                        .is_some_and(|s| s.starts_with("tool-batch:"))
-            })
-        {
-            self.tripwire.get_or_insert(t);
         }
         if let Ok(Some(state)) = store.load()
             && let Ok(Some(projection)) = kah_observer::engine::projection(&state)
@@ -230,6 +225,16 @@ impl Progress {
             self.prompt_has_decision.get_or_insert(t);
         }
     }
+}
+
+/// The review request the observer last completed (`unknown` when none is recorded).
+fn latest_review(id: &str) -> String {
+    kah_cli::observer_review::state::Store::read(id)
+        .ok()
+        .flatten()
+        .and_then(|s| s.latest)
+        .and_then(|v| v["request"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".into())
 }
 
 fn loadavg() -> String {
@@ -288,6 +293,65 @@ fn review_results(id: &str) -> Value {
     json!(results)
 }
 
+/// Why the observer prompt may lack the steer: what the projection holds, its
+/// revision against the steer's resolution, and which observer files mention it.
+fn prompt_state(id: &str) -> Value {
+    let base = RunStore::default_state_root().unwrap();
+    let Ok(store) = Store::open(&base, id, Duration::ZERO) else {
+        return Value::Null;
+    };
+    let steer = store
+        .sources()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|i| i.text == DECISION);
+    let state = store.load().ok().flatten();
+    let projection = state
+        .as_ref()
+        .and_then(|s| kah_observer::engine::projection(s).ok().flatten());
+    let items = projection.as_ref().map(|p| {
+        p.preserve
+            .iter()
+            .chain(&p.frontier)
+            .chain(&p.validation)
+            .map(|i| i.text.chars().take(50).collect::<String>())
+            .collect::<Vec<_>>()
+    });
+    json!({
+        "steerSource": steer.as_ref().map(|i| json!({"record":i.source.record,"promoted":i.promoted,"dismissed":i.dismissed,"ruleSetResolution":i.rule_set_resolution})),
+        "stateLoaded": state.is_some(),
+        "projection": projection.as_ref().map(|p| json!({"revision":p.revision,"sourceHead":p.source_head.record,"pendingSequence":p.source_head.pending_sequence,"compacted":p.compaction.is_some(),"promptBytes":p.rendered_prompt().len(),"items":items})),
+        "observerFilesMentioningDecision": files_mentioning_decision(id),
+    })
+}
+
+/// Observer workspace files that contain the steer text, with seconds since written.
+fn files_mentioning_decision(id: &str) -> Value {
+    fn walk(dir: &Path, depth: u8, found: &mut Vec<Value>) {
+        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() && depth > 0 {
+                walk(&path, depth - 1, found);
+            } else if fs::read_to_string(&path).is_ok_and(|t| t.contains(&DECISION[..40])) {
+                let age = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|m| m.elapsed().ok());
+                found.push(json!({"file":path.file_name().map(|n| n.to_string_lossy().into_owned()),"ageSeconds":age.map(|a| a.as_secs())}));
+            }
+        }
+    }
+    let mut found = vec![];
+    if let Some(state) = kah_cli::observer_review::state::Store::read(id)
+        .ok()
+        .flatten()
+    {
+        walk(&state.observer.workspace, 3, &mut found);
+    }
+    json!(found)
+}
+
 fn prove(id: &str, project: &Path) -> Value {
     let started = Instant::now();
     let deadline = started + Duration::from_secs(600);
@@ -300,13 +364,13 @@ fn prove(id: &str, project: &Path) -> Value {
                 "RED\n"
             );
             let kind = progress.decided.map(|d| d.1);
-            return json!({"session":id,"origin":"relayed","relayer":"kah-reviewer","verbatim":true,"typedByJev":true,"decision":kind,"plainPrefixNotUserIntent":true,"tripwireRan":true,"milestonesSecondsAfterSteer":progress,"loadavgAtEnd":loadavg(),"passed":true});
+            return json!({"session":id,"origin":"relayed","relayer":"kah-reviewer","verbatim":true,"typedByJev":true,"decision":kind,"plainPrefixNotUserIntent":true,"milestonesSecondsAfterSteer":progress,"loadavgAtEnd":loadavg(),"passed":true});
         }
         assert!(
             Instant::now() < deadline,
-            "reviewer steering/ledger/tripwire did not complete for {id} after {} s: {}",
+            "reviewer steering/ledger/review did not complete for {id} after {} s: {}",
             started.elapsed().as_secs(),
-            json!({"milestonesSecondsAfterSteer":progress,"missing":missing(&progress),"observer":observer_state(id),"loadavg":loadavg()})
+            json!({"milestonesSecondsAfterSteer":progress,"missing":missing(&progress),"observer":observer_state(id),"promptState":prompt_state(id),"loadavg":loadavg()})
         );
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -321,8 +385,8 @@ fn missing(progress: &Progress) -> Vec<&'static str> {
             "worker never wrote relayed-4.txt",
         ),
         (
-            progress.tripwire.is_none(),
-            "no tool-batch tripwire assessment",
+            progress.review_resolved.is_none(),
+            "verification review never resolved the steer",
         ),
         (
             progress.prompt_has_decision.is_none(),
