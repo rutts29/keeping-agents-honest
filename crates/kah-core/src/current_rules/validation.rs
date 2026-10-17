@@ -113,21 +113,7 @@ fn validate_clause(
             "inactive History item cannot support a current rule",
         ));
     }
-    if contributes == clause.rules.is_empty() {
-        return Err(error("ACCOUNTING", "only current clauses support rules"));
-    }
-    let mut linked = BTreeSet::new();
-    for id in &clause.rules {
-        let rule = rules
-            .get(id)
-            .ok_or_else(|| error("ORPHAN", "missing output rule"))?;
-        if !linked.insert(id) || !rule.clauses.contains(&clause.id) {
-            return Err(error(
-                "ORPHAN",
-                "source/rule links must be reciprocal and unique",
-            ));
-        }
-    }
+    clause_links(clause, contributes, rules)?;
     if matches!(
         clause.disposition,
         Disposition::Superseded
@@ -142,6 +128,58 @@ fn validate_clause(
         ));
     }
     Ok(())
+}
+/// Messages name the clause and the fix: 5h-f's observer saw only "only
+/// current clauses support rules" for a merged clause without rules.
+fn clause_links(
+    clause: &Clause,
+    contributes: bool,
+    rules: &BTreeMap<&String, &Rule>,
+) -> Result<(), String> {
+    let (id, disposition) = (&clause.id, name(&clause.disposition));
+    if contributes == clause.rules.is_empty() {
+        let fix = if contributes {
+            "links no rule; a contributes or merged clause must link at least one rule"
+        } else {
+            "links rules; only a contributes or merged clause may link rules"
+        };
+        return Err(error(
+            "ACCOUNTING",
+            &format!(
+                "clause {id} is {disposition} but {fix}, and every other disposition must link none"
+            ),
+        ));
+    }
+    let mut linked = BTreeSet::new();
+    for rule_id in &clause.rules {
+        let rule = rules.get(rule_id).ok_or_else(|| {
+            error(
+                "ORPHAN",
+                &format!("clause {id} links rule {rule_id}, which is not in rules"),
+            )
+        })?;
+        if !linked.insert(rule_id) {
+            return Err(error(
+                "ORPHAN",
+                &format!("clause {id} lists rule {rule_id} more than once; list each rule once"),
+            ));
+        }
+        if !rule.clauses.contains(&clause.id) {
+            return Err(error(
+                "ORPHAN",
+                &format!(
+                    "clause {id} links rule {rule_id}, but that rule's clauses do not list {id}; list the link on both sides"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+fn name(disposition: &Disposition) -> String {
+    serde_json::to_value(disposition)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 fn coverage(input: &Input, clauses: &[Clause]) -> Result<(), String> {
     for source in &input.sources {
@@ -179,18 +217,33 @@ fn validate_rule(
     input: &Input,
     clauses: &BTreeMap<&String, &Clause>,
 ) -> Result<(), String> {
+    let rule_id = &rule.id;
     if rule.predicate.trim().is_empty() || rule.scope.trim().is_empty() || rule.clauses.is_empty() {
-        return Err(error("ORPHAN", "rule needs predicate, scope and sources"));
+        return Err(error(
+            "ORPHAN",
+            &format!("rule {rule_id} needs a predicate, a scope and at least one source clause"),
+        ));
     }
     let mut linked = BTreeSet::new();
     for id in &rule.clauses {
-        let clause = clauses
-            .get(id)
-            .ok_or_else(|| error("ORPHAN", "unknown source clause"))?;
-        if !linked.insert(id) || !clause.rules.contains(&rule.id) {
+        let clause = clauses.get(id).ok_or_else(|| {
+            error(
+                "ORPHAN",
+                &format!("rule {rule_id} lists clause {id}, which is not in clauses"),
+            )
+        })?;
+        if !linked.insert(id) {
             return Err(error(
                 "ORPHAN",
-                "rule/source links must be reciprocal and unique",
+                &format!("rule {rule_id} lists clause {id} more than once; list each clause once"),
+            ));
+        }
+        if !clause.rules.contains(&rule.id) {
+            return Err(error(
+                "ORPHAN",
+                &format!(
+                    "rule {rule_id} lists clause {id}, but that clause's rules do not list {rule_id}; list the link on both sides"
+                ),
             ));
         }
     }

@@ -142,3 +142,54 @@ fn malformed_or_stale_projection_never_becomes_a_question_set() {
     next.rules[0].id = "unnecessary-renaming".into();
     assert!(next.validate(&input, Some(&previous)).is_err());
 }
+#[test]
+fn link_errors_name_the_clause_and_how_to_fix_it() {
+    // 5h-f: the observer saw only "only current clauses support rules" for
+    // merged clauses without rules and could not correct its report.
+    let input = input();
+    let original = candidate(&input);
+    let err = |set: RuleSet| set.validate(&input, None).unwrap_err();
+    let c = original
+        .clauses
+        .iter()
+        .position(|c| !c.rules.is_empty())
+        .unwrap();
+    let (id, rule) = (
+        original.clauses[c].id.clone(),
+        original.clauses[c].rules[0].clone(),
+    );
+    let mut s = original.clone();
+    s.clauses[c].disposition = Disposition::Merged;
+    s.clauses[c].rules.clear();
+    let e = err(s);
+    assert!(
+        e.starts_with("RULE_SET_ACCOUNTING stage=current_rules: "),
+        "{e}"
+    );
+    assert!(
+        e.contains(&format!("clause {id} is merged but links no rule")),
+        "{e}"
+    );
+    let mut s = original.clone();
+    s.clauses[c].disposition = Disposition::Context;
+    let e = err(s);
+    assert!(
+        e.contains(&format!("clause {id} is context but links rules")),
+        "{e}"
+    );
+    let mut s = original.clone();
+    s.clauses[c].rules.push(rule.clone());
+    let e = err(s);
+    assert!(
+        e.contains(&format!("clause {id} lists rule {rule} more than once")),
+        "{e}"
+    );
+    let mut s = original.clone();
+    let r = s.rules.iter().position(|r| r.id == rule).unwrap();
+    s.rules[r].clauses.push(id.clone());
+    let e = err(s);
+    assert!(
+        e.contains(&format!("rule {rule} lists clause {id} more than once")),
+        "{e}"
+    );
+}
