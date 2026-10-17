@@ -197,9 +197,47 @@ fn stall(claude: &crate::claude_support::Fixture, pane: &Pane) -> Value {
         "workerToolUses": writes,
         "workerCommits": worker_commits(claude.project()),
         "reviews": review_ids(&claude.id),
+        "reviewDirectory": review_directory(&claude.id),
         "paneStatus": pane.inspect().ok().map(|v| v["agent_status"].clone()),
         "paneScreen": pane.logs("claude", None, None).ok().map(|s| s.chars().rev().take(900).collect::<Vec<_>>().into_iter().rev().collect::<String>()),
         "observer": kah_cli::observer_review::state::Store::read(&claude.id).ok().flatten().map(|r| json!({"pending":r.pending.as_ref().map(|p| p.turn.clone()),"latestPurpose":r.latest.as_ref().map(|v| v["purpose"].clone()),"observerSession":r.observer.session,"wakes":r.wakes})),
         "loadavg": fs::read_to_string("/proc/loadavg").ok(),
     })
+}
+
+/// Where the commit review stopped: the observer's review directory, with the
+/// small state files that decide whether a HEAD change was sampled and admitted.
+fn review_directory(id: &str) -> Value {
+    const SHOWN: [&str; 6] = [
+        "git-head.json",
+        "option1-baseline.json",
+        "option1-checkpoint-baseline.json",
+        "admission-blocked.json",
+        "gap.json",
+        "git-tags.json",
+    ];
+    let Ok(directory) = kah_cli::observer_review::state::Store::directory(id) else {
+        return Value::Null;
+    };
+    let mut listing = serde_json::Map::new();
+    for entry in fs::read_dir(&directory).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let value = if entry.path().is_dir() {
+            let names = fs::read_dir(entry.path())
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .take(20)
+                .collect::<Vec<_>>();
+            json!(names)
+        } else if SHOWN.contains(&name.as_str()) {
+            let text = fs::read_to_string(entry.path()).unwrap_or_default();
+            json!(text.chars().take(400).collect::<String>())
+        } else {
+            json!(entry.metadata().map(|m| m.len()).ok())
+        };
+        listing.insert(name, value);
+    }
+    Value::Object(listing)
 }
