@@ -5,10 +5,32 @@ pub fn retry_pending(worker: &str) -> Result<()> {
     if review::service::blocked(worker)? {
         return Ok(());
     }
-    if !review::native_receipt::ensure_started(worker)? {
+    if !review::native_receipt::ensure_started(worker)? || retire_undelivered(worker)? {
         return Ok(());
     }
     retry_bound(worker)
+}
+/// A request no native turn accepted by the deadline ends in a visible gap
+/// instead of waiting out the journey. A Working native turn is never cut.
+fn retire_undelivered(worker: &str) -> Result<bool> {
+    let Some(state) = Store::read(worker)? else {
+        return Ok(false);
+    };
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    let first = review::missing_report::first_attempt_ms(&Store::directory(worker)?, &pending.id)?;
+    if !review::missing_report::undelivered_expired(
+        first,
+        kah_observer::session::now_ms(),
+        review::delivery::accepted(&state)?,
+    ) || review::delivery::native_working(&state)?
+        || review::liveness::awaiting_host(&state)?
+    {
+        return Ok(false);
+    }
+    review::missing_report::retire(worker, &pending.id, &review::missing_report::UNDELIVERED)?;
+    Ok(true)
 }
 fn retry_bound(worker: &str) -> Result<()> {
     let _waiting = review::liveness::waiting(worker)?;

@@ -207,9 +207,9 @@ fn pending_event(worker: &str, state: &State, event: &str, request: &str) -> Res
         drop(store);
         spawn("__review-consume", worker)?;
     } else if event == "Stop" {
-        use super::missing_report::{Next, next, retire};
+        use super::missing_report::{NO_REPORT, Next, next, retire};
         if next(&Store::directory(worker)?, request)? == Next::Retire {
-            return retire(worker, request);
+            return retire(worker, request, &NO_REPORT);
         }
         record_gap(
             worker,

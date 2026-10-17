@@ -194,6 +194,7 @@ pub mod failure;
 mod failure_snapshot;
 pub mod lifecycle;
 pub mod missing_report;
+pub mod native_idle;
 pub mod pause;
 pub mod steering;
 mod steering_conflict;

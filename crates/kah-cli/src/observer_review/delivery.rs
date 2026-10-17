@@ -1,6 +1,7 @@
 //! Herdr submits a wake; the native transcript, not a CLI acknowledgement,
 //! proves acceptance. A single Enter retry is allowed only in that composer.
 use super::{
+    native_idle::{Ready, idle},
     runtime,
     state::{State, Store},
 };
@@ -26,14 +27,10 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
     let decision = super::preparation::active_decision(&state.worker.session, &request.id)?;
     let marker = prompt_marker(prompt, &request.id, &decision)?;
-    if !wait_idle(state, socket, pane)? {
+    let Some(ready) = wait_idle(state, socket, pane)? else {
         return Ok(());
-    }
-    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
-    if !matches!(
-        view["result"]["pane"]["agent_status"].as_str(),
-        Some("idle" | "done")
-    ) {
+    };
+    if !idle(socket, pane, ready)? {
         return if accepted(state)? {
             Ok(())
         } else {
@@ -47,18 +44,16 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         .as_ref()
         .ok_or("REVIEW_TRANSCRIPT_MISSING stage=delivery")?;
     let offset = std::fs::metadata(path)?.len();
+    if ready == Ready::Transcript {
+        super::native_idle::claim(state)?;
+    }
     submit(state, prompt, &marker, offset, socket, pane)?;
     if wait_receipt(state, &marker, offset)? {
         return Ok(());
     }
     let text = screen(state)?;
     safe_keyboard(&text)?;
-    let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
-    if matches!(
-        view["result"]["pane"]["agent_status"].as_str(),
-        Some("idle" | "done")
-    ) && composer_contains(&text, &marker, &state.worker.provider)
-    {
+    if idle(socket, pane, ready)? && composer_contains(&text, &marker, &state.worker.provider) {
         crate::run_pane::invoke_at(&["agent", "send-keys", pane, "Enter"], Some(socket))?;
         if wait_receipt(state, &marker, offset)? {
             return Ok(());
@@ -91,7 +86,7 @@ fn missing_receipt() -> Box<dyn std::error::Error> {
 #[cfg(test)]
 #[path = "../../tests/observer_unit/receipt_guidance.rs"]
 mod guidance_tests;
-fn wait_idle(state: &State, socket: &std::path::Path, pane: &str) -> Result<bool> {
+fn wait_idle(state: &State, socket: &std::path::Path, pane: &str) -> Result<Option<Ready>> {
     let waited = crate::run_pane::invoke_at(
         &[
             "agent",
@@ -106,7 +101,14 @@ fn wait_idle(state: &State, socket: &std::path::Path, pane: &str) -> Result<bool
         ],
         Some(socket),
     );
-    readiness(waited, accepted(state)?)
+    let confirmed = accepted(state)?;
+    if !confirmed
+        && waited.as_ref().is_err_and(|e| wait_timeout(&e.to_string()))
+        && super::native_idle::available(state)?
+    {
+        return Ok(Some(Ready::Transcript));
+    }
+    Ok(readiness(waited, confirmed)?.then_some(Ready::Herdr))
 }
 /// The short readiness handshake may expire while the previous native turn
 /// is still closing. It does not end the review or discard its request.
@@ -172,7 +174,8 @@ pub fn native_working(state: &State) -> Result<bool> {
         return Ok(false);
     };
     let view = crate::relay_transport::herdr(socket, &["pane", "get", pane])?;
-    Ok(view["result"]["pane"]["agent_status"] == "working")
+    Ok(view["result"]["pane"]["agent_status"] == "working"
+        && !super::native_idle::ended_quietly(state))
 }
 /// Cold launch is not acceptance. Native SessionStart and the persisted user
 /// record prove it. The window measures a launch with no pane progress.
