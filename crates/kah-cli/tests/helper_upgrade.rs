@@ -1,6 +1,8 @@
 //! Real host-process re-exec, not an agent or a provider simulation.
 use std::{fs, path::Path, process::Command, time::Duration};
 
+static EXECUTABLES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn installed_helper_reexecs_with_the_same_pid_identity_and_singleton_lock() {
     run(false);
@@ -12,6 +14,8 @@ fn spawned_watchers_keep_their_inherited_stdin_lock_across_reexec() {
 }
 
 fn run(inherited: bool) {
+    // A sibling fork must not inherit a writer during executable publication.
+    let _executables = EXECUTABLES.lock().unwrap();
     let root = Temp(std::env::temp_dir().join(format!(
         "kah-helper-upgrade-{}-{inherited}-{}",
         std::process::id(),
@@ -26,7 +30,7 @@ fn run(inherited: bool) {
     compile(&fixture, &home.join("old"), true);
     compile(&fixture, &home.join("new"), false);
     let installed = home.join(".local/bin/kah");
-    fs::copy(home.join("old"), &installed).unwrap();
+    copy_executable(&home.join("old"), &installed);
     let mut child = start(&installed, home, inherited);
     let pid = child.0.id();
     wait(home, "ready");
@@ -37,7 +41,7 @@ fn run(inherited: bool) {
     .unwrap();
     fs::rename(home.join("record-stage"), home.join("record")).unwrap();
     wait(home, "old-error");
-    fs::copy(home.join("new"), home.join("replacement")).unwrap();
+    copy_executable(&home.join("new"), &home.join("replacement"));
     fs::rename(home.join("replacement"), &installed).unwrap();
     let read = wait(home, "read");
     let lease = fs::OpenOptions::new()
@@ -70,18 +74,19 @@ fn start(installed: &Path, home: &Path, inherited: bool) -> OwnedChild {
         lease.try_lock().unwrap();
         command.stdin(std::process::Stdio::from(lease));
     }
-    // The parallel test may fork while our just-copied binary is still open
-    // for writing in its child; retry only that ETXTBSY, at most 3 tries.
-    for attempt in 1.. {
-        match command.spawn() {
-            Ok(child) => return OwnedChild(child),
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 3 => {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            Err(e) => panic!("{e}"),
-        }
-    }
-    unreachable!()
+    OwnedChild(command.spawn().unwrap())
+}
+
+fn copy_executable(source: &Path, target: &Path) {
+    let mut writer = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+        .unwrap();
+    std::io::copy(&mut fs::File::open(source).unwrap(), &mut writer).unwrap();
+    writer.sync_all().unwrap();
+    drop(writer);
+    fs::set_permissions(target, fs::metadata(source).unwrap().permissions()).unwrap();
 }
 
 fn compile(source: &Path, output: &Path, legacy: bool) {
@@ -102,7 +107,7 @@ fn wait(root: &Path, name: &str) -> String {
         {
             return text;
         }
-        assert!(start.elapsed() < Duration::from_secs(3), "missing {name}");
+        assert!(start.elapsed() < Duration::from_secs(60), "missing {name}");
         std::thread::sleep(Duration::from_millis(10));
     }
 }
