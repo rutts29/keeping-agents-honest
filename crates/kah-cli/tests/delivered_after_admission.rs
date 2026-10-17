@@ -204,3 +204,55 @@ fn an_unreadable_or_turnless_transcript_keeps_todays_behaviour() {
     assert!(!f.admit(), "no turn_duration row: nothing is rechecked");
     assert_eq!(f.queued(), 0);
 }
+
+#[test]
+fn only_interactive_sessions_catch_up_an_unattended_run_keeps_todays_path() {
+    // A kah run worker has a run-completion checkpoint ahead that reviews every
+    // rule on the delivered head, so its late order queues nothing new here.
+    let home = std::env::temp_dir().join(format!("delivered-run-{}", std::process::id()));
+    let id = format!("run-delivered-{}", std::process::id());
+    let worktree = home.join(&id).join("worktree");
+    let base = kah_core::run_store::RunStore::default_state_root()
+        .unwrap()
+        .join("runs");
+    let record = kah_run::store::Record {
+        project: home.join("source"),
+        domain: "research".into(),
+        worktree: worktree.clone(),
+        model: None,
+        effort: None,
+        native: Some(kah_run::native::Native::new("claude").unwrap()),
+        control: kah_core::unattended::RunControl::new("fixture", Default::default()).unwrap(),
+    };
+    drop(kah_run::store::Store::create(&base, &id, record).unwrap());
+    assert!(
+        !delivered::catch_up_applies(&worktree),
+        "unattended kah run"
+    );
+    assert!(
+        delivered::catch_up_applies(&home.join("repos/research/project")),
+        "interactive"
+    );
+    // The same late order as 5f: Stop, then admission.
+    let interactive = Fixture::new("interactive-late");
+    commit_turn(&interactive);
+    interactive.stop("2026-10-17T19:00:02.000Z");
+    assert!(interactive.admit());
+    assert_eq!(
+        interactive.queued(),
+        1,
+        "interactive: exactly one delivered-change review"
+    );
+    let unattended = Fixture::new("unattended-late");
+    commit_turn(&unattended);
+    unattended.stop("2026-10-17T19:00:02.000Z");
+    let late = delivered::catch_up_applies(&worktree) && unattended.admit();
+    assert!(!late);
+    assert_eq!(
+        unattended.queued(),
+        0,
+        "unattended: nothing new via this path"
+    );
+    std::fs::remove_dir_all(kah_run::store::Store::path(&base, &id).unwrap()).unwrap();
+    let _ = std::fs::remove_dir_all(home);
+}

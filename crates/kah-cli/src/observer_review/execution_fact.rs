@@ -52,7 +52,7 @@ fn domain(home: &Path, state: &State) -> String {
 }
 
 /// `kah run` worktrees: the run record owns the domain.
-fn run_domain(project: &Path) -> Option<String> {
+pub(super) fn run_domain(project: &Path) -> Option<String> {
     let id = project.parent()?.file_name()?.to_str()?;
     if !id.starts_with("run-") {
         return None;

@@ -46,6 +46,9 @@ pub fn admitted(
     Ok(())
 }
 fn recheck(home: &Path, state: &super::state::State, head: &str) -> Result<()> {
+    if !catch_up_applies(&state.worker.project) {
+        return Ok(());
+    }
     let worker = &state.worker.session;
     if turn_ended_since(
         &super::native_turn_end::worker(home, state),
@@ -55,6 +58,14 @@ fn recheck(home: &Path, state: &super::state::State, head: &str) -> Result<()> {
         queue::schedule(worker)?;
     }
     Ok(())
+}
+
+/// Only interactive sessions need the catch-up. An unattended `kah run` worker
+/// has a run-completion checkpoint ahead that reviews every rule on the
+/// delivered head (due() is false once a checkpoint ran there), so the late
+/// order is harmless there and preserves the existing path.
+pub fn catch_up_applies(project: &Path) -> bool {
+    super::execution_fact::run_domain(project).is_none()
 }
 
 /// Whether a native turn ended at or after the commit. Git's commit time has
