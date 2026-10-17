@@ -7,11 +7,18 @@ use std::path::Path;
 /// Attached to every Option1 review job as `execution`. Host-owned evidence,
 /// never worker text; the observer decides applicability from it.
 pub(crate) fn fact(home: &Path, state: &State) -> Value {
-    let domain = domain(home, state);
+    let unattended = run_domain(&state.worker.project);
+    let domain = unattended.clone().unwrap_or_else(|| domain(home, state));
+    // native_run::command launches every unattended source domain as Research.
+    let command_domain = if unattended.is_some() {
+        "research"
+    } else {
+        &domain
+    };
     let mut fact = json!({
         "source": "kah controller fact (host-owned; not worker text)",
         "domain": domain,
-        "commands": commands(&domain),
+        "commands": commands(command_domain),
     });
     if state.worker.provider == "codex" {
         // openai/codex codex-rs/app-server-protocol/src/protocol/item_builders.rs:
@@ -35,9 +42,6 @@ pub(crate) fn attach(mut job: Value, fact: Value) -> Value {
 
 fn domain(home: &Path, state: &State) -> String {
     let project = &state.worker.project;
-    if let Some(domain) = run_domain(project) {
-        return domain;
-    }
     let policy = kah_core::run_store::RunStore::default_state_root()
         .ok()
         .and_then(|base| crate::session_policy::saved(&base, &state.worker.session).ok())
