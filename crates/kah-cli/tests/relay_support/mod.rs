@@ -225,21 +225,27 @@ fn launch_claude(
     prompt: &str,
     extra: &[&str],
 ) -> Pane {
-    let mut words: Vec<String> = vec![
-        "--agent".into(),
-        "claude".into(),
-        "--model".into(),
-        "claude-sonnet-5-5".into(),
-        "--effort".into(),
-        "low".into(),
-        "--".into(),
+    let mut words: Vec<String> = [
+        "--agent",
+        "claude",
+        "--model",
+        "claude-sonnet-5-5",
+        "--effort",
+        "low",
+        "--",
+    ]
+    .map(String::from)
+    .into();
+    // Extras such as the variadic --allowedTools come before fixed options, so
+    // the next option ends their list and the prompt stays a prompt.
+    words.extend(extra.iter().map(|word| word.to_string()));
+    words.extend([
         "--session-id".into(),
         fixture.id.clone(),
         "--permission-mode".into(),
         "acceptEdits".into(),
-    ];
-    words.extend(extra.iter().map(|word| word.to_string()));
-    words.push(prompt.into());
+        prompt.into(),
+    ]);
     let mut args = Arguments::parse(words).unwrap();
     crate::claude_support::observer::apply(&mut args);
     let command = kah_cli::claude_launch::prepare(home, fixture.project(), args).unwrap();
