@@ -23,7 +23,7 @@ fn retire_undelivered(worker: &str) -> Result<bool> {
     if !review::missing_report::undelivered_expired(
         first,
         kah_observer::session::now_ms(),
-        review::delivery::accepted(&state)?,
+        review::native_idle::accepted_open(&state)?,
     ) || review::delivery::native_working(&state)?
         || review::liveness::awaiting_host(&state)?
     {

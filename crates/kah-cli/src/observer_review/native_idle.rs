@@ -72,6 +72,37 @@ pub fn turn_ended(provider: &str, text: &str, session: &str) -> bool {
     ended
 }
 
+/// This request's native receipt, while the turn that received it is open.
+/// Once that turn ended without a report the receipt is stale: 5h-f
+/// 2026-10-17 skipped 43 redeliveries on it, so no retry turn ever started.
+pub fn accepted_open(state: &State) -> Result<bool> {
+    let current = Store::read(&state.worker.session)?.unwrap_or_else(|| state.clone());
+    let (Some(pending), Some(path)) = (&state.pending, &current.observer.transcript) else {
+        return Ok(false);
+    };
+    let decision = super::preparation::active_decision(&current.worker.session, &pending.id)?;
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(false);
+    };
+    Ok(open_receipt(
+        &text,
+        &current.worker.provider,
+        current.observer.session.as_deref().unwrap_or(""),
+        &format!("kah review request {decision} "),
+    ))
+}
+
+pub fn open_receipt(text: &str, provider: &str, session: &str, marker: &str) -> bool {
+    let (mut offset, mut last) = (0, None);
+    for line in text.split_inclusive('\n') {
+        offset += line.len();
+        if super::delivery::receipt(line.as_bytes(), provider, session, marker).unwrap_or(false) {
+            last = Some(offset);
+        }
+    }
+    last.is_some_and(|end| !turn_ended(provider, &text[end..], session))
+}
+
 /// A repeat would stack the same prompt in a composer that did not accept the
 /// first one; after it, Herdr's idle status or the delivery deadline decides.
 pub fn available(state: &State) -> Result<bool> {

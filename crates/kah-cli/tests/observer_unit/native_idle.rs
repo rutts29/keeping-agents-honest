@@ -69,3 +69,52 @@ fn the_transcript_proof_starts_one_delivery_per_request() {
     assert!(unclaimed(&directory, "review-2"));
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+const MARKER: &str = "kah review request review-1 ";
+
+#[test]
+fn a_receipt_from_a_turn_that_ended_without_a_report_does_not_count_for_a_redelivery() {
+    // 5h-f: the turn that received review-1 ended "Not submitted"; 43
+    // redeliveries then returned Ok on that old receipt and sent nothing.
+    let text = claude(&ended_turn());
+    assert!(!open_receipt(&text, "claude", SESSION, MARKER));
+}
+
+#[test]
+fn a_receipt_counts_while_its_turn_is_open_or_after_a_new_delivery() {
+    let mut rows = ended_turn();
+    rows.truncate(1);
+    assert!(
+        open_receipt(&claude(&rows), "claude", SESSION, MARKER),
+        "just received"
+    );
+    let mut rows = ended_turn();
+    rows.truncate(2);
+    assert!(
+        open_receipt(&claude(&rows), "claude", SESSION, MARKER),
+        "mid-turn"
+    );
+    let mut rows = ended_turn();
+    rows.push(ended_turn()[0].clone());
+    assert!(
+        open_receipt(&claude(&rows), "claude", SESSION, MARKER),
+        "redelivered"
+    );
+    let other = "kah review request review-2 ";
+    assert!(!open_receipt(
+        &claude(&ended_turn()[..1]),
+        "claude",
+        SESSION,
+        other
+    ));
+}
+
+#[test]
+fn a_stale_receipt_no_longer_blocks_the_transcript_override_or_the_deadline() {
+    use crate::observer_review::missing_report::{UNDELIVERED_MS, undelivered_expired};
+    let text = claude(&ended_turn());
+    let confirmed = open_receipt(&text, "claude", SESSION, MARKER);
+    // warm() offers the transcript override only when nothing is confirmed.
+    assert!(!confirmed && turn_ended("claude", &text, SESSION));
+    assert!(undelivered_expired(Some(0), UNDELIVERED_MS, confirmed));
+}

@@ -1,7 +1,7 @@
 //! Herdr submits a wake; the native transcript, not a CLI acknowledgement,
 //! proves acceptance. A single Enter retry is allowed only in that composer.
 use super::{
-    native_idle::{Ready, idle},
+    native_idle::{Ready, accepted_open, idle},
     runtime,
     state::{State, Store},
 };
@@ -31,7 +31,7 @@ pub fn warm(state: &State, prompt: &str) -> Result<()> {
         return Ok(());
     };
     if !idle(socket, pane, ready)? {
-        return if accepted(state)? {
+        return if accepted_open(state)? {
             Ok(())
         } else {
             Err("REVIEW_NOT_IDLE stage=delivery".into())
@@ -101,7 +101,7 @@ fn wait_idle(state: &State, socket: &std::path::Path, pane: &str) -> Result<Opti
         ],
         Some(socket),
     );
-    let confirmed = accepted(state)?;
+    let confirmed = accepted_open(state)?;
     if !confirmed
         && waited.as_ref().is_err_and(|e| wait_timeout(&e.to_string()))
         && super::native_idle::available(state)?
