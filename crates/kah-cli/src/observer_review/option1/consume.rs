@@ -150,7 +150,7 @@ fn checkpoint_notice(
     let original = &request.trigger["option1"]["original_trigger"];
     // If the push fails, today's queued reminder still carries the notice.
     if super::super::delivered::push_notice(original, &state.worker.project)
-        && super::advance::prompt(state, &text).is_ok()
+        && super::advance::prompt(state, &super::super::delivered::pushed_text(&text)).is_ok()
     {
         return Ok(());
     }

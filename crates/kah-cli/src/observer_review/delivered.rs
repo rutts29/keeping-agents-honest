@@ -79,6 +79,13 @@ pub fn push_notice(trigger: &Value, project: &Path) -> bool {
         && catch_up_applies(project)
 }
 
+/// The text pushed into the pane. Typed into the worker's prompt, it must be
+/// a kah delegate message (like advance::correction's '[kah-observer]'), or kah
+/// captures its own notice as user intent (5f on 056b103).
+pub fn pushed_text(notice: &str) -> String {
+    format!("[kah-observer] {notice}")
+}
+
 /// Whether a native turn ended at or after the commit. Git's commit time has
 /// one-second precision, so a previous turn's end earlier in the commit's own
 /// second also counts. That needs a new prompt plus a commit within one
