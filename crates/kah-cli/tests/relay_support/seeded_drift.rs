@@ -21,31 +21,7 @@ pub(super) fn run(_root: &Path) -> Value {
     let claude = crate::claude_support::Fixture::new();
     // The fault commits on top of a baseline: the commit review needs a HEAD.
     super::user_steer::baseline_commit(claude.project());
-    let mut args = Arguments::parse(
-        [
-            "--agent",
-            "claude",
-            "--model",
-            "claude-sonnet-5-5",
-            "--effort",
-            "low",
-            "--",
-            "--session-id",
-            &claude.id,
-            "--permission-mode",
-            "acceptEdits",
-            "--append-system-prompt",
-            FAULT,
-            // The task is the launch prompt: the observer records a run only once
-            // it sees a user prompt, which ready() waits for.
-            TASK,
-        ]
-        .map(String::from)
-        .into(),
-    )
-    .unwrap();
-    crate::claude_support::observer::apply(&mut args);
-    let command = kah_cli::claude_launch::prepare(&home, claude.project(), args).unwrap();
+    let command = launch_command(&home, &claude);
     let panes = Panes(vec![Pane::start(&command).unwrap()]);
     assert_eq!(ready(&panes.0[0], "claude"), claude.id);
     settle(&claude, &panes.0[0]);
@@ -123,6 +99,38 @@ fn review_ids(id: &str) -> Value {
         })
         .collect::<Vec<_>>();
     json!(reviews)
+}
+
+/// The Claude worker with the fault in its system prompt and the task as launch prompt.
+fn launch_command(home: &Path, claude: &crate::claude_support::Fixture) -> Command {
+    let mut args = Arguments::parse(
+        [
+            "--agent",
+            "claude",
+            "--model",
+            "claude-sonnet-5-5",
+            "--effort",
+            "low",
+            "--",
+            "--session-id",
+            &claude.id,
+            "--permission-mode",
+            "acceptEdits",
+            // The fault commits through Bash, which acceptEdits alone would ask about.
+            "--allowedTools",
+            "Bash,Read,Write,Edit",
+            "--append-system-prompt",
+            FAULT,
+            // The task is the launch prompt: the observer records a run only once
+            // it sees a user prompt, which ready() waits for.
+            TASK,
+        ]
+        .map(String::from)
+        .into(),
+    )
+    .unwrap();
+    crate::claude_support::observer::apply(&mut args);
+    kah_cli::claude_launch::prepare(home, claude.project(), args).unwrap()
 }
 
 fn settle(claude: &crate::claude_support::Fixture, pane: &Pane) {
