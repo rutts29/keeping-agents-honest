@@ -9,7 +9,8 @@ pub(super) fn run(root: &Path) -> Value {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let (launch, mut codex) = crate::fixture::prepare(&home, "research", false);
     let claude = crate::claude_support::Fixture::new();
-    let mut panes = Panes(vec![]);
+    let (reviewer, _courier) = start_reviewer(&home);
+    let mut panes = Panes(vec![reviewer.clone()]);
     let mut command = launch.command(false);
     command
         .args([
@@ -18,7 +19,7 @@ pub(super) fn run(root: &Path) -> Value {
         ])
         .env_remove("CODEX_THREAD_ID");
     panes.0.push(Pane::start(&command).unwrap());
-    let codex_id = ready(&panes.0[0], "codex");
+    let codex_id = ready(&panes.0[1], "codex");
     codex.sessions.push(codex_id.clone());
     assert!(
         !launch
@@ -27,17 +28,15 @@ pub(super) fn run(root: &Path) -> Value {
             .exists()
     );
     panes.0.push(start_claude(&home, &claude, root));
-    assert_eq!(ready(&panes.0[1], "claude"), claude.id);
-    for (pane, agent) in [(&panes.0[0], "codex"), (&panes.0[1], "claude")] {
+    assert_eq!(ready(&panes.0[2], "claude"), claude.id);
+    for (pane, agent) in [(&panes.0[1], "codex"), (&panes.0[2], "claude")] {
         pane.prompt(PLAIN).unwrap();
         std::thread::sleep(Duration::from_secs(2));
         ready(pane, agent);
     }
-    fs::write(
-        root.join("steer-ready.json"),
-        json!({"codex":codex_id,"claude":claude.id,"text":DECISION}).to_string(),
-    )
-    .unwrap();
+    for id in [&codex_id, &claude.id] {
+        steer(&reviewer, id);
+    }
     let results = [
         (&codex_id, codex.project.as_path()),
         (&claude.id, claude.project()),
@@ -52,7 +51,39 @@ pub(super) fn run(root: &Path) -> Value {
                 .as_str()
                 .is_none_or(|m| m.starts_with("claude-sonnet-5-5")))
     );
-    json!({"passed":true,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"privateHerdr":true,"userSteering":results,"realReviewerSent":true})
+    json!({"passed":true,"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low","claude":"claude-sonnet-5-5/low"},"privateHerdr":true,"userSteering":results,"reviewerSent":"fixture pane named kah-reviewer in the private Herdr"})
+}
+
+/// A disposable agent pane renamed `kah-reviewer`: `kah steer` records the relayer
+/// from the live Herdr name of the pane it runs in, and research workers cannot
+/// reach the Herdr socket, so the fixture issues the host commands in its name.
+fn start_reviewer(home: &Path) -> (Pane, crate::fixture::Fixture) {
+    let (launch, mut courier) = crate::fixture::prepare(home, "research", false);
+    let mut command = launch.command(false);
+    command.args(["--no-alt-screen", "You are a disposable courier in a live fixture. Reply READY, then wait. Do not use tools or create files."]).env_remove("CODEX_THREAD_ID");
+    let pane = Pane::start(&command).unwrap();
+    courier.sessions.push(ready(&pane, "codex"));
+    assert!(
+        Command::new("herdr")
+            .args(["agent", "rename", &pane.id, "kah-reviewer"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    (pane, courier)
+}
+
+fn steer(reviewer: &Pane, session: &str) {
+    let output = Command::new(env!("CARGO_BIN_EXE_kah"))
+        .args(["steer", session, DECISION])
+        .env("HERDR_PANE_ID", &reviewer.id)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "kah steer {session}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn prove(id: &str, project: &Path) -> Value {

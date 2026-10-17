@@ -119,7 +119,7 @@ fn relay_and_dispatch() {
         pty::quote(std::env::current_exe().unwrap().to_str().unwrap()),
         pty::quote(probe.root.join("helper.log").to_str().unwrap())
     ));
-    let (evidence, reviewer_notified) = wait_evidence(&probe.root, &mut terminal);
+    let evidence = wait_evidence(&probe.root, &mut terminal);
     if evidence["passed"] != true {
         let path = PathBuf::from(format!("/tmp/kah-relay-failure-{}.log", std::process::id()));
         fs::copy(probe.root.join("helper.log"), &path).unwrap();
@@ -139,18 +139,17 @@ fn relay_and_dispatch() {
     drop(terminal);
     native_controller_support::cleanup(&probe.root);
     assert_eq!(evidence["passed"], true, "{evidence}");
-    retain_version_failure(&versions, &evidence, reviewer_notified);
+    retain_version_failure(&versions, &evidence);
     for (n, agent) in ["codex", "claude"].iter().enumerate() {
         versions[n].verify(&evidence["versions"][agent]);
     }
     fs::write(
-        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
-            .join(evidence_name(reviewer_notified)),
+        PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap()).join(evidence_name()),
         serde_json::to_vec_pretty(&evidence).unwrap(),
     )
     .unwrap();
 }
-fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value, notified: bool) {
+fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value) {
     if ["codex", "claude"]
         .iter()
         .enumerate()
@@ -163,13 +162,13 @@ fn retain_version_failure(versions: &[version::Version; 2], evidence: &Value, no
                 .into();
         let root = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
         fs::write(
-            root.join(format!("version-change-{}", evidence_name(notified))),
+            root.join(format!("version-change-{}", evidence_name())),
             serde_json::to_vec_pretty(&retained).unwrap(),
         )
         .unwrap();
     }
 }
-fn evidence_name(reviewer_notified: bool) -> &'static str {
+fn evidence_name() -> &'static str {
     [
         ("KAH_GATE_RETAINED_LIGHT", "retained-light.json"),
         ("KAH_GATE_COMMIT_SCOPE", "commit-scope.json"),
@@ -183,58 +182,26 @@ fn evidence_name(reviewer_notified: bool) -> &'static str {
         ("KAH_GATE_REPLAY", "historical-replay.json"),
         ("KAH_GATE_REVIEW_DRIFT", "verified-drift.json"),
         ("KAH_GATE_REVIEW", "persistent-handoff.json"),
+        ("KAH_GATE_USER_STEER", "user-steer.json"),
     ]
     .into_iter()
     .find(|(flag, _)| std::env::var_os(flag).is_some())
     .map(|(_, name)| name)
-    .unwrap_or(if reviewer_notified {
-        "user-steer.json"
-    } else {
-        "relay-dispatch.json"
-    })
+    .unwrap_or("relay-dispatch.json")
 }
 
-fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> (Value, bool) {
-    let mut notified = false;
+fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> Value {
     let (deadline, secs) = herdr_probe::journey_deadline();
     loop {
         terminal.respond_to_cursor_queries();
         if std::time::Instant::now() >= deadline {
-            return (herdr_probe::timeout_evidence("relay", secs), notified);
-        }
-        if !notified && root.join("steer-ready.json").exists() {
-            notify_reviewer(root);
-            notified = true;
+            return herdr_probe::timeout_evidence("relay", secs);
         }
         if let Ok(bytes) = fs::read(root.join("result.json")) {
-            return (serde_json::from_slice(&bytes).unwrap(), notified);
+            return serde_json::from_slice(&bytes).unwrap();
         }
         std::thread::sleep(Duration::from_millis(200));
     }
-}
-
-fn notify_reviewer(root: &std::path::Path) {
-    let data: Value =
-        serde_json::from_slice(&fs::read(root.join("steer-ready.json")).unwrap()).unwrap();
-    let commands = ["codex", "claude"]
-        .map(|agent| {
-            format!(
-                "kah steer {} {}",
-                data[agent].as_str().unwrap(),
-                pty::quote(data["text"].as_str().unwrap())
-            )
-        })
-        .join("\n");
-    let message = format!(
-        "[kah-builder] 5O-0 live fixture ready on a PRIVATE Herdr server. Please run these two host commands from your named kah-reviewer pane (new kah installed). This tests your relayer attribution; no --sender or registration needed.\n{commands}\nBoth are disposable embedded kah workers. I will verify their ledgers/tripwire and clean them up. Please send now; fixture waits 10 minutes."
-    );
-    assert!(
-        Command::new("herdr")
-            .args(["agent", "prompt", "kah-reviewer", &message])
-            .status()
-            .unwrap()
-            .success()
-    );
 }
 
 #[test]
