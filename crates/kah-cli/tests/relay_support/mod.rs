@@ -19,6 +19,7 @@ mod review;
 mod review_drift;
 mod review_liveness;
 mod review_trace;
+mod seeded_drift;
 mod trace;
 mod uncertain_steer;
 mod user_steer;
@@ -97,6 +98,9 @@ fn special_run() -> Option<fn(&Path) -> Value> {
     }
     if std::env::var_os("KAH_GATE_USER_STEER").is_some() {
         return Some(user_steer::run);
+    }
+    if std::env::var_os("KAH_GATE_SEEDED_DRIFT").is_some() {
+        return Some(seeded_drift::run);
     }
     None
 }

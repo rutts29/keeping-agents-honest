@@ -187,25 +187,24 @@ impl Fixture {
         fs::remove_dir(&self.root).unwrap();
     }
     pub fn settled(&self, terminal: &mut Terminal, text: &str) {
-        self.wait(terminal, || {
-            let Ok(Some(state)) = Store::read(&self.base, &self.id) else {
-                return false;
-            };
-            if state.inflight.is_some() || state.gap.is_some() {
-                return false;
-            }
-            Store::open(&self.base, &self.id, Duration::ZERO)
-                .and_then(|s| s.sources())
-                .is_ok_and(|sources| {
-                    sources
-                        .iter()
-                        .rev()
-                        .find(|i| i.text.contains(text) && i.decision.is_some())
-                        .is_some_and(|i| {
-                            completion::completed_after(&self.rows(), &i.source.record)
-                        })
-                })
-        });
+        self.wait(terminal, || self.is_settled(text));
+    }
+    pub fn is_settled(&self, text: &str) -> bool {
+        let Ok(Some(state)) = Store::read(&self.base, &self.id) else {
+            return false;
+        };
+        if state.inflight.is_some() || state.gap.is_some() {
+            return false;
+        }
+        Store::open(&self.base, &self.id, Duration::ZERO)
+            .and_then(|s| s.sources())
+            .is_ok_and(|sources| {
+                sources
+                    .iter()
+                    .rev()
+                    .find(|i| i.text.contains(text) && i.decision.is_some())
+                    .is_some_and(|i| completion::completed_after(&self.rows(), &i.source.record))
+            })
     }
 }
 

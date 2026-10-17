@@ -183,6 +183,7 @@ fn evidence_name() -> &'static str {
         ("KAH_GATE_REVIEW_DRIFT", "verified-drift.json"),
         ("KAH_GATE_REVIEW", "persistent-handoff.json"),
         ("KAH_GATE_USER_STEER", "user-steer.json"),
+        ("KAH_GATE_SEEDED_DRIFT", "drift.json"),
     ]
     .into_iter()
     .find(|(flag, _)| std::env::var_os(flag).is_some())
