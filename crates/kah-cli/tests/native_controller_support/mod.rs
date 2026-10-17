@@ -9,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod capture;
+mod checkpoint_review;
 #[allow(clippy::duplicate_mod)]
 #[path = "../terminal_support/claude_observer.rs"]
 pub mod claude_observer;
@@ -97,38 +98,7 @@ fn completion(root: &Path, agent: &str) -> Value {
     for (path, bytes) in before {
         assert_eq!(bytes, fs::read(path).unwrap());
     }
-    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","observer":(agent=="claude").then(claude_observer::evidence),"sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"checkpointReview":checkpoint_proof(&record),"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
-}
-fn checkpoint_proof(record: &Record) -> Value {
-    use kah_cli::observer_review::state::Store as Reviews;
-    let session = record.native.as_ref().unwrap().session.as_deref().unwrap();
-    let state = Reviews::read(session).unwrap().unwrap();
-    let checkpoint = state.checkpoint.unwrap();
-    assert_eq!(checkpoint["passed"], true);
-    assert_eq!(
-        checkpoint["head"].as_str(),
-        record.control.last_checkpoint()
-    );
-    let root = Reviews::directory(session).unwrap();
-    let result: Value = kah_cli::observer_review::state::read(
-        &root
-            .join("results")
-            .join(format!("{}.json", checkpoint["request"].as_str().unwrap())),
-    )
-    .unwrap()
-    .unwrap();
-    // Run-completion checkpoints go through Option1,
-    // whose archive nests the result under `latest` and has no Jev judgment.
-    if result["option1"] == true {
-        let latest = &result["latest"];
-        assert_eq!(latest["assessment"]["passed"], true);
-        assert_eq!(latest["request"], checkpoint["request"]);
-        assert_eq!(latest["head"], checkpoint["head"]);
-    } else {
-        assert_eq!(result["assessment"]["passed"], true);
-        assert_eq!(result["judgment"]["backend"], "jev");
-    }
-    json!({"checkpoint":checkpoint,"result":result})
+    json!({"agent":agent,"version":version(&home, agent),"fixtureModel":model,"fixtureEffort":"low","observer":(agent=="claude").then(claude_observer::evidence),"sourceDomain":domain.as_str(),"consentRequired":agent=="claude","fullNativeSession":true,"ownHerdrPane":true,"verbatimTask":true,"nativeFileTool":true,"nativeShellTool":true,"nativeTokens":native.native_tokens,"observerTokens":native.observer_tokens,"status":"completed","commit":record.control.last_checkpoint(),"tests":report["tests"],"checkpointReview":checkpoint_review::prove(&record, &Store::path(&base, id).unwrap(), &report),"sourceCheckoutUnchanged":true,"globalConfigUnchanged":true,"consentNotificationBeforeFixtureAcceptance":agent=="claude","consentWaitCleared":true,"passed":true})
 }
 fn consent_result(
     home: &Path,
