@@ -51,8 +51,8 @@ pub fn submit(
         } else {
             "option1-baseline.json"
         }))?;
-    let base = previous.as_ref().and_then(|p| p["head"].as_str());
-    let mut context = capture::project(home, &state, base, &head)?;
+    let base = super::diff_base::diff_base(previous.as_ref(), &state.worker.project);
+    let mut context = capture::project(home, &state, base.as_deref(), &head)?;
     super::binary::publish(&store, &state, &mut context)?;
     let input = input::build(&history, &source, &context, checkpoint)?;
     if !checkpoint {

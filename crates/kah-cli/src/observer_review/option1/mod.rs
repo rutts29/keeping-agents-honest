@@ -8,6 +8,7 @@ pub mod carry;
 pub mod checkpoint_outcome;
 pub mod consume;
 pub mod current_set;
+pub mod diff_base;
 pub mod direct;
 pub mod explicit_gate;
 pub mod fold;

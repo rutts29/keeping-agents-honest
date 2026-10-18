@@ -88,8 +88,8 @@ pub fn context_for(
         "option1-baseline.json"
     };
     let baseline: Option<Value> = super::super::state::read(&directory.join(name))?;
-    let base = baseline.as_ref().and_then(|v| v["head"].as_str());
-    capture::project(home, state, base, head)
+    let base = super::diff_base::diff_base(baseline.as_ref(), &state.worker.project);
+    capture::project(home, state, base.as_deref(), head)
 }
 fn source_input(
     history: Option<&kah_core::intent_history::History>,
