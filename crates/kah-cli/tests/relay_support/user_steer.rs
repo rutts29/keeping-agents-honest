@@ -65,6 +65,7 @@ pub(super) fn run(root: &Path) -> Value {
 
 /// The tool-batch checkpoint admission needs a HEAD (`COMMIT_HEAD_MISSING
 /// stage=admission` otherwise); the empty commit leaves the worker's files alone.
+/// Both workers of the 5o-0 journey, Claude and Codex, start from it.
 pub(super) fn baseline_commit(project: &Path) {
     let status = Command::new("git")
         .args([
@@ -91,6 +92,9 @@ pub(super) fn baseline_commit(project: &Path) {
 
 fn start_codex(home: &Path) -> (Pane, crate::fixture::Fixture, String) {
     let (launch, mut fixture) = crate::fixture::prepare(home, "research", false);
+    // As for the Claude worker: the commit review needs a HEAD, and the session's
+    // first git sample must see it so the worker's commit is a change, not the baseline.
+    baseline_commit(&fixture.project);
     let mut command = launch.command(false);
     command
         .args([
