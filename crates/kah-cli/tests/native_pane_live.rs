@@ -17,6 +17,32 @@ use std::{
 };
 
 #[test]
+fn verification_requires_every_proof_line_in_the_committed_file() {
+    let run = |proof: &str| {
+        let dir = std::env::temp_dir().join(format!("kah-pane-verify-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("marker.txt"), "PANE_OK\n").unwrap();
+        fs::write(dir.join("bash-proof.txt"), proof).unwrap();
+        let status = Command::new("sh")
+            .args(["-c", support::VERIFY])
+            .current_dir(&dir)
+            .status()
+            .unwrap();
+        fs::remove_dir_all(dir).unwrap();
+        status.success()
+    };
+    assert!(run(support::PROOF));
+    assert!(run("LOGIN_HIDDEN\nCURL_EXIT=28\nGIT_OK\nBASH_OK\n"));
+    for line in support::PROOF.lines() {
+        assert!(
+            !run(&support::PROOF.replace(&format!("{line}\n"), "")),
+            "{line}"
+        );
+    }
+    assert!(!run("BASH_OK"));
+}
+
+#[test]
 #[ignore = "full native Codex session in its own Herdr pane on a Mine worktree"]
 fn native_codex_worktree_pane() {
     let probe = herdr_probe::setup();

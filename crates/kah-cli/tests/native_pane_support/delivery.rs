@@ -90,7 +90,7 @@ fn verify(home: &Path, candidate: &Worktree, commit: &str, root: &Path) -> verif
     executor.use_nobody();
     let receipt = verification::execute(
         &executor,
-        "test \"$(cat marker.txt)\" = PANE_OK && test \"$(cat bash-proof.txt)\" = BASH_OK",
+        super::VERIFY,
         commit,
         Duration::from_secs(30),
         &root.join("verification.log"),

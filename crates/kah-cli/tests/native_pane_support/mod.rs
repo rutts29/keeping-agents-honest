@@ -89,7 +89,7 @@ pub fn run(root: &Path) -> Value {
         effort: Some("low".into()),
         ..Default::default()
     };
-    let task = "Please use native exec_command to run: test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?; git status --short && echo GIT_OK; printf BASH_OK > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Commit those two files on this disposable run branch using native Git. The external fixture controller will copy your HEAD and verify that SHA, without committing. No subagents or installs. Report and stop.";
+    let task = "Please use native exec_command to run this one command: { test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com > /dev/null 2>&1; echo CURL_EXIT=$?; git status --short > /dev/null && echo GIT_OK; echo BASH_OK; } > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Commit those two files on this disposable run branch using native Git. The external fixture controller will copy your HEAD and verify that SHA, without committing. No subagents or installs. Report and stop.";
     let command = native_run::command(&home, &tree, Domain::Mine, args, task, None).unwrap();
     fixture.overlay = command
         .get_envs()
@@ -104,10 +104,7 @@ pub fn run(root: &Path) -> Value {
             .trim(),
         "PANE_OK"
     );
-    assert_eq!(
-        fs::read_to_string(tree.path.join("bash-proof.txt")).unwrap(),
-        "BASH_OK"
-    );
+    assert_proof(&tree.path);
     assert!(!project.root.join("marker.txt").exists());
     let session = fixture.session.as_ref().unwrap();
     let base = kah_core::run_store::RunStore::default_state_root().unwrap();
@@ -119,6 +116,22 @@ pub fn run(root: &Path) -> Value {
     save_cleanup(root, fixture.session.as_deref());
     let delivery = delivery::prove(&home, &project.root, &tree, root, &state);
     json!({"delivery":delivery,"passed":true,"fullNativeSession":true,"paneIdentity":native["agent"],"sessionIdentity":true,"worktreeOnlyWrite":true,"observerAttached":true,"nativeSubprocessGitWorks":true})
+}
+
+/// The command results the worker commits as bash-proof.txt: the committed
+/// artifact must show them, since tool output alone is not in the diff the
+/// completion check reads. Login hidden, network blocked (curl exit 6, no DNS),
+/// native Git works, native shell wrote the file.
+pub const PROOF: &str = "LOGIN_HIDDEN\nCURL_EXIT=6\nGIT_OK\nBASH_OK\n";
+/// The verification command checks the same lines in the committed artifact.
+pub const VERIFY: &str = "test \"$(cat marker.txt)\" = PANE_OK && grep -qx LOGIN_HIDDEN bash-proof.txt && grep -Eqx 'CURL_EXIT=[0-9]+' bash-proof.txt && grep -qx GIT_OK bash-proof.txt && grep -qx BASH_OK bash-proof.txt";
+
+fn assert_proof(worktree: &Path) {
+    assert_eq!(
+        fs::read_to_string(worktree.join("bash-proof.txt")).unwrap(),
+        PROOF,
+        "native shell containment proof absent or wrong"
+    );
 }
 
 fn wait(pane: &Pane, worktree: &Path, session: &mut Option<String>) -> Value {
@@ -149,12 +162,6 @@ fn wait(pane: &Pane, worktree: &Path, session: &mut Option<String>) -> Value {
             && matches!(value["agent_status"].as_str(), Some("idle" | "done"))
             && session.is_some()
         {
-            assert!(
-                screen.contains("LOGIN_HIDDEN")
-                    && screen.contains("CURL_EXIT=6")
-                    && screen.contains("GIT_OK"),
-                "native shell containment proof absent"
-            );
             return value;
         }
         assert!(
