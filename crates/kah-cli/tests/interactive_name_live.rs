@@ -1,5 +1,8 @@
 #[allow(dead_code)]
 mod claude_support;
+#[allow(dead_code)]
+#[path = "track2_support/dialog.rs"]
+mod dialog;
 #[path = "journeys/fixture.rs"]
 mod fixture;
 #[allow(dead_code)]

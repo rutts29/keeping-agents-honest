@@ -127,6 +127,19 @@ fn folder_consent_accepts_only_codex_exact_worktree_and_selected_trust_choice() 
     }
 }
 #[test]
+fn resume_prompt_is_pending_only_while_it_is_the_last_thing_shown() {
+    let open = "Ask Codex to do anything\nFolder access\n› 1. Open restricted\n2. Quit";
+    let after = format!("{open}\nAsk Codex to do anything");
+    let pending =
+        |log: &str| dialog::prompt_pending(log, "Open restricted", "Ask Codex to do anything");
+    assert!(!pending("loading Resuming session"));
+    assert!(pending(open));
+    assert!(!pending(&after));
+    assert!(pending(&format!(
+        "{after}\nFolder access\n› 1. Open restricted"
+    )));
+}
+#[test]
 fn perturbation_files_must_prove_conditions_not_just_exist() {
     let good = json!({"observer-restart":{"session_before":"same","session_after":"same","pid_before":1,"pid_after":2},
         "binary-swap":{"mid_review":true,"before_sha256":"old","after_sha256":"new"},

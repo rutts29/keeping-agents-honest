@@ -15,3 +15,14 @@ pub fn folder_dialog(provider: &str, screen: &str, expected: &Path) -> Result<bo
     }
     Err("TRACK2_OTHER_DIALOG stage=trust: permission, sandbox, login, update or unrecognized dialog; no keys sent".into())
 }
+/// A prompt is pending while its last appearance in the cumulative terminal log
+/// comes after the last appearance of `settled`, the text the TUI redraws once
+/// the prompt is answered. The log keeps old frames, so presence alone is not
+/// proof that the prompt is still on screen.
+pub fn prompt_pending(log: &str, prompt: &str, settled: &str) -> bool {
+    match (log.rfind(prompt), log.rfind(settled)) {
+        (Some(_), None) => true,
+        (Some(shown), Some(redrawn)) => shown > redrawn,
+        (None, _) => false,
+    }
+}
