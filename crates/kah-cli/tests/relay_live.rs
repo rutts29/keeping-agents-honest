@@ -209,8 +209,14 @@ fn evidence_name() -> &'static str {
     .unwrap_or("relay-dispatch.json")
 }
 
+/// Two relays and two dispatches with the Haiku observer: a pass took 1173 s
+/// (5h-d, 2026-10-18), and two runs were still progressing at 1800 s, the
+/// second with its Codex dispatch just started (about 325 s of work left).
+/// 3600 s leaves about 1.7x headroom over the slowest run implied.
+const RELAY_DEADLINE_SECS: u64 = 3600;
+
 fn wait_evidence(root: &std::path::Path, terminal: &mut pty::Terminal) -> Value {
-    let (deadline, secs) = herdr_probe::journey_deadline();
+    let (deadline, secs) = herdr_probe::journey_deadline(RELAY_DEADLINE_SECS);
     loop {
         terminal.respond_to_cursor_queries();
         if std::time::Instant::now() >= deadline {

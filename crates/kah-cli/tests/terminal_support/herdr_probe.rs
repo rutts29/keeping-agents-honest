@@ -108,13 +108,14 @@ pub fn capture() {
 }
 
 /// A live journey that never writes result.json becomes a typed failure
-/// instead of a gate that waits forever. Override: KAH_GATE_JOURNEY_DEADLINE_SECS.
+/// instead of a gate that waits forever. Each journey passes its own default;
+/// override for all: KAH_GATE_JOURNEY_DEADLINE_SECS.
 #[allow(dead_code)] // Shared module; only result.json-polling journeys use this.
-pub fn journey_deadline() -> (Instant, u64) {
+pub fn journey_deadline(default_secs: u64) -> (Instant, u64) {
     let secs = std::env::var("KAH_GATE_JOURNEY_DEADLINE_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
+        .unwrap_or(default_secs);
     (Instant::now() + Duration::from_secs(secs), secs)
 }
 
