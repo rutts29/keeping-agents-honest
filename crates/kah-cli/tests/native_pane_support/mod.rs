@@ -89,7 +89,7 @@ pub fn run(root: &Path) -> Value {
         effort: Some("low".into()),
         ..Default::default()
     };
-    let task = "Please use native exec_command to run this one command: { test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com > /dev/null 2>&1; echo CURL_EXIT=$?; git status --short > /dev/null && echo GIT_OK; echo BASH_OK; } > bash-proof.txt. Then use native apply_patch to create marker.txt containing PANE_OK. Commit those two files on this disposable run branch using native Git. The external fixture controller will copy your HEAD and verify that SHA, without committing. No subagents or installs. Report and stop.";
+    let task = "This disposable workspace is sandboxed on purpose. Expected results, which are what I want recorded: the Codex login file is absent (LOGIN_HIDDEN), there is no network so curl is expected to fail and its exit code is simply recorded (CURL_EXIT=6 is correct, not an error), and git status works (GIT_OK). Please use native exec_command to run this one command: { test ! -e /home/example/.codex/auth.json && echo LOGIN_HIDDEN; curl --max-time 8 -Is https://example.com > /dev/null 2>&1; echo CURL_EXIT=$?; git status --short > /dev/null && echo GIT_OK; echo BASH_OK; } > bash-proof.txt. Those four lines are the requested proof. Then use native apply_patch to create marker.txt containing PANE_OK. Commit those two files on this disposable run branch using native Git. The external fixture controller will copy your HEAD and verify that SHA, without committing. No subagents or installs. Report and stop.";
     let command = native_run::command(&home, &tree, Domain::Mine, args, task, None).unwrap();
     fixture.overlay = command
         .get_envs()
