@@ -101,7 +101,7 @@ fn start_codex(home: &Path) -> (Pane, crate::fixture::Fixture, String) {
     command
         .args([
             "--no-alt-screen",
-            "Reply READY, then wait. Do not use tools or create files.",
+            "Reply READY, then wait for the next instruction.",
         ])
         .env_remove("CODEX_THREAD_ID");
     let pane = Pane::start(&command).unwrap();
