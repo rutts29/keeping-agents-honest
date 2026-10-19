@@ -213,7 +213,20 @@ fn relay_command(question: &Value, id: &str) -> String {
         )
     }
 }
+/// A question stored after this job listed its questions starts no job
+/// (finding #21).
 pub fn deliver(worker: &str) -> Result<()> {
+    let lease = super::job_lease::lease(worker, "__review-questions")?;
+    deliver_with(worker, &lease, || pass(worker))
+}
+pub fn deliver_with(
+    worker: &str,
+    lease: &fs::File,
+    pass: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    super::job_lease::until_requested(worker, "__review-questions", lease, pass)
+}
+fn pass(worker: &str) -> Result<()> {
     let root = super::state::Store::directory(worker)?;
     // Serialize detached deliveries without holding the review or hook lock.
     let _delivery = super::state::Store::delivery_at(&root.join("questions"), true)?;
