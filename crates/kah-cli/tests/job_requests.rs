@@ -156,3 +156,37 @@ fn a_job_knows_its_own_lease() {
     assert!(job_lease::same(&lease, &job.open(KICK)).unwrap());
     assert!(!job_lease::same(&lease, &job.open("__gate-host")).unwrap());
 }
+
+type Pass<'a> = Box<dyn FnMut() -> kah_cli::Result<()> + 'a>;
+
+/// The site's job settles on a spawn of itself made during its pass.
+fn settles(
+    name: &str,
+    command: &str,
+    run_with: impl FnOnce(&str, &fs::File, Pass<'_>) -> kah_cli::Result<()>,
+) {
+    let job = Job::new(name);
+    let lease = job.open(command);
+    lease.try_lock().unwrap();
+    let passes = std::cell::Cell::new(0);
+    let pass = || {
+        passes.set(passes.get() + 1);
+        if passes.get() == 1 {
+            hook::spawn(command, &job.worker)?;
+        }
+        Ok(())
+    };
+    run_with(&job.worker, &lease, Box::new(pass)).unwrap();
+    assert_eq!(
+        passes.get(),
+        2,
+        "{command} stranded a spawn made during its pass"
+    );
+}
+
+#[test]
+fn the_kick_job_settles_on_a_spawn_during_its_pass() {
+    settles("kick-settles", KICK, |w, l, p| {
+        kah_cli::observer_review::dispatch::kick_with(w, l, p)
+    });
+}

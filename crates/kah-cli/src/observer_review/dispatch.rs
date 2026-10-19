@@ -115,3 +115,16 @@ pub fn run(worker: &str) -> Result<()> {
     super::queue::drain(worker)?;
     Ok(())
 }
+/// The __review-kick job. Its conditions stay true while the jobs it starts
+/// own them, so it settles on spawn requests (finding #21).
+pub fn kick(worker: &str) -> Result<()> {
+    let lease = super::job_lease::lease(worker, "__review-kick")?;
+    kick_with(worker, &lease, || super::queue::kick(worker))
+}
+pub fn kick_with(
+    worker: &str,
+    lease: &std::fs::File,
+    pass: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    super::job_lease::until_requested(worker, "__review-kick", lease, pass)
+}
