@@ -39,16 +39,14 @@ pub fn baseline(root: &Path) -> Result<Value> {
             Err(error) => return Err(error.into()),
         };
         if meta.is_symlink() {
-            use std::os::unix::ffi::OsStrExt;
-            let target = fs::read_link(&full)?;
-            let hash = git(
-                root,
-                &["hash-object", "--stdin"],
-                Some(target.as_os_str().as_bytes().to_vec()),
-            )?;
-            blobs.insert(path.to_owned(), String::from_utf8(hash)?.trim().to_owned());
+            blobs.insert(path.to_owned(), symlink_blob(root, &full)?);
         } else if meta.is_file() && full.canonicalize()?.starts_with(root.canonicalize()?) {
-            regular.push(path.to_owned());
+            // One unreadable file must not fail the whole inventory.
+            if fs::File::open(&full).is_ok() {
+                regular.push(path.to_owned());
+            } else {
+                unsupported.insert(path.to_owned(), "unreadable before work");
+            }
         } else {
             unsupported.insert(path.to_owned(), "not a regular in-project file");
         }
@@ -59,6 +57,16 @@ pub fn baseline(root: &Path) -> Result<Value> {
         baseline["head"] = json!(head);
     }
     Ok(baseline)
+}
+fn symlink_blob(root: &Path, full: &Path) -> Result<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let target = fs::read_link(full)?;
+    let hash = git(
+        root,
+        &["hash-object", "--stdin"],
+        Some(target.as_os_str().as_bytes().to_vec()),
+    )?;
+    Ok(String::from_utf8(hash)?.trim().to_owned())
 }
 fn head(root: &Path) -> Result<Option<String>> {
     let refs = String::from_utf8(git(
