@@ -11,7 +11,10 @@ use std::{
 
 /// Jobs whose input stays true while they or the jobs they start own it, so
 /// it cannot be their recheck (finding #21). They settle on spawn requests.
-const REQUESTED: [&str; 4] = [
+/// __checkpoint-claims is listed too: a Stop with no assistant text writes no
+/// claim, so only its request makes the job check the delivered-change review.
+const REQUESTED: [&str; 5] = [
+    "__checkpoint-claims",
     "__review-kick",
     "__gate-host",
     "__gate-followup",
@@ -81,8 +84,21 @@ pub fn until_requested(
     lease: &File,
     pass: impl FnMut() -> Result<()>,
 ) -> Result<()> {
+    until_requested_or(worker, command, lease, pass, || Ok(false))
+}
+/// As until_requested, but input left in `input` also causes another pass.
+pub fn until_requested_or(
+    worker: &str,
+    command: &str,
+    lease: &File,
+    pass: impl FnMut() -> Result<()>,
+    mut input: impl FnMut() -> Result<bool>,
+) -> Result<()> {
     take_request(worker, command)?;
-    until_settled(lease, pass, || take_request(worker, command))
+    until_settled(lease, pass, || {
+        let requested = take_request(worker, command)?;
+        Ok(input()? || requested)
+    })
 }
 /// Whether this process is the job that holds `lock` (stdin is its lease).
 fn inherited(lock: &File) -> Result<bool> {

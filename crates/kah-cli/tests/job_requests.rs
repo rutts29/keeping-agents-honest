@@ -211,3 +211,25 @@ fn the_questions_job_settles_on_a_spawn_during_its_pass() {
         kah_cli::observer_review::questions::deliver_with(w, l, p)
     });
 }
+
+#[test]
+fn an_empty_stop_during_the_claims_pass_causes_one_more_pass() {
+    // A Stop with no assistant text writes no claim. Only its spawn request
+    // makes the running job check the delivered-change review again.
+    let claims = "__checkpoint-claims";
+    let job = Job::new("claims-empty-stop");
+    let lease = job.open(claims);
+    lease.try_lock().unwrap();
+    let mut passes = 0;
+    kah_cli::observer_review::claims::run_with(&job.worker, &lease, || {
+        passes += 1;
+        if passes == 1 {
+            kah_cli::observer_review::claims::schedule(&job.worker, "2", "")?;
+            assert!(!job_lease::has_json(&job.root.join("claim-events"))?);
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(passes, 2, "the empty Stop was dropped");
+    assert!(!job.marker(claims).exists());
+}

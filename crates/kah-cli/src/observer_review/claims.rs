@@ -49,9 +49,12 @@ pub fn run(worker: &str) -> Result<()> {
 }
 /// A Stop that writes its claim while a screen runs starts no job, so the
 /// running job settles: an idle worker's last claim is never left unscreened.
+/// A Stop with no text leaves only its spawn request, so that also settles.
 pub fn run_with(worker: &str, lease: &fs::File, pass: impl FnMut() -> Result<()>) -> Result<()> {
     let directory = Store::directory(worker)?.join("claim-events");
-    super::job_lease::until_settled(lease, pass, || super::job_lease::has_json(&directory))
+    super::job_lease::until_requested_or(worker, "__checkpoint-claims", lease, pass, || {
+        super::job_lease::has_json(&directory)
+    })
 }
 fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
     let directory = Store::directory(worker)?.join("claim-events");
