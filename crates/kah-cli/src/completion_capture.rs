@@ -52,16 +52,15 @@ pub fn save(
     request: &Request,
     result: &Result<Judgment, Error>,
 ) -> Result<PathBuf, String> {
-    save_versioned(
-        home,
-        session,
-        commit,
-        channel,
-        request,
-        result,
-        kah_observer::judge::questions::VERSION,
-    )
+    use kah_observer::judge::questions as q;
+    let policy = Policy {
+        question_set: q::VERSION,
+        probability: q::UNATTENDED_COMPLETE_PROBABILITY,
+        confidence: q::UNATTENDED_COMPLETE_CONFIDENCE,
+    };
+    write(home, session, commit, channel, request, result, policy)
 }
+/// Checkpoint and named-decision records keep the shared decision bar.
 pub fn save_versioned(
     home: &Path,
     session: &str,
@@ -70,6 +69,29 @@ pub fn save_versioned(
     request: &Request,
     result: &Result<Judgment, Error>,
     question_set: u32,
+) -> Result<PathBuf, String> {
+    use kah_observer::judge::questions as q;
+    let policy = Policy {
+        question_set,
+        probability: q::COMPLETE_PROBABILITY,
+        confidence: q::COMPLETE_CONFIDENCE,
+    };
+    write(home, session, commit, channel, request, result, policy)
+}
+/// The record states the bar that its decision path applies.
+struct Policy {
+    question_set: u32,
+    probability: f64,
+    confidence: f64,
+}
+fn write(
+    home: &Path,
+    session: &str,
+    commit: &str,
+    channel: &str,
+    request: &Request,
+    result: &Result<Judgment, Error>,
+    policy: Policy,
 ) -> Result<PathBuf, String> {
     let base = home.join(".local/share/kah-eval");
     kah_core::run_store::ensure_private_directory(&base)
@@ -85,8 +107,8 @@ pub fn save_versioned(
         .as_nanos();
     let name = format!("{nonce}-{}-{}.json", std::process::id(), &digest[..16]);
     let value = json!({"schema":1,"session":session,"commit":commit,"channel":channel,"request":body,"request_digest":digest,
-        "redactions":request.redactions,"scrubbed_before_evaluation":true,"question_set":question_set,
-        "thresholds":{"probability":kah_observer::judge::questions::COMPLETE_PROBABILITY,"confidence":kah_observer::judge::questions::COMPLETE_CONFIDENCE},
+        "redactions":request.redactions,"scrubbed_before_evaluation":true,"question_set":policy.question_set,
+        "thresholds":{"probability":policy.probability,"confidence":policy.confidence},
         "judgment":result.as_ref().ok(),"error":result.as_ref().err().map(ToString::to_string)});
     crate::unattended_report::save(&directory, &name, &value)
         .map_err(|e| format!("COMPLETION_CAPTURE_IO stage=completion_capture: {e}"))?;

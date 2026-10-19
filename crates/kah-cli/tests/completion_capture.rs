@@ -8,7 +8,7 @@ use std::{
 
 #[test]
 fn only_scrubbed_actual_requests_are_captured_privately() {
-    let token = concat!("sk-", "test-abcdefghijklmnopqrstuvwxyz0123456789");
+    let token = "sk-test-abcdefghijklmnopqrstuvwxyz0123456789";
     let questions = Questions::from([(
         "proof".into(),
         judge::Question::Noul {
@@ -77,7 +77,7 @@ fn redaction_preserves_requirements_and_catches_multiple_assignments() {
             instructions: "Implement a Bearer token parser; preserve the public API.".into(),
         },
     )]);
-    let request = Request::new("jev-latest", &json!({"text":"password='hunter2'; api_key=secret42; keep_this();", "nested":"{\"password\":\"inside-json\"}","pem":concat!("before\n-----BEGIN ", "RSA PRIVATE KEY-----\nprivate-material\n-----END RSA PRIVATE KEY-----\nafter")}), &questions).unwrap();
+    let request = Request::new("jev-latest", &json!({"text":"password='hunter2'; api_key=secret42; keep_this();", "nested":"{\"password\":\"inside-json\"}","pem":"before\n-----BEGIN RSA PRIVATE KEY-----\nprivate-material\n-----END RSA PRIVATE KEY-----\nafter"}), &questions).unwrap();
     let body = request.body().to_string();
     for secret in ["hunter2", "secret42", "inside-json", "private-material"] {
         assert!(!body.contains(secret), "{secret}");
@@ -88,4 +88,37 @@ fn redaction_preserves_requirements_and_catches_multiple_assignments() {
         serde_json::to_value(request.questions()).unwrap(),
         serde_json::to_value(questions).unwrap()
     );
+}
+
+#[test]
+fn records_state_the_bar_their_decision_path_applies() {
+    let questions = Questions::from([(
+        "proof".into(),
+        judge::Question::Noul {
+            instructions: "Is the work complete?".into(),
+        },
+    )]);
+    let request = Request::new("jev-latest", &json!({"code":"ok"}), &questions).unwrap();
+    let root = std::env::temp_dir().join(format!("kah-capture-bar-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let result = Err(judge::Error::new("TEST_FAILURE"));
+    let read = |path: std::path::PathBuf| -> Value {
+        serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+    };
+    let completion =
+        read(completion_capture::save(&root, "run", "abc", "artifact", &request, &result).unwrap());
+    assert_eq!(
+        completion["thresholds"],
+        json!({"probability":0.85,"confidence":0.8})
+    );
+    let checkpoint = read(
+        completion_capture::save_versioned(&root, "w", "abc", "checkpoint", &request, &result, 3)
+            .unwrap(),
+    );
+    assert_eq!(
+        checkpoint["thresholds"],
+        json!({"probability":0.9,"confidence":0.85})
+    );
+    assert_eq!(checkpoint["question_set"], 3);
+    fs::remove_dir_all(root).unwrap();
 }

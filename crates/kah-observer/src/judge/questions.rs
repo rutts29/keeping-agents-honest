@@ -10,6 +10,10 @@ pub const REPLACE_PROBABILITY: f64 = 0.9;
 
 pub const COMPLETE_PROBABILITY: f64 = 0.9;
 pub const COMPLETE_CONFIDENCE: f64 = 0.85;
+/// Provisional unattended completion bar (judge::decision only); checkpoints
+/// and named decisions keep COMPLETE_*. Labeled replay set of #31.
+pub const UNATTENDED_COMPLETE_PROBABILITY: f64 = 0.85;
+pub const UNATTENDED_COMPLETE_CONFIDENCE: f64 = 0.8;
 
 pub fn steering(prior_items: &[(String, String)]) -> Questions {
     let mut questions = base_steering();

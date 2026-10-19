@@ -4,7 +4,7 @@ use serde_json::json;
 use std::{fs, path::PathBuf};
 
 #[test]
-fn recorded_false_stops_are_replayed_without_lowering_thresholds() {
+fn recorded_false_stops_complete_at_the_provisional_completion_bar() {
     let data = completion_support::recorded();
     let task = data["task"].as_str().unwrap();
     for receipt in data["receipts"].as_array().unwrap() {
@@ -24,8 +24,11 @@ fn recorded_false_stops_are_replayed_without_lowering_thresholds() {
                 .collect::<Vec<_>>();
             passed += usize::from(judge::decision::complete(&judgment, &outcomes));
         }
-        assert!(passed < 2);
+        // Both channels of each recorded false stop (correct work) now pass.
+        assert_eq!(passed, 2);
     }
+    assert_eq!(judge::questions::UNATTENDED_COMPLETE_PROBABILITY, 0.85);
+    assert_eq!(judge::questions::UNATTENDED_COMPLETE_CONFIDENCE, 0.8);
     assert_eq!(judge::questions::COMPLETE_PROBABILITY, 0.9);
     assert_eq!(judge::questions::COMPLETE_CONFIDENCE, 0.85);
 }
@@ -41,7 +44,7 @@ fn compare_completion_constructions() {
     .iter()
     .map(|case| completion_support::compare(&home, case))
     .collect::<Vec<_>>();
-    fs::write(completion_support::evidence().join("replay.json"),serde_json::to_vec_pretty(&json!({"passed":true,"nativeAgentCalls":0,"original083084RequestAvailable":false,"recordedDecisionReplay":"still rejected at unchanged thresholds","cases":results})).unwrap()).unwrap();
+    fs::write(completion_support::evidence().join("replay.json"),serde_json::to_vec_pretty(&json!({"passed":true,"nativeAgentCalls":0,"original083084RequestAvailable":false,"recordedDecisionReplay":"completes at the provisional unattended completion bar","cases":results})).unwrap()).unwrap();
 }
 
 #[test]

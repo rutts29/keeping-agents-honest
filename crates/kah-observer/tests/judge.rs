@@ -160,9 +160,33 @@ fn completion_requires_every_jev_requirement_to_be_confidently_satisfied() {
     assert!(decision::complete(&judgment, &outcomes));
     if let Answer::Choice { confidence, .. } = judgment.answers.get_mut("outcome_met.one").unwrap()
     {
-        *confidence = 0.8;
+        *confidence = 0.79;
     }
     assert!(!decision::complete(&judgment, &outcomes));
     judgment.answers.insert("outcome_met.one".into(), serde_json::from_value(json!({"type":"choice","choice":"unclear","confidence":1.0,"probabilities":{"unclear":1.0,"satisfied":0.0,"violated":0.0}})).unwrap());
     assert!(!decision::complete(&judgment, &outcomes));
+}
+
+#[test]
+fn provisional_completion_bar_leaves_checkpoint_and_named_decision_bars() {
+    use judge::{Judgment, Metrics, decision};
+    use kah_observer::{checkpoint, decision_units};
+    let judgment = |keys: &[&str], choice: &str, p: f64, c: f64| {
+        Judgment {backend:"jev".into(), model:"fixture".into(), metrics:Metrics::default(), fallback_reason:None,
+        answers:keys.iter().map(|k| (k.to_string(), serde_json::from_value(json!({"type":"choice","choice":choice,"confidence":c,"probabilities":{choice:p,"unclear":1.0-p}})).unwrap())).collect()}
+    };
+    let outcomes = vec![("one".into(), "Required behavior".into())];
+    assert!(decision::complete(
+        &judgment(&["outcome_met.one"], "satisfied", 0.86, 0.81),
+        &outcomes
+    ));
+    let gate = ["intent", "end_to_end", "work_accounted", "drift"];
+    assert!(!checkpoint::decide(&judgment(&gate, "yes", 0.86, 0.81)).passed);
+    assert!(checkpoint::decide(&judgment(&gate, "yes", 0.91, 0.86)).passed);
+    let named = judgment(&["requirement.one"], "supported", 0.86, 0.81);
+    assert!(!decision_units::confirmed(
+        &named,
+        "requirement.one",
+        "supported"
+    ));
 }
