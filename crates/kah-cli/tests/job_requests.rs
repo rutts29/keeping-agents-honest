@@ -190,3 +190,10 @@ fn the_kick_job_settles_on_a_spawn_during_its_pass() {
         kah_cli::observer_review::dispatch::kick_with(w, l, p)
     });
 }
+
+#[test]
+fn the_gate_host_job_settles_on_a_spawn_during_its_pass() {
+    settles("gate-host-settles", "__gate-host", |w, l, p| {
+        kah_cli::observer_review::gate_host::run_with(w, l, p)
+    });
+}

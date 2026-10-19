@@ -6,7 +6,16 @@ pub(crate) struct Evaluation {
     pub input: Value,
     pub assessment: Value,
 }
+/// A handoff written after this job listed its jobs starts no job, and the
+/// in-process kick of its own pass cannot start it again (finding #21).
 pub fn run(worker: &str) -> Result<()> {
+    let lease = super::super::job_lease::lease(worker, "__gate-host")?;
+    run_with(worker, &lease, || pass(worker))
+}
+pub fn run_with(worker: &str, lease: &fs::File, pass: impl FnMut() -> Result<()>) -> Result<()> {
+    super::super::job_lease::until_requested(worker, "__gate-host", lease, pass)
+}
+fn pass(worker: &str) -> Result<()> {
     super::super::runtime::require_active(worker)?;
     if super::super::service::blocked(worker)? {
         return Ok(());

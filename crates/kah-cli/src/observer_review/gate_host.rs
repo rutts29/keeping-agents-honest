@@ -13,7 +13,7 @@ use std::{
 };
 mod evaluation;
 mod revision;
-pub use evaluation::run;
+pub use evaluation::{run, run_with};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Job {
