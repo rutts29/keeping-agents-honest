@@ -267,6 +267,7 @@ pub fn spawn(command: &str, worker: &str) -> Result<()> {
         .truncate(false)
         .mode(0o600)
         .open(Store::directory(worker)?.join(format!("job-{command}.lock")))?;
+    super::job_lease::request(worker, command, &lock)?;
     match lock.try_lock() {
         Ok(()) => (),
         Err(fs::TryLockError::WouldBlock) => return Ok(()),
