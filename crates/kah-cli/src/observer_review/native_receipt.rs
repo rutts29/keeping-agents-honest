@@ -2,6 +2,7 @@
 use crate::Result;
 mod recovery;
 pub use recovery::ensure;
+pub(crate) use recovery::locate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{io::BufRead, path::Path};

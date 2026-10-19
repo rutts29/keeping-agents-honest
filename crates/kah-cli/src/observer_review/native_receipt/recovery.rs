@@ -163,7 +163,7 @@ pub(super) fn pane_session(state: &State, pane: &Value) -> Result<String> {
     }
     Ok(id.into())
 }
-fn locate(root: &Path, session: &str) -> Result<Option<PathBuf>> {
+pub(crate) fn locate(root: &Path, session: &str) -> Result<Option<PathBuf>> {
     if !root.exists() {
         return Ok(None);
     }
