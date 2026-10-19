@@ -197,3 +197,10 @@ fn the_gate_host_job_settles_on_a_spawn_during_its_pass() {
         kah_cli::observer_review::gate_host::run_with(w, l, p)
     });
 }
+
+#[test]
+fn the_gate_followup_job_settles_on_a_spawn_during_its_pass() {
+    settles("gate-followup-settles", "__gate-followup", |w, l, p| {
+        kah_cli::observer_review::gate_approval::run_followups_with(w, l, p)
+    });
+}

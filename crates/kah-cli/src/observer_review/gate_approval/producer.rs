@@ -102,7 +102,16 @@ fn jobs(root: &Path) -> Result<Vec<std::path::PathBuf>> {
     paths.sort();
     Ok(paths)
 }
+/// A round begun after this job listed its jobs, or builder progress that the
+/// controller saw while it ran, starts no job (finding #21).
 pub fn run(worker: &str) -> Result<()> {
+    let lease = super::super::job_lease::lease(worker, "__gate-followup")?;
+    run_with(worker, &lease, || pass(worker))
+}
+pub fn run_with(worker: &str, lease: &fs::File, pass: impl FnMut() -> Result<()>) -> Result<()> {
+    super::super::job_lease::until_requested(worker, "__gate-followup", lease, pass)
+}
+fn pass(worker: &str) -> Result<()> {
     super::super::runtime::require_active(worker)?;
     let root = Store::directory(worker)?;
     let _driver = Store::delivery_at(&root.join("gate-followup-driver"), true)?;

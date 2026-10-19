@@ -35,7 +35,9 @@ mod producer;
 pub(super) use producer::{
     begin as begin_followup, finish as finish_followup, guard as guard_followup,
 };
-pub use producer::{pending as pending_followups, run as run_followups};
+pub use producer::{
+    pending as pending_followups, run as run_followups, run_with as run_followups_with,
+};
 pub mod followup;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
