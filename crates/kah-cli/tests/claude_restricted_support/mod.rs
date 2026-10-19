@@ -151,7 +151,8 @@ impl Restricted {
             quote(&settings.to_string()),
             quote(&mcp.to_string())
         );
-        Terminal::start(&command, &self.fixture.project().join("terminal.log"))
+        // Kept outside the project so the start inventory never meets this open log.
+        Terminal::start(&command, &self.private.join("terminal.log"))
     }
     fn denies(&self) -> Vec<String> {
         let mut paths = vec![self.private.clone()];
