@@ -267,7 +267,10 @@ pub fn spawn(command: &str, worker: &str) -> Result<()> {
         .truncate(false)
         .mode(0o600)
         .open(Store::directory(worker)?.join(format!("job-{command}.lock")))?;
-    super::job_lease::request(worker, command, &lock)?;
+    if let Err(e) = super::job_lease::request(worker, command, &lock) {
+        // Best effort: a free lock still starts the job.
+        eprintln!("REVIEW_JOB_REQUEST stage=spawn: {command}: {e}");
+    }
     match lock.try_lock() {
         Ok(()) => (),
         Err(fs::TryLockError::WouldBlock) => return Ok(()),

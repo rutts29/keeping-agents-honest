@@ -2,9 +2,43 @@
 //! requests: hook::spawn records one before its try_lock, and the running job
 //! takes it after each pass.
 use kah_cli::observer_review::{hook, job_lease, state::Store};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt,
+    path::PathBuf,
+    process::Command,
+    time::{Duration, Instant},
+};
 
 const KICK: &str = "__review-kick";
+const CHILD: &str = "KAH_JOB_REQUESTS_CHILD";
+
+/// Reruns the test with a private HOME whose `.local/bin/kah` only logs the
+/// job name, so a spawn that wins its lock starts no real job.
+fn in_private_home(name: &str) -> Option<PathBuf> {
+    std::env::var_os("XDG_STATE_HOME").expect("run through demos/check-tests.sh");
+    if let Some(home) = std::env::var_os(CHILD) {
+        return Some(home.into());
+    }
+    let home = std::env::temp_dir().join(format!("job-requests-{}", kah_cli::relay_store::nonce()));
+    let bin = home.join(".local/bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(
+        bin.join("kah"),
+        "#!/bin/sh\necho \"$1\" >> \"$HOME/spawned.log\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(bin.join("kah"), fs::Permissions::from_mode(0o700)).unwrap();
+    let status = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--nocapture"])
+        .env(CHILD, &home)
+        .env("HOME", &home)
+        .status()
+        .unwrap();
+    fs::remove_dir_all(&home).unwrap();
+    assert!(status.success());
+    None
+}
 
 struct Job {
     worker: String,
@@ -232,4 +266,27 @@ fn an_empty_stop_during_the_claims_pass_causes_one_more_pass() {
     .unwrap();
     assert_eq!(passes, 2, "the empty Stop was dropped");
     assert!(!job.marker(claims).exists());
+}
+
+#[test]
+fn a_spawn_runs_when_its_request_cannot_be_written() {
+    let name = "a_spawn_runs_when_its_request_cannot_be_written";
+    let Some(home) = in_private_home(name) else {
+        return;
+    };
+    let job = Job::new("requests-unwritable");
+    for kind in ["lock", "log"] {
+        fs::write(job.root.join(format!("job-{KICK}.{kind}")), "").unwrap();
+    }
+    fs::set_permissions(&job.root, fs::Permissions::from_mode(0o500)).unwrap();
+    let spawned = hook::spawn(KICK, &job.worker);
+    fs::set_permissions(&job.root, fs::Permissions::from_mode(0o700)).unwrap();
+    spawned.unwrap();
+    assert!(!job.marker(KICK).exists());
+    let log = home.join("spawned.log");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !fs::read_to_string(&log).is_ok_and(|l| l.contains(KICK)) {
+        assert!(Instant::now() < deadline, "the spawn did not start the job");
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
