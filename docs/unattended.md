@@ -48,7 +48,9 @@ The subscription login stays on the host. Commands execute in gVisor even for
 Mine-source runs. Codex file tools use its executor; Claude's native project file
 tools use invocation-local permission rules, including protection of the trusted
 candidate and private Git metadata. Global setup and native subagents remain
-available. Workspace egress is offline by default; `--online` enables it. Hosted
+available. Workspace egress is offline by default; `--online` enables it. A task
+or `--test` command that fetches dependencies (for example Cargo crates) needs
+`--online`; verification uses the same network setting. Hosted
 search and configured online MCP executors retain the interactive policy. The old
 `--allow-host` fetch broker is superseded.
 
@@ -110,7 +112,7 @@ may not exist in provider history. kah then starts a fresh native session with t
 original task and keeps the run's steering and counters. Previously acknowledged
 or metered history that disappears is an error; kah will not silently replace it.
 An exhausted run is refused before allocating another pane. Stop/steering/time
-changes interrupt verification; the guest also has its own test deadline.
+changes interrupt verification; the guest also has its own test deadline (600 s).
 
 The report is fsynced and atomically renamed before public status becomes terminal.
 While shutdown/report publication is pending, `kah status` reports Stopping. Native

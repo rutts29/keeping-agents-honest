@@ -72,7 +72,8 @@ kah resume run-ID
 Start unattended work inside Herdr. It opens a full native session on a private
 worktree from committed HEAD, with gVisor commands in every domain and model
 logins on the host. Choose `--model`/`--effort` if desired; `--online` opens
-workspace egress. kah returns a local `kah/run-ID` branch for user review/merge.
+workspace egress, which a task or test that fetches crates or packages needs.
+kah returns a local `kah/run-ID` branch for user review/merge.
 Native launch, completion, steering, kill/resume and limits pass live; see STATUS.
 
 `kah smoke` runs one ephemeral native Codex command in a disposable offline
