@@ -277,9 +277,9 @@ fn a_second_refusal_retires_only_that_request_and_the_queue_continues() {
             delivery_outcome::observe(&worker).unwrap();
         }
         // The retry job, not the observation, retires it.
-        assert!(delivery_outcome::retire_declined(&worker).unwrap());
+        assert!(delivery_outcome::retire_terminal(&worker).unwrap());
         assert!(Store::read(&worker).unwrap().unwrap().pending.is_none());
-        assert!(!delivery_outcome::retire_declined(&worker).unwrap());
+        assert!(!delivery_outcome::retire_terminal(&worker).unwrap());
         let result: Value =
             source_store::read(&root.join(format!("results/{REQUEST}.json"))).unwrap();
         assert_eq!(result["status"], "not_reviewed");
@@ -487,6 +487,38 @@ fn a_turn_whose_commands_could_not_start_is_an_exec_loss_not_only_a_refusal() {
     }
 }
 
+/// After the one redelivery, any end of the request
+/// retires it with its reason; a second exec loss that ends unanswered was
+/// still retained and jammed the queue.
+#[test]
+fn any_end_after_the_one_redelivery_retires_the_request_with_its_reason() {
+    for exec_lost in [true, false] {
+        let (worker, root, path, prompt, _retry) = refusal_fixture("codex");
+        let rows = |reply: &str| {
+            if exec_lost {
+                exec_lost_rows(&prompt, reply)
+            } else {
+                records("codex", &prompt, reply)
+            }
+        };
+        let first: String = rows(&refusal()).iter().map(|r| format!("{r}\n")).collect();
+        fs::write(&path, first).unwrap();
+        delivery_outcome::observe(&worker).unwrap();
+        redeliver(&worker, &path, &prompt, &rows("No report."));
+        delivery_outcome::observe(&worker).unwrap();
+        assert!(delivery_outcome::retire_terminal(&worker).unwrap());
+        assert!(Store::read(&worker).unwrap().unwrap().pending.is_none());
+        let result: Value =
+            source_store::read(&root.join(format!("results/{REQUEST}.json"))).unwrap();
+        assert_eq!(
+            result["gap"]["code"], "REVIEW_OBSERVER_NO_REPORT",
+            "{exec_lost}"
+        );
+        fs::remove_file(path).unwrap();
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
+}
+
 #[test]
 fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
     let (worker, root, path, prompt, _retry) = refusal_fixture("codex");
@@ -519,7 +551,7 @@ fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
         &exec_lost_rows(&prompt, &refusal()),
     );
     delivery_outcome::observe(&worker).unwrap();
-    assert!(delivery_outcome::retire_declined(&worker).unwrap());
+    assert!(delivery_outcome::retire_terminal(&worker).unwrap());
     assert!(Store::read(&worker).unwrap().unwrap().pending.is_none());
     assert!(!root.join("delivery-outcome/refused").exists());
     let result: Value = source_store::read(&root.join(format!("results/{REQUEST}.json"))).unwrap();

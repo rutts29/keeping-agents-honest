@@ -157,13 +157,9 @@ fn retain(state: &Control, root: &Path, delivery: &Delivery, mut outcome: Value)
     if refused && retry_refusal(state, root, delivery, &outcome)? {
         return Ok(());
     }
-    // After a decline and its one redelivery, any end of the request is
-    // final for it alone; later triggers must still be reviewed.
-    let retire = refused
-        || root
-            .join(REFUSED)
-            .join(format!("{}.json", delivery.request))
-            .is_file();
+    // After its one redelivery (exec loss or decline), any end of the request
+    // is final for it alone; later triggers must still be reviewed (878-12c).
+    let retire = refused || redelivered(root, &delivery.request);
     terminal(state, root, delivery, &mut outcome, retire)?;
     if retire {
         // Observation can run under other locks; the retry job retires it.
@@ -226,10 +222,10 @@ fn retry_refusal(
     delivery: &Delivery,
     outcome: &Value,
 ) -> Result<bool> {
-    let name = format!("{}.json", delivery.request);
-    if root.join("exec-lost").join(&name).is_file() || root.join(REFUSED).join(&name).is_file() {
+    if redelivered(root, &delivery.request) {
         return Ok(false);
     }
+    let name = format!("{}.json", delivery.request);
     let record = json!({"request":delivery.request,"observer":state.observer.session,
         "reply":outcome["reply"],"native_record":outcome["native_record"],"at_ms":kah_observer::session::now_ms()});
     source_store::save(&root.join(REFUSED), &name, &record)?;
@@ -243,8 +239,15 @@ fn retry_refusal(
     Ok(true)
 }
 const REFUSED: &str = "refused";
-/// The retry job retires a request whose terminal outcome is marked so.
-pub fn retire_declined(worker: &str) -> Result<bool> {
+/// Each request gets one automatic redelivery: an exec-loss replacement or a
+/// decline retry.
+fn redelivered(root: &Path, request: &str) -> bool {
+    let name = format!("{request}.json");
+    root.join("exec-lost").join(&name).is_file() || root.join(REFUSED).join(name).is_file()
+}
+/// The retry job retires a request whose terminal outcome is marked so, with
+/// the reason of that end: a decline, or a turn without a report.
+pub fn retire_terminal(worker: &str) -> Result<bool> {
     let Some(state) = Store::read(worker)? else {
         return Ok(false);
     };
@@ -253,10 +256,21 @@ pub fn retire_declined(worker: &str) -> Result<bool> {
     };
     let root = Store::directory(worker)?.join("delivery-outcome");
     let saved: Option<Value> = super::state::read(&root.join("terminal.json"))?;
-    if !saved.is_some_and(|v| v["request"] == pending.id.as_str() && v["retire"] == true) {
+    if !saved
+        .as_ref()
+        .is_some_and(|v| v["request"] == pending.id.as_str() && v["retire"] == true)
+    {
         return Ok(false);
     }
-    super::missing_report::retire(worker, &pending.id, &super::missing_report::REFUSED)?;
+    let gap = if saved
+        .as_ref()
+        .is_some_and(|v| v["error"] == "DELIVERY_REFUSED stage=delivery")
+    {
+        &super::missing_report::REFUSED
+    } else {
+        &super::missing_report::NO_REPORT
+    };
+    super::missing_report::retire(worker, &pending.id, gap)?;
     Ok(true)
 }
 /// The observer's exec transport can be lost during a daemon restart,

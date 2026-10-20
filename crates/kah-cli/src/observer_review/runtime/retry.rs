@@ -2,7 +2,7 @@ use super::*;
 use crate::observer_review as review;
 pub fn retry_pending(worker: &str) -> Result<()> {
     require_active(worker)?;
-    if review::delivery_outcome::retire_declined(worker)? {
+    if review::delivery_outcome::retire_terminal(worker)? {
         return Ok(());
     }
     if review::service::blocked(worker)? {

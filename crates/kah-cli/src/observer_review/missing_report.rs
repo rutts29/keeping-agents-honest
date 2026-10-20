@@ -32,7 +32,7 @@ pub const UNDELIVERED: Gap = Gap {
 /// automatic redelivery.
 pub const REFUSED: Gap = Gap {
     code: "REVIEW_OBSERVER_REFUSED",
-    reason: "the observer declined the request twice",
+    reason: "the observer declined the request after its one automatic redelivery",
 };
 /// An undelivered request can wait while Herdr still shows the pane Working.
 pub const UNDELIVERED_MS: u64 = 600_000;
