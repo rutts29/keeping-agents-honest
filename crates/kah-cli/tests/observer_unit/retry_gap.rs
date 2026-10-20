@@ -148,3 +148,40 @@ fn a_replaced_observer_gets_the_identical_request_body() {
         "error":"REVIEW_OBSERVER_EXEC_LOST stage=delivery: exec-server transport disconnected"
     })));
 }
+
+/// #47: at the Stop of the turn that lost its exec transport, Herdr still
+/// showed the old observer pane Working, so the retry that replace() starts
+/// was held and only the stall watcher redelivered. That old process can
+/// never run the request; the retry closes it and resumes a fresh one.
+#[test]
+fn an_observer_marked_for_replacement_does_not_hold_its_retry() {
+    let worker = format!("retry-replace-{}", crate::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let mut state = fake_state(&worker, &store.directory.join("observer"));
+    // No Herdr server runs at this socket: a Herdr status read fails.
+    state.worker.socket = Some(store.directory.join("herdr.sock"));
+    state.worker.pane = Some("w0:worker".into());
+    state.observer.pane = Some("w0:observer".into());
+    state.pending = Some(
+        serde_json::from_value(json!({"id":"review-replaced","purpose":"checkpoint",
+            "turn":"t","head":null,"created_ms":1,"native_tokens_before":null}))
+        .unwrap(),
+    );
+    store.save(&state).unwrap();
+    // replace() in delivery_outcome writes this marker for the lost request.
+    crate::unattended_report::save(
+        &store.directory,
+        "observer-replace.json",
+        &json!({"request":"review-replaced"}),
+    )
+    .unwrap();
+    assert!(
+        review::delivery_outcome::replacement_requested(&store.directory, "review-replaced")
+            .unwrap()
+    );
+    let gap = store.directory.join("gap.json");
+    assert!(!working(&store, &state, "review-replaced", &gap).unwrap());
+    let parent = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(parent).unwrap();
+}
