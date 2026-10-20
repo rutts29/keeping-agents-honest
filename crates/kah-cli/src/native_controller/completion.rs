@@ -187,6 +187,12 @@ impl Run<'_> {
             crate::completion_checkpoint::Status::Failed(_) => {
                 Ok(Some((verified.receipt, verified.changed, false)))
             }
+            // The run stops visibly, with the reason, until `kah resume`.
+            crate::completion_checkpoint::Status::Blocked(reason) => {
+                self.tests = Some(verified.receipt);
+                self.update(|r| r.control.block_external(&reason))?;
+                Ok(None)
+            }
         }
     }
     fn refresh(

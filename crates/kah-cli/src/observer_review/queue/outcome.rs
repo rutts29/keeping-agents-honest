@@ -73,18 +73,20 @@ fn blocked(worker: &str, root: &Path, reason: &str) -> Result<()> {
     queued.sort();
     let identity = json!({"worker":worker,"error":reason,"queued":queued});
     let old: Option<Value> = state::read(&root.join("admission-blocked.json"))?;
-    if old.as_ref().is_some_and(|v| v["identity"] == identity) {
-        return Ok(());
-    }
     let text = format!(
         "[kah-observer-admission-blocked] Worker {worker}: {reason}; queued triggers retained. Host admission needs recovery; no report correction requested."
     );
+    // at_ms is the latest failure: completion_checkpoint stops a run when a
+    // retry fails again. The reviewer is told once per identity.
     crate::unattended_report::save(
         root,
         "admission-blocked.json",
         &json!({"identity":identity,
         "worker":worker,"at_ms":kah_observer::session::now_ms(),"error":reason,"text":text,"systemMessage":text}),
     )?;
+    if old.as_ref().is_some_and(|v| v["identity"] == identity) {
+        return Ok(());
+    }
     let sent = state::read_control(worker)?
         .and_then(|s| s.worker.socket)
         .map(|socket| {

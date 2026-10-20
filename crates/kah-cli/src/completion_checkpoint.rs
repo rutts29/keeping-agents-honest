@@ -13,6 +13,8 @@ pub enum Status {
     Pending,
     Passed,
     Failed(Value),
+    /// Host admission of the queued trigger failed; the reason for the user.
+    Blocked(String),
 }
 pub fn request(
     directory: &Path,
@@ -51,23 +53,54 @@ pub fn request(
     }
     let path = directory.join("completion-checkpoint-request.json");
     let previous: Option<Value> = observer_review::state::read(&path)?;
-    if !previous.as_ref().is_some_and(|p| {
+    if previous.as_ref().is_some_and(|p| {
         same_delivery(&p["key"], key)
             && p["revision"] == revision
             && p["invalidation"] == invalidation
     }) {
-        observer_review::events::enqueue(
-            worker,
-            json!({"kind":"run_completion","completion_key":key,"intent_revision":revision,"verification":receipt,"actor":"kah controller; tests run on the agent's imported SHA, kah authored no commit"}),
-        )?;
+        return admission(directory, worker, key);
+    }
+    observer_review::events::enqueue(
+        worker,
+        json!({"kind":"run_completion","completion_key":key,"intent_revision":revision,"verification":receipt,"actor":"kah controller; tests run on the agent's imported SHA, kah authored no commit"}),
+    )?;
+    crate::unattended_report::save(
+        directory,
+        "completion-checkpoint-request.json",
+        &json!({"key":key,"revision":revision,"invalidation":invalidation}),
+    )?;
+    Ok(Status::Pending)
+}
+
+/// The queued trigger waits for host admission. When admission is blocked,
+/// each controller instance retries it once; a block recorded after that
+/// retry stops the run with its reason (5r-i: RUN_SHARE_ACL left a run waiting
+/// with no limit). A retry that succeeds clears the block.
+fn admission(directory: &Path, worker: &str, key: &Key) -> Result<Status> {
+    let path = Store::directory(worker)?.join("admission-blocked.json");
+    let Some(block): Option<Value> = observer_review::state::read(&path)? else {
+        return Ok(Status::Pending);
+    };
+    let retry: Option<Value> = observer_review::state::read(&directory.join(RETRY))?;
+    let Some(retry) = retry.filter(|r| r["instance"] == key.instance) else {
+        // No job lock: the failed admission job may still hold its own.
+        observer_review::hook::spawn("__review-wake", worker)?;
         crate::unattended_report::save(
             directory,
-            "completion-checkpoint-request.json",
-            &json!({"key":key,"revision":revision,"invalidation":invalidation}),
+            RETRY,
+            &json!({"instance":key.instance,"block_at_ms":block["at_ms"]}),
         )?;
+        return Ok(Status::Pending);
+    };
+    if block["at_ms"].as_u64() > retry["block_at_ms"].as_u64() {
+        return Ok(Status::Blocked(format!(
+            "Observer review admission is blocked: {}. Fix the host cause, then run kah resume.",
+            block["error"].as_str().unwrap_or("unknown error").trim()
+        )));
     }
     Ok(Status::Pending)
 }
+const RETRY: &str = "completion-admission-retry.json";
 
 /// Retired completions outlive later pending jobs and checkpoint replacements.
 pub(crate) fn retire(root: &Path, result: &Value) -> Result<()> {

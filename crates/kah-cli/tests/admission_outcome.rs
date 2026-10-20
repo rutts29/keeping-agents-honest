@@ -46,3 +46,33 @@ fn failure_without_a_pending_review_is_retained_and_notified_once() {
     assert!(queue::outcome::notice(&worker).unwrap().is_none());
     fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn a_repeated_failure_refreshes_the_block_time_without_a_second_notice() {
+    // completion_checkpoint stops a run only for a block recorded after its
+    // controller started. A retry after `kah resume` that fails the same way
+    // must count as a new block.
+    let worker = format!("admission-repeat-{}", kah_cli::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let root = store.directory.clone();
+    drop(store);
+    let fail = || {
+        let result = queue::outcome::run(&worker, || {
+            Err("RUN_SHARE_ACL stage=worker_prepare: Permission denied".into())
+        });
+        assert!(result.is_err());
+        let block: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join("admission-blocked.json")).unwrap())
+                .unwrap();
+        block["at_ms"].as_u64().unwrap()
+    };
+    let first = fail();
+    fs::remove_file(root.join("admission-reviewer-notice.json")).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    assert!(fail() > first);
+    assert!(
+        !root.join("admission-reviewer-notice.json").exists(),
+        "the reviewer is told once per identity"
+    );
+    fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
