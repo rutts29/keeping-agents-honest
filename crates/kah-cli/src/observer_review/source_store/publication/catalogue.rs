@@ -33,15 +33,13 @@ pub(super) fn files(private: &Path, input: &Path, catalogue: &Value) -> Result<B
         }
         files.insert(path);
     }
-    // Preparation manifests are complete decisions belonging to this request.
+    // Every file in the request view belongs to this request, so its sources
+    // must resolve in the view too: preparation manifests and manifest.json,
+    // whose compacted documents the observer reads (878-11: ENOENT, refused).
+    // Staged writes (*.tmp) are not files of the request yet.
     for entry in fs::read_dir(input)? {
         let entry = entry?;
-        if entry.file_type()?.is_file()
-            && entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("preparation-")
-        {
+        if entry.file_type()?.is_file() && !entry.file_name().to_string_lossy().ends_with(".tmp") {
             files.insert(entry.path());
         }
     }
