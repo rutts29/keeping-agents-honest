@@ -1,4 +1,6 @@
-//! Claude's documented native string limit is measured, never worked around.
+//! Queued reminders reach the worker through native hooks at any length:
+//! Claude Code saves a long hook string whole to a file. The
+//! native limit check stays for messages typed into a pane.
 use super::state::{Request, State, Store};
 use crate::Result;
 use kah_observer::review_evidence::Report;
@@ -19,9 +21,7 @@ pub fn text(state: &State, request: &Request, report: &Report) -> Result<String>
         .join("inputs")
         .join(&request.id)
         .join("intent.json");
-    let text = report.reminder_text(&intent(request)?, &record.to_string_lossy())?;
-    validate_native(&state.worker.provider, &text)?;
-    Ok(text)
+    Ok(report.reminder_text(&intent(request)?, &record.to_string_lossy())?)
 }
 pub fn validate_native(provider: &str, text: &str) -> Result<()> {
     if provider == "claude" && text.encode_utf16().count() > 10_000 {
