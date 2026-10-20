@@ -95,7 +95,7 @@ pub fn stop(worker: &str, pid: u32, stamp: &str) -> Result<()> {
     state.stopped = true;
     store.save(&state)
 }
-fn close_pane(state: &super::state::State) -> Result<()> {
+pub(super) fn close_pane(state: &super::state::State) -> Result<()> {
     let pane = control::owned_pane(state)?;
     let (socket, _) = super::runtime::transport(state)?;
     crate::run_pane::invoke_at(&["pane", "close", &pane.id], Some(socket))?;

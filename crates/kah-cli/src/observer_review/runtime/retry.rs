@@ -131,6 +131,7 @@ fn correction_needed(gap: &Value) -> bool {
             "REVIEW_PREPARATION_MISSING",
             "REVIEW_SUBMISSION_UNCONFIRMED",
             "REVIEW_NOT_IDLE",
+            "REVIEW_OBSERVER_EXEC_LOST",
         ]
         .iter()
         .any(|code| error.starts_with(code))

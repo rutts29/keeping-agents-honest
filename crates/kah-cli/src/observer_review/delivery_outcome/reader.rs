@@ -9,6 +9,9 @@ pub struct Progress {
     pub completed: bool,
     pub unanswered: u32,
     pub last_reply: String,
+    /// A command of the delivered turn could not start: the exec transport is gone.
+    #[serde(default)]
+    pub exec_lost: bool,
 }
 
 pub fn scan(
@@ -65,6 +68,7 @@ fn record(
             progress.delivered = Some(offset);
             progress.completed = false;
             progress.last_reply.clear();
+            progress.exec_lost = false;
         } else if !text.trim().is_empty() {
             progress.delivered = None;
             progress.unanswered = 0;
@@ -76,13 +80,14 @@ fn record(
     if let Some(reply) = assistant(provider, &row) {
         progress.last_reply = reply;
     }
+    progress.exec_lost |= exec_lost(provider, &row);
     if !terminal(provider, &row) {
         return Ok(None);
     }
     progress.completed = true;
     progress.unanswered += 1;
     let refused = refusal(&progress.last_reply, request);
-    if !refused && progress.unanswered < 2 {
+    if !refused && !progress.exec_lost && progress.unanswered < 2 {
         return Ok(None);
     }
     Ok(Some(
@@ -90,7 +95,7 @@ fn record(
         "request":request,"body_digest":body_digest,"native_offset":offset,
         "delivered_offset":progress.delivered,"native_digest":digest(bytes),
         "native_record":String::from_utf8(bytes.to_vec())?,"reply":progress.last_reply,
-        "unanswered":progress.unanswered,"automatic_redelivery":false}),
+        "unanswered":progress.unanswered,"exec_lost":progress.exec_lost,"automatic_redelivery":false}),
     ))
 }
 
@@ -137,6 +142,21 @@ fn assistant(provider: &str, row: &Value) -> Option<String> {
     } else {
         None
     }
+}
+/// Codex 0.162.1 core/src/unified_exec/errors.rs:8 and exec-server
+/// client.rs:1793: the host, not the model, writes this when the observer's
+/// exec-server (a gVisor container) is gone, e.g. after a dockerd restart.
+fn exec_lost(provider: &str, row: &Value) -> bool {
+    let item = &row["payload"]["item"];
+    provider == "codex"
+        && row["type"] == "event_msg"
+        && row["payload"]["type"] == "item_completed"
+        && item["type"] == "CommandExecution"
+        && item["status"] == "failed"
+        && item["aggregated_output"].as_str().is_some_and(|text| {
+            text.starts_with("Failed to create unified exec process:")
+                && text.contains("exec-server transport disconnected")
+        })
 }
 fn terminal(provider: &str, row: &Value) -> bool {
     if provider == "claude" {

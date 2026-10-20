@@ -12,9 +12,14 @@ pub(super) fn ensure(state: &mut State) -> Result<bool> {
         let inventory = herdr(socket, &["pane", "list", "--workspace", workspace])?;
         if present(&inventory, state.observer.pane.as_deref().unwrap())? {
             control::owned_pane(state)?;
-            return Ok(true);
+            if !replacement(state)? {
+                return Ok(true);
+            }
+            // The observer process lost its exec transport: close its pane.
+            super::super::lifecycle::close_pane(state)?;
         }
     }
+    super::super::delivery_outcome::replacement_done(&Store::directory(&state.worker.session)?)?;
     // Session/transcript and pending request survive pane loss. Native resume
     // starts the SAME observer with configured floor flags, without stealing focus.
     state.worker = crate::relay_store::endpoint(&state.worker.session)?;
@@ -22,6 +27,15 @@ pub(super) fn ensure(state: &mut State) -> Result<bool> {
     state.observer.pid = None;
     state.observer.process_stamp = None;
     Ok(false)
+}
+fn replacement(state: &State) -> Result<bool> {
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    super::super::delivery_outcome::replacement_requested(
+        &Store::directory(&state.worker.session)?,
+        &pending.id,
+    )
 }
 pub fn present(inventory: &Value, pane: &str) -> Result<bool> {
     let panes = inventory["result"]["panes"]

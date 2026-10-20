@@ -346,3 +346,91 @@ fn codex_receives_instruction_and_request_in_one_paste_so_no_typed_text_is_dropp
     let damaged = row(format!("{}{prompt}", &delivery_text::INSTRUCTION[..cut]));
     assert!(!delivery::receipt(Cursor::new(&damaged), "codex", SESSION, &marker).unwrap());
 }
+
+/// The host's rootless dockerd restarted, so the Codex
+/// observer's gVisor exec-server stopped. Codex 0.162.1 then rejects every
+/// command at process creation (core/src/unified_exec/errors.rs:8), and the
+/// observer declined the request. That is a lost observer process, not a
+/// review decision.
+fn exec_lost_rows(prompt: &str, reply: &str) -> Vec<Value> {
+    let mut rows = records("codex", prompt, reply);
+    rows.insert(
+        1,
+        json!({"type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution",
+            "status":"failed","exit_code":-1,"source":"unified_exec_startup",
+            "aggregated_output":"Failed to create unified exec process: exec-server transport disconnected"}}}),
+    );
+    rows
+}
+fn refusal() -> String {
+    json!({"outcome":"DELIVERY_REFUSED","request":REQUEST,"reason":"The exec-server transport is disconnected"})
+        .to_string()
+}
+
+#[test]
+fn a_turn_whose_commands_could_not_start_is_an_exec_loss_not_only_a_refusal() {
+    let prompt = format!("kah review request {REQUEST} (Checkpoint). Read evidence.");
+    for (rows, lost) in [
+        (exec_lost_rows(&prompt, &refusal()), true),
+        (exec_lost_rows(&prompt, "No report."), true),
+        (records("codex", &prompt, &refusal()), false),
+    ] {
+        let path = native(&rows);
+        let mut progress = delivery_outcome::Progress::default();
+        let outcome = delivery_outcome::scan(
+            "codex",
+            SESSION,
+            &path,
+            REQUEST,
+            &digest(&prompt),
+            &mut progress,
+        )
+        .unwrap()
+        .expect("a refusal or a lost exec transport ends the delivery");
+        assert_eq!(outcome["exec_lost"] == true, lost);
+        fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
+    std::env::var_os("XDG_STATE_HOME").expect("isolated test state");
+    let worker = format!("delivery-outcome-{}", kah_cli::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let root = store.directory.clone();
+    let prompt = body(&retained()[0]);
+    let path = native(&exec_lost_rows(&prompt, &refusal()));
+    let mut state = state(&root, &worker, &path);
+    state.worker.provider = "codex".into();
+    store.save(&state).unwrap();
+    drop(store);
+    delivery_outcome::begin(&state, REQUEST, &prompt, 0).unwrap();
+    delivery_outcome::observe(&worker).unwrap();
+    assert!(!root.join("delivery-outcome/terminal.json").exists());
+    let gap: Value = source_store::read(&root.join("gap.json")).unwrap();
+    assert!(
+        gap["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("REVIEW_OBSERVER_EXEC_LOST stage=delivery")
+    );
+    assert!(redelivery::gap_retryable(&gap));
+    assert!(delivery_outcome::replacement_requested(&root, REQUEST).unwrap());
+    assert!(!delivery_outcome::replacement_requested(&root, "review-other").unwrap());
+    // The fresh observer lost its exec transport too: no second replacement.
+    delivery_outcome::begin(&state, REQUEST, &prompt, fs::metadata(&path).unwrap().len()).unwrap();
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+    for row in exec_lost_rows(&prompt, &refusal()) {
+        writeln!(file, "{row}").unwrap();
+    }
+    drop(file);
+    assert!(
+        delivery_outcome::observe(&worker)
+            .unwrap_err()
+            .to_string()
+            .starts_with("DELIVERY_REFUSED stage=delivery")
+    );
+    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}

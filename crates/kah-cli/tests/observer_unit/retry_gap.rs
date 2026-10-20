@@ -141,3 +141,10 @@ fn reject_outside(
     .unwrap_err();
     (outside, error)
 }
+
+#[test]
+fn a_replaced_observer_gets_the_identical_request_body() {
+    assert!(!correction_needed(&serde_json::json!({
+        "error":"REVIEW_OBSERVER_EXEC_LOST stage=delivery: exec-server transport disconnected"
+    })));
+}

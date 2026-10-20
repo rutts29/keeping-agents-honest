@@ -142,6 +142,9 @@ pub fn observe(worker: &str) -> Result<()> {
     Ok(())
 }
 fn retain(state: &Control, root: &Path, delivery: &Delivery, mut outcome: Value) -> Result<()> {
+    if outcome["exec_lost"] == true && replace(state, root, delivery, &outcome)? {
+        return Ok(());
+    }
     outcome["observer"] = json!(state.observer.session);
     outcome["source"] = json!(delivery.source);
     outcome["origin"] = json!(super::failure::Origin::Delivery);
@@ -172,6 +175,42 @@ fn retain(state: &Control, root: &Path, delivery: &Delivery, mut outcome: Value)
         delivery.request
     )
     .into())
+}
+/// The observer's exec transport can be lost during a daemon restart,
+/// so the same observer process can never run the review. Once per request,
+/// ask for a fresh observer process on the same native session and redeliver
+/// the same request. Returns false when that was already done.
+fn replace(state: &Control, root: &Path, delivery: &Delivery, outcome: &Value) -> Result<bool> {
+    let once = root.join("exec-lost");
+    if once.join(format!("{}.json", delivery.request)).is_file() {
+        return Ok(false);
+    }
+    let record = json!({"request":delivery.request,"observer":state.observer.session,
+        "native_record":outcome["native_record"],"at_ms":kah_observer::session::now_ms()});
+    source_store::save(&once, &format!("{}.json", delivery.request), &record)?;
+    let directory = Store::directory(&state.worker.session)?;
+    source_store::save(&directory, REPLACE, &record)?;
+    source_store::save(
+        &directory,
+        "gap.json",
+        &json!({"error":"REVIEW_OBSERVER_EXEC_LOST stage=delivery: observer exec-server transport disconnected; replacing the observer process once",
+            "request":delivery.request,"origin":super::failure::Origin::Delivery,"observer":state.observer.session}),
+    )?;
+    super::hook::spawn("__review-retry", &state.worker.session)?;
+    Ok(true)
+}
+const REPLACE: &str = "observer-replace.json";
+/// Whether `request` asks for a fresh observer process (see `replace`).
+pub fn replacement_requested(directory: &Path, request: &str) -> Result<bool> {
+    let marker: Option<Value> = super::state::read(&directory.join(REPLACE))?;
+    Ok(marker.is_some_and(|m| m["request"] == request))
+}
+/// A fresh observer pane is being created; nothing is left to replace.
+pub fn replacement_done(directory: &Path) -> Result<()> {
+    match std::fs::remove_file(directory.join(REPLACE)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
+    }
 }
 fn reported(state: &Control, request: &str) -> bool {
     let outbox = state.observer.workspace.join("outbox");
