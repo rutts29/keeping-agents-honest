@@ -141,7 +141,7 @@ fn second_loss(id: &str, worker: &Pane, courier: &Pane) -> (Value, State) {
     assert_eq!(terminal["retire"], true, "{terminal}");
     // The retry job retires it; the fixture does not.
     watch.until(|w| !w.pending());
-    let retired = watch.retired(&terminal);
+    let retired = watch.retired();
     let settled = watch.settle();
     let notice: Value = read(&watch.outcome.join("provider-block-notice.json")).unwrap();
     assert_eq!(notice["submitted"], true, "{notice}");
@@ -352,9 +352,11 @@ impl Watch {
             .is_some_and(|p| p.id == self.request)
     }
 
-    /// The durable result of a request retired as not reviewed (#52). Its
-    /// reason follows the end of the turn: a decline or no reply.
-    fn retired(&self, terminal: &Value) -> Value {
+    /// The durable result of a request retired as not reviewed (#52). The
+    /// reason names the path that retires first after the replacement: the
+    /// Stop handler's second turn without a report (NO_REPORT),
+    /// or the retry job's decline (REFUSED).
+    fn retired(&self) -> Value {
         let result: Value = read(
             &self
                 .directory
@@ -362,12 +364,11 @@ impl Watch {
         )
         .unwrap();
         assert_eq!(result["status"], "not_reviewed", "{result}");
-        let code = if terminal["status"] == "delivery_refused" {
-            "REVIEW_OBSERVER_REFUSED"
-        } else {
-            "REVIEW_OBSERVER_NO_REPORT"
-        };
-        assert_eq!(result["gap"]["code"], code, "{result}");
+        let code = result["gap"]["code"].as_str().unwrap_or_default();
+        assert!(
+            ["REVIEW_OBSERVER_REFUSED", "REVIEW_OBSERVER_NO_REPORT"].contains(&code),
+            "{result}"
+        );
         json!({"status":result["status"],"gap":result["gap"],"pendingAfter":self.state.pending.as_ref().map(|p|&p.id)})
     }
 
