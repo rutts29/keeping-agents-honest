@@ -43,32 +43,26 @@ pub fn run(worker: &str) -> Result<()> {
         };
         let started = earliest(&paths)?;
         let start = |head: &str| Ok((committed_ms(&home, &state, head), started));
-        sample_head(&root, &refs, start, |head| {
+        let accepted = sample_head(&root, &refs, start, |head| {
             super::events::enqueue(
                 worker,
                 json!({"kind":"native_head","review_class":"commit","head":head,"source":"controller Git metadata","at_ms":kah_observer::session::now_ms()}),
             )
         })?;
-        let current = refs
-            .into_iter()
-            .filter(|r| r.starts_with("refs/tags/"))
-            .collect::<Vec<_>>();
-        let prior: Option<Vec<String>> = super::state::read(&root.join("git-tags.json"))?;
-        let added = observed_additions(prior.as_deref(), &current);
-        if !added.is_empty() {
+        sample_tags(&root, &refs, accepted, |added, initial| {
             super::events::enqueue(
                 worker,
-                json!({"kind":"native_git_tag","tags":added,"source":"controller Git metadata","initial_sample":prior.is_none(),"at_ms":kah_observer::session::now_ms()}),
-            )?;
-        }
-        crate::unattended_report::save(&root, "git-tags.json", &json!(current))?;
+                json!({"kind":"native_git_tag","tags":added,"source":"controller Git metadata","initial_sample":initial,"at_ms":kah_observer::session::now_ms()}),
+            )
+        })?;
         for path in paths {
             fs::remove_file(path)?
         }
     }
 }
-/// A background startup sample can race the first tool. Review existing tags
-/// once on an unobserved session rather than silently losing that first tag.
+/// A background startup sample can race the first tool. When the start HEAD
+/// is not accepted, review existing tags once on an unobserved session rather
+/// than silently losing that first tag.
 pub fn observed_additions(previous: Option<&[String]>, current: &[String]) -> Vec<String> {
     additions(previous.unwrap_or_default(), current)
 }
@@ -88,13 +82,14 @@ pub fn head(home: &Path, state: &State) -> Result<Option<String>> {
 }
 /// Compare the first sample with the session-start baseline
 /// (session_baseline::accept; `start` is its fallback). Later samples review
-/// changed HEADs. `review` enqueues the sampled commit.
+/// changed HEADs. `review` enqueues the sampled commit. Returns true when this
+/// first sample accepted HEAD as the session-start baseline.
 pub fn sample_head(
     root: &Path,
     refs: &[String],
     start: impl FnOnce(&str) -> Result<(Option<u64>, Option<u64>)>,
     review: impl FnOnce(&str) -> Result<()>,
-) -> Result<()> {
+) -> Result<bool> {
     let head = refs.iter().find_map(|r| r.strip_prefix("HEAD "));
     let previous: Option<Option<String>> = super::state::read(&root.join("git-head.json"))?;
     let first = previous.is_none();
@@ -109,7 +104,33 @@ pub fn sample_head(
     if first || changed {
         crate::unattended_report::save(root, "git-head.json", &json!(head))?;
     }
-    Ok(())
+    Ok(first && !changed)
+}
+/// `review` gets the new or retargeted tags and whether this is the first
+/// sample. `accepted` is the result of sample_head for the same refs: at an
+/// accepted session-start HEAD the tags are the baseline too, because no worker
+/// change exists for a checkpoint to judge.
+pub fn sample_tags(
+    root: &Path,
+    refs: &[String],
+    accepted: bool,
+    review: impl FnOnce(Vec<String>, bool) -> Result<()>,
+) -> Result<()> {
+    let current = refs
+        .iter()
+        .filter(|r| r.starts_with("refs/tags/"))
+        .cloned()
+        .collect::<Vec<_>>();
+    let prior: Option<Vec<String>> = super::state::read(&root.join("git-tags.json"))?;
+    let added = if accepted {
+        vec![]
+    } else {
+        observed_additions(prior.as_deref(), &current)
+    };
+    if !added.is_empty() {
+        review(added, prior.is_none())?;
+    }
+    crate::unattended_report::save(root, "git-tags.json", &json!(current))
 }
 /// The earliest pending sample request: the session start for `start`.
 fn earliest(paths: &[PathBuf]) -> Result<Option<u64>> {

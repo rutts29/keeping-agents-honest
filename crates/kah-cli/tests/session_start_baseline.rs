@@ -357,3 +357,100 @@ fn a_capture_whose_head_read_failed_uses_the_timestamp_fallback() {
     assert_eq!(read(&review.join("option1-baseline.json"))["head"], seed);
     fs::remove_dir_all(root).unwrap();
 }
+
+/// HEAD and the tags, read as tags::run reads them.
+fn refs_with_tags(root: &Path) -> Vec<String> {
+    let format = "--format=%(refname) %(objectname)";
+    let args = [
+        "for-each-ref",
+        "--include-root-refs",
+        format,
+        "refs/tags",
+        "HEAD",
+    ];
+    git(root, &args, None).lines().map(str::to_owned).collect()
+}
+/// One sample of HEAD and tags: the HEADs and the tag names sent to review.
+fn sample_refs(
+    review: &Path,
+    project: &Path,
+    started_ms: Option<u64>,
+) -> (Vec<String>, Vec<String>) {
+    let refs = refs_with_tags(project);
+    let start = |head: &str| Ok((Some(committed(project, head) * 1000), started_ms));
+    let mut heads = vec![];
+    let accepted = tags::sample_head(review, &refs, start, |head| {
+        heads.push(head.to_owned());
+        Ok(())
+    })
+    .unwrap();
+    let mut names = vec![];
+    tags::sample_tags(review, &refs, accepted, |added, _| {
+        names = added
+            .iter()
+            .map(|t| t.split(' ').next().unwrap().to_owned())
+            .collect();
+        Ok(())
+    })
+    .unwrap();
+    (heads, names)
+}
+fn seeded_with_tag(name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let (root, project, review) = fixture(name);
+    commit(
+        &project,
+        &[("seed.txt", "seed")],
+        Some("2026-01-01T00:00:00Z"),
+    );
+    git(&project, &["tag", "v0.1"], None);
+    (root, project, review)
+}
+
+#[test]
+fn tags_at_the_session_start_are_the_baseline_and_a_later_tag_is_reviewed() {
+    // Pilot #41: the first sample reviewed every existing tag, so a checkpoint
+    // ran on the untouched start commit before the worker changed anything.
+    let (root, project, review) = seeded_with_tag("session-start-tags");
+    capture_start(&review, &project);
+    assert_eq!(sample_refs(&review, &project, None), (vec![], vec![]));
+    git(&project, &["tag", "v0.2"], None);
+    let later = sample_refs(&review, &project, None);
+    assert_eq!(later, (vec![], vec!["refs/tags/v0.2".into()]));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn tags_made_with_a_commit_before_the_first_sample_are_reviewed() {
+    // 0673c8b: a late first sample must not hide the agent's first tag. The
+    // start HEAD is not accepted, so the sample cannot tell old tags from new.
+    let (root, project, review) = seeded_with_tag("session-start-tag-race");
+    capture_start(&review, &project);
+    let agent = commit(&project, &[("agent.txt", "work")], None);
+    git(&project, &["tag", "phase-1"], None);
+    let (heads, names) = sample_refs(&review, &project, None);
+    assert_eq!(heads, vec![agent]);
+    assert_eq!(names, ["refs/tags/phase-1", "refs/tags/v0.1"]);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_tag_on_the_untouched_start_head_before_the_first_sample_is_not_reviewed() {
+    // No worker change exists yet, so there is nothing for a checkpoint to judge.
+    let (root, project, review) = seeded_with_tag("session-start-tag-unchanged");
+    capture_start(&review, &project);
+    git(&project, &["tag", "phase-0"], None);
+    assert_eq!(sample_refs(&review, &project, None), (vec![], vec![]));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn without_a_start_capture_tags_at_an_accepted_head_are_the_baseline() {
+    let (root, project, review) = seeded_with_tag("uncaptured-start-tags");
+    let seed = git(&project, &["rev-parse", "HEAD"], None);
+    let started = committed(&project, &seed) * 1000 + 500;
+    assert_eq!(
+        sample_refs(&review, &project, Some(started)),
+        (vec![], vec![])
+    );
+    fs::remove_dir_all(root).unwrap();
+}
