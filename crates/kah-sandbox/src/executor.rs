@@ -25,8 +25,10 @@ const BASE_ARGS: &[&str] = &[
     "core=0:0",
     "--ulimit",
     "nofile=4096:8192",
+    // Docker's tmpfs default is noexec; doctests run binaries from TMPDIR.
+    // The writable project bind already allows exec. Home keeps noexec.
     "--tmpfs",
-    "/tmp:rw,nosuid,nodev,size=512m,mode=1777",
+    "/tmp:rw,exec,nosuid,nodev,size=512m,mode=1777",
     "--tmpfs",
     "/run:rw,nosuid,nodev,size=64m,mode=755",
     "--tmpfs",

@@ -197,3 +197,32 @@ fn a_start_failure_is_retried_once_and_other_failures_are_not() {
     assert_eq!(std::fs::read_to_string(&count).unwrap().lines().count(), 2);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Doctests run binaries from TMPDIR, so /tmp alone allows exec. Docker's
+/// tmpfs default is noexec; the private home keeps that default.
+#[test]
+fn only_tmp_allows_exec_among_the_sandbox_tmpfs_mounts() {
+    let mut executor = Executor::new(
+        &project(Domain::Research),
+        LaunchOptions::default(),
+        Path::new("/var/tmp/public-codex"),
+        "sha256:image",
+        42420,
+    )
+    .unwrap();
+    executor.use_nobody();
+    let tmpfs: Vec<_> = executor
+        .args
+        .windows(2)
+        .filter(|w| w[0] == "--tmpfs")
+        .map(|w| w[1].as_str())
+        .collect();
+    assert_eq!(
+        tmpfs,
+        [
+            "/tmp:rw,exec,nosuid,nodev,size=512m,mode=1777",
+            "/run:rw,nosuid,nodev,size=64m,mode=755",
+            "/home/sandbox:rw,nosuid,nodev,size=512m,mode=700,uid=65534,gid=65534",
+        ]
+    );
+}
