@@ -1,4 +1,4 @@
-use kah_run::access::{read_file, share_tree, traverse};
+use kah_run::access::{read_file, share_tree, share_tree_owned_by, traverse};
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -34,6 +34,26 @@ fn sandbox_access_inherits_operator_rights_without_following_links() {
     );
     assert!(share_tree(&root.join("tree/link"), 42420, true).is_err());
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_directory_of_another_owner_never_blocks_the_share_walk() {
+    // 5r-i on 1a4ef14: the observer's sandbox made outbox/build-o48f (uid
+    // 231069, mode 0700). The operator could not read it, so find failed
+    // with EACCES and review admission stopped.
+    let root = std::env::temp_dir().join(format!("kah-run-foreign-{}", std::process::id()));
+    let foreign = root.join("tree/build-o48f");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("build.py"), "x").unwrap();
+    fs::set_permissions(&foreign, fs::Permissions::from_mode(0o000)).unwrap();
+    // Without root a test cannot chown. This process owns every entry, so
+    // name another operator: the directory then has another owner, and the
+    // walk cannot read it, as in 5r-i.
+    let operator = kah_sandbox::current_uid().unwrap() + 1;
+    let result = share_tree_owned_by(&root.join("tree"), 42420, true, operator);
+    fs::set_permissions(&foreign, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    result.unwrap();
 }
 
 fn acl(path: &Path) -> String {

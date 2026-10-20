@@ -3,10 +3,19 @@ use std::{fs, path::Path, process::Command};
 
 /// Call before starting the executor. Symlinks in the checkout are never followed.
 pub fn share_tree(root: &Path, service_uid: u32, writable: bool) -> Result<(), String> {
+    let operator = kah_sandbox::current_uid().map_err(|e| e.to_string())?;
+    share_tree_owned_by(root, service_uid, writable, operator)
+}
+/// share_tree for the files that `operator` owns.
+pub fn share_tree_owned_by(
+    root: &Path,
+    service_uid: u32,
+    writable: bool,
+    operator: u32,
+) -> Result<(), String> {
     if !fs::symlink_metadata(root).map_err(io_error)?.is_dir() {
         return Err("RUN_SHARE_ROOT stage=worker_prepare: expected real directory".into());
     }
-    let operator = kah_sandbox::current_uid().map_err(|e| e.to_string())?;
     let access = if writable { "rwX" } else { "r-X" };
     owned(root, &format!("u:{service_uid}:{access}"), operator, false)?;
     let inherited = if writable { "rwx" } else { "r-x" };
@@ -49,13 +58,20 @@ fn operate(
     directories_only: bool,
     action: &str,
 ) -> Result<(), String> {
+    let operator = operator.to_string();
     let mut command = Command::new("/usr/bin/find");
     command
         .arg("-P")
         .arg(root)
         // Native plugin caches remove lock files during traversal. GNU find
         // tolerates only that readdir/stat race, not access or ACL failures.
-        .args(["-ignore_readdir_race", "-uid", &operator.to_string()]);
+        .arg("-ignore_readdir_race")
+        // Never enter a directory below the root that another UID owns: the
+        // sandbox can make one the operator cannot read (5r-i: mktemp -d made
+        // outbox/build-o48f, mode 0700), and its entries are not ours to share.
+        .args(["(", "-type", "d", "!", "-uid", &operator, "!", "-samefile"])
+        .arg(root)
+        .args(["-prune", ")", "-o", "-uid", &operator]);
     if directories_only {
         command.args(["-type", "d"]);
     }
