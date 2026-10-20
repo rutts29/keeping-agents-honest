@@ -263,19 +263,32 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
         }
         return take_gap(&store);
     };
-    if reminder["purpose"] == "drift" && reminder["turn"] != turn {
+    let parts = reminder["delivered_parts"].as_u64().unwrap_or(0);
+    if parts == 0 && reminder["purpose"] == "drift" && reminder["turn"] != turn {
         reminder["text"] = format!("[kah confirmed finding from previous turn {}; retained context, not new user steering] {}",reminder["turn"],reminder["text"].as_str().unwrap_or("")).into();
     }
-    // Any length goes (fix-14, probe-14 on Claude Code 2.1.305): Claude saves
-    // additionalContext over 10,000 characters whole to a file and gives the
-    // model its path and a preview. Holding it at the queue head blocked every
-    // later reminder. A systemMessage is shown to the user, not to the model.
-    fs::remove_file(path)?;
+    let text = reminder["text"].as_str().unwrap_or("").to_owned();
+    // fix-14: a long Claude reminder goes in ordered parts at later hooks; the
+    // rest stays in this file, so no other reminder goes first. Never held.
+    let (text, rest) = if parts > 0 || text.encode_utf16().count() > super::reminder::CLAUDE_LIMIT {
+        let state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=reminder")?;
+        super::reminder::next_part(&state.worker.provider, &text, parts)
+    } else {
+        (text, None)
+    };
+    if let Some(rest) = rest {
+        reminder["text"] = rest.into();
+        reminder["delivered_parts"] = (parts + 1).into();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap();
+        crate::unattended_report::save(path.parent().unwrap(), name, &reminder)?;
+    } else {
+        fs::remove_file(path)?;
+    }
     if reminder["system_notice"] == true {
-        return Ok(Some(json!({"systemMessage":reminder["text"]})));
+        return Ok(Some(json!({"systemMessage":text})));
     }
     Ok(Some(
-        json!({"hookSpecificOutput":{"hookEventName":event,"additionalContext":reminder["text"]}}),
+        json!({"hookSpecificOutput":{"hookEventName":event,"additionalContext":text}}),
     ))
 }
 fn take_gap(store: &Store) -> Result<Option<Value>> {
