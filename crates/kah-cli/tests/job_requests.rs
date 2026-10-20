@@ -2,13 +2,7 @@
 //! requests: hook::spawn records one before its try_lock, and the running job
 //! takes it after each pass.
 use kah_cli::observer_review::{hook, job_lease, state::Store};
-use std::{
-    fs,
-    os::unix::fs::PermissionsExt,
-    path::PathBuf,
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf, process::Command, time::Duration};
 
 const KICK: &str = "__review-kick";
 const CHILD: &str = "KAH_JOB_REQUESTS_CHILD";
@@ -269,11 +263,7 @@ fn an_empty_stop_during_the_claims_pass_causes_one_more_pass() {
 }
 
 #[test]
-fn a_spawn_runs_when_its_request_cannot_be_written() {
-    let name = "a_spawn_runs_when_its_request_cannot_be_written";
-    let Some(home) = in_private_home(name) else {
-        return;
-    };
+fn a_spawn_proceeds_when_its_request_cannot_be_written() {
     let job = Job::new("requests-unwritable");
     for kind in ["lock", "log"] {
         fs::write(job.root.join(format!("job-{KICK}.{kind}")), "").unwrap();
@@ -283,10 +273,33 @@ fn a_spawn_runs_when_its_request_cannot_be_written() {
     fs::set_permissions(&job.root, fs::Permissions::from_mode(0o700)).unwrap();
     spawned.unwrap();
     assert!(!job.marker(KICK).exists());
-    let log = home.join("spawned.log");
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !fs::read_to_string(&log).is_ok_and(|l| l.contains(KICK)) {
-        assert!(Instant::now() < deadline, "the spawn did not start the job");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    assert!(
+        recorded(&job, KICK),
+        "the spawn did not reach its start step"
+    );
+}
+
+fn recorded(job: &Job, command: &str) -> bool {
+    fs::read_to_string(job.root.join(format!("job-{command}.log")))
+        .is_ok_and(|log| log.contains(&format!("\"recorded_spawn\":\"{command}\"")))
+}
+
+/// #53: hook::spawn ran the INSTALLED kah (often an older build) on a test's
+/// state, which raced the test (integ-13). A library test runner now records
+/// the spawn in the job log and starts no kah binary. The installed kah here is
+/// a stub that logs any start.
+#[test]
+fn a_test_runner_records_a_spawn_and_starts_no_installed_kah() {
+    let name = "a_test_runner_records_a_spawn_and_starts_no_installed_kah";
+    let Some(home) = in_private_home(name) else {
+        return;
+    };
+    let job = Job::new("requests-recorded");
+    hook::spawn(KICK, &job.worker).unwrap();
+    assert!(recorded(&job, KICK));
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        !home.join("spawned.log").exists(),
+        "the installed kah started"
+    );
 }

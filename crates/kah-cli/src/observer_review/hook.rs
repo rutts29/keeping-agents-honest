@@ -279,29 +279,19 @@ pub fn spawn(command: &str, worker: &str) -> Result<()> {
     spawn_command(command, worker, Stdio::from(lock))
 }
 fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
-    let log = OpenOptions::new()
+    use std::io::Write;
+    let mut log = OpenOptions::new()
         .create(true)
         .append(true)
         .mode(0o600)
         .open(Store::directory(worker)?.join(format!("job-{command}.log")))?;
-    // Installation can replace our executable while this host watcher remains
-    // alive. /proc/self/exe then names a deleted inode, not a launchable path.
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=spawn")?);
-    let installed = home.join(".local/bin/kah");
-    let program = if installed.is_file() {
-        installed
-    } else {
-        // A disposable home may run kah directly without installation. Only
-        // a still-present kah binary is valid, never a library's test runner.
-        let current = env::current_exe()?;
-        if current.file_name().is_none_or(|name| name != "kah") || !current.is_file() {
-            return Err(format!(
-                "REVIEW_PROGRAM_MISSING stage=spawn: {}",
-                installed.display()
-            )
-            .into());
-        }
-        current
+    let Some(program) = job_program(&env::current_exe()?, &home)? else {
+        // #53: a library test runner records the request. A job (even the
+        // installed kah, often an older build) on the state a test asserts on
+        // and removes is a race.
+        writeln!(log, "{}", json!({"recorded_spawn":command,"worker":worker}))?;
+        return Ok(());
     };
     Command::new(program)
         .args([command, worker])
@@ -311,6 +301,30 @@ fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
         .process_group(0)
         .spawn()?;
     Ok(())
+}
+/// The program for a detached job: the installed kah, else this kah in a
+/// disposable home. Installation can replace our executable while this host
+/// watcher remains alive; /proc/self/exe then names a deleted inode. None when
+/// the caller is not kah: only kah starts jobs (#53).
+pub fn job_program(current: &std::path::Path, home: &std::path::Path) -> Result<Option<PathBuf>> {
+    let name = current
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned());
+    if name.as_deref().map(|n| n.trim_end_matches(" (deleted)")) != Some("kah") {
+        return Ok(None);
+    }
+    let installed = home.join(".local/bin/kah");
+    if installed.is_file() {
+        return Ok(Some(installed));
+    }
+    if current.is_file() {
+        return Ok(Some(current.into()));
+    }
+    Err(format!(
+        "REVIEW_PROGRAM_MISSING stage=spawn: {}",
+        installed.display()
+    )
+    .into())
 }
 pub fn gap(worker: &str, error: &dyn std::fmt::Display) -> Result<()> {
     record_gap(worker, error, super::failure::Origin::Host)

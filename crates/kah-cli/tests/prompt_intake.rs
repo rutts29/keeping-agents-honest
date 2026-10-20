@@ -115,15 +115,19 @@ fn prompt_hook(binding: &Binding, home: &Path) -> (Value, Duration) {
     let start = Instant::now();
     prompt_intake::schedule(binding, &hook).unwrap();
     let latency = start.elapsed();
-    let log = home.join("spawned.log");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !fs::read_to_string(&log).is_ok_and(|l| l.contains("__prompt-intake")) {
-        assert!(
-            Instant::now() < deadline,
-            "prompt hook started no detached intake"
-        );
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    // A test runner records the detached job instead of starting it (#53).
+    let log = kah_cli::observer_review::state::Store::directory(&binding.session)
+        .unwrap()
+        .join("job-__prompt-intake.log");
+    assert!(
+        fs::read_to_string(&log)
+            .is_ok_and(|l| l.contains("\"recorded_spawn\":\"__prompt-intake\"")),
+        "prompt hook started no detached intake"
+    );
+    assert!(
+        !home.join("spawned.log").exists(),
+        "the installed kah started"
+    );
     let request = prompt_intake::pending(&binding.session).unwrap().unwrap();
     (request, latency)
 }

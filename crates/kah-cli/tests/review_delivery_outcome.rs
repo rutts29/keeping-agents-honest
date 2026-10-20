@@ -178,16 +178,14 @@ fn state(root: &std::path::Path, worker: &str, native: &std::path::Path) -> Stat
 }
 
 /// The 878-12c request: a pending Option1 gate checkpoint.
-/// The returned lock holds the retry job: the installed `kah` that hook::spawn
-/// starts may be an older build, and it must not act on this test's state.
-fn refusal_fixture(provider: &str) -> (String, PathBuf, PathBuf, String, fs::File) {
+/// A test runner records job spawns in job-<command>.log and starts no job
+/// (#53), so nothing else acts on this state.
+fn refusal_fixture(provider: &str) -> (String, PathBuf, PathBuf, String) {
     std::env::var_os("XDG_STATE_HOME").expect("isolated test state");
     let worker = format!("delivery-outcome-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     let root = store.directory.clone();
     kah_core::run_store::ensure_private_directory(root.parent().unwrap()).unwrap();
-    let retry = fs::File::create(root.join("job-__review-retry.lock")).unwrap();
-    retry.try_lock().unwrap();
     let prompt = body(&retained()[0]);
     let path = native(&records(provider, &prompt, &refusal()));
     let mut state = state(&root, &worker, &path);
@@ -199,7 +197,14 @@ fn refusal_fixture(provider: &str) -> (String, PathBuf, PathBuf, String, fs::Fil
             "documents":[],"created_ms":1})).unwrap();
     drop(store);
     delivery_outcome::begin(&state, REQUEST, &prompt, 0).unwrap();
-    (worker, root, path, prompt, retry)
+    (worker, root, path, prompt)
+}
+/// Job starts that hook::spawn recorded for `command` (#53).
+fn spawns(root: &std::path::Path, command: &str) -> usize {
+    fs::read_to_string(root.join(format!("job-{command}.log")))
+        .unwrap_or_default()
+        .matches(&format!("\"recorded_spawn\":\"{command}\""))
+        .count()
 }
 fn redeliver(worker: &str, path: &std::path::Path, prompt: &str, rows: &[Value]) {
     let state = Store::read(worker).unwrap().unwrap();
@@ -216,7 +221,7 @@ fn redeliver(worker: &str, path: &std::path::Path, prompt: &str, rows: &[Value])
 /// same request is worth it; repeated polls of one decline never add more.
 #[test]
 fn a_refusal_is_redelivered_once_and_repeated_polls_never_add_a_second() {
-    let (worker, root, path, _, _retry) = refusal_fixture("codex");
+    let (worker, root, path, _) = refusal_fixture("codex");
     for _ in 0..13 {
         delivery_outcome::observe(&worker).unwrap();
     }
@@ -240,6 +245,7 @@ fn a_refusal_is_redelivered_once_and_repeated_polls_never_add_a_second() {
             .count(),
         1
     );
+    assert_eq!(spawns(&root, "__review-retry"), 1);
     fs::remove_file(path).unwrap();
     fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
@@ -250,10 +256,7 @@ fn a_refusal_is_redelivered_once_and_repeated_polls_never_add_a_second() {
 #[test]
 fn a_second_refusal_retires_only_that_request_and_the_queue_continues() {
     for provider in ["codex", "claude"] {
-        let (worker, root, path, prompt, _retry) = refusal_fixture(provider);
-        // The installed `kah __review-wake` that retire starts must not drain
-        // the queue before this test reads it.
-        let _admission = Store::delivery_at(&root.join("admission-worker"), false).unwrap();
+        let (worker, root, path, prompt) = refusal_fixture(provider);
         // An intent-sync steering job can queue behind a refusal.
         queue::enqueue(
             &worker,
@@ -299,6 +302,7 @@ fn a_second_refusal_retires_only_that_request_and_the_queue_continues() {
             root.join("delivery-outcome/provider-block-notice.json")
                 .is_file()
         );
+        assert!(spawns(&root, "__review-wake") >= 1, "the queue is kicked");
         let (later, _) = queue::claim_batch(&worker)
             .unwrap()
             .expect("the queue continues");
@@ -493,7 +497,7 @@ fn a_turn_whose_commands_could_not_start_is_an_exec_loss_not_only_a_refusal() {
 #[test]
 fn any_end_after_the_one_redelivery_retires_the_request_with_its_reason() {
     for exec_lost in [true, false] {
-        let (worker, root, path, prompt, _retry) = refusal_fixture("codex");
+        let (worker, root, path, prompt) = refusal_fixture("codex");
         let rows = |reply: &str| {
             if exec_lost {
                 exec_lost_rows(&prompt, reply)
@@ -521,7 +525,7 @@ fn any_end_after_the_one_redelivery_retires_the_request_with_its_reason() {
 
 #[test]
 fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
-    let (worker, root, path, prompt, _retry) = refusal_fixture("codex");
+    let (worker, root, path, prompt) = refusal_fixture("codex");
     fs::write(
         &path,
         exec_lost_rows(&prompt, &refusal())
