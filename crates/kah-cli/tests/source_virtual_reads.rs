@@ -25,6 +25,39 @@ fn cli(workspace: &std::path::Path, digest: &str) -> std::process::Output {
         .output()
         .unwrap()
 }
+/// Every page of a source (read-source serves 16,000 bytes at a time), footers removed.
+fn read_all(workspace: &std::path::Path, digest: &str) -> Vec<u8> {
+    let (mut all, mut page) = (vec![], 1);
+    loop {
+        let out = Command::new(env!("CARGO_BIN_EXE_kah"))
+            .current_dir(workspace)
+            .args([
+                "observe",
+                "read-source",
+                &format!("sources/{digest}"),
+                "--page",
+                &page.to_string(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = String::from_utf8(out.stdout).unwrap();
+        match text.rfind("\n[page ").filter(|_| text.ends_with("]\n")) {
+            Some(at) => {
+                all.extend_from_slice(&text.as_bytes()[..at]);
+                page += 1;
+            }
+            None => {
+                all.extend_from_slice(text.as_bytes());
+                return all;
+            }
+        }
+    }
+}
 
 #[test]
 fn native_relative_virtual_document_resolves_and_expands_its_complete_catalogue() {
@@ -80,7 +113,11 @@ fn virtual_segmented_text_reads_every_byte_and_rejects_corrupt_published_bytes()
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(output.stdout, text.as_bytes());
+    assert_eq!(read_all(&workspace, digest), text.as_bytes());
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("[page 1 of 17 - continue: bin/kah observe read-source sources/")
+    );
     fs::set_permissions(
         view.join("sources").join(digest),
         fs::Permissions::from_mode(0o600),

@@ -11,7 +11,9 @@ use std::{
 
 pub mod access_repair;
 pub mod binary;
+pub mod paging;
 mod publication;
+pub mod read_ledger;
 mod reading;
 use reading::read_bytes;
 mod canonical_text;
@@ -245,10 +247,14 @@ pub fn load_text(path: &Path) -> Result<String> {
     Ok(String::from_utf8(bytes)?)
 }
 pub fn print_text(path: &Path) -> Result<()> {
+    print_page(path, path.to_str().unwrap_or_default(), 1)
+}
+/// The complete original text of a source, or the pretty-printed JSON of a non-text source.
+pub fn expanded_text(path: &Path) -> Result<String> {
     let actual = reading::path(path)?;
     let path = actual.as_path();
     let bytes = reading::content(path)?;
-    let output = match serde_json::from_slice::<Value>(&bytes) {
+    Ok(match serde_json::from_slice::<Value>(&bytes) {
         Ok(value) => {
             let value = expand(value, &directory(path)?)?;
             match value.as_str() {
@@ -257,8 +263,15 @@ pub fn print_text(path: &Path) -> Result<()> {
             }
         }
         Err(_) => String::from_utf8(bytes)?,
-    };
-    std::io::stdout().write_all(output.as_bytes())?;
+    })
+}
+/// Page `page` of the expanded source (see `paging`); `named` is the path as the reader typed it. The page is
+/// noted in the request's read ledger, so a submit can check that all required evidence was read.
+pub fn print_page(path: &Path, named: &str, page: usize) -> Result<()> {
+    let output = expanded_text(path)?;
+    let served = paging::render(&output, page, &|next| paging::command(named, next))?;
+    read_ledger::record(path, &output, page, paging::count(&output))?;
+    std::io::stdout().write_all(served.as_bytes())?;
     Ok(())
 }
 /// Losslessly migrates digest-verified snapshots to shared storage blocks.

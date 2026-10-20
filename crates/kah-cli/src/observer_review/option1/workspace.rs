@@ -1,5 +1,5 @@
 use super::super::failure::{Origin, validation};
-use super::super::{state::Request, workspace};
+use super::super::{source_store, state::Request, workspace};
 use super::protocol;
 use crate::Result;
 use serde_json::{Value, json};
@@ -14,6 +14,10 @@ pub fn schema(request: &Request, legacy: Value) -> Value {
 /// `kah observe report`: an Option1 job is validated from selected parts and
 /// never expanded whole; every other request keeps the complete legacy path.
 pub fn report(args: &[String]) -> Result<()> {
+    if args.len() == 6 && args[2] == "--request" {
+        // #52b: every page of the request's listed evidence must have been served by read-source.
+        source_store::read_ledger::require_read(Path::new(&args[3]))?;
+    }
     let selected = args.len() == 6 && args[0] == "observe" && args[2] == "--request";
     let header = selected
         .then(|| super::report_source::header(Path::new(&args[3])))

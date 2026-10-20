@@ -212,8 +212,13 @@ fn observe_route(args: &[String]) -> Option<crate::Result<()>> {
         Some("context") if args.len() == 3 => {
             Some(context_input::ensure(std::path::Path::new(&args[2])))
         }
-        Some("read-source") if args.len() == 3 => {
-            Some(source_store::print_text(std::path::Path::new(&args[2])))
+        Some("read-source") if source_store::paging::arguments(args).is_some() => {
+            let (path, page) = source_store::paging::arguments(args)?;
+            Some(source_store::print_page(
+                std::path::Path::new(path),
+                path,
+                page,
+            ))
         }
         Some("read-blob") if args.len() == 3 => {
             Some(source_store::binary::print(std::path::Path::new(&args[2])))
