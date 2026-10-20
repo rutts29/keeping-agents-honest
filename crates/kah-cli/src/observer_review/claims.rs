@@ -2,10 +2,17 @@
 //! whether it claims a phase/gate is complete. Work stays off the native hook.
 use super::{hook, state::Store};
 use crate::Result;
-use kah_observer::judge::{self, Answer, Judgment, Question};
+use kah_observer::{
+    judge::{self, Answer, Judgment, Question},
+    session::Binding,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 pub mod scope;
 pub const VERSION: u32 = scope::VERSION;
 pub fn questions() -> BTreeMap<String, Question> {
@@ -43,7 +50,15 @@ pub fn run(worker: &str) -> Result<()> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("CHECKPOINT_HOME stage=trigger")?);
     let lease = super::job_lease::lease(worker, "__checkpoint-claims")?;
     run_with(worker, &lease, || {
-        screen(worker, &home)?;
+        screen(worker, &home, |binding, input| {
+            judge::routing::evaluate(
+                &home,
+                binding.judge,
+                &binding.jev_model,
+                input,
+                &questions(),
+            )
+        })?;
         super::delivered::schedule(worker, &home)
     })
 }
@@ -56,7 +71,12 @@ pub fn run_with(worker: &str, lease: &fs::File, pass: impl FnMut() -> Result<()>
         super::job_lease::has_json(&directory)
     })
 }
-fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
+/// `evaluate` is the Jev call; tests give a fake transport.
+pub fn screen(
+    worker: &str,
+    home: &Path,
+    evaluate: impl Fn(&Binding, &Value) -> std::result::Result<Judgment, judge::Error>,
+) -> Result<()> {
     let directory = Store::directory(worker)?.join("claim-events");
     if !directory.exists() {
         return Ok(());
@@ -67,7 +87,6 @@ fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
     )?
     .ok_or("CHECKPOINT_WORKER_STATE stage=trigger")?
     .binding;
-    let questions = questions();
     for entry in fs::read_dir(&directory)? {
         let path = entry?.path();
         if path.extension().is_none_or(|e| e != "json") {
@@ -76,23 +95,13 @@ fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
         let mut input: Value =
             super::state::read(&path)?.ok_or("CHECKPOINT_CLAIM_MISSING stage=trigger")?;
         crate::privacy::scrub(&mut input);
-        let judgment =
-            judge::routing::evaluate(home, binding.judge, &binding.jev_model, &input, &questions)?;
-        if let Some(class) = review_class(&judgment) {
-            let state = Store::read(worker)?.map(Ok).unwrap_or_else(|| {
-                super::state::State::new(crate::relay_store::endpoint(worker)?, home)
-            })?;
-            let head = super::tags::head(home, &state)?;
-            let class = match class {
-                ReviewClass::Commit => "commit",
-                ReviewClass::Gate => "gate",
-            };
-            let uncertain = matches!(judgment.answers.get("phase_claim"),Some(Answer::Noul{noul}) if *noul<judge::questions::STEERING_PROBABILITY);
-            super::events::enqueue(
-                worker,
-                json!({"kind":"native_phase_claim","review_class":class,"head":head,"source":input,"judgment":judgment,"question_set":VERSION,"uncertain":uncertain}),
-            )?;
-        }
+        let record = match evaluate(&binding, &input) {
+            Ok(judgment) => screened(worker, home, &input, judgment)?,
+            Err(error) if error.code == "JEV_CONTEXT_LIMIT" => {
+                oversized(worker, home, &input, &error)
+            }
+            Err(error) => return Err(error.into()),
+        };
         crate::unattended_report::save(
             &directory,
             path.with_extension("done")
@@ -100,9 +109,56 @@ fn screen(worker: &str, home: &std::path::Path) -> Result<()> {
                 .unwrap()
                 .to_str()
                 .unwrap(),
-            &json!({"source":input,"judgment":judgment,"question_set":VERSION}),
+            &record,
         )?;
         fs::remove_file(path)?;
     }
     Ok(())
+}
+fn screened(worker: &str, home: &Path, input: &Value, judgment: Judgment) -> Result<Value> {
+    if let Some(class) = review_class(&judgment) {
+        let uncertain = matches!(judgment.answers.get("phase_claim"),Some(Answer::Noul{noul}) if *noul<judge::questions::STEERING_PROBABILITY);
+        enqueue(
+            worker,
+            home,
+            class,
+            json!({"source":input,"judgment":judgment,"question_set":VERSION,"uncertain":uncertain}),
+        )?;
+    }
+    Ok(json!({"source":input,"judgment":judgment,"question_set":VERSION}))
+}
+/// Jev refused a reply too large for its context. The observer has no such
+/// limit and reads in pages, so it judges the claim as a doubtful claim: the
+/// same event an uncertain screen gives, with the whole reply. If that also
+/// fails, the record keeps a visible gap. The claim file goes in both cases,
+/// so one reply never blocks later Stops.
+fn oversized(worker: &str, home: &Path, input: &Value, error: &judge::Error) -> Value {
+    let refusal = json!({"error":error.to_string(),"body_digest":kah_observer::context_selection::digest(input),
+        "route":"direct_observer_review","known_oversized":true});
+    let event = json!({"source":input,"judgment":null,"jev_refusal":refusal,"question_set":VERSION,"uncertain":true});
+    let mut record =
+        json!({"source":input,"judgment":null,"jev_refusal":refusal,"question_set":VERSION});
+    if let Err(failed) = enqueue(worker, home, ReviewClass::Commit, event) {
+        eprintln!(
+            "CHECKPOINT_CLAIM_UNJUDGED stage=claim_screen: {error}; observer hand-off: {failed}"
+        );
+        let mut gap = refusal;
+        gap["handoff_error"] = failed.to_string().into();
+        record["gap"] = gap;
+    }
+    record
+}
+/// Queue the claim for the observer review. `event` has the judged fields.
+fn enqueue(worker: &str, home: &Path, class: ReviewClass, mut event: Value) -> Result<()> {
+    let state = Store::read(worker)?
+        .map(Ok)
+        .unwrap_or_else(|| super::state::State::new(crate::relay_store::endpoint(worker)?, home))?;
+    event["kind"] = "native_phase_claim".into();
+    event["head"] = json!(super::tags::head(home, &state)?);
+    event["review_class"] = match class {
+        ReviewClass::Commit => "commit",
+        ReviewClass::Gate => "gate",
+    }
+    .into();
+    super::events::enqueue(worker, event)
 }
