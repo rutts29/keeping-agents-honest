@@ -10,6 +10,7 @@ mod checkpoint_v7_heldout;
 mod checkpoint_v8_heldout;
 mod checkpoints;
 mod commit_scope;
+mod exec_loss;
 mod hosted_search;
 mod linked_steer;
 mod queue_order;
@@ -93,6 +94,9 @@ fn special_run() -> Option<fn(&Path) -> Value> {
     }
     if std::env::var_os("KAH_GATE_REVIEW_DRIFT").is_some() {
         return Some(review_drift::run);
+    }
+    if std::env::var_os("KAH_GATE_EXEC_LOSS").is_some() {
+        return Some(exec_loss::run);
     }
     if std::env::var_os("KAH_GATE_REVIEW").is_some() {
         return Some(review::run);
