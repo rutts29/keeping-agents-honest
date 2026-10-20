@@ -57,14 +57,15 @@ fn journey(agent: &str) {
         std::thread::sleep(Duration::from_millis(200));
     };
     let notification_rendered = terminal.output().contains("kah run needs attention");
+    // 5r-i: a failed archive in preserve_failure hid this line.
+    if evidence["passed"] != true {
+        eprintln!("PRIMARY FAILURE (reported before cleanup): {evidence}");
+    }
     let diagnostic = preserve_failure(&probe, agent, &evidence);
     let _ = Command::new("herdr")
         .args(["session", "stop", &probe.name, "--json"])
         .output();
     drop(terminal);
-    if evidence["passed"] != true {
-        eprintln!("PRIMARY FAILURE (reported before cleanup): {evidence}");
-    }
     // A cleanup panic must not hide the journey's own failure.
     let cleanup = std::panic::catch_unwind(|| native_controller_support::cleanup(&probe.root));
     if evidence["passed"] != true {

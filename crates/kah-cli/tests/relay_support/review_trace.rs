@@ -46,7 +46,23 @@ fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
         return Ok(());
     }
     kah_core::run_store::ensure_private_directory(destination)?;
-    for entry in fs::read_dir(source)? {
+    let entries = match fs::read_dir(source) {
+        // 5r-i: the observer sandbox made outbox/build-o48f with mode 0700
+        // and another uid. Note it and go on; the trace must not fail on it.
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            eprintln!(
+                "private review trace: skipped {}: {error}",
+                source.display()
+            );
+            return kah_cli::unattended_report::save(
+                destination,
+                "unreadable.json",
+                &json!({"skipped":source,"error":error.to_string()}),
+            );
+        }
+        entries => entries?,
+    };
+    for entry in entries {
         let entry = entry?;
         let path = entry.path();
         let target = destination.join(entry.file_name());
@@ -76,4 +92,20 @@ fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn retain_notes_an_unreadable_directory_and_goes_on() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("kah-review-trace-{}", std::process::id()));
+    let foreign = root.join("outbox/build-o48f");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(root.join("outbox/report.log"), "kept").unwrap();
+    fs::set_permissions(&foreign, fs::Permissions::from_mode(0o000)).unwrap();
+    let result = retain(&root.join("outbox"), &root.join("trace"));
+    fs::set_permissions(&foreign, fs::Permissions::from_mode(0o700)).unwrap();
+    result.unwrap();
+    assert!(root.join("trace/report.log").is_file());
+    assert!(root.join("trace/build-o48f/unreadable.json").is_file());
+    fs::remove_dir_all(root).unwrap();
 }
