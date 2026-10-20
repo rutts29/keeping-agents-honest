@@ -26,8 +26,10 @@ pub fn run_dispatch(root: &Path, agent: &str, parent: &str) -> Value {
     )
     .unwrap();
     let base = RunStore::default_state_root().unwrap().join("runs");
-    zoom(&base, id);
+    let pane = launched_pane(&output, id);
+    zoom(&base, id, pane);
     let record = wait(&base, id, agent);
+    assert_eq!(record.native.as_ref().unwrap().pane.as_deref(), Some(pane));
     let report = diagnostics(&Store::path(&base, id).unwrap(), &record.worktree);
     let dispatch: Value = serde_json::from_slice(
         &fs::read(Store::path(&base, id).unwrap().join("dispatch.json")).unwrap(),
@@ -54,29 +56,28 @@ pub fn run_dispatch(root: &Path, agent: &str, parent: &str) -> Value {
     fs::remove_file(root.join("cleanup.json")).unwrap();
     result
 }
-fn zoom(base: &Path, id: &str) {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
-        if let Some(pane) = Store::read(base, id)
+/// The pane that `kah run` started and printed ("Run <id>; native pane <pane>").
+/// The run store gets it only after the worker in that pane has built its
+/// sandbox, which took 30-44 s under load (5h-d on 9915d32).
+fn launched_pane<'a>(output: &'a str, id: &str) -> &'a str {
+    let prefix = format!("Run {id}; native pane ");
+    output
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix)?.split(';').next())
+        .unwrap_or_else(|| panic!("kah run printed no native pane: {output}"))
+}
+fn zoom(base: &Path, id: &str, pane: &str) {
+    assert!(
+        Command::new("herdr")
+            .args(["pane", "zoom", pane, "--on"])
+            .output()
             .unwrap()
-            .native
-            .as_ref()
-            .unwrap()
-            .pane
-            .as_ref()
-        {
-            assert!(
-                Command::new("herdr")
-                    .args(["pane", "zoom", pane, "--on"])
-                    .output()
-                    .unwrap()
-                    .status
-                    .success()
-            );
-            return;
-        }
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(100));
+            .status
+            .success()
+    );
+    // Cross-check only: the run store may not have the pane yet.
+    if let Some(recorded) = Store::read(base, id).unwrap().native.unwrap().pane {
+        assert_eq!(recorded, pane);
     }
 }
 fn prove(record: &Record, task: &str, parent: &str) -> usize {
