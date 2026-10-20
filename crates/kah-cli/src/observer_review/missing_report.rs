@@ -28,6 +28,12 @@ pub const UNDELIVERED: Gap = Gap {
     code: "REVIEW_OBSERVER_UNDELIVERED",
     reason: "no native observer turn accepted the request within 10 minutes",
 };
+/// If the observer declines the request again after its one
+/// automatic redelivery.
+pub const REFUSED: Gap = Gap {
+    code: "REVIEW_OBSERVER_REFUSED",
+    reason: "the observer declined the request twice",
+};
 /// An undelivered request can wait while Herdr still shows the pane Working.
 pub const UNDELIVERED_MS: u64 = 600_000;
 
@@ -119,7 +125,9 @@ fn completion_result(
     gap: &Gap,
     result: &mut Value,
 ) -> Result<()> {
-    if gap.code != NO_REPORT.code || pending.purpose != super::state::Purpose::Checkpoint {
+    if ![NO_REPORT.code, REFUSED.code].contains(&gap.code)
+        || pending.purpose != super::state::Purpose::Checkpoint
+    {
         return Ok(());
     }
     let request: super::state::Request = super::source_store::read(

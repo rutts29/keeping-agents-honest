@@ -142,6 +142,15 @@ fn reject_outside(
     (outside, error)
 }
 
+/// #52: the one redelivery after a decline is the same request, not a report
+/// correction.
+#[test]
+fn a_declined_request_is_redelivered_with_the_identical_body() {
+    assert!(!correction_needed(&serde_json::json!({
+        "error":"REVIEW_OBSERVER_REFUSAL_RETRY stage=delivery: the observer declined the request"
+    })));
+}
+
 #[test]
 fn a_replaced_observer_gets_the_identical_request_body() {
     assert!(!correction_needed(&serde_json::json!({

@@ -86,23 +86,27 @@ impl Drop for Fixture {
     }
 }
 
+/// #52: a completion request the observer declined twice is retired too; a
+/// non-terminal retirement would leave the run Pending until its deadline.
 #[test]
 fn retired_completion_is_terminal_and_reviewed_completion_still_passes() {
-    let f = Fixture::new();
-    missing_report::retire(&f.worker, &f.request.id, &missing_report::NO_REPORT).unwrap();
-    let result: Value = source_store::read(&f.root.join("results/review-1.json")).unwrap();
-    assert_eq!(result["status"], "not_reviewed");
-    assert_eq!(result["gap"]["code"], "REVIEW_OBSERVER_NO_REPORT");
-    assert_eq!(result["gap"]["stage"], "observer");
-    for _ in 0..2 {
-        let Status::Failed(failed) = f.poll() else {
-            panic!("retired completion must be Failed");
-        };
-        assert_eq!(failed, result);
+    for gap in [missing_report::NO_REPORT, missing_report::REFUSED] {
+        let f = Fixture::new();
+        missing_report::retire(&f.worker, &f.request.id, &gap).unwrap();
+        let result: Value = source_store::read(&f.root.join("results/review-1.json")).unwrap();
+        assert_eq!(result["status"], "not_reviewed");
+        assert_eq!(result["gap"]["code"], gap.code);
+        assert_eq!(result["gap"]["stage"], "observer");
+        for _ in 0..2 {
+            let Status::Failed(failed) = f.poll() else {
+                panic!("retired completion must be Failed: {}", gap.code);
+            };
+            assert_eq!(failed, result);
+        }
+        assert!(queue::entries(&f.worker).unwrap().is_empty());
+        assert!(!f.root.join("checkpoint-events").exists());
+        other_deliveries_remain_pending(&f);
     }
-    assert!(queue::entries(&f.worker).unwrap().is_empty());
-    assert!(!f.root.join("checkpoint-events").exists());
-    other_deliveries_remain_pending(&f);
 }
 
 fn other_deliveries_remain_pending(f: &Fixture) {

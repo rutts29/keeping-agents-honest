@@ -2,6 +2,9 @@ use super::*;
 use crate::observer_review as review;
 pub fn retry_pending(worker: &str) -> Result<()> {
     require_active(worker)?;
+    if review::delivery_outcome::retire_declined(worker)? {
+        return Ok(());
+    }
     if review::service::blocked(worker)? {
         return Ok(());
     }
@@ -132,6 +135,7 @@ fn correction_needed(gap: &Value) -> bool {
             "REVIEW_SUBMISSION_UNCONFIRMED",
             "REVIEW_NOT_IDLE",
             "REVIEW_OBSERVER_EXEC_LOST",
+            "REVIEW_OBSERVER_REFUSAL_RETRY",
         ]
         .iter()
         .any(|code| error.starts_with(code))

@@ -1,4 +1,5 @@
-//! A declined delivery is retained; it is never a report-correction loop.
+//! A declined delivery gets one redelivery of the same request, then it is
+//! retired as not reviewed; it is never a report-correction loop.
 use super::{
     source_store,
     state::{Control, State, Store},
@@ -112,14 +113,7 @@ pub fn observe(worker: &str) -> Result<()> {
             && v["body_digest"] == delivery.body_digest
             && v["observer"].as_str() == state.observer.session.as_deref()
     }) {
-        return Err(format!(
-            "{}: request {} retained; human decision required",
-            outcome["error"]
-                .as_str()
-                .unwrap_or("DELIVERY_UNANSWERED stage=delivery"),
-            delivery.request
-        )
-        .into());
+        return held(&outcome, &delivery.request);
     }
     if reported(&state, &delivery.request) {
         return Ok(());
@@ -141,10 +135,55 @@ pub fn observe(worker: &str) -> Result<()> {
     }
     Ok(())
 }
+/// A retained terminal outcome waits for a human; one marked retire is the
+/// retry job's to retire.
+fn held(outcome: &Value, request: &str) -> Result<()> {
+    if outcome["retire"] == true {
+        return Ok(());
+    }
+    Err(format!(
+        "{}: request {request} retained; human decision required",
+        outcome["error"]
+            .as_str()
+            .unwrap_or("DELIVERY_UNANSWERED stage=delivery")
+    )
+    .into())
+}
 fn retain(state: &Control, root: &Path, delivery: &Delivery, mut outcome: Value) -> Result<()> {
     if outcome["exec_lost"] == true && replace(state, root, delivery, &outcome)? {
         return Ok(());
     }
+    let refused = outcome["error"] == "DELIVERY_REFUSED stage=delivery";
+    if refused && retry_refusal(state, root, delivery, &outcome)? {
+        return Ok(());
+    }
+    // After a decline and its one redelivery, any end of the request is
+    // final for it alone; later triggers must still be reviewed.
+    let retire = refused
+        || root
+            .join(REFUSED)
+            .join(format!("{}.json", delivery.request))
+            .is_file();
+    terminal(state, root, delivery, &mut outcome, retire)?;
+    if retire {
+        // Observation can run under other locks; the retry job retires it.
+        return super::hook::spawn("__review-retry", &state.worker.session);
+    }
+    Err(format!(
+        "{}: request {} retained",
+        outcome["error"].as_str().unwrap(),
+        delivery.request
+    )
+    .into())
+}
+fn terminal(
+    state: &Control,
+    root: &Path,
+    delivery: &Delivery,
+    outcome: &mut Value,
+    retire: bool,
+) -> Result<()> {
+    outcome["retire"] = json!(retire);
     outcome["observer"] = json!(state.observer.session);
     outcome["source"] = json!(delivery.source);
     outcome["origin"] = json!(super::failure::Origin::Delivery);
@@ -156,25 +195,69 @@ fn retain(state: &Control, root: &Path, delivery: &Delivery, mut outcome: Value)
     source_store::save(
         &root.join("terminal"),
         &format!("{}.json", delivery.body_digest),
-        &outcome,
+        outcome,
     )?;
-    source_store::save(root, "terminal.json", &outcome)?;
+    source_store::save(root, "terminal.json", outcome)?;
     source_store::save(
         &Store::directory(&state.worker.session)?,
         "gap.json",
-        &outcome,
+        outcome,
     )?;
-    let text = format!(
-        "[kah-observer-delivery-refused] Worker {} request {}: {}. Pending request and native reply retained; automatic redelivery stopped.",
-        state.worker.session, delivery.request, outcome["error"]
-    );
-    super::provider_block::reviewer(state, &text, root)?;
-    Err(format!(
-        "{}: request {} retained",
-        outcome["error"].as_str().unwrap(),
-        delivery.request
-    )
-    .into())
+    let text = if retire {
+        format!(
+            "[kah-observer-delivery-refused] Worker {} request {}: {} after one automatic redelivery. The request is retired as NOT reviewed; later triggers continue.",
+            state.worker.session, delivery.request, outcome["error"]
+        )
+    } else {
+        format!(
+            "[kah-observer-delivery-refused] Worker {} request {}: {}. Pending request and native reply retained; automatic redelivery stopped.",
+            state.worker.session, delivery.request, outcome["error"]
+        )
+    };
+    super::provider_block::reviewer(state, &text, root)
+}
+/// A checkpoint can be declined after the provider truncates two of
+/// its tool outputs; other turns read the same evidence in pages. Once per
+/// request, redeliver the same request in a fresh turn. A request that an exec
+/// loss already redelivered gets no second redelivery here.
+fn retry_refusal(
+    state: &Control,
+    root: &Path,
+    delivery: &Delivery,
+    outcome: &Value,
+) -> Result<bool> {
+    let name = format!("{}.json", delivery.request);
+    if root.join("exec-lost").join(&name).is_file() || root.join(REFUSED).join(&name).is_file() {
+        return Ok(false);
+    }
+    let record = json!({"request":delivery.request,"observer":state.observer.session,
+        "reply":outcome["reply"],"native_record":outcome["native_record"],"at_ms":kah_observer::session::now_ms()});
+    source_store::save(&root.join(REFUSED), &name, &record)?;
+    source_store::save(
+        &Store::directory(&state.worker.session)?,
+        "gap.json",
+        &json!({"error":"REVIEW_OBSERVER_REFUSAL_RETRY stage=delivery: the observer declined the request; redelivering the same request once in a fresh turn",
+            "request":delivery.request,"origin":super::failure::Origin::Delivery,"observer":state.observer.session,"reply":outcome["reply"]}),
+    )?;
+    super::hook::spawn("__review-retry", &state.worker.session)?;
+    Ok(true)
+}
+const REFUSED: &str = "refused";
+/// The retry job retires a request whose terminal outcome is marked so.
+pub fn retire_declined(worker: &str) -> Result<bool> {
+    let Some(state) = Store::read(worker)? else {
+        return Ok(false);
+    };
+    let Some(pending) = &state.pending else {
+        return Ok(false);
+    };
+    let root = Store::directory(worker)?.join("delivery-outcome");
+    let saved: Option<Value> = super::state::read(&root.join("terminal.json"))?;
+    if !saved.is_some_and(|v| v["request"] == pending.id.as_str() && v["retire"] == true) {
+        return Ok(false);
+    }
+    super::missing_report::retire(worker, &pending.id, &super::missing_report::REFUSED)?;
+    Ok(true)
 }
 /// The observer's exec transport can be lost during a daemon restart,
 /// so the same observer process can never run the review. Once per request,

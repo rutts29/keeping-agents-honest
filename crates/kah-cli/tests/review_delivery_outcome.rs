@@ -2,8 +2,8 @@
 use kah_cli::observer_review::{
     delivery, delivery_outcome, delivery_text,
     failure::Origin,
-    redelivery, request_context, source_store,
-    state::{State, Store},
+    queue, redelivery, request_context, source_store,
+    state::{Purpose, State, Store},
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -177,40 +177,135 @@ fn state(root: &std::path::Path, worker: &str, native: &std::path::Path) -> Stat
         "latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap()
 }
 
-#[test]
-fn refusal_survives_restart_blocks_twelve_retries_and_keeps_pending_and_notice() {
+/// The 878-12c request: a pending Option1 gate checkpoint.
+/// The returned lock holds the retry job: the installed `kah` that hook::spawn
+/// starts may be an older build, and it must not act on this test's state.
+fn refusal_fixture(provider: &str) -> (String, PathBuf, PathBuf, String, fs::File) {
     std::env::var_os("XDG_STATE_HOME").expect("isolated test state");
     let worker = format!("delivery-outcome-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     let root = store.directory.clone();
+    kah_core::run_store::ensure_private_directory(root.parent().unwrap()).unwrap();
+    let retry = fs::File::create(root.join("job-__review-retry.lock")).unwrap();
+    retry.try_lock().unwrap();
     let prompt = body(&retained()[0]);
-    let reply = json!({"outcome":"DELIVERY_REFUSED","request":REQUEST,"reason":"native decline"})
-        .to_string();
-    let path = native(&records("claude", &prompt, &reply));
-    let state = state(&root, &worker, &path);
+    let path = native(&records(provider, &prompt, &refusal()));
+    let mut state = state(&root, &worker, &path);
+    state.worker.provider = provider.into();
     store.save(&state).unwrap();
+    source_store::save(&root.join("requests"), &format!("{REQUEST}.json"),
+        &json!({"id":REQUEST,"worker":worker,"purpose":"checkpoint","turn":"t","head":null,"intent":{},
+            "trigger":{"review_class":"gate","events":[{"kind":"delivered_change","head":"27b3d42"}]},
+            "documents":[],"created_ms":1})).unwrap();
     drop(store);
     delivery_outcome::begin(&state, REQUEST, &prompt, 0).unwrap();
-    for _ in 0..13 {
-        assert!(
-            delivery_outcome::observe(&worker)
-                .unwrap_err()
-                .to_string()
-                .starts_with("DELIVERY_REFUSED stage=delivery")
-        );
+    (worker, root, path, prompt, retry)
+}
+fn redeliver(worker: &str, path: &std::path::Path, prompt: &str, rows: &[Value]) {
+    let state = Store::read(worker).unwrap().unwrap();
+    delivery_outcome::begin(&state, REQUEST, prompt, fs::metadata(path).unwrap().len()).unwrap();
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new().append(true).open(path).unwrap();
+    for row in rows {
+        writeln!(file, "{row}").unwrap();
     }
+}
+
+/// 878-12c (#52): Codex cut two tool outputs and the observer declined the
+/// checkpoint. Other turns read the same evidence, so one fresh turn of the
+/// same request is worth it; repeated polls of one decline never add more.
+#[test]
+fn a_refusal_is_redelivered_once_and_repeated_polls_never_add_a_second() {
+    let (worker, root, path, _, _retry) = refusal_fixture("codex");
+    for _ in 0..13 {
+        delivery_outcome::observe(&worker).unwrap();
+    }
+    assert!(!root.join("delivery-outcome/terminal.json").exists());
     assert_eq!(
         Store::read(&worker).unwrap().unwrap().pending.unwrap().id,
         REQUEST
     );
-    let outcome: Value = source_store::read(&root.join("delivery-outcome/terminal.json")).unwrap();
-    assert_eq!(outcome["body_digest"], digest(&prompt));
-    assert_eq!(outcome["unanswered"], 1);
-    let notice: Value =
-        source_store::read(&root.join("delivery-outcome/provider-block-notice.json")).unwrap();
-    assert_eq!(notice["submitted"], false, "no live socket in this test");
+    let gap: Value = source_store::read(&root.join("gap.json")).unwrap();
+    assert!(
+        gap["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("REVIEW_OBSERVER_REFUSAL_RETRY stage=delivery")
+    );
+    assert_eq!(gap["request"], REQUEST);
+    assert!(redelivery::gap_retryable(&gap));
+    assert_eq!(
+        fs::read_dir(root.join("delivery-outcome/refused"))
+            .unwrap()
+            .count(),
+        1
+    );
     fs::remove_file(path).unwrap();
     fs::remove_dir_all(root.parent().unwrap()).unwrap();
+}
+
+/// A second decline of the same request retires that request only, as NOT
+/// reviewed with a gap and a notice. Later triggers are admitted again: in
+/// 878-12c a steering job waited behind the retained refusal.
+#[test]
+fn a_second_refusal_retires_only_that_request_and_the_queue_continues() {
+    for provider in ["codex", "claude"] {
+        let (worker, root, path, prompt, _retry) = refusal_fixture(provider);
+        // The installed `kah __review-wake` that retire starts must not drain
+        // the queue before this test reads it.
+        let _admission = Store::delivery_at(&root.join("admission-worker"), false).unwrap();
+        // An intent-sync steering job can queue behind a refusal.
+        queue::enqueue(
+            &worker,
+            Purpose::Steering,
+            "intent-sync",
+            json!({"later":true}),
+        )
+        .unwrap();
+        delivery_outcome::observe(&worker).unwrap();
+        assert!(
+            queue::claim_batch(&worker).unwrap().is_none(),
+            "retry holds the queue"
+        );
+        redeliver(
+            &worker,
+            &path,
+            &prompt,
+            &records(provider, &prompt, &refusal()),
+        );
+        for _ in 0..3 {
+            delivery_outcome::observe(&worker).unwrap();
+        }
+        // The retry job, not the observation, retires it.
+        assert!(delivery_outcome::retire_declined(&worker).unwrap());
+        assert!(Store::read(&worker).unwrap().unwrap().pending.is_none());
+        assert!(!delivery_outcome::retire_declined(&worker).unwrap());
+        let result: Value =
+            source_store::read(&root.join(format!("results/{REQUEST}.json"))).unwrap();
+        assert_eq!(result["status"], "not_reviewed");
+        assert_eq!(result["gap"]["code"], "REVIEW_OBSERVER_REFUSED");
+        let gap: Value = source_store::read(&root.join("gap.json")).unwrap();
+        assert!(
+            gap["error"]
+                .as_str()
+                .unwrap()
+                .starts_with("REVIEW_OBSERVER_REFUSED stage=observer")
+        );
+        assert!(!redelivery::gap_retryable(&gap));
+        let outcome: Value =
+            source_store::read(&root.join("delivery-outcome/terminal.json")).unwrap();
+        assert_eq!(outcome["unanswered"], 2);
+        assert!(
+            root.join("delivery-outcome/provider-block-notice.json")
+                .is_file()
+        );
+        let (later, _) = queue::claim_batch(&worker)
+            .unwrap()
+            .expect("the queue continues");
+        assert_eq!(later.trigger["later"], true);
+        fs::remove_file(path).unwrap();
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
 }
 
 #[test]
@@ -394,17 +489,15 @@ fn a_turn_whose_commands_could_not_start_is_an_exec_loss_not_only_a_refusal() {
 
 #[test]
 fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
-    std::env::var_os("XDG_STATE_HOME").expect("isolated test state");
-    let worker = format!("delivery-outcome-{}", kah_cli::relay_store::nonce());
-    let store = Store::open(&worker).unwrap();
-    let root = store.directory.clone();
-    let prompt = body(&retained()[0]);
-    let path = native(&exec_lost_rows(&prompt, &refusal()));
-    let mut state = state(&root, &worker, &path);
-    state.worker.provider = "codex".into();
-    store.save(&state).unwrap();
-    drop(store);
-    delivery_outcome::begin(&state, REQUEST, &prompt, 0).unwrap();
+    let (worker, root, path, prompt, _retry) = refusal_fixture("codex");
+    fs::write(
+        &path,
+        exec_lost_rows(&prompt, &refusal())
+            .iter()
+            .map(|r| format!("{r}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
     delivery_outcome::observe(&worker).unwrap();
     assert!(!root.join("delivery-outcome/terminal.json").exists());
     let gap: Value = source_store::read(&root.join("gap.json")).unwrap();
@@ -417,20 +510,20 @@ fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
     assert!(redelivery::gap_retryable(&gap));
     assert!(delivery_outcome::replacement_requested(&root, REQUEST).unwrap());
     assert!(!delivery_outcome::replacement_requested(&root, "review-other").unwrap());
-    // The fresh observer lost its exec transport too: no second replacement.
-    delivery_outcome::begin(&state, REQUEST, &prompt, fs::metadata(&path).unwrap().len()).unwrap();
-    use std::io::Write;
-    let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
-    for row in exec_lost_rows(&prompt, &refusal()) {
-        writeln!(file, "{row}").unwrap();
-    }
-    drop(file);
-    assert!(
-        delivery_outcome::observe(&worker)
-            .unwrap_err()
-            .to_string()
-            .starts_with("DELIVERY_REFUSED stage=delivery")
+    // The fresh observer lost its exec transport too: no second replacement
+    // and no refusal retry; this second refusal retires the request (#52).
+    redeliver(
+        &worker,
+        &path,
+        &prompt,
+        &exec_lost_rows(&prompt, &refusal()),
     );
+    delivery_outcome::observe(&worker).unwrap();
+    assert!(delivery_outcome::retire_declined(&worker).unwrap());
+    assert!(Store::read(&worker).unwrap().unwrap().pending.is_none());
+    assert!(!root.join("delivery-outcome/refused").exists());
+    let result: Value = source_store::read(&root.join(format!("results/{REQUEST}.json"))).unwrap();
+    assert_eq!(result["gap"]["code"], "REVIEW_OBSERVER_REFUSED");
     fs::remove_file(path).unwrap();
     fs::remove_dir_all(root.parent().unwrap()).unwrap();
 }
