@@ -201,3 +201,8 @@ fn restricted_mask(root: &Path, uid: u32) {
         "hidden write rights must stay masked"
     );
 }
+
+#[test]
+fn verifier_deadline_covers_a_cold_rust_build_in_gvisor() {
+    assert_eq!(DEADLINE, Duration::from_secs(600));
+}

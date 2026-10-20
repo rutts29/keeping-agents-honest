@@ -4,6 +4,8 @@ use kah_run::{access, verification, worktree::Worktree};
 use kah_sandbox::{Domain, LaunchOptions, Project};
 use std::{path::Path, time::Duration};
 mod access_path;
+/// #878 (safetensors) in gVisor, cold registry: 2m33s build, 171 s in total.
+const DEADLINE: Duration = Duration::from_secs(600);
 #[cfg(test)]
 pub(crate) fn prepare_access(path: &Path, uid: u32) -> Result<serde_json::Value> {
     access_path::prepare(path, uid)
@@ -67,16 +69,10 @@ fn run(
             (tree.git_dir.clone(), tree.git_dir.clone()),
             (tree.path.join(".git"), tree.path.join(".git")),
         ])?;
-    // Preserve the existing unattended test deadline; this is not a review
-    // deadline. Review progress/liveness remains independent of test execution.
-    let receipt = verification::execute_checked(
-        &executor,
-        script,
-        commit,
-        Duration::from_secs(120),
-        log,
-        interrupted,
-    )?;
+    // This is not a review deadline. Review progress/liveness remains
+    // independent of test execution.
+    let receipt =
+        verification::execute_checked(&executor, script, commit, DEADLINE, log, interrupted)?;
     checked_receipt(receipt, log)
 }
 
