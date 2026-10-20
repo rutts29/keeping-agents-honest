@@ -135,12 +135,9 @@ fn checkpoint_notice(
     request: &Request,
     rows: &[kah_observer::commit_check::Row],
 ) -> Result<()> {
-    let findings = rows
-        .iter()
-        .filter(|r| r.status != kah_observer::commit_check::Status::Satisfied)
-        .map(|r| format!("{}: {}", r.requirement, r.finding))
-        .collect::<Vec<_>>()
-        .join("; ");
+    let Some(findings) = notice_findings(rows) else {
+        return Ok(());
+    };
     let text = format!(
         "[kah checkpoint review; evidence, not new user authority] Checkpoint on {} is not established. Findings: {findings}. Full cumulative record: review {}.",
         request.head.as_deref().unwrap_or("unknown"),
@@ -160,6 +157,44 @@ fn checkpoint_notice(
             "text":text}),
     )?;
     Ok(())
+}
+/// The findings text of the worker notice; None when no row is for the worker.
+/// Each finding text is shown once with all its requirement labels. The host
+/// fact controller_intent_pending stays in the record only, and a user item id
+/// (verbatim::item_id) shows as a plain label.
+pub fn notice_findings(rows: &[kah_observer::commit_check::Row]) -> Option<String> {
+    let mut groups: Vec<(&str, Vec<&str>)> = vec![];
+    for row in rows.iter().filter(|r| {
+        r.status != kah_observer::commit_check::Status::Satisfied
+            && r.requirement != "controller_intent_pending"
+    }) {
+        let label = notice_label(&row.requirement);
+        match groups
+            .iter_mut()
+            .find(|(finding, _)| *finding == row.finding)
+        {
+            Some((_, labels)) if labels.contains(&label) => {}
+            Some((_, labels)) => labels.push(label),
+            None => groups.push((&row.finding, vec![label])),
+        }
+    }
+    (!groups.is_empty()).then(|| {
+        groups
+            .iter()
+            .map(|(finding, labels)| format!("{}: {finding}", labels.join(", ")))
+            .collect::<Vec<_>>()
+            .join("; ")
+    })
+}
+fn notice_label(requirement: &str) -> &str {
+    let user_item = requirement.strip_prefix("user-").is_some_and(|hex| {
+        hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    });
+    if user_item {
+        "your request"
+    } else {
+        requirement
+    }
 }
 
 fn rules_result(
