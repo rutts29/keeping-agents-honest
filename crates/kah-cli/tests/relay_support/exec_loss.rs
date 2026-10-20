@@ -45,7 +45,7 @@ pub fn run(_root: &Path) -> Value {
     let (courier, _courier) = courier(&home, &mut panes);
     let warm = warm_up(&id);
     let replaced = replaced_once(&id, &worker);
-    let (retired, after) = second_loss(&id, &worker, &courier);
+    let (retired, after) = second_loss(&id, &worker, &home, &courier);
     let next = queue_continues(&id, &worker, &after);
     assert_eq!(fs::read(&config).unwrap(), before, "global config changed");
     let result = json!({"versions":versions(&home),"fixtureModels":{"codex":"gpt-6.1-sol/low"},"worker":id,"warmUp":warm,"replacedOnce":replaced,"secondLossRetired":retired,"queueContinues":next,"fixtureRetried":false,"passed":true});
@@ -59,20 +59,55 @@ pub fn run(_root: &Path) -> Value {
     result
 }
 
-/// The pane kah names in its human notice (`delivery_outcome::terminal`).
-fn courier(home: &Path, panes: &mut Panes) -> (Pane, crate::fixture::Fixture) {
+/// The pane kah names in its human notice (`delivery_outcome::terminal`) and
+/// its native session id.
+fn courier(home: &Path, panes: &mut Panes) -> (String, crate::fixture::Fixture) {
     let (launch, mut courier) = crate::fixture::prepare(home, "research", false);
     let mut command = launch.command(false);
     command.args(["--no-alt-screen", "You are a disposable notice courier. On kah observer notices reply NOTICE_RECEIVED. Do not use tools or answer questions."]).env_remove("CODEX_THREAD_ID");
     let receiver = Pane::start(&command).unwrap();
-    courier.sessions.push(ready(&receiver, "codex"));
+    let session = ready(&receiver, "codex");
+    courier.sessions.push(session.clone());
     let renamed = Command::new("herdr")
         .args(["agent", "rename", &receiver.id, "kah-reviewer"])
         .status()
         .unwrap();
     assert!(renamed.success());
-    panes.0.push(receiver.clone());
-    (receiver, courier)
+    panes.0.push(receiver);
+    (session, courier)
+}
+
+/// A user row of the courier's native rollout names `request`. Herdr's recent
+/// screen text missed the notice in live -13 run 2 (10-20), although Codex
+/// had submitted it (history.jsonl), so the fixture reads the rollout.
+fn received(home: &Path, session: &str, request: &str) -> bool {
+    let name = format!("-{session}.jsonl");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let mut stack = vec![home.join(".codex/sessions")];
+        while let Some(directory) = stack.pop() {
+            for path in fs::read_dir(&directory)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+            {
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.to_string_lossy().ends_with(&name)
+                    && rows(&path)
+                        .iter()
+                        .any(|r| user(r).is_some_and(|t| t.contains(request)))
+                {
+                    return true;
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
 }
 
 /// Codex starts a stdio exec-server lazily, at the first command. The
@@ -117,7 +152,7 @@ fn replaced_once(id: &str, worker: &Pane) -> Value {
 /// Fault 2 kills the replacement's container mid-turn, after its first
 /// command completed, so the next command start meets a dead transport.
 /// #52: after its one replacement, that second loss retires the request.
-fn second_loss(id: &str, worker: &Pane, courier: &Pane) -> (Value, State) {
+fn second_loss(id: &str, worker: &Pane, home: &Path, courier: &str) -> (Value, State) {
     let before = super::review::quiescent(id, "codex");
     let killed = kill(&before.observer.workspace);
     let request = steer(id, worker, STEER_B, &before);
@@ -145,8 +180,10 @@ fn second_loss(id: &str, worker: &Pane, courier: &Pane) -> (Value, State) {
     let settled = watch.settle();
     let notice: Value = read(&watch.outcome.join("provider-block-notice.json")).unwrap();
     assert_eq!(notice["submitted"], true, "{notice}");
-    let receiver = courier.logs("codex", None, None).unwrap();
-    assert!(receiver.contains(&request), "courier lacks {request}");
+    assert!(
+        received(home, courier, &request),
+        "courier rollout lacks {request}"
+    );
     let mut result = watch.replaced(&before);
     result["killedContainers"] = json!([killed, second]);
     result["terminal"] = json!({"error":terminal["error"],"status":terminal["status"],"exec_lost":terminal["exec_lost"],"unanswered":terminal["unanswered"],"automatic_redelivery":terminal["automatic_redelivery"],"retire":terminal["retire"]});
