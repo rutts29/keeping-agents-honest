@@ -177,60 +177,8 @@ pub fn native_working(state: &State) -> Result<bool> {
     Ok(view["result"]["pane"]["agent_status"] == "working"
         && !super::native_idle::ended_quietly(state))
 }
-/// Cold launch is not acceptance. Native SessionStart and the persisted user
-/// record prove it. The window measures a launch with no pane progress.
-pub fn cold(state: &State, prompt: &str) -> Result<()> {
-    let pending = state
-        .pending
-        .as_ref()
-        .ok_or("REVIEW_PENDING_MISSING stage=delivery")?;
-    let active = super::preparation::active_decision(&state.worker.session, &pending.id)?;
-    let marker = prompt_marker(prompt, &pending.id, &active)?;
-    let (mut started, mut seen, mut phase) = (Instant::now(), Vec::new(), None);
-    loop {
-        if let Err(error) = super::native_receipt::ensure(&state.worker.session) {
-            match super::native_receipt::startup_progress(&mut seen, &error) {
-                None => return Err(error),
-                Some(true) => started = Instant::now(),
-                Some(false) => (),
-            }
-        }
-        let current =
-            Store::read(&state.worker.session)?.ok_or("REVIEW_STATE_MISSING stage=delivery")?;
-        if current.observer.session.is_some()
-            && current
-                .observer
-                .transcript
-                .as_ref()
-                .is_some_and(|p| p.exists())
-        {
-            super::delivery_outcome::begin(
-                &current,
-                marker.trim().strip_prefix("kah review request ").unwrap(),
-                prompt,
-                0,
-            )?;
-            if wait_receipt(&current, &marker, 0)? {
-                return Ok(());
-            }
-            diagnostic(&current, &marker, &screen(&current)?)?;
-            return warm(&current, prompt);
-        }
-        if super::cold_progress::observed(&current, &mut phase) {
-            started = Instant::now();
-        }
-        if started.elapsed() >= Duration::from_secs(15) {
-            diagnostic(
-                &current,
-                "cold launch: native binding absent",
-                &screen(&current)?,
-            )?;
-            return Err("REVIEW_NATIVE_UNBOUND stage=observer_binding: no verified native receipt; request retained without redelivery".into());
-        }
-        runtime::require_active(&state.worker.session)?;
-        std::thread::sleep(Duration::from_millis(100));
-    }
-}
+mod cold;
+pub use cold::{History, cold};
 fn diagnostic(state: &State, marker: &str, screen: &str) -> Result<()> {
     let rows = state
         .observer

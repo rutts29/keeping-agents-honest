@@ -62,9 +62,13 @@ fn cold_progress_child() {
         fs::remove_file(working).unwrap();
     });
     let started = Instant::now();
-    let error = delivery::cold(&state, &format!("kah review request {REQUEST} review"))
-        .unwrap_err()
-        .to_string();
+    let error = delivery::cold(
+        &state,
+        &format!("kah review request {REQUEST} review"),
+        None,
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.starts_with("REVIEW_NATIVE_UNBOUND"), "{error}");
     assert!(
         started.elapsed() >= busy,

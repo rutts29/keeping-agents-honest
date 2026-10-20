@@ -180,6 +180,7 @@ fn deliver_native(home: &Path, state: &State, prompt: &str, existing: bool) -> R
     } else {
         let command = launch::command(home, state, prompt)?;
         require_active(&state.worker.session)?;
+        let history = super::delivery::History::before(state);
         crate::run_pane::invoke_at(
             &[
                 "pane",
@@ -189,7 +190,7 @@ fn deliver_native(home: &Path, state: &State, prompt: &str, existing: bool) -> R
             ],
             Some(socket),
         )?;
-        super::delivery::cold(state, prompt)
+        super::delivery::cold(state, prompt, history)
     };
     if delivered.is_err() {
         startup_notice(state)?;
