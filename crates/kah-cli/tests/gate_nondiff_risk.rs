@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+mod checkpoint_replay;
 use kah_cli::observer_review::{
     gate_approval::{self, followup::*},
     source_store,
@@ -53,20 +55,19 @@ fn fixture() -> (std::path::PathBuf, Request, Report, Value) {
     (root, request, report, assessment)
 }
 #[test]
-fn retained_nondiff_uncertainty_after_one_round_reaches_the_named_risk_question() {
-    let recorded: Value = serde_json::from_str(include_str!(
-        "../../../docs/gates/evidence/phase3-claude/b2/same-sha-terminal/checkpoint-replay.json"
-    ))
-    .unwrap();
+fn nondiff_uncertainty_after_one_round_reaches_the_named_risk_question() {
+    // The tag review leaves this run-action prohibition unclear, and code
+    // alone cannot check it.
+    let tag = checkpoint_replay::tag();
     assert!(
-        recorded["cases"][1]["report"]["result"]["rows"]
+        tag["report"]["result"]["rows"]
             .as_array()
             .unwrap()
             .iter()
             .any(|r| r["requirement"] == "no-push-deploy" && r["status"] == "unclear")
     );
     assert_eq!(
-        recorded["cases"][1]["input"]["rules"]["no-push-deploy"]["literal_check"],
+        tag["input"]["rules"]["no-push-deploy"]["literal_check"],
         false
     );
     let (root, request, report, mut assessment) = fixture();

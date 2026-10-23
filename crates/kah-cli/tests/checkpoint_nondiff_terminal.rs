@@ -1,32 +1,30 @@
-//! Real non-diff unclear rows become a terminal finding, never another checkpoint.
+//! Non-diff unclear rows become a terminal finding, never another checkpoint.
+#[allow(dead_code)]
+mod checkpoint_replay;
 use kah_cli::observer_review::{
     option1, source_store,
     state::{Pending, Purpose, Request, State, Store},
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::fs;
 
 #[test]
-fn retained_nondiff_rows_finish_as_one_terminal_finding() {
+fn nondiff_rows_finish_as_one_terminal_finding() {
     std::env::var_os("XDG_STATE_HOME").expect("run through demos/check-tests.sh");
-    let replay: Value = serde_json::from_str(include_str!(
-        "../../../docs/gates/evidence/phase3-claude/b2/same-sha-terminal/checkpoint-replay.json"
-    ))
-    .unwrap();
     let worker = format!("empty-carry-{}", kah_cli::relay_store::nonce());
     let root = std::env::temp_dir().join(&worker);
     fs::create_dir_all(root.join("outbox")).unwrap();
     let store = Store::open(&worker).unwrap();
     source_store::initialize(&store.directory, &root).unwrap();
     let directory = store.directory.clone();
-    let tag = &replay["cases"][1];
-    let end = &replay["cases"][1];
+    let tag = &checkpoint_replay::tag();
+    let end = tag;
     let request = Request {
         id: end["id"].as_str().unwrap().into(),
         worker: worker.clone(),
         purpose: Purpose::Checkpoint,
         turn: "recorded-end".into(),
-        head: Some(replay["head"].as_str().unwrap().into()),
+        head: Some(checkpoint_replay::HEAD.into()),
         intent: json!({"revision":2}),
         documents: vec![],
         created_ms: 1,
@@ -52,7 +50,7 @@ fn retained_nondiff_rows_finish_as_one_terminal_finding() {
     option1::consume::run(store, state, request).unwrap();
     let saved = Store::read(&worker).unwrap().unwrap();
     assert!(saved.pending.is_none());
-    verify_terminal(&saved, &directory, replay["head"].as_str().unwrap());
+    verify_terminal(&saved, &directory, checkpoint_replay::HEAD);
     fs::remove_dir_all(directory.parent().unwrap()).unwrap();
     fs::remove_dir_all(root).unwrap();
 }

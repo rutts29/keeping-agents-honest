@@ -1,4 +1,7 @@
-//! Real VF-GOOD event control copy; restart is a host process, no agents/Jev.
+//! Tag and run-end wakes wait behind an unfinished same-head gate; restart is
+//! a host process, no agents or Jev.
+#[allow(dead_code)]
+mod checkpoint_replay;
 use kah_cli::observer_review::{
     option1, queue, source_store,
     state::{State, Store},
@@ -6,17 +9,32 @@ use kah_cli::observer_review::{
 use serde_json::{Value, json};
 use std::{fs, path::Path, process::Command};
 
-const REPLAY: &str =
-    include_str!("../../../docs/gates/evidence/phase3-checkpoint-carry/durable-wait-input.json");
+/// A gate on HEAD that is still verifying first, and two wakes for the same
+/// head: a tag and a run end with its own completion key.
+fn wait_input() -> Value {
+    let wake =
+        |trigger: Value, turn: &str| json!({"purpose":"checkpoint","turn":turn,"trigger":trigger});
+    let mut tag = checkpoint_replay::tag_trigger();
+    let mut end = checkpoint_replay::completion_trigger();
+    for trigger in [&mut tag, &mut end] {
+        trigger.as_object_mut().unwrap().remove("queued_at_ms");
+    }
+    json!({"head":checkpoint_replay::HEAD,"revision":2,
+        "gate":checkpoint_replay::gate_request("gate-worker"),
+        "wakes":[{"name":"wake-tag-release-1","wake":wake(tag,"tag-turn")},
+            {"name":"wake-run-end-1","wake":wake(end,"end-turn")}],
+        "original_gate_state":{"head":checkpoint_replay::HEAD,"intent_revision":2,"passed":null,
+            "request":"review-1700000100000-101","state":"verify_first_pending"}})
+}
 
 #[test]
-fn retained_same_sha_events_wait_across_host_handoff_and_restart_then_carry_once() {
+fn same_sha_events_wait_across_host_handoff_and_restart_then_carry_once() {
     std::env::var_os("XDG_STATE_HOME").expect("run through demos/check-tests.sh");
     if let Ok(worker) = std::env::var("KAH_GATE_WAIT_CHILD_WORKER") {
         assert!(queue::claim_batch(&worker).unwrap().is_none());
         return;
     }
-    let input: Value = serde_json::from_str(REPLAY).unwrap();
+    let input = wait_input();
     let worker = format!("durable-wait-{}", kah_cli::relay_store::nonce());
     let directory = prepare(&worker, &input);
     assert!(
@@ -29,10 +47,10 @@ fn retained_same_sha_events_wait_across_host_handoff_and_restart_then_carry_once
             .join("gate-host")
             .join(input["gate"]["id"].as_str().unwrap()),
         "stage.json",
-        &json!({"stage":"failed","reason":"retained GIT_CONTROL_BOUNDARY"}),
+        &json!({"stage":"failed","reason":"GIT_CONTROL_BOUNDARY"}),
     )
     .unwrap();
-    restart(&worker); // A retained host failure cannot turn into a new review.
+    restart(&worker); // A recorded host failure cannot turn into a new review.
     unrelated_commit_still_runs(&worker);
     finish_gate(&worker, &input);
     drain_carried(&worker, &input);
@@ -117,7 +135,7 @@ fn restart(worker: &str) {
         Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "retained_same_sha_events_wait_across_host_handoff_and_restart_then_carry_once",
+                "same_sha_events_wait_across_host_handoff_and_restart_then_carry_once",
                 "--nocapture"
             ])
             .env("KAH_GATE_WAIT_CHILD_WORKER", worker)
