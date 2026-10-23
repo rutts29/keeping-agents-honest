@@ -175,12 +175,17 @@ impl Store {
     }
 }
 
+/// The one contract for an unattended run id: `run-` plus at least one
+/// character, 80 bytes at most, ASCII letters, digits and `-` only.
+pub fn valid_run_id(id: &str) -> bool {
+    id.starts_with("run-")
+        && id.len() > 4
+        && id.len() <= 80
+        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
 fn validate_id(id: &str) -> Result<(), String> {
-    if !id.starts_with("run-")
-        || id.len() <= 4
-        || id.len() > 80
-        || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
-    {
+    if !valid_run_id(id) {
         return Err("RUN_ID stage=run_store: invalid run identifier".into());
     }
     Ok(())

@@ -15,10 +15,7 @@ impl Worktree {
         id: &str,
     ) -> Result<Self, String> {
         validate_commit(expected)?;
-        if !id.starts_with("run-")
-            || id.len() > 80
-            || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
-        {
+        if !crate::store::valid_run_id(id) {
             return Err("RUN_ID stage=worktree".into());
         }
         fs::create_dir(directory).map_err(io_error)?;
