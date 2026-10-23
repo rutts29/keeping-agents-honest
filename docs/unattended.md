@@ -98,7 +98,9 @@ completion can remain unverified after the test command succeeds. Reports
 preserve separate assessment receipts, verification and the resulting state.
 Commit evidence names the paths changed in every delivered commit, so a file
 added in one commit and deleted in a later one still appears to the judge by
-name; file contents are read only from the net diff.
+name. Content evidence includes the net diff and the complete final-version
+text of files changed by it; contents that existed only in intermediate commits
+are not reconstructed.
 Reports name the delivered commit and only attach tests that verified that SHA.
 
 `--budget-tokens N` counts the reported native tokens of the worker session and

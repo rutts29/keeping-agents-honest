@@ -155,9 +155,9 @@ Run options (`RUN_OPTIONS`):
 - `--observer-model MODEL`, `--observer-effort EFFORT`, `--jev-model MODEL`;
   see [unattended work](unattended.md) for the defaults.
 - `--budget-tokens N`, `--time-limit SECONDS` (positive integers).
-- `--domain mine|research|untrusted`: record the run under a more restrictive
-  domain than the project's directory; a less restrictive one is refused
-  (`RUN_DOMAIN_POLICY`).
+- `--domain mine|research|untrusted`: record the run under the same or a more
+  restrictive domain than the project's directory; a less restrictive one is
+  refused (`RUN_DOMAIN_POLICY`).
 - `--parent SESSION`: the dispatching session, normally inferred in a host
   agent pane.
 
