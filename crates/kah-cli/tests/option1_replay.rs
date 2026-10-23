@@ -158,7 +158,8 @@ fn a_known_oversized_body_goes_directly_to_the_observer_after_whole_preparation(
 fn rule_placement_moves_each_rule_into_its_question() {
     let prepared = kah_observer::commit_check::Prepared {
         state: json!({"diff_hunks":{"h1":{"file":"src/export.rs","text":"+fn export() {}\n"}},
-            "checks":{"r1":{"rule":"Never call the network.","hunks":["h1"]}}}),
+            "checks":{"r1":{"rule":"Never call the network.","hunks":["h1"],
+                "permissions":[{"source":"user-1","start":0,"end":5,"quote":"Never"}]}}}),
         questions: serde_json::from_value(json!({"rule.r1":{"type":"noul",
             "instructions":"Does hunk h1 violate `checks.r1.rule`? Answer for this hunk only."}}))
         .unwrap(),
@@ -167,7 +168,8 @@ fn rule_placement_moves_each_rule_into_its_question() {
     let actual: Value = serde_json::from_str(&after.body().unwrap()).unwrap();
     let expected = json!({"model":"jev-1.13.0",
         "state":{"diff_hunks":{"h1":{"file":"src/export.rs","text":"+fn export() {}\n"}},
-            "checks":{"r1":{"hunks":["h1"]}}},
+            "checks":{"r1":{"hunks":["h1"],
+                "permissions":[{"source":"user-1","start":0,"end":5,"quote":"Never"}]}}},
         "questions":{"rule.r1":{"type":"noul",
             "instructions":"Does hunk h1 violate the rule \"Never call the network.\"? Answer for this hunk only."}}});
     assert_eq!(actual, expected);

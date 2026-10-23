@@ -1,17 +1,14 @@
 use kah_core::{
     intent_history::{History, SourceProvider, SourceRole},
     observation::ObservationSnapshot,
-    projection::{ActiveProjection, ProjectionConfig},
     run_store::{RuleSync, RunStore},
     session_bundle::{BundleRecord, NeutralSessionBundle},
 };
 use kah_observer::{
-    engine,
-    inspect_state::InspectSource,
-    review,
+    engine, review,
     session::{Binding, State, Store},
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -54,7 +51,7 @@ fn snapshot(candidates: NeutralSessionBundle) -> ObservationSnapshot {
         action_digest: format!("sha256:{:x}", Sha256::digest(b"[]")),
     }
 }
-fn isolated(probe: &str, retained: Option<&Path>) {
+fn isolated(probe: &str) {
     let root =
         std::env::temp_dir().join(format!("kah-classification-{}-{probe}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
@@ -66,11 +63,6 @@ fn isolated(probe: &str, retained: Option<&Path>) {
         .env("HOME", root.join("home"))
         .env_remove("TYPESAFE_API_KEY")
         .env_remove("JEV_API_KEY");
-    if let Some(retained) = retained {
-        child
-            .arg("--ignored")
-            .env("KAH_CLASSIFICATION_SNAPSHOT", retained);
-    }
     let output = child.output().unwrap();
     assert!(
         output.status.success(),
@@ -84,10 +76,7 @@ fn isolated(probe: &str, retained: Option<&Path>) {
 #[test]
 fn historical_classification_survives_withdrawal_and_new_intake() {
     if std::env::var_os("KAH_CLASSIFICATION_PROBE").is_none() {
-        return isolated(
-            "historical_classification_survives_withdrawal_and_new_intake",
-            None,
-        );
+        return isolated("historical_classification_survives_withdrawal_and_new_intake");
     }
     let (binding, old) = legacy_fixture();
     let base = RunStore::default_state_root().unwrap();
@@ -195,67 +184,74 @@ fn remove_versions(path: &Path) {
 }
 
 #[test]
-#[ignore = "read-only retained rev-39 snapshot supplied by KAH_CLASSIFICATION_SNAPSHOT"]
-fn retained_revision_39_withdrawals_request_rebuild_without_source_rewrite() {
-    let retained = PathBuf::from(std::env::var_os("KAH_CLASSIFICATION_SNAPSHOT").unwrap());
+fn withdrawals_after_a_classifier_change_request_a_rebuild_without_source_rewrite() {
     if std::env::var_os("KAH_CLASSIFICATION_PROBE").is_none() {
         return isolated(
-            "retained_revision_39_withdrawals_request_rebuild_without_source_rewrite",
-            Some(&retained),
+            "withdrawals_after_a_classifier_change_request_a_rebuild_without_source_rewrite",
         );
     }
-    replay(&retained);
-}
-fn replay(retained: &Path) {
+    let root = PathBuf::from(std::env::var_os("KAH_CLASSIFICATION_PROBE").unwrap());
+    let binding = Binding {
+        session: "withdrawal-source".into(),
+        project: root.join("withdrawal-project"),
+        codex_home: root.join("codex"),
+        native: "/nonexistent/no-provider".into(),
+        model: "gpt-6.1-sol".into(),
+        effort: "low".into(),
+        timeout_secs: 1,
+        judge: Default::default(),
+        jev_model: "jev-1.13.0".into(),
+    };
+    fs::create_dir_all(&binding.project).unwrap();
+    // A user goal and two delegate messages the old classifier stored as user authority.
+    let texts = [
+        "steer: Build the CSV export command with tests.",
+        "steer: [kah-builder2] use the existing writer module",
+        "steer: [kah-builder2] add a quoting helper",
+    ];
+    let old = texts
+        .iter()
+        .enumerate()
+        .map(|(n, text)| BundleRecord::new(format!("w{n}"), SourceRole::User, *text).unwrap())
+        .collect::<Vec<_>>();
+    let outcome =
+        engine::synchronize_snapshot(&binding, "before", snapshot(bundle(&binding, old.clone())))
+            .unwrap();
+    assert!(outcome.gap.is_none(), "{:?}", outcome.gap);
     let base = RunStore::default_state_root().unwrap();
-    let mut state: State =
-        serde_json::from_slice(&fs::read(retained.join("session/state.json")).unwrap()).unwrap();
-    state.binding.project = base.join("private-project");
-    state.binding.native = "/nonexistent/no-provider".into();
-    fs::create_dir_all(&state.binding.project).unwrap();
-    let directory = Store::directory(&base, &state.binding.session);
-    {
-        let mut store = Store::open_wait(&base, &state.binding.session).unwrap();
-        store.save(&state).unwrap();
-    }
-    fs::copy(
-        retained.join("session/observations.jsonl"),
-        directory.join("observations.jsonl"),
-    )
-    .unwrap();
-    let inputs = Store::open_wait(&base, &state.binding.session)
+    remove_versions(&Store::directory(&base, &binding.session).join("observations.jsonl"));
+    let state = Store::read(&base, &binding.session).unwrap().unwrap();
+    let run = state.run_id.clone().unwrap();
+    let history = RunStore::open_default(&binding.project, &run)
+        .unwrap()
+        .recover()
+        .unwrap()
+        .history;
+    let inputs = Store::open_wait(&base, &binding.session)
         .unwrap()
         .sources()
         .unwrap();
-    assert_eq!(inputs.len(), 41);
-    let old = bundle(
-        &state.binding,
-        inputs
-            .iter()
-            .map(|i| BundleRecord::new(i.key(), SourceRole::User, &i.text).unwrap())
-            .collect(),
-    );
-    let source = InspectSource::from_bundle(&old).unwrap();
-    let history = retained_history(retained);
-    let projection = ActiveProjection::from_history(&history, ProjectionConfig::default()).unwrap();
-    drop(
-        source
-            .create(&state.binding.project, &history, &projection)
-            .unwrap(),
-    );
-    state.run_id = Some(source.run_id().to_string());
-    {
-        let mut store = Store::open_wait(&base, &state.binding.session).unwrap();
-        store.save(&state).unwrap();
-    }
-    let candidates = current_candidates(&inputs);
-    replay_next(&state, &source, &history, candidates);
+    assert_eq!(inputs.len(), texts.len());
+    // The current classifier sees the two builder messages as delegate context.
+    let candidates = old
+        .iter()
+        .map(|r| {
+            let role = if r.content().contains("[kah-builder2]") {
+                SourceRole::Delegate
+            } else {
+                SourceRole::User
+            };
+            BundleRecord::new(r.id(), role, r.content()).unwrap()
+        })
+        .collect();
+    replay_next(&state, &run, &history, candidates, &inputs[1].id());
 }
 fn replay_next(
     state: &State,
-    source: &InspectSource,
+    run: &str,
     history: &History,
     mut candidates: Vec<BundleRecord>,
+    dismissed: &str,
 ) {
     let base = RunStore::default_state_root().unwrap();
     assert!(
@@ -268,19 +264,7 @@ fn replay_next(
         .gap
         .is_none()
     );
-    let draft: Value = serde_json::from_str(include_str!(
-        "../../../docs/track2/agent-authority-withdrawals-draft.json"
-    ))
-    .unwrap();
-    let ids = draft["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|i| i["id"].as_str().unwrap())
-        .collect::<Vec<_>>();
-    for id in &ids {
-        review::apply(&state.binding.session, "dismiss", id).unwrap();
-    }
+    review::apply(&state.binding.session, "dismiss", dismissed).unwrap();
     candidates.push(
         BundleRecord::new(
             "next-native-message",
@@ -301,24 +285,19 @@ fn replay_next(
     )
     .unwrap();
     assert!(outcome.gap.is_none(), "{:?}", outcome.gap);
-    verify_replay(state, source, history, &ids, usage);
+    verify_replay(state, run, history, dismissed, usage);
 }
-fn verify_replay(
-    state: &State,
-    source: &InspectSource,
-    history: &History,
-    ids: &[&str],
-    usage: u64,
-) {
+fn verify_replay(state: &State, run: &str, history: &History, dismissed: &str, usage: u64) {
     let base = RunStore::default_state_root().unwrap();
-    let recovered = RunStore::open_default(&state.binding.project, source.run_id().as_str())
+    let recovered = RunStore::open_default(&state.binding.project, run)
         .unwrap()
         .recover()
         .unwrap();
-    assert_eq!(&recovered.history.records()[..39], history.records());
+    let prefix = history.records().len();
+    assert_eq!(&recovered.history.records()[..prefix], history.records());
     for (id, item) in history.intents() {
         let after = recovered.history.intent(id.as_str()).unwrap();
-        if ids.contains(&id.as_str()) {
+        if id.as_str() == dismissed {
             assert!(!after.is_active());
         } else {
             assert_eq!(after, item);
@@ -336,44 +315,6 @@ fn verify_replay(
         .unwrap()
         .unwrap();
     assert!(matches!(rebuild, RuleSync::Rebuild(_)));
-    println!(
-        "{}",
-        json!({"revision_before":39,"revision_after":recovered.projection.revision,"withdrawn":ids.len(),"source_rewrite":false,"jev_calls":0,"other_items_unchanged":true,"rebuild_requested":true})
-    );
-}
-
-fn retained_history(retained: &Path) -> History {
-    let mut paths = fs::read_dir(retained.join("run/history"))
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect::<Vec<_>>();
-    paths.sort();
-    let history = History::from_jsonl(
-        &paths
-            .iter()
-            .map(|p| fs::read_to_string(p).unwrap())
-            .collect::<String>(),
-    )
-    .unwrap();
-    assert_eq!(history.records().len(), 39);
-    history
-}
-fn current_candidates(inputs: &[kah_observer::intake::Input]) -> Vec<BundleRecord> {
-    inputs
-        .iter()
-        .map(|i| {
-            BundleRecord::new(
-                i.key(),
-                if kah_core::intent_history::is_kah_delegate_message(&i.text) {
-                    SourceRole::Delegate
-                } else {
-                    SourceRole::User
-                },
-                &i.text,
-            )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
 }
 
 fn verify_classification_receipts(
