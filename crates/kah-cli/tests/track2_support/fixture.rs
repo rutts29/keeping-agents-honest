@@ -305,17 +305,34 @@ fn fixture_base() -> PathBuf {
     kah_core::run_store::ensure_private_directory(&base).unwrap();
     base
 }
+/// The directories from `root` upward that the sandbox account cannot
+/// traverse, up to the first one the operator does not own. Those above it
+/// are shared and never modified; one that blocks traversal fails the setup.
+fn private_ancestors(root: &Path, operator: u32) -> Vec<PathBuf> {
+    let mut owned = true;
+    let mut private = vec![];
+    for path in root.ancestors() {
+        let metadata = fs::metadata(path).unwrap();
+        let traversable = metadata.mode() & 0o001 != 0;
+        owned &= metadata.uid() == operator;
+        if owned && !traversable {
+            private.push(path.to_path_buf());
+        }
+        assert!(
+            owned || traversable,
+            "TRACK2_FIXTURE_ANCESTOR stage=prepare: {} blocks the sandbox account and is not the operator's",
+            path.display()
+        );
+    }
+    private
+}
 fn prepare_home(root: &Path, mode: &str) -> PathBuf {
     // Native Mine runs as the operator; only sandbox fixtures need
     // service-UID traversal.
     if mode != "native5e" {
         let uid = kah_run::access::service_uid().unwrap();
-        let configured = fixture_base().parent().unwrap().to_path_buf();
-        for parent in root
-            .ancestors()
-            .take_while(|path| path.starts_with(&configured))
-        {
-            kah_run::access::traverse(parent, uid).unwrap();
+        for parent in private_ancestors(root, kah_sandbox::current_uid().unwrap()) {
+            kah_run::access::traverse(&parent, uid).unwrap();
         }
     }
     let home = root.join("home");
@@ -390,3 +407,6 @@ fn config_snapshot(root: &Path) -> Value {
 #[cfg(test)]
 #[path = "config_snapshot_tests.rs"]
 mod config_snapshot_tests;
+#[cfg(test)]
+#[path = "fixture_tests.rs"]
+mod fixture_tests;
