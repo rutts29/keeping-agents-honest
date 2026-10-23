@@ -1,45 +1,87 @@
-//! Retained VF13 complete worker history; no model or Jev call.
+//! A completed native reply for an active follow-up round; no model or Jev call.
 use super::*;
+use crate::observer_review::gate_approval::followup::{Binding, Stage, VerificationRound};
 use serde_json::{Value, json};
 use std::fs;
 
+const SESSION: &str = "5e55a1a0-0000-4000-8000-0000000000b2";
+
+/// A worker whose controller state has no tool action digest.
+fn state(project: &std::path::Path) -> session::State {
+    session::State::new(session::Binding {
+        session: SESSION.into(),
+        project: project.into(),
+        codex_home: project.join("codex"),
+        native: "claude".into(),
+        model: "claude-sonnet-5-5".into(),
+        effort: "low".into(),
+        timeout_secs: 45,
+        judge: Default::default(),
+        jev_model: "jev-latest".into(),
+    })
+}
+/// The active builder round, its id derived from its binding.
+fn round() -> VerificationRound {
+    let binding = Binding {
+        worker: SESSION.into(),
+        review: "review-1700000500000-501".into(),
+        head: "6d1c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d21".into(),
+        intent_revision: 2,
+    };
+    VerificationRound {
+        id: binding.id().unwrap(),
+        binding,
+        stage: Stage::Builder,
+        claimed: true,
+        evidence: Some(vec![]),
+        builder: None,
+        checks: None,
+    }
+}
+/// The worker received the round, replied with its receipt and ended the turn.
+fn transcript(receipt: &str, project: &std::path::Path) -> String {
+    let row = |mut row: Value| {
+        row["cwd"] = json!(project);
+        format!("{row}\n")
+    };
+    [
+        row(json!({"type":"user","uuid":"00000000-0000-4000-8000-0000000000c1","sessionId":SESSION,
+            "isSidechain":false,"message":{"role":"user","content":"Run the follow-up checks and reply with the receipt."}})),
+        row(json!({"type":"assistant","uuid":"00000000-0000-4000-8000-0000000000c2","sessionId":SESSION,
+            "isSidechain":false,"message":{"role":"assistant","stop_reason":"end_turn",
+            "content":[{"type":"text","text":format!("Checks ran and passed. Receipt: {receipt}")}]}})),
+        row(json!({"type":"system","subtype":"turn_duration","uuid":"00000000-0000-4000-8000-0000000000c3",
+            "sessionId":SESSION,"isSidechain":false,"durationMs":4000})),
+    ]
+    .concat()
+}
+
 #[test]
-fn retained_idle_completed_reply_rekicks_once_without_a_tool_action_digest() {
+fn idle_completed_reply_rekicks_once_without_a_tool_action_digest() {
     std::env::var_os("XDG_STATE_HOME").expect("isolated check-tests fixture required");
-    let control: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-idle-followup/retained-control.json"
-    ))
-    .unwrap();
-    let state: session::State = serde_json::from_value(control["state"].clone()).unwrap();
-    assert!(state.action_digest.is_none());
-    let store = crate::observer_review::state::Store::open(&state.binding.session).unwrap();
+    let store = crate::observer_review::state::Store::open(SESSION).unwrap();
     let root = store.directory.clone();
+    let state = state(&root.join("project"));
+    assert!(state.action_digest.is_none());
+    let round = round();
     let rounds = root.join("gate-followups");
-    let round = &control["round"];
     crate::unattended_report::save(
         &rounds,
-        &format!("{}.json", round["id"].as_str().unwrap()),
-        round,
+        &format!("{}.json", round.id),
+        &serde_json::to_value(&round).unwrap(),
     )
     .unwrap();
-    crate::unattended_report::save(
-        &rounds.join(round["id"].as_str().unwrap()),
-        "job.json",
-        &json!({"retained_control_only":true}),
-    )
-    .unwrap();
+    crate::unattended_report::save(&rounds.join(&round.id), "job.json", &json!({})).unwrap();
     let path = root.join("worker.jsonl");
     fs::write(
         &path,
-        include_bytes!(
-            "../../../../docs/gates/evidence/phase3-idle-followup/retained-worker.jsonl"
-        ),
+        transcript(&round.builder_receipt(), &root.join("project")),
     )
     .unwrap();
     let mut history = History::Claude {
         path,
-        project: control["project"].as_str().unwrap().into(),
-        session: state.binding.session.clone(),
+        project: root.join("project"),
+        session: SESSION.into(),
     };
     assert!(history.completed().unwrap());
     let mut tracker = Tracker::default();
@@ -78,7 +120,7 @@ fn completion_history(state: &session::State, history: &mut History) {
     let History::Claude { path, session, .. } = history else {
         unreachable!()
     };
-    // Explicit synthetic negative in the test COPY, never the retained source.
+    // A later assistant message changes the native work.
     let changed = json!({"type":"assistant","uuid":"00000000-0000-4000-8000-000000000001",
         "sessionId":session,"isSidechain":false,"test_control":true,
         "message":{"role":"assistant","content":[{"type":"text","text":"Control-only negative: native work changed."}]}});

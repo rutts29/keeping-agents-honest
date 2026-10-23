@@ -457,9 +457,17 @@ fn forged_relay_prefix_is_delegate_even_without_a_valid_receipt() {
 }
 
 fn queue_commit_notice(f: &Fixture) {
-    let mut report: kah_cli::observer_review::untrusted::Report =
-        serde_json::from_str(include_str!("fixtures/untrusted-flag.json")).unwrap();
-    report.record.worker = "session".into();
+    // One flagged commit answer for one user rule.
+    let answer = json!({"request":"r1","question":"rule.r_1","noul":0.91});
+    let report: kah_cli::observer_review::untrusted::Report = serde_json::from_value(json!({
+        "domain":"untrusted","flagged":true,"native_wake_count":0,"status":"jev_flag",
+        "key_map":{"rules":{"r_1":{"full_rule_id":"rule:no-network-calls","rule_origin":"user",
+            "source_ids":["user-1"]}}},
+        "record":{"worker":"session","head":"3f2a1c0b9e8d7f6a5b4c3d2e1f0a9b8c7d6e5f40",
+            "policy":{"line":0.5,"provenance":["test policy"],"adjustment":"none"},
+            "answers":[answer],"maximum":answer,"woke":false,"gaps":[],"native":null,
+            "checkpoints":{}}}))
+    .unwrap();
     let root = Store::directory(&f.home.join("state/kah"), "session").join("review/untrusted");
     let notices = root.join("notices");
     kah_core::run_store::ensure_private_directory(&notices).unwrap();

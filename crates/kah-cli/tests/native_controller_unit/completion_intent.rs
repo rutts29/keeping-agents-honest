@@ -5,8 +5,52 @@ use kah_core::{
     unattended::{CompletionEvidence, RunControl, RunStatus},
 };
 use kah_observer::session::{State, Store};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
+
+const GOAL: &str = "Add a word-count command with tests.";
+
+fn binding(project: PathBuf) -> kah_observer::session::Binding {
+    kah_observer::session::Binding {
+        session: format!("completion-intent-{}", crate::relay_store::nonce()),
+        codex_home: project.join("codex"),
+        project,
+        native: "claude".into(),
+        model: "claude-sonnet-5-5".into(),
+        effort: "low".into(),
+        timeout_secs: 90,
+        judge: Default::default(),
+        jev_model: "jev-latest".into(),
+    }
+}
+/// Revision 2: the user goal and one later user requirement.
+fn history() -> History {
+    use kah_core::intent_history::{
+        Event, GoalRevision, IntentItem, IntentKind, SourceProvider, SourceRef, SourceRole,
+    };
+    let user = |record: &str| {
+        SourceRef::new(
+            SourceProvider::Claude,
+            "session",
+            record,
+            SourceRole::User,
+            format!("sha256:{record}"),
+        )
+    };
+    let mut history = History::new(GoalRevision::new(1, GOAL, vec![user("goal")])).unwrap();
+    history
+        .append(Event::RequirementAdded {
+            item: IntentItem::new(
+                "count-words",
+                IntentKind::Outcome,
+                "Count words separated by any whitespace.",
+                vec![user("count-words")],
+            ),
+            approval: None,
+        })
+        .unwrap();
+    history
+}
 
 struct Fixture {
     base: PathBuf,
@@ -20,19 +64,17 @@ impl Fixture {
             "kah-completion-intent-{}",
             crate::relay_store::nonce()
         ));
-        let mut state: State = serde_json::from_str(include_str!(
-            "../../../../docs/gates/evidence/phase3-claude/b2/completion-intent-replay/session.json"
-        ))
-        .unwrap();
-        state.binding.project = base.join("project");
+        let mut state = State::new(binding(base.join("project")));
+        state.run_id = Some("run-completion".into());
         fs::create_dir_all(&state.binding.project).unwrap();
-        let projection:ActiveProjection=serde_json::from_str(include_str!("../../../../docs/gates/evidence/phase3-claude/b2/completion-intent-replay/projection.json")).unwrap();
-        let proof: Value = serde_json::from_str(include_str!(
-            "../../../../docs/gates/evidence/phase3-claude/b2/completion-intent-replay/report.json"
-        ))
+        let history = history();
+        let projection = ActiveProjection::from_history(
+            &history,
+            kah_core::projection::ProjectionConfig::default(),
+        )
         .unwrap();
+        let proof = json!({"goal":GOAL,"tests":{"commit":"7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a87","success":true}});
         if persist {
-            let history=History::from_jsonl(include_str!("../../../../docs/gates/evidence/phase3-claude/b2/completion-intent-replay/history.jsonl")).unwrap();
             drop(
                 RunStore::create(
                     &base,
@@ -87,7 +129,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn retained_revision_two_with_goal_completes_after_empty_no_gap_sync() {
+fn revision_two_with_goal_completes_after_empty_no_gap_sync() {
     let f = Fixture::new(true);
     let mut control = f.control();
     let gap = resolve(
