@@ -235,5 +235,9 @@ pub fn merge_fresh(
 }
 
 #[cfg(test)]
+#[path = "../../tests/observer_integration/gate_host_concurrency.rs"]
+mod tests;
+
+#[cfg(test)]
 #[path = "../../tests/observer_unit/report_revision.rs"]
 mod revision_tests;
