@@ -6,12 +6,11 @@ pub(crate) fn verifier_digest(
 ) -> Result<String, VerificationError> {
     let mut hasher = Sha256::new();
     hasher.update(b"driftctl.verifier.v1\0");
-    for argument in command {
+    for (index, argument) in command.iter().enumerate() {
         update_os_hash(&mut hasher, argument);
-        let path = Path::new(argument);
-        if !path.is_absolute() || !path.exists() {
+        let Some(path) = input_path(candidate, index, argument) else {
             continue;
-        }
+        };
         let canonical = path
             .canonicalize()
             .map_err(|error| VerificationError::io("canonicalize verifier input", error))?;
@@ -32,6 +31,29 @@ pub(crate) fn verifier_digest(
         }
     }
     Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+/// The file an argument names for the command, which runs in `candidate`:
+/// an absolute path; the program, found as `execvp` finds it; or an existing
+/// file relative to `candidate`. A relative argument naming no file, or only a
+/// directory, is an ordinary argument.
+fn input_path(candidate: &Path, index: usize, argument: &OsString) -> Option<PathBuf> {
+    let path = Path::new(argument);
+    if path.is_absolute() {
+        return path.exists().then(|| path.to_path_buf());
+    }
+    if index == 0 && !argument.as_encoded_bytes().contains(&b'/') {
+        return std::env::split_paths(&std::env::var_os("PATH")?)
+            .map(|directory| candidate.join(directory).join(path))
+            .find(|program| program.is_file());
+    }
+    let relative = candidate.join(path);
+    let named = if index == 0 {
+        relative.exists()
+    } else {
+        relative.is_file()
+    };
+    named.then_some(relative)
 }
 
 pub(crate) fn candidate_digest(candidate: &Path) -> Result<String, VerificationError> {

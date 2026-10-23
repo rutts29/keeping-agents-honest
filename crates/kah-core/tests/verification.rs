@@ -160,3 +160,51 @@ fn invalid_requirement_has_a_stable_reason_and_stage() {
             .starts_with("VERIFICATION_REQUIREMENT stage=verification:")
     );
 }
+
+#[test]
+fn relative_verifier_paths_follow_the_same_boundary_as_absolute_ones() {
+    // Relative arguments were neither checked nor hashed, so a candidate's own
+    // `./scripts/verify.sh` (or `sh scripts/verify.sh`) counted as the trusted
+    // external check.
+    let root = temporary_directory("relative");
+    let candidate = candidate(&root);
+    let marker = root.join("ran");
+    fs::create_dir(candidate.join("scripts")).unwrap();
+    script(
+        &candidate,
+        "scripts/verify.sh",
+        &format!("touch '{}'", marker.display()),
+    );
+    let request = |command: &[&str]| {
+        VerificationRequest::new(
+            &candidate,
+            "intent-relative",
+            command.iter().map(|s| (*s).into()),
+            root.join("artifacts"),
+        )
+        .unwrap()
+    };
+    for command in [
+        vec!["./scripts/verify.sh"],
+        vec!["scripts/verify.sh"],
+        vec!["/bin/sh", "scripts/verify.sh"],
+        vec!["/bin/sh", "./scripts/verify.sh"],
+    ] {
+        let error = verify(&request(&command)).unwrap_err().to_string();
+        assert!(
+            error.contains("verifier inputs must remain outside the candidate"),
+            "{command:?}: {error}"
+        );
+        assert!(!marker.exists(), "{command:?} ran");
+    }
+    fs::create_dir(root.join("trusted")).unwrap();
+    script(&root, "trusted/check.sh", "exit 0");
+    let passed = verify(&request(&["../trusted/check.sh"])).unwrap();
+    assert_eq!(passed.status, VerificationStatus::Passed);
+    script(&root, "trusted/mutate.sh", "printf '# changed' >> \"$0\"");
+    let changed = verify(&request(&["/bin/sh", "../trusted/mutate.sh"])).unwrap();
+    assert_eq!(changed.status, VerificationStatus::ProtectedInputChanged);
+    let plain = verify(&request(&["/bin/sh", "-c", "exit 0"])).unwrap();
+    assert_eq!(plain.status, VerificationStatus::Passed);
+    fs::remove_dir_all(root).unwrap();
+}
