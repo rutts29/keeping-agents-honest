@@ -131,8 +131,6 @@ pub fn verify(request: &VerificationRequest) -> Result<VerificationResult, Verif
         .output()
         .map_err(|error| VerificationError::io("execute verifier", error))?;
     let elapsed_ms = started.elapsed().as_millis();
-    let verifier_after = verifier_digest(&request.candidate, &request.command)?;
-    let candidate_after = candidate_digest(&request.candidate)?;
     let stdout_digest = digest_bytes(&output.stdout);
     let stderr_digest = digest_bytes(&output.stderr);
     let command_digest = command_digest(&request.command);
@@ -148,6 +146,9 @@ pub fn verify(request: &VerificationRequest) -> Result<VerificationResult, Verif
         &output.stdout,
         &output.stderr,
     )?;
+    // The output is kept before any fallible digest of the candidate afterwards.
+    let verifier_after = verifier_digest(&request.candidate, &request.command)?;
+    let candidate_after = candidate_digest(&request.candidate)?;
     let status = if verifier_before != verifier_after {
         VerificationStatus::ProtectedInputChanged
     } else if candidate_before != candidate_after {
