@@ -93,30 +93,44 @@ pub(super) fn publish_after_check(
 }
 
 /// Rename that fails with `AlreadyExists` instead of replacing an existing
-/// entry, atomically (renameat2 with RENAME_NOREPLACE). Only a filesystem
-/// without that flag falls back to a check followed by a plain rename.
+/// entry, atomically (renameat2 with RENAME_NOREPLACE). There is no fallback:
+/// a check followed by a plain rename leaves a window in which another
+/// process's entry would be replaced, so a system without the flag fails with
+/// `ErrorKind::Unsupported`.
 #[cfg(target_os = "linux")]
 fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
     use rustix::fs::{CWD, RenameFlags, renameat_with};
+
+    rename_no_replace_via(from, to, |from, to| {
+        renameat_with(CWD, from, CWD, to, RenameFlags::NOREPLACE)
+    })
+}
+
+/// Map the outcome of the atomic rename. `EINVAL` and `ENOSYS` mean the
+/// kernel or filesystem lacks RENAME_NOREPLACE.
+#[cfg(target_os = "linux")]
+pub(super) fn rename_no_replace_via(
+    from: &Path,
+    to: &Path,
+    atomic: impl FnOnce(&Path, &Path) -> Result<(), rustix::io::Errno>,
+) -> io::Result<()> {
     use rustix::io::Errno;
 
-    match renameat_with(CWD, from, CWD, to, RenameFlags::NOREPLACE) {
-        Ok(()) => Ok(()),
-        Err(Errno::INVAL | Errno::NOSYS) => plain_rename_if_absent(from, to),
-        Err(error) => Err(error.into()),
-    }
+    atomic(from, to).map_err(|errno| match errno {
+        Errno::INVAL | Errno::NOSYS => io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this filesystem does not support an atomic no-replace rename",
+        ),
+        other => other.into(),
+    })
 }
 
 #[cfg(not(target_os = "linux"))]
-fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
-    plain_rename_if_absent(from, to)
-}
-
-fn plain_rename_if_absent(from: &Path, to: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(to).is_ok() {
-        return Err(io::ErrorKind::AlreadyExists.into());
-    }
-    fs::rename(from, to)
+fn rename_no_replace(_from: &Path, _to: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "an atomic no-replace rename is only implemented on Linux",
+    ))
 }
 
 pub(super) fn verify_run_directory(path: &Path) -> Result<(), RunStoreError> {

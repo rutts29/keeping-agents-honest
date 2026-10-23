@@ -10,10 +10,10 @@ source and licensing information.
 `rustix` gives `kah-core` a safe wrapper for `renameat2` with `RENAME_NOREPLACE`.
 A new run is built in a private sibling directory and published under its run ID
 by one rename that cannot replace an existing entry, which a plain `rename` or a
-check followed by a rename cannot guarantee. Only if the filesystem rejects the
-flag does it fall back to checking the name and then renaming, which closes no
-race window. The `kah-core` manifest pins `rustix` to an exact version with the
-`fs` and `std` features. `Cargo.lock` adds `rustix` and its three transitive
+check followed by a rename cannot guarantee. There is no fallback: if the kernel
+or filesystem lacks the flag, creating a run fails with an error that says so,
+and nothing is published. Only Linux is implemented. The `kah-core` manifest pins
+`rustix` to an exact version with the `fs` and `std` features. `Cargo.lock` adds `rustix` and its three transitive
 crates, `bitflags`, `errno` and `linux-raw-sys`. `rustix` and `linux-raw-sys` are
 licensed `Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT`; `bitflags` and
 `errno` are `MIT OR Apache-2.0`. The upstream

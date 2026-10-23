@@ -55,3 +55,19 @@ fn a_symlink_created_after_the_check_is_not_replaced() {
     assert!(staging.join("projection.json").is_file());
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_filesystem_without_the_flag_fails_closed_instead_of_renaming_anyway() {
+    use rustix::io::Errno;
+    for errno in [Errno::INVAL, Errno::NOSYS] {
+        let root = root(&format!("unsupported-{}", errno.raw_os_error()));
+        let (staging, path) = staged_run(&root);
+        let error = rename_no_replace_via(&staging, &path, |_, _| Err(errno))
+            .expect_err("no fallback to a plain rename");
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert!(!path.exists(), "nothing was published");
+        assert!(staging.join("projection.json").is_file(), "built run kept");
+        fs::remove_dir_all(root).unwrap();
+    }
+}
