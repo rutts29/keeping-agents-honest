@@ -3,6 +3,7 @@ use super::*;
 impl RunStore {
     /// Append one validated event to the current unrotated JSONL delta.
     pub fn append_pending(&self, record: EventRecord) -> Result<(), RunStoreError> {
+        self.finish_interrupted_rotation()?;
         let recovered = self.recover_projection_state()?;
         let mut records = recovered.history.records().to_vec();
         records.push(record.clone());
@@ -53,15 +54,51 @@ impl RunStore {
         self.write_projection(projection)?;
 
         if !pending.is_empty() {
-            let pending_path = self.pending_path();
-            let segment = self.history_path().join(segment_name(&pending)?);
-            fs::rename(&pending_path, &segment)
-                .map_err(|error| io_error("rotate pending delta", &pending_path, error))?;
-            sync_directory(&self.history_path())?;
-            write_new_file(&pending_path, "", "open pending delta")?;
-            sync_directory(&self.path)?;
+            self.rotate_pending(&pending)?;
         }
         Ok(())
+    }
+
+    /// Move the pending delta into its never-overwritten history segment and
+    /// start a fresh private pending file.
+    fn rotate_pending(&self, pending: &[EventRecord]) -> Result<(), RunStoreError> {
+        let pending_path = self.pending_path();
+        let segment = self.history_path().join(segment_name(pending)?);
+        fs::rename(&pending_path, &segment)
+            .map_err(|error| io_error("rotate pending delta", &pending_path, error))?;
+        sync_directory(&self.history_path())?;
+        write_new_file(&pending_path, "", "open pending delta")?;
+        sync_directory(&self.path)
+    }
+
+    /// A crash after the projection was installed but before its pending delta
+    /// was rotated leaves a state that recovery accepts. Finish the rotation
+    /// before anything is appended, or the next append would leave a projection
+    /// that matches neither the accepted nor the current history.
+    fn finish_interrupted_rotation(&self) -> Result<(), RunStoreError> {
+        self.repair_pending_tail()?;
+        let pending = self.read_pending()?;
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let accepted = History::replay(self.read_history_segments()?)?;
+        let projection = self.read_projection()?;
+        let budget = projection.overflow.budget;
+        let mut before = project(&accepted, budget)?;
+        before.generated_by = projection.generated_by.clone();
+        let mut records = accepted.records().to_vec();
+        records.extend(pending.iter().cloned());
+        let mut after = project(&History::replay(records)?, budget)?;
+        after.generated_by = projection.generated_by.clone();
+        if projection == before || projection != after {
+            return Ok(());
+        }
+        let segment = self.history_path().join(segment_name(&pending)?);
+        ensure_regular_or_missing(&segment)?;
+        if segment.exists() {
+            return Err(RunStoreError::ImmutableHistorySegment { path: segment });
+        }
+        self.rotate_pending(&pending)
     }
 
     /// Commit a projection, then atomically advance the private source cursor.

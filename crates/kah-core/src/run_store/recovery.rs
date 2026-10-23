@@ -18,12 +18,7 @@ impl RunStore {
         all_records.extend(pending_delta.iter().cloned());
         let history = History::replay(all_records)?;
 
-        let projection_path = self.projection_path();
-        ensure_private_regular(&projection_path)?;
-        let contents = fs::read_to_string(&projection_path)
-            .map_err(|error| io_error("read projection", &projection_path, error))?;
-        let projection: ActiveProjection = serde_json::from_str(&contents)
-            .map_err(|error| RunStoreError::Serialization(error.to_string()))?;
+        let projection = self.read_projection()?;
 
         let budget = projection.overflow.budget;
         let mut accepted_projection = project(&accepted_history, budget)?;
@@ -39,6 +34,15 @@ impl RunStore {
             pending_delta,
             source_cursor: None,
         })
+    }
+
+    pub(super) fn read_projection(&self) -> Result<ActiveProjection, RunStoreError> {
+        let projection_path = self.projection_path();
+        ensure_private_regular(&projection_path)?;
+        let contents = fs::read_to_string(&projection_path)
+            .map_err(|error| io_error("read projection", &projection_path, error))?;
+        serde_json::from_str(&contents)
+            .map_err(|error| RunStoreError::Serialization(error.to_string()))
     }
 
     pub(super) fn read_history_segments(&self) -> Result<Vec<EventRecord>, RunStoreError> {

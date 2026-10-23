@@ -73,6 +73,42 @@ fn a_malformed_terminated_record_still_fails_closed() {
 }
 
 #[test]
+fn a_projection_committed_before_its_rotation_survives_the_next_append() {
+    let (root, repository, store, mut history) = create_store("rotation-then-append");
+    let first = pending_record(&history, "i-1");
+    history.append(first.event.clone()).expect("extend history");
+    store.append_pending(first.clone()).expect("append first");
+    fs::write(
+        store.path().join("projection.json"),
+        serde_json::to_vec(&projection(&history)).expect("serialize projection"),
+    )
+    .expect("simulate projection replaced before rotation");
+    drop(store);
+
+    let store = RunStore::open(&root, &repository, "run_01").expect("reopen interrupted run");
+    let second = pending_record(&history, "i-2");
+    store
+        .append_pending(second.clone())
+        .expect("append after crash");
+    drop(store);
+
+    let store = RunStore::open(&root, &repository, "run_01").expect("reopen after append");
+    let recovered = store.recover().expect("recover after append");
+    assert_eq!(recovered.pending_delta, vec![second.clone()]);
+    history.append(second.event).expect("extend history again");
+    store
+        .commit_projection(&projection(&history))
+        .expect("commit second projection");
+    drop(store);
+
+    let store = RunStore::open(&root, &repository, "run_01").expect("reopen after commit");
+    let recovered = store.recover().expect("recover after commit");
+    assert!(recovered.pending_delta.is_empty());
+    assert_eq!(recovered.history.records().len(), 3);
+    fs::remove_dir_all(root).expect("remove isolated test directory");
+}
+
+#[test]
 fn a_recreated_pending_file_is_private() {
     let (root, repository, store, history) = create_store("pending-mode");
     fs::remove_file(store.path().join("pending.jsonl")).expect("model the crash after rotation");
