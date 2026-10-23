@@ -43,7 +43,7 @@ fn journey(domain: &str) {
         include_str!("native_extensions_support/server.js"),
     )
     .unwrap();
-    overlay::write_settings(&f.overlay,json!({"mcp_servers":{"fixture":{"command":"/usr/bin/node","args":[f.project.join("fixture-server.js"),f.canary],"cwd":f.project,"environment_id":"kah-mcp-online"}}})).unwrap();
+    overlay::write_settings(&f.overlay,json!({"mcp_servers":{"fixture":{"command":"/usr/bin/node","args":[f.project.join("fixture-server.js"),f.canary,home.join(".codex/auth.json")],"cwd":f.project,"environment_id":"kah-mcp-online"}}})).unwrap();
     let skill = home.join(".agents/skills/ponytail/SKILL.md");
     let task = format!(
         "steer: Disposable full-setup journey. Read the installed ponytail skill at {} and apply its minimal-change guidance. Invoke fixture MCP probe once (native discovery allowed). Use native apply_patch to write parent.txt with PARENT_OK. Spawn exactly one native subagent for this authorized test only: have it read the same global skill, run native exec_command `test ! -e {} && echo CHILD_HOST_HIDDEN`, and use native apply_patch to write child.txt with CHILD_OK. Wait for that child, report its result, and stop. No other subagents, installs, commits or permission workarounds.",

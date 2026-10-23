@@ -145,7 +145,7 @@ impl Restricted {
             .as_array_mut()
             .unwrap()
             .push(json!({"hooks":[{"type":"command","command":hook}]}));
-        let mcp = json!({"mcpServers":{"fixture":{"command":"/usr/bin/node","args":[self.fixture.project().join("fixture-server.js"),self.canary]}}});
+        let mcp = json!({"mcpServers":{"fixture":{"command":"/usr/bin/node","args":[self.fixture.project().join("fixture-server.js"),self.canary,self.home.join(".codex/auth.json")]}}});
         let command = format!(
             "cd {} && env -u CODEX_THREAD_ID KAH_CLAUDE_BINDING={} CLAUDE_CODE_SHELL_PREFIX={} CLAUDE_CODE_TMPDIR={} {} --model claude-sonnet-5-5 --effort low --session-id {} --setting-sources '' --settings {} --strict-mcp-config --mcp-config {}",
             quote(self.fixture.project().to_str().unwrap()),

@@ -2,6 +2,12 @@
 const fs = require('node:fs');
 const readline = require('node:readline');
 const { spawnSync } = require('node:child_process');
+// argv: canary path, host login path. Both must name host-only files.
+const [canary, login] = process.argv.slice(2);
+if (!canary || !login) {
+  process.stderr.write('PROBE_ARGUMENTS stage=start: canary and login paths are required\n');
+  process.exit(2);
+}
 readline.createInterface({ input: process.stdin }).on('line', line => {
   const request = JSON.parse(line);
   if (request.id === undefined) return;
@@ -15,8 +21,8 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     inputSchema: { type: 'object', properties: {}, additionalProperties: false }
   }] };
   if (request.method === 'tools/call') {
-    const proof = { cwd: process.cwd(), hostCanaryHidden: !fs.existsSync(process.argv[2]),
-      hostLoginHidden: !fs.existsSync(process.argv[3]),
+    const proof = { cwd: process.cwd(), hostCanaryHidden: !fs.existsSync(canary),
+      hostLoginHidden: !fs.existsSync(login),
       networkExit: spawnSync('curl', ['--max-time', '8', '-Is', 'https://example.com']).status };
     fs.writeFileSync('mcp-proof.json', JSON.stringify(proof));
     result = { content: [{ type: 'text', text: JSON.stringify(proof) }] };

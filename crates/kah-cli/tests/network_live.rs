@@ -153,7 +153,7 @@ fn online_mcp(home: &Path, launch: &Launch, f: &fixture::Fixture) {
         &[(id, &offline.args), ("mcp-online", &online.args)],
     )
     .unwrap();
-    overlay::write_settings(&f.overlay,json!({"mcp_servers":{"fixture":{"command":"/usr/bin/node","args":[f.project.join("fixture-server.js"),f.canary],"cwd":f.project,"environment_id":"mcp-online"}}})).unwrap();
+    overlay::write_settings(&f.overlay,json!({"mcp_servers":{"fixture":{"command":"/usr/bin/node","args":[f.project.join("fixture-server.js"),f.canary,home.join(".codex/auth.json")],"cwd":f.project,"environment_id":"mcp-online"}}})).unwrap();
 }
 fn outputs(turn: &Value) -> String {
     turn["items"]

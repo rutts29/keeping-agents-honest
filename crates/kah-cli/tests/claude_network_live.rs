@@ -22,7 +22,7 @@ fn claude_search_and_mcp_with_offline_bash() {
         include_str!("native_extensions_support/server.js"),
     )
     .unwrap();
-    let mcp = fixture_mcp(&f, &home);
+    let (mcp, canary) = fixture_mcp(&f, &home);
     let mut terminal = f.start_with(
         false,
         "claude-sonnet-5-5",
@@ -62,8 +62,10 @@ fn claude_search_and_mcp_with_offline_bash() {
     let proof: Value =
         serde_json::from_slice(&fs::read(f.project().join("mcp-proof.json")).unwrap()).unwrap();
     assert_eq!(proof["networkExit"], 0);
+    assert_eq!(proof["hostCanaryHidden"], true);
     assert_eq!(proof["hostLoginHidden"], true);
     drop(terminal);
+    fs::remove_file(&canary).unwrap();
     assert!(
         before == claude_support::settings::snapshot(&home),
         "global settings changed"
@@ -73,12 +75,16 @@ fn claude_search_and_mcp_with_offline_bash() {
     fs::write(evidence.join("claude-network.json"),serde_json::to_vec_pretty(&json!({"version":String::from_utf8(version.stdout).unwrap().trim(),"fixtureModel":"claude-sonnet-5-5","fixtureEffort":"low","domain":"untrusted-offline","hostedSearch":true,"bashOffline":true,"onlineMcp":proof,"globalSettingsUnchanged":true,"passed":true})).unwrap()).unwrap();
 }
 
-fn fixture_mcp(f: &Fixture, home: &std::path::Path) -> String {
+/// The fixture MCP configuration and a host-only canary the probe must not see.
+fn fixture_mcp(f: &Fixture, home: &std::path::Path) -> (String, PathBuf) {
+    let canary = home.join(format!(".cache/kah-claude-network-{}-canary", f.id));
+    fs::create_dir_all(canary.parent().unwrap()).unwrap();
+    fs::write(&canary, "untouched").unwrap();
     let fixture_config = f.project().join("fixture-global");
     fs::create_dir(&fixture_config).unwrap();
-    let original = json!({"mcpServers":{"fixture":{"command":"/usr/bin/node","args":[f.project().join("fixture-server.js"),home.join(".codex/auth.json")]}}});
+    let original = json!({"mcpServers":{"fixture":{"command":"/usr/bin/node","args":[f.project().join("fixture-server.js"),&canary,home.join(".codex/auth.json")]}}});
     fs::write(fixture_config.join(".claude.json"), original.to_string()).unwrap();
     let (servers, _) =
         kah_cli::claude_setup::mcp_configuration(&fixture_config, &Default::default()).unwrap();
-    json!({"mcpServers":servers}).to_string()
+    (json!({"mcpServers":servers}).to_string(), canary)
 }
