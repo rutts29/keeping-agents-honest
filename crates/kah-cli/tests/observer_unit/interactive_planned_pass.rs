@@ -1,18 +1,16 @@
 //! Joined GOOD path: synthetic successful check/coverage, no agent or Jev.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 
 #[test]
 fn successful_v12_plan_replaces_empty_inventory_and_passes_without_a_question() {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-verifier-replay/retained-input.json"
-    ))
-    .unwrap();
+    let value = synthetic::verifier("worker-gate");
     let mut request: Request = serde_json::from_value(value["request"].clone()).unwrap();
     let report: Report = serde_json::from_value(value["report"].clone()).unwrap();
-    let mut proof: DeliveryProof = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-verifier-replay/retained-controller-proof.json"
-    ))
-    .unwrap();
+    let mut proof: DeliveryProof = serde_json::from_value(value["proof"].clone()).unwrap();
     proof.tests.clear();
     proof.recorded_checks_absent = true;
     request.trigger["interactive_gate_verification"] = json!({"proof":proof});
@@ -59,7 +57,7 @@ fn planned_result(
         .unwrap();
     let kah_observer::verification_contract::Method::TargetedCheck { command } = &plan.method
     else {
-        panic!("retained plan changed")
+        panic!("the fixture plan changed")
     };
     assert!(report.decision_units.as_ref().unwrap().version() >= 12);
     serde_json::from_value(json!({"binding":Binding::from_request(request).unwrap(),

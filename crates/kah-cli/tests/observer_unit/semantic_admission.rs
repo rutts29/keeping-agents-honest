@@ -1,31 +1,28 @@
-//! Frozen VF16: status/scope uncertainty cannot become an unadmitted user risk.
+//! Status/scope uncertainty cannot become an unadmitted user risk.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 use crate::observer_review::source_store;
 use std::fs;
 
-fn retained() -> (Request, Report, Value, followup::VerificationRound) {
-    let input: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-semantic-admission/retained-input.json"
-    ))
-    .unwrap();
-    let evaluation: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-semantic-admission/retained-evaluation.json"
-    ))
-    .unwrap();
+fn fixture() -> (Request, Report, Value, followup::VerificationRound) {
+    fixture_at(synthetic::HEAD)
+}
+fn fixture_at(head: &str) -> (Request, Report, Value, followup::VerificationRound) {
+    let value = synthetic::admission("worker-gate", head);
     (
-        serde_json::from_value(input["request"].clone()).unwrap(),
-        serde_json::from_value(input["report"].clone()).unwrap(),
-        evaluation["assessment"].clone(),
-        serde_json::from_str(include_str!(
-            "../../../../docs/gates/evidence/phase3-semantic-admission/retained-round.json"
-        ))
-        .unwrap(),
+        serde_json::from_value(value["request"].clone()).unwrap(),
+        serde_json::from_value(value["report"].clone()).unwrap(),
+        value["assessment"].clone(),
+        serde_json::from_value(value["round"].clone()).unwrap(),
     )
 }
 
 #[test]
-fn exact_vf16_semantic_status_items_without_admission_ask_no_user_question() {
-    let (mut request, report, assessment, round) = retained();
+fn semantic_status_items_without_admission_ask_no_user_question() {
+    let (mut request, report, assessment, round) = fixture();
     request
         .trigger
         .as_object_mut()
@@ -60,7 +57,7 @@ fn exact_vf16_semantic_status_items_without_admission_ask_no_user_question() {
 
 #[test]
 fn admitted_semantic_risk_asks_exactly_one_named_question() {
-    let (mut request, report, mut assessment, round) = retained();
+    let (mut request, report, mut assessment, round) = fixture();
     request
         .trigger
         .as_object_mut()
@@ -121,10 +118,7 @@ fn prepared(request: &Request, round: &followup::VerificationRound) -> std::path
         &json!(round),
     )
     .unwrap();
-    let parent: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-semantic-admission/queue-parent.json"
-    ))
-    .unwrap();
+    let parent = synthetic::queue_parent();
     source_store::save(&root, "queue-order.json", &parent["order"]).unwrap();
     source_store::save(&root, "queue-metadata.json", &parent["metadata"]).unwrap();
     root
@@ -132,14 +126,17 @@ fn prepared(request: &Request, round: &followup::VerificationRound) -> std::path
 
 #[test]
 fn non_admitted_case_stages_one_same_observer_resolution_then_cited_satisfaction() {
-    let (mut request, report, mut assessment, round) = retained();
+    let base = std::env::temp_dir().join(format!("semantic-code-{}", crate::relay_store::nonce()));
+    let origin = base.join("origin");
+    let head = synthetic::repository(&origin, &[&synthetic::project_files()], None);
+    let (mut request, report, mut assessment, round) = fixture_at(&head);
     request
         .trigger
         .as_object_mut()
         .unwrap()
         .remove("reconsideration");
     let root = prepared(&request, &round);
-    let next = stage_context(&root, &request, &report, &mut assessment);
+    let next = stage_context(&root, &origin, &request, &report, &mut assessment);
     verify_context(&next, &request);
     // Explicit $0 post-resolution conclusion; native selection quality is live proof.
     assessment["needs_thinker"] = json!([]);
@@ -164,19 +161,17 @@ fn non_admitted_case_stages_one_same_observer_resolution_then_cited_satisfaction
         .is_none()
     );
     fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(base).unwrap();
 }
 
-fn code_fixture(root: &Path, head: &str) -> kah_run::worktree::Worktree {
+fn code_fixture(root: &Path, origin: &Path, head: &str) -> kah_run::worktree::Worktree {
     let source = root.join("source");
     kah_core::run_store::ensure_save_directory(&source).unwrap();
     let bundle = root.join("source.bundle");
-    fs::write(
-        &bundle,
-        include_bytes!(
-            "../../../../docs/gates/evidence/phase3-semantic-admission/retained-source.bundle"
-        ),
-    )
-    .unwrap();
+    synthetic::git(
+        origin,
+        &["bundle", "create", bundle.to_str().unwrap(), "HEAD"],
+    );
     kah_run::worktree::Worktree::from_bundle(
         &source,
         &root.join("candidate"),
@@ -189,7 +184,7 @@ fn code_fixture(root: &Path, head: &str) -> kah_run::worktree::Worktree {
 
 #[test]
 fn unsupported_semantic_claim_produces_one_finding_and_never_passes() {
-    let (mut request, report, mut assessment, round) = retained();
+    let (mut request, report, mut assessment, round) = fixture();
     request
         .trigger
         .as_object_mut()
@@ -236,11 +231,12 @@ fn unsupported_semantic_claim_produces_one_finding_and_never_passes() {
 
 fn stage_context(
     root: &Path,
+    origin: &Path,
     request: &Request,
     report: &Report,
     assessment: &mut Value,
 ) -> Request {
-    let tree = code_fixture(root, request.head.as_deref().unwrap());
+    let tree = code_fixture(root, origin, request.head.as_deref().unwrap());
     let attach = |snapshot: &mut Request| {
         semantic_resolution::append_code(
             &tree,
@@ -249,8 +245,7 @@ fn stage_context(
             &root.join("workspace"),
             snapshot,
         )?;
-        snapshot.trigger["semantic_resolution"]["observer_session"] =
-            "00000000-0000-4000-8000-100000000009".into();
+        snapshot.trigger["semantic_resolution"]["observer_session"] = "observer-session-1".into();
         Ok(())
     };
     assert!(semantic_resolution::guard_with(root, request, report, assessment, attach).unwrap());
@@ -276,7 +271,7 @@ fn verify_context(next: &Request, request: &Request) {
     assert_eq!(next.head, request.head);
     assert_eq!(
         next.trigger["semantic_resolution"]["observer_session"],
-        "00000000-0000-4000-8000-100000000009"
+        "observer-session-1"
     );
     for id in [
         "completion-due",

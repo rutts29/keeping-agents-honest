@@ -1,14 +1,19 @@
-//! Retained VF16: ControllerReceipt must enter the full cited v12 validator.
+//! ControllerReceipt must enter the full cited v12 validator.
 use super::*;
 
 #[path = "v12_controller_receipt_routes.rs"]
 mod routes;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 
 fn fixture() -> (Request, Report, Value) {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-controller-coverage/retained-input.json"
-    ))
-    .unwrap();
+    let root =
+        std::env::temp_dir().join(format!("controller-head-{}", crate::relay_store::nonce()));
+    let head = routes::repository(&root);
+    std::fs::remove_dir_all(root).unwrap();
+    let value = synthetic::controller("worker-gate", &head);
     let request: Request = serde_json::from_value(value["request"].clone()).unwrap();
     let mut report: Report = serde_json::from_value(value["report"].clone()).unwrap();
     report
@@ -21,7 +26,7 @@ fn fixture() -> (Request, Report, Value) {
 }
 
 #[test]
-fn retained_controller_receipt_enters_full_requirement_coverage() {
+fn a_controller_receipt_enters_full_requirement_coverage() {
     let (request, report, mut input) = fixture();
     let mut questions = Questions::new();
     prepare(&request, &report, &mut input, &mut questions).unwrap();

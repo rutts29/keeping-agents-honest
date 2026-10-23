@@ -63,24 +63,21 @@ fn facts(root: &Path, case: &str, request: &mut Request, report: &mut Report) {
 }
 
 fn judgment() -> Judgment {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-controller-coverage/retained-evaluation.json"
-    ))
-    .unwrap();
-    let mut result: Judgment = serde_json::from_value(value["judgment"].clone()).unwrap();
-    result.backend = "jev".into();
-    result.model = "$0-recorded-transport-stub".into();
-    result.metrics = Default::default();
-    // Synthetic coverage answer exercises routing; the new body is not an old answered receipt.
+    // Synthetic coverage answer exercises routing; it is no model-quality claim.
     let answer = kah_observer::judge::Answer::Choice {
         choice: "supported".into(),
         confidence: 1.0,
         probabilities: [("supported".into(), 1.0)].into_iter().collect(),
     };
-    result
-        .answers
-        .insert("coverage_decision.req-commit-tag".into(), answer);
-    result
+    Judgment {
+        backend: "jev".into(),
+        model: "recorded-transport-stub".into(),
+        answers: [("coverage_decision.req-commit-tag".into(), answer)]
+            .into_iter()
+            .collect(),
+        metrics: Default::default(),
+        fallback_reason: None,
+    }
 }
 
 fn round(
@@ -88,9 +85,9 @@ fn round(
     request: &Request,
     reason: &str,
 ) -> super::super::followup::VerificationRound {
-    let mut round: super::super::followup::VerificationRound = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-controller-coverage/retained-round.json"
-    ))
+    let mut round: super::super::followup::VerificationRound = serde_json::from_value(
+        super::synthetic::completed_round(&json!(request), &["req-commit-tag"]),
+    )
     .unwrap();
     round.checks.as_mut().unwrap().risks[0].unverified = format!("req-commit-tag: {reason}");
     source_store::save(
@@ -117,7 +114,7 @@ fn round(
 fn route(root: &Path, mut request: Request, report: &Report, covered: bool, reason: &str) {
     let mut executable = report.clone();
     // Explicit $0 executable-route case under obligation-owned routing. The
-    // retained original non-executable reporting classification is unchanged.
+    // original non-executable reporting classification is unchanged.
     executable
         .decision_units
         .as_mut()
@@ -196,41 +193,21 @@ fn good_controller_facts_ask_nothing_and_all_three_negatives_keep_named_risks() 
     }
 }
 
+/// Two commits; the tag targets HEAD. Fixed content gives fixed commit ids.
+pub(super) fn repository(path: &Path) -> String {
+    super::synthetic::tagged_repository(path)
+}
+
 fn git_fixture(root: &Path, case: &str) -> PathBuf {
-    let bundle = root.join("source.bundle");
-    fs::write(
-        &bundle,
-        include_bytes!(
-            "../../../../docs/gates/evidence/phase3-controller-coverage/retained-source.bundle"
-        ),
-    )
-    .unwrap();
-    git(root, &["init", "--bare", "--template=", "repo.git"]);
-    let repo = root.join("repo.git");
-    git(
-        &repo,
-        &[
-            "-c",
-            "fetch.fsckObjects=true",
-            "fetch",
-            bundle.to_str().unwrap(),
-            "HEAD:refs/heads/main",
-            "refs/tags/gate-pipeline-ready:refs/tags/gate-pipeline-ready",
-        ],
-    );
-    git(&repo, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    let repo = root.join("repo");
+    repository(&repo);
+    let tag = format!("refs/tags/{}", super::synthetic::TAG);
     if case == "missing" {
-        git(
-            &repo,
-            &["update-ref", "-d", "refs/tags/gate-pipeline-ready"],
-        );
+        git(&repo, &["update-ref", "-d", &tag]);
     }
     if case == "wrong" {
         let parent = git(&repo, &["rev-parse", "HEAD~1"]);
-        git(
-            &repo,
-            &["update-ref", "refs/tags/gate-pipeline-ready", &parent],
-        );
+        git(&repo, &["update-ref", &tag, &parent]);
     }
     repo
 }
@@ -271,11 +248,7 @@ fn semantic_context(root: &Path, request: &Request, report: &Report) -> (Request
     .unwrap();
     let mut assessment = json!({"passed":null,"violations":[],"needs_thinker":["req-commit-tag"],
         "needs_check":[],"contract_coverage":{"req-commit-tag":{"semantic_risk_admissible":false}}});
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-obligation-routing/controller-observer-identity.json"
-    ))
-    .unwrap();
-    let observer = value["observer_session"].clone();
+    let observer = json!("observer-session-1");
     assert!(observer.as_str().is_some_and(|id| !id.is_empty()));
     assert!(
         semantic_resolution::guard_with(root, request, report, &mut assessment, |snapshot| {

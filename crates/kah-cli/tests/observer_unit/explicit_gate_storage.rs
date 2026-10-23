@@ -1,30 +1,33 @@
 use super::*;
 use std::{fs, os::unix::fs::PermissionsExt};
 
+/// A native cumulative checkpoint report with one row.
+const REPORT: &str = r#"{"request":"review-1700000000000-1","result":{"stage":"checkpoint","rows":[{"requirement":"goal","finding":"The parser and its tests match the plan; the release tag is not visible in the diff.","status":"unclear","kind":"behavior","quotes":[]}]}}"#;
+const CAPTURED_HEAD: &str = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";
+const NEW_HEAD: &str = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432";
+
 #[test]
-fn retained_claude_checkpoint_report_creates_its_typed_snapshot_directory() {
-    let raw = include_str!(
-        "../../../../docs/gates/evidence/phase3-claude/b2/consume-product-failure/native-checkpoint-report.json"
-    );
+fn a_native_checkpoint_report_creates_its_typed_snapshot_directory() {
+    let raw = REPORT;
     let report: super::super::protocol::Report = serde_json::from_str(raw).unwrap();
     let super::super::protocol::Answer::Checkpoint { rows } = report.result else {
-        panic!("retained failure must be the native cumulative checkpoint report");
+        panic!("the fixture must be a native cumulative checkpoint report");
     };
     let cumulative = Request {
         id: report.request,
-        worker: "00000000-0000-4000-8000-100000000011".into(),
+        worker: "worker-gate".into(),
         purpose: Purpose::Checkpoint,
-        turn: "00000000-0000-4000-8000-100000000010".into(),
-        head: Some("c835c9e3f1d8cc39b13c997bcaec3f7db7705abc".into()),
+        turn: "turn-gate".into(),
+        head: Some(CAPTURED_HEAD.into()),
         intent: json!({"revision":2}),
         trigger: json!({"option1":{"original_trigger":{"kind":"user_gate","source":"host_cli"}}}),
         documents: vec![Document::new(
             "native-report",
             "retained_native_checkpoint",
-            "kah:review-1000000000011-1",
+            "kah:review-1700000000000-1",
             raw,
         )],
-        created_ms: 1791755078945,
+        created_ms: 1_700_000_000_045,
     };
     let mut captured = cumulative.clone();
     captured.id.push_str("-typed");
@@ -33,10 +36,7 @@ fn retained_claude_checkpoint_report_creates_its_typed_snapshot_directory() {
         std::env::temp_dir().join(format!("kah-gate-storage-{}", crate::relay_store::nonce()));
     kah_core::run_store::ensure_private_directory(&base.join("sources")).unwrap();
     let directory = base.join("explicit-gate-inputs");
-    assert!(
-        !directory.exists(),
-        "real failure had no snapshot directory"
-    );
+    assert!(!directory.exists(), "the snapshot directory starts missing");
     save_snapshot(&directory, &cumulative, &next).unwrap();
     assert_eq!(
         fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
@@ -60,11 +60,12 @@ fn retained_claude_checkpoint_report_creates_its_typed_snapshot_directory() {
 }
 
 #[test]
-fn captured_055_scope_survives_live_910_head_without_mixing_code_intent_or_docs() {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-explicit-scope/timeline.json"
-    ))
-    .unwrap();
+fn captured_scope_survives_a_newer_live_head_without_mixing_code_intent_or_docs() {
+    // The head moved after the cumulative request captured its scope.
+    let value = json!({"worker":"worker-scope","captured_head":CAPTURED_HEAD,"new_head":NEW_HEAD,
+        "documents":[
+            {"path":"PLAN.md","before":"Phase 2: parser and tests.\n","after":"Phase 2: parser, tests and docs.\n"},
+            {"path":"src/parse.rs","before":"pub fn parse() {}\n","after":"pub fn parse() -> bool { true }\n"}]});
     let cumulative = scope_request(&value, "before", "captured_head");
     let mut fresh = scope_request(&value, "after", "new_head");
     fresh.id = "review-new-typed".into();
@@ -86,7 +87,7 @@ fn captured_055_scope_survives_live_910_head_without_mixing_code_intent_or_docs(
 }
 fn scope_request(value: &Value, body: &str, head: &str) -> Request {
     Request {
-        id: "review-1700000000000-1".into(),
+        id: "review-1700000000100-2".into(),
         worker: value["worker"].as_str().unwrap().into(),
         purpose: Purpose::Checkpoint,
         turn: "scope-replay".into(),
@@ -112,6 +113,6 @@ fn scope_request(value: &Value, body: &str, head: &str) -> Request {
                 )
             })
             .collect(),
-        created_ms: 1791850695198,
+        created_ms: 1_700_000_000_198,
     }
 }

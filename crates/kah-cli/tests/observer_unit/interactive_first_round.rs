@@ -1,11 +1,12 @@
-//! Whole retained VF12 control replay; no native launch or transport.
+//! Synthetic v12 first-round control replay; no native launch or transport.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 
-fn retained() -> (Request, Report, DeliveryProof, Value) {
-    let v: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-v12-first-round/retained-input.json"
-    ))
-    .unwrap();
+fn fixture() -> (Request, Report, DeliveryProof, Value) {
+    let v = synthetic::first_round("worker-gate");
     (
         serde_json::from_value(v["request"].clone()).unwrap(),
         serde_json::from_value(v["report"].clone()).unwrap(),
@@ -15,11 +16,8 @@ fn retained() -> (Request, Report, DeliveryProof, Value) {
 }
 
 fn proven_receipt() -> DeliveryProof {
-    let v: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-v12-first-round/retained-input.json"
-    ))
-    .unwrap();
-    let (_, _, mut proof, _) = retained();
+    let v = synthetic::first_round("worker-gate");
+    let (_, _, mut proof, _) = fixture();
     let check = &v["recorded_controller_check"];
     proof.tests.push(TestReceipt {
         command: check["command"].as_str().unwrap().into(),
@@ -34,8 +32,8 @@ fn proven_receipt() -> DeliveryProof {
 }
 
 #[test]
-fn retained_initial_v12_plan_never_builds_a_premature_question() {
-    let (request, report, proof, assessment) = retained();
+fn an_initial_v12_plan_never_builds_a_premature_question() {
+    let (request, report, proof, assessment) = fixture();
     count_only(&request, &report);
     let root =
         std::env::temp_dir().join(format!("kah-first-round-{}", crate::relay_store::nonce()));
@@ -58,10 +56,7 @@ fn retained_initial_v12_plan_never_builds_a_premature_question() {
 fn count_only(request: &Request, report: &Report) {
     use crate::observer_review::{checkpoint, decisions};
     use kah_observer::{context_budget::Calibration, decision_units, judge::Questions};
-    let v: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-v12-first-round/retained-input.json"
-    ))
-    .unwrap();
+    let v = synthetic::first_round("worker-gate");
     let calibration: Calibration = serde_json::from_value(v["calibration"].clone()).unwrap();
     let verified = decisions::verify_evidence(request, report)
         .unwrap()
@@ -99,8 +94,8 @@ fn count_only(request: &Request, report: &Report) {
 }
 
 #[test]
-fn retained_unclear_items_have_named_fact_based_risks_and_good_gate_has_none() {
-    let (_, report, _, mut assessment) = retained();
+fn unclear_items_have_named_fact_based_risks_and_good_gate_has_none() {
+    let (_, report, _, mut assessment) = fixture();
     let risks = missing::risks(&report, &assessment).unwrap();
     assert_eq!(risks.len(), 4);
     assert!(
@@ -131,7 +126,7 @@ fn retained_unclear_items_have_named_fact_based_risks_and_good_gate_has_none() {
     assessment["passed"] = true.into();
     assessment["needs_thinker"] = json!([]);
     let root = std::env::temp_dir().join(format!("kah-proven-{}", crate::relay_store::nonce()));
-    let (request, report, _, _) = retained();
+    let (request, report, _, _) = fixture();
     let proof = proven_receipt();
     assert!(
         super::super::store(&root, &request, &report, &assessment, &proof, &json!({}))
@@ -142,9 +137,9 @@ fn retained_unclear_items_have_named_fact_based_risks_and_good_gate_has_none() {
 }
 
 #[test]
-fn retained_usable_plan_stages_one_round_before_any_question() {
+fn a_usable_plan_stages_one_round_before_any_question() {
     std::env::var_os("XDG_STATE_HOME").expect("isolated check-tests fixture required");
-    let (mut request, report, proof, assessment) = retained();
+    let (mut request, report, proof, assessment) = fixture();
     request.worker = format!("first-round-{}", crate::relay_store::nonce());
     let store = Store::open(&request.worker).unwrap();
     let root = store.directory.clone();
@@ -252,7 +247,7 @@ fn complete_unclear_round(
         let risk = super::risk_text(report, id.as_str().unwrap()).unwrap();
         UnverifiedRisk { requirement_id: risk.requirement_id, unverified: risk.unverified,
             acceptance_risk: risk.acceptance_risk, evidence: evidence.clone(),
-            tried: vec![Attempt { what: "Read the complete retained report and controller proof; no recorded project checks exist".into(), receipt: round.checks_receipt() }],
+            tried: vec![Attempt { what: "Read the complete report and controller proof; no recorded project checks exist".into(), receipt: round.checks_receipt() }],
         }
     }).collect();
     advance(

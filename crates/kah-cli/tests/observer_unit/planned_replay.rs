@@ -1,12 +1,13 @@
 //! VF14 control replay, using a labelled synthetic receipt; no agent/transport.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 
 #[test]
-fn retained_v12_plan_enters_the_single_round_without_replaying_its_native_body() {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-verifier-replay/retained-input.json"
-    ))
-    .unwrap();
+fn a_v12_plan_enters_the_single_round_without_replaying_its_native_body() {
+    let value = synthetic::verifier("worker-gate");
     let mut request: Request = serde_json::from_value(value["request"].clone()).unwrap();
     let report: Report = serde_json::from_value(value["report"].clone()).unwrap();
     let state = serde_json::from_value(value["state"].clone()).unwrap();
@@ -35,7 +36,7 @@ fn retained_v12_plan_enters_the_single_round_without_replaying_its_native_body()
         .find(|i| i.requirement_id == "verification-pass-line")
         .unwrap();
     let Method::TargetedCheck { command } = &item.method else {
-        panic!("retained plan changed")
+        panic!("the fixture plan changed")
     };
     seed_receipt(&root, &round, item, command);
     let mut coverage = json!({"covered":false});

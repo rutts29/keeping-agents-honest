@@ -1,8 +1,23 @@
-//! Report correction while host validation is still running.
+//! A report correction crossing the host-validation window.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
+const REQUEST: &str = "review-1700000003000-4";
+/// The first submitted report, or its corrected revision, for one request.
+fn report_bytes(revised: bool) -> Vec<u8> {
+    let mut report = synthetic::first_round("worker-revision")["report"].clone();
+    report["request_id"] = REQUEST.into();
+    if revised {
+        report["decision_units"]["requirements"][0]["judgment"]["reasoning"] =
+            "The corrected report cites the rounding line and the pipeline order.".into();
+    }
+    serde_json::to_vec_pretty(&report).unwrap()
+}
 fn fixture() -> (Store, PathBuf, Job) {
     let worker = format!("revision-{}", crate::relay_store::nonce());
-    let root = directory(&worker, "review-1000000000012-1").unwrap();
+    let root = directory(&worker, REQUEST).unwrap();
     bind(&worker, &root);
     let store = Store::open(&worker).unwrap();
     kah_core::run_store::ensure_private_directory(&root).unwrap();
@@ -14,15 +29,10 @@ fn fixture() -> (Store, PathBuf, Job) {
         &root,
     )
     .unwrap();
-    let report: Report =
-        serde_json::from_str(include_str!("../fixtures/report-revisions/old-report.json")).unwrap();
-    let request: Request = serde_json::from_value(json!({"id":report.request_id,"worker":worker,"purpose":"checkpoint","turn":"retained-correction","head":null,"intent":{},"trigger":{},"documents":[],"created_ms":1791844015062u64})).unwrap();
+    let report: Report = serde_json::from_slice(&report_bytes(false)).unwrap();
+    let request: Request = serde_json::from_value(json!({"id":report.request_id,"worker":worker,"purpose":"checkpoint","turn":"turn-correction","head":null,"intent":{},"trigger":{},"documents":[],"created_ms":1_700_000_003_000_u64})).unwrap();
     let submitted = root.join("submitted.json");
-    fs::write(
-        &submitted,
-        include_bytes!("../fixtures/report-revisions/old-report.json"),
-    )
-    .unwrap();
+    fs::write(&submitted, report_bytes(false)).unwrap();
     let job = Job {
         pending: Pending::from(&request),
         request,
@@ -41,13 +51,8 @@ fn corrected_report_revision_replaces_immutable_old_job_without_host_changed_err
     let (store, root, old) = fixture();
     save_handoff_locked(&store, &root, old.clone()).unwrap();
     let mut latest = old.clone();
-    latest.report =
-        serde_json::from_str(include_str!("../fixtures/report-revisions/new-report.json")).unwrap();
-    fs::write(
-        &latest.submitted,
-        include_bytes!("../fixtures/report-revisions/new-report.json"),
-    )
-    .unwrap();
+    latest.report = serde_json::from_slice(&report_bytes(true)).unwrap();
+    fs::write(&latest.submitted, report_bytes(true)).unwrap();
     let result = save_handoff_locked(&store, &root, latest);
     assert!(
         result.is_ok(),
@@ -100,11 +105,7 @@ fn newer_bytes_during_validation_supersede_old_consume_and_preserve_both_snapsho
     )
     .unwrap();
     old.report_revision = Some(snapshot.clone());
-    fs::write(
-        &old.submitted,
-        include_bytes!("../fixtures/report-revisions/new-report.json"),
-    )
-    .unwrap();
+    fs::write(&old.submitted, report_bytes(true)).unwrap();
     let error = save_handoff_locked(&store, &root, old.clone()).unwrap_err();
     assert!(
         error
@@ -128,7 +129,7 @@ fn newer_bytes_during_validation_supersede_old_consume_and_preserve_both_snapsho
     assert_ne!(snapshot.digest, newest.digest);
     assert_eq!(
         source_store::load_text(&newest.source).unwrap().as_bytes(),
-        include_bytes!("../fixtures/report-revisions/new-report.json")
+        report_bytes(true)
     );
     drop(store);
     fs::remove_dir_all(root.parent().unwrap().parent().unwrap()).unwrap();
@@ -140,13 +141,8 @@ fn request_identity_change_remains_fatal_when_report_revision_changes() {
     save_handoff_locked(&store, &root, old.clone()).unwrap();
     let mut changed = old.clone();
     changed.request.turn = "another-request-binding".into();
-    changed.report =
-        serde_json::from_str(include_str!("../fixtures/report-revisions/new-report.json")).unwrap();
-    fs::write(
-        &changed.submitted,
-        include_bytes!("../fixtures/report-revisions/new-report.json"),
-    )
-    .unwrap();
+    changed.report = serde_json::from_slice(&report_bytes(true)).unwrap();
+    fs::write(&changed.submitted, report_bytes(true)).unwrap();
     let error = save_handoff_locked(&store, &root, changed).unwrap_err();
     assert!(error.to_string().starts_with("REVIEW_GATE_HOST_CHANGED"));
     assert!(!super::super::failure::pending(error.as_ref()));
@@ -161,14 +157,10 @@ fn revised_gate_report_keeps_its_ack_after_a_newer_request_overwrites_ready() {
     crate::unattended_report::save(
         &store.directory,
         "report-ready.json",
-        &json!({"request":"review-later-normal-2916958"}),
+        &json!({"request":"review-1700000004000-5"}),
     )
     .unwrap();
-    fs::write(
-        &old.submitted,
-        include_bytes!("../fixtures/report-revisions/new-report.json"),
-    )
-    .unwrap();
+    fs::write(&old.submitted, report_bytes(true)).unwrap();
     let report: Report = serde_json::from_slice(&fs::read(&old.submitted).unwrap()).unwrap();
     let revised = super::super::report_revision::Submission::capture(
         &store.directory,
@@ -188,13 +180,13 @@ fn revised_gate_report_keeps_its_ack_after_a_newer_request_overwrites_ready() {
     );
     assert!(
         result.is_ok(),
-        "retained request ACK must survive overwrite: {result:?}"
+        "the gate request ACK must survive overwrite: {result:?}"
     );
     assert!(state.pending.is_none());
     let ready: Value = super::super::state::read(&store.directory.join("report-ready.json"))
         .unwrap()
         .unwrap();
-    assert_eq!(ready["request"], "review-later-normal-2916958");
+    assert_eq!(ready["request"], "review-1700000004000-5");
     reject_changed_ack_bindings(&old, &revised);
     drop(store);
     fs::remove_dir_all(root.parent().unwrap().parent().unwrap()).unwrap();

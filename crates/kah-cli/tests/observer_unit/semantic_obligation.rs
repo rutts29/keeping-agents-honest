@@ -1,21 +1,22 @@
-//! Real VF16: suggested commands cannot replace a non-executable obligation.
+//! Suggested commands cannot replace a non-executable obligation.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 use crate::observer_review::source_store;
 use std::fs;
-fn retained() -> (Request, Report, Value) {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-obligation-routing/retained.json"
-    ))
-    .unwrap();
+fn fixture() -> (Request, Report, Value) {
+    let value = synthetic::admission("worker-gate", synthetic::HEAD);
     (
         serde_json::from_value(value["request"].clone()).unwrap(),
         serde_json::from_value(value["report"].clone()).unwrap(),
-        value["assessment"].clone(),
+        value["obligation_assessment"].clone(),
     )
 }
 #[test]
 fn exact_method_conflict_stages_semantic_context_and_keeps_normalize_unconfirmed() {
-    let (request, report, mut assessment) = retained();
+    let (request, report, mut assessment) = fixture();
     for id in ["req-intent", "req-drift", "req-plan", "req-preserve"] {
         assert!(
             semantic_resolution::semantic(&report, id),
@@ -67,12 +68,9 @@ fn replay_root() -> std::path::PathBuf {
         crate::relay_store::nonce()
     ));
     kah_core::run_store::ensure_save_directory(&root.join("sources")).unwrap();
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-obligation-routing/retained.json"
-    ))
-    .unwrap();
-    source_store::save(&root, "queue-order.json", &value["queue"]["order"]).unwrap();
-    source_store::save(&root, "queue-metadata.json", &value["queue"]["metadata"]).unwrap();
+    let parent = synthetic::queue_parent();
+    source_store::save(&root, "queue-order.json", &parent["order"]).unwrap();
+    source_store::save(&root, "queue-metadata.json", &parent["metadata"]).unwrap();
     root
 }
 
@@ -81,7 +79,7 @@ fn semantic_binary_code_is_a_lossless_descriptor_not_an_inline_byte_array() {
     let root =
         std::env::temp_dir().join(format!("semantic-binary-{}", crate::relay_store::nonce()));
     let (tree, head, blob) = binary_tree(&root);
-    let (mut request, _, _) = retained();
+    let (mut request, _, _) = fixture();
     request.documents.clear();
     let private = root.join("review");
     let workspace = root.join("workspace");

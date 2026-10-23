@@ -41,11 +41,10 @@ fn git(path: &Path, args: &[&str]) -> String {
 fn sandbox_candidate(root: &Path) -> Worktree {
     let home = root.join("home");
     kah_core::run_store::ensure_save_directory(&home.join(".local/bin")).unwrap();
-    symlink(
-        "/home/example/.local/bin/codex",
-        home.join(".local/bin/codex"),
-    )
-    .unwrap();
+    // The runner names the native executable; no machine path is assumed.
+    let native = std::env::var_os("KAH_TEST_NATIVE_CODEX")
+        .expect("set KAH_TEST_NATIVE_CODEX to the native codex executable");
+    symlink(native, home.join(".local/bin/codex")).unwrap();
     let source = root.join("source");
     kah_core::run_store::ensure_save_directory(&source).unwrap();
     git(&source, &["init", "--template="]);
@@ -61,6 +60,7 @@ fn sandbox_candidate(root: &Path) -> Worktree {
     Worktree::create(&source, &parent.join("candidate"), "run-vf14-acl").unwrap()
 }
 
+/// Needs gVisor and `KAH_TEST_NATIVE_CODEX`, the path of the native codex executable.
 #[test]
 #[ignore = "sudo-free actual gVisor bind/privacy regression; zero native agents and zero Jev"]
 fn verifier_bind_is_accessible_but_source_refs_and_sibling_data_are_unreachable() {
@@ -101,13 +101,13 @@ fn verifier_bind_is_accessible_but_source_refs_and_sibling_data_are_unreachable(
         println!("VERIFIER_ACL {}\n{value}", p.display());
     }
     assert!(!acl(&sibling).contains(&format!("user:{uid}:")));
-    let retained: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-verifier-replay/retained-check.json"
-    ))
-    .unwrap();
-    let receipt = serde_json::from_value(retained["receipt"].clone()).unwrap();
+    // A sandbox start that could not stat its bind mount.
+    let failed = serde_json::json!({"command":"node check.cjs","commit":head,"elapsed_ms":200,
+        "exit_code":126,"success":false,"output_truncated":false,
+        "output":"docker: Error response from daemon: invalid mount config for type \"bind\": stat /tmp/verify/candidate: permission denied.\n"});
+    let receipt = serde_json::from_value(failed).unwrap();
     assert!(
-        checked_receipt(receipt, Path::new("retained.log"))
+        checked_receipt(receipt, Path::new("failed.log"))
             .err()
             .unwrap()
             .to_string()

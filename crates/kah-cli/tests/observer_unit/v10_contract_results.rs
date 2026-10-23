@@ -26,7 +26,7 @@ fn result(id: &str, verified: bool, needs_check: bool) -> ItemResult {
 #[test]
 fn exact_eleven_item_case_leaves_only_semantic_candidates_not_verification_work() {
     let units: kah_observer::decision_units::ReviewUnits = serde_json::from_str(include_str!(
-        "../../../kah-observer/tests/fixtures/v9-eleven-unverified-units.json"
+        "../../../kah-observer/tests/fixtures/synthetic-v9-eleven-units.json"
     ))
     .unwrap();
     let ids = units

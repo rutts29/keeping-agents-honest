@@ -1,12 +1,13 @@
-//! VF14's whole native command is evidence, never a replayable project check.
+//! A whole native shell body is evidence, never a replayable project check.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 
 #[test]
-fn retained_mixed_worker_command_uses_the_whole_v12_plan_without_replay() {
-    let value: Value = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase3-verifier-replay/retained-input.json"
-    ))
-    .unwrap();
+fn a_mixed_worker_command_uses_the_whole_v12_plan_without_replay() {
+    let value = synthetic::verifier("worker-gate");
     let request: Request = serde_json::from_value(value["request"].clone()).unwrap();
     let report: Report = serde_json::from_value(value["report"].clone()).unwrap();
     let records = replay::dispositions(&request, &report).unwrap();

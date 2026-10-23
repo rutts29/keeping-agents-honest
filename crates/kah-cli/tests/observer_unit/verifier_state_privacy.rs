@@ -1,5 +1,9 @@
-//! VF16: candidate traversal must not change the private session-store ACL.
+//! Candidate traversal must not change the private session-store ACL.
 use super::*;
+// One shared builder; each test module includes its own copy.
+#[allow(clippy::duplicate_mod)]
+#[path = "synthetic_gate.rs"]
+mod synthetic;
 use crate::observer_review::state::{State, Store};
 use kah_observer::session::Store as Sessions;
 use std::{os::unix::fs::PermissionsExt, time::Duration};
@@ -27,12 +31,9 @@ fn gate_candidate_traversal_preserves_strict_session_privacy() {
     kah_core::run_store::ensure_save_directory(&root).unwrap();
     let home = std::env::temp_dir().join(format!("vf16-home-{}", crate::relay_store::nonce()));
     kah_core::run_store::ensure_save_directory(&home.join("source")).unwrap();
-    let candidate = retained_candidate(&root, &home, &worker);
+    let (candidate, head) = tagged_candidate(&root, &home, &worker);
     let snapshot = candidate
-        .verification_snapshot(
-            &candidate.path.parent().unwrap().join("verify-vf16"),
-            "8dfddba6469f55882370a4c5432c3b605b4857ce",
-        )
+        .verification_snapshot(&candidate.path.parent().unwrap().join("verify-vf16"), &head)
         .unwrap();
     let audit = crate::exact_verification::prepare_access(
         &snapshot.path,
@@ -68,25 +69,15 @@ fn gate_candidate_traversal_preserves_strict_session_privacy() {
     }
 }
 
-fn retained_candidate(root: &Path, home: &Path, worker: &str) -> Worktree {
+fn tagged_candidate(root: &Path, home: &Path, worker: &str) -> (Worktree, String) {
     let state: State = serde_json::from_value(json!({
         "worker":{"provider":"claude","session":worker,"project":home.join("source"),"pane":null,"socket":null},
         "observer":{"session":"recorded","pane":null,"name":"recorded","workspace":home.join(".cache/kah-observers/fixture"),
           "model":"claude-sonnet-5-5","effort":"low","transcript":null},
         "pending":null,"latest":null,"checkpoint":null,"last_verified_turn":null,
         "deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap();
-    fs::write(
-        root.join("source.bundle"),
-        include_bytes!("../../../../docs/gates/evidence/phase3-tag-import/retained-source.bundle"),
-    )
-    .unwrap();
-    load(
-        root,
-        home,
-        &state,
-        "8dfddba6469f55882370a4c5432c3b605b4857ce",
-    )
-    .unwrap()
+    let head = synthetic::tagged_bundle(&home.join("origin"), &root.join("source.bundle"));
+    (load(root, home, &state, &head).unwrap(), head)
 }
 
 #[test]
