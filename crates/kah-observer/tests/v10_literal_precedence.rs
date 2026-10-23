@@ -4,7 +4,7 @@ use kah_observer::{
 };
 use std::collections::BTreeMap;
 fn captured() -> ReviewUnits {
-    serde_json::from_str(include_str!("fixtures/v9-eleven-unverified-units.json")).unwrap()
+    serde_json::from_str(include_str!("fixtures/synthetic-v9-eleven-units.json")).unwrap()
 }
 fn empty_judgment() -> Judgment {
     Judgment {
@@ -16,7 +16,7 @@ fn empty_judgment() -> Judgment {
     }
 }
 #[test]
-fn real_atomic_receipts_do_not_need_semantic_timing_or_a_user_decision() {
+fn atomic_receipts_do_not_need_semantic_timing_or_a_user_decision() {
     let mut units = captured();
     units.version = Some(10);
     let atomic = [
@@ -35,7 +35,7 @@ fn real_atomic_receipts_do_not_need_semantic_timing_or_a_user_decision() {
     assert!(!outcome.passed); // The remaining semantic/contract work still waits.
 }
 #[test]
-fn retained_v9_case_still_records_its_actual_literal_timing_failure() {
+fn a_v9_case_still_records_its_actual_literal_timing_failure() {
     let units = captured();
     let outcome = decision_units::assess(&units, &empty_judgment());
     assert!(outcome.needs_thinker.contains(&"delivery_sha".into()));

@@ -1,5 +1,5 @@
 use kah_core::intent_history::{
-    GoalRevision, History, IntentLifecycle, SourceProvider, SourceRef, SourceRole,
+    GoalRevision, History, IntentLifecycle, SourceOrigin, SourceProvider, SourceRef, SourceRole,
 };
 use kah_observer::{
     chronology,
@@ -8,7 +8,7 @@ use kah_observer::{
     relayed_user::Message,
     verbatim,
 };
-use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 fn input(source: SourceRef, text: &str, decision: Decision) -> Input {
     Input {
@@ -42,20 +42,38 @@ fn judgment() -> Judgment {
         fallback_reason: None,
     }
 }
+/// Two relayed user messages: the second reverses the first.
 fn actual() -> Vec<Input> {
-    let rows: Vec<Value> =
-        serde_json::from_str(include_str!("fixtures/reversal-sources-20261003.json")).unwrap();
-    rows.into_iter()
-        .map(|row| {
-            input(
-                serde_json::from_value(row["source"].clone()).unwrap(),
-                row["text"].as_str().unwrap(),
-                Decision::Verification {
-                    judgment: Box::new(judgment()),
-                },
-            )
-        })
-        .collect()
+    [
+        (
+            "receipt-older",
+            "Keep the report rows in their original input order.",
+        ),
+        (
+            "receipt-newer",
+            "Sort the report rows by name instead; drop the original-order rule.",
+        ),
+    ]
+    .into_iter()
+    .map(|(receipt, text)| {
+        let mut source = SourceRef::new(
+            SourceProvider::Codex,
+            "relay-session",
+            format!("relayed-user:relay:{receipt}"),
+            SourceRole::User,
+            format!("sha256:{:x}", Sha256::digest(text)),
+        );
+        source.origin = Some(SourceOrigin::Relayed);
+        source.relayer = Some("relay".into());
+        input(
+            source,
+            text,
+            Decision::Verification {
+                judgment: Box::new(judgment()),
+            },
+        )
+    })
+    .collect()
 }
 fn goal() -> SourceRef {
     SourceRef::new(
@@ -67,10 +85,15 @@ fn goal() -> SourceRef {
     )
 }
 #[test]
-fn real_deferred_serialization_cannot_become_active_after_its_linked_reversal() {
+fn a_reversed_message_cannot_become_active_after_its_linked_reversal() {
     let mut sources = actual();
-    sources[1].source.supersedes_receipt = Some("r0000000000000001-1".into());
-    let mut history = History::new(GoalRevision::new(1, "Complete Phase5O", vec![goal()])).unwrap();
+    sources[1].source.supersedes_receipt = Some("receipt-older".into());
+    let mut history = History::new(GoalRevision::new(
+        1,
+        "Complete the report task",
+        vec![goal()],
+    ))
+    .unwrap();
     chronology::apply_links(&mut history, &sources).unwrap();
     assert_eq!(
         history.intent(sources[0].id()).unwrap().text,
@@ -97,7 +120,12 @@ fn real_deferred_serialization_cannot_become_active_after_its_linked_reversal() 
 #[test]
 fn deferred_typing_never_sees_newer_items_and_unlinked_conflicts_are_explicit() {
     let mut sources = actual();
-    let mut history = History::new(GoalRevision::new(1, "Complete Phase5O", vec![goal()])).unwrap();
+    let mut history = History::new(GoalRevision::new(
+        1,
+        "Complete the report task",
+        vec![goal()],
+    ))
+    .unwrap();
     for source in &sources {
         kah_observer::intake::force(&mut history, &source.text, source.source.clone()).unwrap();
     }

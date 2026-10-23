@@ -24,9 +24,13 @@ impl Client for WholeRequest {
 }
 
 #[test]
-fn this_builders_real_ledger_and_whole_large_evidence_reach_jev_unchanged() {
-    let ledger: Value =
-        serde_json::from_str(include_str!("fixtures/builder-ledger-20261003.json")).unwrap();
+fn a_whole_ledger_and_whole_large_evidence_reach_jev_unchanged() {
+    let ledger = json!({"schema_version":1,"revision":3,
+        "goal":{"revision":1,"text":"Ship the CSV export command with its tests."},
+        "frontier":[
+            {"id":"user-1","kind":"constraint","text":"Keep every column in the order the user listed it.","lifecycle":"active"},
+            {"id":"user-2","kind":"preference","text":"Prefer one small commit per command, with a plain message.","lifecycle":"active"}],
+        "preserve":[],"validation":[],"conflicts":[]});
     let evidence = format!(
         "{}\nLAST COMPLETE SENTENCE: keep all user words verbatim.",
         "A complete source observation with its original words.\n".repeat(1600)
