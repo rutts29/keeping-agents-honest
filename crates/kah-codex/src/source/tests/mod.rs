@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::json;
 
+mod server;
+
 use super::{provider_item_references_checkout, text_references_checkout};
 
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);

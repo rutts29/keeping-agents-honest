@@ -3,8 +3,13 @@
 //! The review runs after the worker's turn ended, so an idle interactive worker
 //! fired no hook and never saw it. That notice is now pushed into the pane;
 //! kah run workers and every other checkpoint keep the queued reminder.
-use kah_cli::observer_review::delivered;
-use serde_json::json;
+use kah_cli::observer_review::{
+    delivered,
+    option1::consume,
+    reminder_queue,
+    state::{Purpose, Request, Store},
+};
+use serde_json::{Value, json};
 
 #[test]
 fn only_a_delivered_change_checkpoint_of_an_interactive_worker_is_pushed() {
@@ -84,11 +89,10 @@ fn a_queued_notice_is_checked_as_the_raw_text_the_hook_delivers() {
     // the limit was refused because its unused prefix was counted.
     let limit = "a".repeat(10_000);
     assert_eq!(
-        delivered::routed_notice("claude", &limit, false).unwrap(),
-        limit
+        delivered::pane_notice("claude", &limit, false).unwrap(),
+        None
     );
-    assert!(delivered::routed_notice("claude", &format!("{limit}a"), false).is_err());
-    let error = delivered::routed_notice("claude", &limit, true).unwrap_err();
+    let error = delivered::pane_notice("claude", &format!("{limit}a"), false).unwrap_err();
     assert!(
         error
             .to_string()
@@ -97,7 +101,89 @@ fn a_queued_notice_is_checked_as_the_raw_text_the_hook_delivers() {
     );
     let fits = "a".repeat(10_000 - delivered::pushed_text("").encode_utf16().count());
     assert_eq!(
-        delivered::routed_notice("claude", &fits, true).unwrap(),
-        delivered::pushed_text(&fits)
+        delivered::pane_notice("claude", &fits, true).unwrap(),
+        Some(delivered::pushed_text(&fits))
     );
+}
+
+#[test]
+fn a_pushed_notice_only_the_prefix_makes_too_long_is_queued_not_typed() {
+    let prefix = delivered::pushed_text("").encode_utf16().count();
+    for raw in [10_000 - prefix + 1, 10_000] {
+        let notice = "a".repeat(raw);
+        assert_eq!(
+            delivered::pane_notice("claude", &notice, true).unwrap(),
+            None
+        );
+    }
+    let over = "a".repeat(10_001);
+    assert!(delivered::pane_notice("claude", &over, true).is_err());
+}
+
+fn request() -> Request {
+    Request {
+        id: "review-route".into(),
+        worker: "worker".into(),
+        purpose: Purpose::Checkpoint,
+        turn: "turn".into(),
+        head: None,
+        intent: json!({}),
+        trigger: json!({}),
+        documents: vec![],
+        created_ms: 0,
+    }
+}
+
+fn route(text: &str, pushed: bool, push_ok: bool) -> (Vec<String>, Vec<Value>) {
+    let worker = format!("route-notice-{}", kah_cli::relay_store::nonce());
+    let store = Store::open(&worker).unwrap();
+    let typed = std::cell::RefCell::new(vec![]);
+    consume::route_notice(
+        &store.directory,
+        &request(),
+        "claude",
+        text,
+        pushed,
+        |sent| {
+            typed.borrow_mut().push(sent.to_owned());
+            if push_ok {
+                Ok(())
+            } else {
+                Err("pane gone".into())
+            }
+        },
+    )
+    .unwrap();
+    let queued = reminder_queue::pending(&store.directory)
+        .unwrap()
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect();
+    let root = store.directory.parent().unwrap().to_owned();
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+    (typed.into_inner(), queued)
+}
+
+#[test]
+fn a_notice_between_the_raw_and_the_prefixed_limit_reaches_the_queued_reminder() {
+    let prefix = delivered::pushed_text("").encode_utf16().count();
+    let notice = "a".repeat(10_000 - prefix + 1);
+    let (typed, queued) = route(&notice, true, true);
+    assert!(typed.is_empty(), "nothing fits the pane");
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0]["text"], notice.as_str());
+}
+
+#[test]
+fn a_notice_that_fits_is_typed_and_a_failed_push_still_queues_it() {
+    let (typed, queued) = route("short notice", true, true);
+    assert_eq!(typed, [delivered::pushed_text("short notice")]);
+    assert!(queued.is_empty(), "a delivered push needs no reminder");
+    let (typed, queued) = route("short notice", true, false);
+    assert_eq!(typed.len(), 1);
+    assert_eq!(queued[0]["text"], "short notice");
+    let (typed, queued) = route("short notice", false, true);
+    assert!(typed.is_empty());
+    assert_eq!(queued[0]["text"], "short notice");
 }

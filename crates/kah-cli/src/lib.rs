@@ -19,6 +19,7 @@ pub mod hook_output;
 pub mod inspection_cli;
 pub mod interactive_name;
 mod launch;
+pub mod native_options;
 pub mod observer_hook;
 pub mod observer_intake;
 pub mod observer_notice;

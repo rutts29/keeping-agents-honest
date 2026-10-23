@@ -15,6 +15,9 @@ fn the_overlay_model_is_the_native_model_choice() {
     for (args, expected) in [
         (vec!["--model=chosen"], Some("chosen")),
         (vec!["--model", "chosen"], Some("chosen")),
+        (vec!["-mchosen"], Some("chosen")),
+        (vec!["-m=chosen"], Some("chosen")),
+        (vec!["--", "-m=chosen"], Some("chosen")),
         (
             vec!["--model", "good", "--", "--", "--model=bad"],
             Some("good"),

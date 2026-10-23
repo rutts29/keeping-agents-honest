@@ -86,18 +86,20 @@ pub fn pushed_text(notice: &str) -> String {
     format!("[kah-observer] {notice}")
 }
 
-/// The pushed text for this worker; it is what is typed, so it is what must
-/// fit the native size limit.
-/// The notice as its route sends it: typed into the pane when `pushed`, else
-/// the raw text a hook reminder delivers.
-pub fn routed_notice(provider: &str, notice: &str, pushed: bool) -> Result<String> {
-    if pushed {
-        return typed_notice(provider, notice);
-    }
+/// What to type into the pane for a checkpoint notice: Some(prefixed text) when
+/// the notice is `pushed` and the prefixed text fits the native limit, None when
+/// the raw text goes to the hook reminder queue instead. A pushed notice that
+/// only the prefix makes too long is queued, so it is never lost. The raw text
+/// must fit in every case.
+pub fn pane_notice(provider: &str, notice: &str, pushed: bool) -> Result<Option<String>> {
     super::reminder::validate_native(provider, notice)?;
-    Ok(notice.into())
+    Ok(pushed
+        .then(|| typed_notice(provider, notice).ok())
+        .flatten())
 }
 
+/// The pushed text for this worker; it is what is typed, so it is what must
+/// fit the native size limit.
 pub fn typed_notice(provider: &str, notice: &str) -> Result<String> {
     let typed = pushed_text(notice);
     super::reminder::validate_native(provider, &typed)?;

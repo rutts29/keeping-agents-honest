@@ -145,13 +145,33 @@ fn checkpoint_notice(
     );
     let original = &request.trigger["option1"]["original_trigger"];
     let pushed = super::super::delivered::push_notice(original, &state.worker.project);
-    let sent = super::super::delivered::routed_notice(&state.worker.provider, &text, pushed)?;
-    // If the push fails, today's queued reminder still carries the notice.
-    if pushed && super::advance::prompt(state, &sent).is_ok() {
+    route_notice(
+        &store.directory,
+        request,
+        &state.worker.provider,
+        &text,
+        pushed,
+        |typed| super::advance::prompt(state, typed),
+    )
+}
+/// Types the notice into the worker's pane when it is pushed and the prefixed
+/// text fits; otherwise, or if the push fails, the raw text goes to the queued
+/// reminder that the next hook delivers.
+pub fn route_notice(
+    directory: &std::path::Path,
+    request: &Request,
+    provider: &str,
+    text: &str,
+    pushed: bool,
+    push: impl FnOnce(&str) -> Result<()>,
+) -> Result<()> {
+    if let Some(typed) = super::super::delivered::pane_notice(provider, text, pushed)?
+        && push(&typed).is_ok()
+    {
         return Ok(());
     }
     super::super::reminder_queue::save(
-        &store.directory,
+        directory,
         &json!({"request":request.id,"purpose":"checkpoint","turn":request.turn,
             "text":text}),
     )?;

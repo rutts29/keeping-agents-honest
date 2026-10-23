@@ -55,6 +55,27 @@ pub struct Receipt {
     pub output_truncated: bool,
 }
 
+/// The most test output a receipt carries.
+pub const OUTPUT_LIMIT: u64 = 8 * 1024 * 1024;
+
+/// The logged output of a verification, at most `limit` bytes. More is refused
+/// with the log's path rather than returned as a receipt that claims all of
+/// it; the log itself stays for the operator.
+pub fn read_output(log: &std::path::Path, limit: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(log)
+        .and_then(|file| file.take(limit + 1).read_to_end(&mut bytes))
+        .map_err(|e| format!("RUN_TEST_READ stage=verification: {e}"))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!(
+            "RUN_TEST_OUTPUT_LIMIT stage=verification: the output is larger than {limit} bytes; the full log is {}",
+            log.display()
+        ));
+    }
+    Ok(bytes)
+}
+
 pub fn execute(
     executor: &Executor,
     script: &str,
@@ -72,7 +93,7 @@ pub fn execute_checked(
     log: &std::path::Path,
     interrupted: impl FnMut() -> Result<bool, String>,
 ) -> Result<Receipt, String> {
-    use std::{fs::OpenOptions, io::Read, os::unix::fs::OpenOptionsExt, time::Instant};
+    use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt, time::Instant};
     if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("RUN_TEST_COMMIT stage=verification".into());
     }
@@ -92,10 +113,7 @@ pub fn execute_checked(
         .stdout(output)
         .stderr(error);
     let status = crate::child::wait(&mut command, interrupted)?;
-    let mut bytes = Vec::new();
-    std::fs::File::open(log)
-        .and_then(|mut file| file.read_to_end(&mut bytes))
-        .map_err(|e| format!("RUN_TEST_READ stage=verification: {e}"))?;
+    let bytes = read_output(log, OUTPUT_LIMIT)?;
     Ok(Receipt {
         commit: commit.into(),
         command: script.into(),

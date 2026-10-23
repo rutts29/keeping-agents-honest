@@ -87,22 +87,20 @@ pub fn owns_session(rpc: &mut impl Rpc, session: &str) -> Result<bool, String> {
 
 pub fn send(base: &Path, message: &Message, rpc: &mut impl Rpc) -> Result<Value, String> {
     let mut receipt = Receipt::open(base, message)?;
+    // The receipt is bound to this exact payload; no history scan can add to it.
+    if receipt.state == "accepted" {
+        return Ok(json!({"clientId":message.client_id,"status":"already_accepted"}));
+    }
     for _ in 0..2 {
         if delivered(rpc, message)? {
             receipt.save("accepted")?;
             return Ok(json!({"clientId":message.client_id,"status":"already_visible"}));
         }
-        match receipt.state.as_str() {
-            "accepted" => {
-                return Ok(json!({"clientId":message.client_id,"status":"already_accepted"}));
-            }
-            "pending" => {
-                return Err(format!(
-                    "SEND_UNCERTAIN stage=delegate_channel receipt={}",
-                    message.client_id
-                ));
-            }
-            _ => (),
+        if receipt.state == "pending" {
+            return Err(format!(
+                "SEND_UNCERTAIN stage=delegate_channel receipt={}",
+                message.client_id
+            ));
         }
         let active = active_turn(rpc, &message.session)?;
         let mut params = json!({"threadId":message.session,"clientUserMessageId":message.client_id,"input":[{"type":"text","text":message.text}]});
@@ -179,9 +177,13 @@ fn item_page(rpc: &mut impl Rpc, message: &Message, cursor: Value) -> Result<Val
         Err(_) => Err("SEND_RECEIPT_LOOKUP stage=delegate_channel".into()),
     }
 }
+/// Walks the history, newest first, to the message or to the last page. A
+/// long session is not an error; a cursor that comes back is, because the
+/// server would then never reach the end.
 fn delivered(rpc: &mut impl Rpc, message: &Message) -> Result<bool, String> {
     let mut cursor = Value::Null;
-    for _ in 0..1000 {
+    let mut seen = std::collections::HashSet::new();
+    loop {
         let page = item_page(rpc, message, cursor)?;
         let items = page["data"]
             .as_array()
@@ -207,6 +209,8 @@ fn delivered(rpc: &mut impl Rpc, message: &Message) -> Result<bool, String> {
         if cursor.is_null() {
             return Ok(false);
         }
+        if !seen.insert(cursor.to_string()) {
+            return Err("SEND_RECEIPT_CURSOR stage=delegate_channel".into());
+        }
     }
-    Err("SEND_RECEIPT_BOUND stage=delegate_channel".into())
 }

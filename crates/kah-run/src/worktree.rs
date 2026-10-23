@@ -202,55 +202,6 @@ impl Worktree {
             "HEAD",
         ]))?)
     }
-    pub fn changed_paths(&self) -> Result<Vec<String>, String> {
-        let output = run(self.git().args([
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--name-only",
-            "-z",
-            &self.base_commit,
-            "HEAD",
-            "--",
-        ]))?;
-        output
-            .stdout
-            .split(|b| *b == 0)
-            .filter(|p| !p.is_empty())
-            .map(|p| {
-                String::from_utf8(p.to_vec()).map_err(|_| "RUN_PATHS_UTF8 stage=completion".into())
-            })
-            .collect()
-    }
-    pub fn diff_evidence(&self) -> Result<String, String> {
-        use std::{io::Read, process::Stdio};
-        let mut child = self
-            .git()
-            .args([
-                "diff",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--full-index",
-                &self.base_commit,
-                "HEAD",
-                "--",
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(io_error)?;
-        let mut bytes = Vec::new();
-        let read = child.stdout.take().unwrap().read_to_end(&mut bytes);
-        if read.is_err() {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("RUN_DIFF_READ stage=completion".into());
-        }
-        if !child.wait().map_err(io_error)?.success() {
-            return Err("RUN_DIFF_READ stage=completion".into());
-        }
-        String::from_utf8(bytes).map_err(|_| "RUN_DIFF_UTF8 stage=completion".into())
-    }
     fn git(&self) -> Command {
         let mut cmd = command();
         cmd.current_dir(&self.path)

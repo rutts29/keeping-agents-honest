@@ -1,4 +1,7 @@
-use crate::Result;
+use crate::{
+    Result,
+    native_options::{Take, inline_model, separate_model, takes},
+};
 use kah_sandbox::{Domain, LaunchOptions};
 
 #[derive(Debug, Default)]
@@ -9,6 +12,8 @@ pub struct Arguments {
     pub project: Option<(Domain, String)>,
     pub options: LaunchOptions,
     pub native: Vec<String>,
+    /// Set when resuming: the overlay in the session's saved policy.
+    pub saved_overlay: Option<std::path::PathBuf>,
     pub effort: Option<String>,
     pub help: bool,
     pub no_observer: bool,
@@ -37,13 +42,12 @@ impl Arguments {
                     result.native.extend(args);
                     break;
                 }
-                "--model" | "-m" => result
+                _ if separate_model(&arg) => result
                     .native
                     .extend(["--model".into(), value(&mut args, &arg)?]),
-                _ if arg.starts_with("--model=") => {
-                    result
-                        .native
-                        .extend(["--model".into(), arg["--model=".len()..].into()]);
+                _ if inline_model(&arg).is_some() => {
+                    let model = inline_model(&arg).unwrap_or_default().to_owned();
+                    result.native.extend(["--model".into(), model]);
                 }
                 "--effort" => result.effort = Some(value(&mut args, &arg)?),
                 "mine" | "research" | "untrusted" if result.project.is_none() => {
@@ -66,13 +70,13 @@ impl Arguments {
         let mut model = None;
         let mut args = self.native.iter();
         while let Some(arg) = args.next() {
-            if let Some(value) = arg.strip_prefix("--model=") {
+            if let Some(value) = inline_model(arg) {
                 model = Some(value);
-            } else if matches!(arg.as_str(), "--model" | "-m") {
+            } else if separate_model(arg) {
                 model = args.next().map(String::as_str).or(model);
             } else if arg == "--" {
                 break;
-            } else if NATIVE_VALUE_OPTIONS.contains(&arg.as_str()) {
+            } else if takes(arg) == Take::Next {
                 args.next();
             }
         }
@@ -90,7 +94,7 @@ impl Arguments {
                 "-m" | "--model" | "-i" | "--image" => {
                     next(&mut args, arg)?;
                 }
-                _ if arg.starts_with("--model=") => (),
+                _ if inline_model(arg).is_some() => (),
                 "-c" | "--config" => {
                     let setting = next(&mut args, arg)?;
                     if domain != Domain::Mine
@@ -111,34 +115,15 @@ impl Arguments {
                 _ if domain != Domain::Mine && arg.starts_with('-') => {
                     return Err(format!("NATIVE_FLAG_POLICY stage=arguments: {arg} could bypass restricted policy; use kah's model, effort and online options").into());
                 }
+                _ if takes(arg) == Take::Next => {
+                    next(&mut args, arg)?;
+                }
                 _ => (),
             }
         }
         Ok(())
     }
 }
-
-/// Codex options that take the next argument as their value (`codex --help`).
-const NATIVE_VALUE_OPTIONS: &[&str] = &[
-    "-c",
-    "--config",
-    "--enable",
-    "--disable",
-    "--remote",
-    "--remote-auth-token-env",
-    "-i",
-    "--image",
-    "--local-provider",
-    "-p",
-    "--profile",
-    "-s",
-    "--sandbox",
-    "-C",
-    "--cd",
-    "--add-dir",
-    "-a",
-    "--ask-for-approval",
-];
 
 fn value(args: &mut impl Iterator<Item = String>, option: &str) -> Result<String> {
     args.next()

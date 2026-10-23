@@ -115,3 +115,50 @@ fn the_native_model_ignores_prompt_text_and_other_option_values() {
         assert_eq!(parse(&args).native_model(), expected, "{args:?}");
     }
 }
+
+#[test]
+fn every_attached_model_spelling_is_the_native_model() {
+    for args in [
+        vec!["-mchosen"],
+        vec!["-m=chosen"],
+        vec!["--", "-mchosen"],
+        vec!["--", "-m=chosen"],
+        vec!["mine", "demo", "-mchosen", "resume"],
+        vec!["-m", "other", "-m=chosen"],
+    ] {
+        assert_eq!(parse(&args).native_model(), Some("chosen"), "{args:?}");
+    }
+    assert_eq!(parse(&["-mchosen"]).native, ["--model", "chosen"]);
+    assert_eq!(parse(&["-m=chosen"]).native, ["--model", "chosen"]);
+    for domain in [Domain::Research, Domain::Untrusted] {
+        for args in [vec!["-mchosen"], vec!["--", "-m=chosen"]] {
+            assert!(parse(&args).validate_native(domain).is_ok(), "{args:?}");
+        }
+    }
+}
+
+#[test]
+fn an_attached_model_is_not_one_after_the_native_terminator_or_inside_a_value() {
+    for args in [
+        vec!["--", "--", "-mbad"],
+        vec!["--", "-p", "-mbad"],
+        vec!["--", "-i", "-m=bad"],
+    ] {
+        assert_eq!(parse(&args).native_model(), None, "{args:?}");
+    }
+}
+
+#[test]
+fn a_value_option_may_carry_a_word_that_is_also_a_subcommand_in_mine() {
+    // `--profile exec` names a profile; it is not the forbidden exec command.
+    let args = parse(&["--", "--profile", "exec"]);
+    assert!(args.validate_native(Domain::Mine).is_ok());
+    for domain in [Domain::Research, Domain::Untrusted] {
+        assert!(args.validate_native(domain).is_err());
+    }
+    assert!(
+        parse(&["--", "exec"])
+            .validate_native(Domain::Mine)
+            .is_err()
+    );
+}

@@ -55,7 +55,7 @@ fn delegate_sender_retries_and_restarts_without_duplicate_steering() {
     let mut resumed = Client::start_command(launch.command(true), &fixture.stderr);
     resumed.request("thread/resume",json!({"threadId":session,"cwd":fixture.project,"permissions":":danger-full-access","approvalPolicy":"never"}));
     let retried = delivery::send(&receipts, &second, &mut resumed).unwrap();
-    assert_eq!(retried["status"], "already_visible");
+    assert_eq!(retried["status"], "already_accepted");
     let messages = verify_messages(&mut resumed, session);
     let state = kah_observer::session::Store::read(
         &kah_core::run_store::RunStore::default_state_root().unwrap(),
