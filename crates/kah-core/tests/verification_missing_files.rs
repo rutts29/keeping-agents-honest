@@ -102,9 +102,7 @@ fn a_tracked_file_missing_before_the_run_is_a_stable_state() {
     fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
-fn a_submodule_is_fingerprinted_instead_of_failing_the_run() {
-    let root = temporary_directory("submodule");
+fn submodule_candidate(root: &Path) -> PathBuf {
     let inner = root.join("inner");
     repository(&inner);
     let candidate = root.join("candidate");
@@ -120,13 +118,58 @@ fn a_submodule_is_fingerprinted_instead_of_failing_the_run() {
         ],
     );
     git(&candidate, &["commit", "--quiet", "-m", "add submodule"]);
+    candidate
+}
 
-    let steady = script(&root, "steady.sh", "exit 0");
-    let result = run(&root, &candidate, &steady);
-    assert_eq!(result.status, VerificationStatus::Passed);
+fn assert_refused_without_running(root: &Path, candidate: &Path, body: &str) {
+    let ran = root.join("ran");
+    let verifier = script(
+        root,
+        "verify.sh",
+        &format!("touch {}\n{body}", ran.display()),
+    );
+    let error = verify(
+        &VerificationRequest::new(
+            candidate,
+            "intent-missing",
+            [verifier.as_os_str().to_owned()],
+            root.join("artifacts"),
+        )
+        .expect("request"),
+    )
+    .expect_err("a candidate with a submodule is never certified");
+    assert_eq!(error.code, "VERIFICATION_SUBMODULE", "{error}");
+    assert!(!ran.exists(), "the verifier must not run");
+}
 
-    let edits = script(&root, "edit.sh", "printf changed > sub/tracked.txt");
-    let result = run(&root, &candidate, &edits);
-    assert_eq!(result.status, VerificationStatus::CandidateChanged);
+#[test]
+fn a_submodule_is_refused_before_the_verifier_runs() {
+    let root = temporary_directory("submodule");
+    let candidate = submodule_candidate(&root);
+    assert_refused_without_running(&root, &candidate, "exit 0");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_dirty_submodule_cannot_be_changed_again_and_still_pass() {
+    let root = temporary_directory("submodule-dirty");
+    let candidate = submodule_candidate(&root);
+    fs::write(candidate.join("sub/tracked.txt"), "dirty once\n").unwrap();
+    fs::write(candidate.join("sub/untracked.txt"), "first\n").unwrap();
+    assert_refused_without_running(
+        &root,
+        &candidate,
+        "printf 'dirty twice' > sub/tracked.txt\nprintf second > sub/untracked.txt",
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_nested_repository_is_refused_too() {
+    let root = temporary_directory("nested");
+    let candidate = root.join("candidate");
+    repository(&candidate);
+    repository(&candidate.join("vendor"));
+    assert_refused_without_running(&root, &candidate, "exit 0");
     fs::remove_dir_all(root).unwrap();
 }

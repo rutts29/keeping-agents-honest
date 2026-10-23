@@ -148,9 +148,13 @@ fn hash_candidate_path(
                 .map_err(|error| VerificationError::io("read candidate file", error))?,
         );
     } else if metadata.is_dir() {
-        // A tracked directory is a submodule (gitlink).
-        hasher.update(b"g");
-        update_hash(hasher, &gitlink_fingerprint(&path)?);
+        // A submodule or a nested repository. Its contents are not part of the
+        // candidate digest, so it cannot be certified by it: refuse, never
+        // fingerprint it by commit and status alone.
+        return Err(VerificationError::invalid(
+            "VERIFICATION_SUBMODULE",
+            "candidate contains a submodule or nested repository, which verification does not support",
+        ));
     } else {
         return Err(VerificationError::invalid(
             "VERIFICATION_FILE_TYPE",
@@ -158,27 +162,4 @@ fn hash_candidate_path(
         ));
     }
     Ok(())
-}
-
-/// The checked-out commit and the working-tree state of a submodule. An
-/// uninitialized submodule (no repository inside) fingerprints as empty.
-fn gitlink_fingerprint(path: &Path) -> Result<Vec<u8>, VerificationError> {
-    let mut bytes = Vec::new();
-    for arguments in [
-        &["rev-parse", "--verify", "--quiet", "HEAD"][..],
-        &["status", "--porcelain=v1", "-z", "--ignore-submodules=none"][..],
-    ] {
-        let output = Command::new("git")
-            .current_dir(path)
-            .args(arguments)
-            .output()
-            .map_err(|error| VerificationError::io("fingerprint submodule", error))?;
-        // Without a repository of its own, git would read the parent's.
-        if !output.status.success() || !path.join(".git").exists() {
-            return Ok(Vec::new());
-        }
-        bytes.extend((output.stdout.len() as u64).to_be_bytes());
-        bytes.extend(output.stdout);
-    }
-    Ok(bytes)
 }
