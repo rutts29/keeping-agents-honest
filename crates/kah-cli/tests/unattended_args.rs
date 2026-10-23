@@ -1,4 +1,5 @@
 use kah_cli::unattended_args::RunArguments;
+use kah_sandbox::Domain;
 
 #[test]
 fn run_options_preserve_native_model_choices_and_require_verification() {
@@ -88,4 +89,36 @@ fn native_service_tier_override_is_explicit_and_other_execution_overrides_stay_d
         )
         .is_err()
     );
+}
+
+#[test]
+fn a_run_domain_can_only_tighten_the_project_directory_policy() {
+    // `--domain mine` from an Untrusted project marked the run's worktree
+    // trusted and admitted native review of untrusted content.
+    let parse = |domain: &str| {
+        RunArguments::parse(
+            ["--domain", domain, "--test", "true", "task"]
+                .map(str::to_owned)
+                .to_vec(),
+        )
+        .unwrap()
+    };
+    let none = RunArguments::parse(["--test", "true", "task"].map(str::to_owned).to_vec()).unwrap();
+    assert_eq!(none.domain_for(Domain::Untrusted), Ok(Domain::Untrusted));
+    assert_eq!(
+        parse("research").domain_for(Domain::Mine),
+        Ok(Domain::Research)
+    );
+    assert_eq!(
+        parse("untrusted").domain_for(Domain::Research),
+        Ok(Domain::Untrusted)
+    );
+    for (requested, project) in [
+        ("mine", Domain::Untrusted),
+        ("research", Domain::Untrusted),
+        ("mine", Domain::Research),
+    ] {
+        let error = parse(requested).domain_for(project).unwrap_err();
+        assert!(error.starts_with("RUN_DOMAIN_POLICY"), "{error}");
+    }
 }

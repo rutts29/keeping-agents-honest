@@ -21,7 +21,7 @@ pub fn create(home: &Path, cwd: &Path, args: RunArguments) -> Result<String> {
     let mut control = RunControl::new(&args.task, args.limits)?;
     let observer = observer_choice(&args)?;
     let project = Project::select(&home.join("repos"), cwd, None)?;
-    let domain = args.domain.unwrap_or(project.domain);
+    let domain = args.domain_for(project.domain)?;
     let id = format!(
         "run-{}-{}",
         SystemTime::now()

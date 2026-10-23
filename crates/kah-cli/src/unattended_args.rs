@@ -70,6 +70,19 @@ impl RunArguments {
         result.validate()?;
         Ok(result)
     }
+    /// The run's policy domain for a project in `project`. The directory
+    /// selects the policy; `--domain` can only make it more restrictive.
+    pub fn domain_for(&self, project: Domain) -> Result<Domain, String> {
+        let rank = |domain| Domain::ALL.iter().position(|d| *d == domain);
+        match self.domain {
+            Some(domain) if rank(domain) < rank(project) => Err(format!(
+                "RUN_DOMAIN_POLICY stage=arguments: --domain {} is less restrictive than the project's {} domain",
+                domain.as_str(),
+                project.as_str()
+            )),
+            requested => Ok(requested.unwrap_or(project)),
+        }
+    }
     fn validate(&self) -> Result<(), String> {
         if self.task.trim().is_empty() || self.test.trim().is_empty() {
             return Err(
