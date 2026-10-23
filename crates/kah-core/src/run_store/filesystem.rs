@@ -1,6 +1,7 @@
 use super::*;
 
-pub(super) fn create_run_directory(path: &Path) -> Result<(), RunStoreError> {
+/// Prepare the parents and a private staging directory for a new run at `path`.
+pub(super) fn create_run_directory(path: &Path) -> Result<PathBuf, RunStoreError> {
     let repositories = path
         .parent()
         .and_then(Path::parent)
@@ -25,15 +26,43 @@ pub(super) fn create_run_directory(path: &Path) -> Result<(), RunStoreError> {
         }
     })?)?;
 
-    match fs::create_dir(path) {
-        Ok(()) => set_private_directory_permissions(path)?,
-        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
             ensure_not_symlink(path)?;
             return Err(RunStoreError::RunAlreadyExists);
         }
-        Err(error) => return Err(io_error("create run directory", path, error)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error("inspect run directory", path, error)),
     }
-    ensure_private_directory(&path.join(HISTORY_DIRECTORY))
+    // The run is built beside its final name and published by one rename, so
+    // an interrupted create never leaves a half-made run under the run id.
+    let sequence = TEMPORARY_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let staging = path.with_file_name(format!(".creating-{}-{sequence}", std::process::id()));
+    fs::create_dir(&staging).map_err(|error| io_error("create run directory", &staging, error))?;
+    set_private_directory_permissions(&staging)?;
+    ensure_private_directory(&staging.join(HISTORY_DIRECTORY))?;
+    Ok(staging)
+}
+
+/// Publish a fully built run directory under its final name. An existing run
+/// is never replaced.
+pub(super) fn publish_run_directory(staging: &Path, path: &Path) -> Result<(), RunStoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => return Err(RunStoreError::RunAlreadyExists),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error("inspect run directory", path, error)),
+    }
+    fs::rename(staging, path).map_err(|error| {
+        if matches!(
+            error.kind(),
+            io::ErrorKind::AlreadyExists | io::ErrorKind::DirectoryNotEmpty
+        ) {
+            RunStoreError::RunAlreadyExists
+        } else {
+            io_error("publish run directory", path, error)
+        }
+    })?;
+    path.parent().map_or(Ok(()), sync_directory)
 }
 
 pub(super) fn verify_run_directory(path: &Path) -> Result<(), RunStoreError> {
