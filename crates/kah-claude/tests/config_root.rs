@@ -1,5 +1,5 @@
-//! Installed Claude2.1.292 we()/Gbr (203565295/203687833): native config-root
-//! NFC normalization, and global .claude.json inside an explicit config dir.
+//! Native config-root behavior: NFC normalization and .claude.json inside
+//! an explicitly configured directory.
 use kah_claude::paths;
 use std::{path::Path, process::Command};
 #[test]

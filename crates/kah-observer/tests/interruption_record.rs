@@ -26,8 +26,8 @@ fn dead_flight() -> Flight {
 
 #[test]
 fn an_interrupted_observation_is_journaled_before_the_next_one_clears_it() {
-    // C7(b) phase 3: the next observation recovered OBSERVER_INTERRUPTED and
-    // its success cleared the gap, leaving no record of the interruption.
+    // An interrupted observation must be journaled before the next
+    // successful observation clears the gap.
     let id = format!("interrupted-{}", std::process::id());
     let project = std::env::temp_dir().join(format!("kah-{id}"));
     fs::create_dir_all(&project).unwrap();
@@ -42,6 +42,7 @@ fn an_interrupted_observation_is_journaled_before_the_next_one_clears_it() {
         judge: Backend::Jev,
         jev_model: "jev-latest".into(),
     };
+    // Run through demos/check-tests.sh to isolate the default state root.
     let base = RunStore::default_state_root().unwrap();
     let mut state = State::new(binding.clone());
     state.inflight = Some(dead_flight());

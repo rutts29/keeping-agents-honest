@@ -146,7 +146,7 @@ fn readonly_parent_promotes_nested_binds_without_duplicate_targets() {
 #[test]
 fn only_the_runsc_sandbox_start_failure_is_a_start_failure() {
     use kah_sandbox::sandbox_start_failed;
-    // Container startup errors can occur during Git and bundle operations.
+    // Docker reports a runsc sandbox-start failure.
     let start = "docker: Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: creating container: cannot create sandbox: cannot read client sync file: waiting for sandbox to start: EOF\n\nRun 'docker run --help' for more information\n";
     assert!(sandbox_start_failed(start));
     assert!(!sandbox_start_failed(""));

@@ -81,7 +81,7 @@ fn detached_snapshot_reader_waits_for_writer_release_instead_of_losing_its_wake(
             .unwrap();
     });
     started_rx.recv().unwrap();
-    // Test probe only: not a deadline imposed on a native review or writer.
+    // Test probe only: confirm the reader stays blocked, without a production timeout.
     assert!(result_rx.recv_timeout(Duration::from_millis(50)).is_err());
     drop(held);
     assert_eq!(
