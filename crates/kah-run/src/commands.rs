@@ -21,25 +21,42 @@ pub fn stop(base: &Path, id: &str) -> Result<(), String> {
 pub fn view(base: &Path, id: &str) -> Result<Record, String> {
     Store::read(base, id)
 }
+/// Every readable run, sorted by id. A run that cannot be read is reported on
+/// stderr and skipped, so one half-created or damaged run does not hide the rest.
 pub fn list(base: &Path) -> Result<Vec<(String, Record)>, String> {
+    let (runs, problems) = list_with_problems(base)?;
+    for (id, reason) in problems {
+        eprintln!("kah: RUN_LIST_SKIPPED stage=run_list: {id}: {reason}");
+    }
+    Ok(runs)
+}
+/// Like [`list`], with the runs that could not be read and why, sorted by id.
+/// Failing to read the base directory itself is still an error.
+pub fn list_with_problems(base: &Path) -> Result<(Vec<(String, Record)>, Problems), String> {
     let entries = match fs::read_dir(base) {
         Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((vec![], vec![])),
         Err(e) => return Err(io_error(e)),
     };
-    let mut runs = vec![];
+    let (mut runs, mut problems) = (vec![], vec![]);
     for entry in entries {
         let entry = entry.map_err(io_error)?;
         let Some(id) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
         if id.starts_with("run-") {
-            runs.push((id.clone(), view(base, &id)?));
+            match view(base, &id) {
+                Ok(record) => runs.push((id, record)),
+                Err(reason) => problems.push((id, reason)),
+            }
         }
     }
     runs.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(runs)
+    problems.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok((runs, problems))
 }
+/// Run ids that were skipped, each with the reason.
+pub type Problems = Vec<(String, String)>;
 pub fn logs(base: &Path, id: &str) -> Result<String, String> {
     let directory = Store::path(base, id)?;
     let mut files = fs::read_dir(directory)
