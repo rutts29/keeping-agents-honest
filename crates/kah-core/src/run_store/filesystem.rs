@@ -36,23 +36,50 @@ pub(super) fn create_run_directory(path: &Path) -> Result<PathBuf, RunStoreError
     }
     // The run is built beside its final name and published by one rename, so
     // an interrupted create never leaves a half-made run under the run id.
-    let sequence = TEMPORARY_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let staging = path.with_file_name(format!(".creating-{}-{sequence}", std::process::id()));
-    fs::create_dir(&staging).map_err(|error| io_error("create run directory", &staging, error))?;
+    let staging = new_staging_directory(path)?;
     set_private_directory_permissions(&staging)?;
     ensure_private_directory(&staging.join(HISTORY_DIRECTORY))?;
     Ok(staging)
 }
 
+/// Create a private sibling of `path` for building a run. A name taken by an
+/// earlier or a live creator (the pid can be reused and the counter restarts
+/// in every process) is skipped, never reused or removed.
+fn new_staging_directory(path: &Path) -> Result<PathBuf, RunStoreError> {
+    for _ in 0..1024 {
+        let sequence = TEMPORARY_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let staging = path.with_file_name(format!(".creating-{}-{sequence}", std::process::id()));
+        match fs::create_dir(&staging) {
+            Ok(()) => return Ok(staging),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(io_error("create run directory", &staging, error)),
+        }
+    }
+    Err(RunStoreError::InvalidStateComponent {
+        path: path.to_path_buf(),
+    })
+}
+
 /// Publish a fully built run directory under its final name. An existing run
-/// is never replaced.
+/// (or any other entry at that name) is never replaced.
 pub(super) fn publish_run_directory(staging: &Path, path: &Path) -> Result<(), RunStoreError> {
+    publish_after_check(staging, path, || {})
+}
+
+/// `after_check` runs between the early existence check and the rename, so a
+/// test can create the destination in that window.
+pub(super) fn publish_after_check(
+    staging: &Path,
+    path: &Path,
+    after_check: impl FnOnce(),
+) -> Result<(), RunStoreError> {
     match fs::symlink_metadata(path) {
         Ok(_) => return Err(RunStoreError::RunAlreadyExists),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(io_error("inspect run directory", path, error)),
     }
-    fs::rename(staging, path).map_err(|error| {
+    after_check();
+    rename_no_replace(staging, path).map_err(|error| {
         if matches!(
             error.kind(),
             io::ErrorKind::AlreadyExists | io::ErrorKind::DirectoryNotEmpty
@@ -63,6 +90,33 @@ pub(super) fn publish_run_directory(staging: &Path, path: &Path) -> Result<(), R
         }
     })?;
     path.parent().map_or(Ok(()), sync_directory)
+}
+
+/// Rename that fails with `AlreadyExists` instead of replacing an existing
+/// entry, atomically (renameat2 with RENAME_NOREPLACE). Only a filesystem
+/// without that flag falls back to a check followed by a plain rename.
+#[cfg(target_os = "linux")]
+fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    use rustix::io::Errno;
+
+    match renameat_with(CWD, from, CWD, to, RenameFlags::NOREPLACE) {
+        Ok(()) => Ok(()),
+        Err(Errno::INVAL | Errno::NOSYS) => plain_rename_if_absent(from, to),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
+    plain_rename_if_absent(from, to)
+}
+
+fn plain_rename_if_absent(from: &Path, to: &Path) -> io::Result<()> {
+    if fs::symlink_metadata(to).is_ok() {
+        return Err(io::ErrorKind::AlreadyExists.into());
+    }
+    fs::rename(from, to)
 }
 
 pub(super) fn verify_run_directory(path: &Path) -> Result<(), RunStoreError> {
