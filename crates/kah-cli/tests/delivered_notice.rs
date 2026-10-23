@@ -77,3 +77,27 @@ fn the_typed_notice_fits_the_claude_limit_with_its_prefix() {
     );
     assert!(delivered::typed_notice("codex", &over.repeat(3)).is_ok());
 }
+
+#[test]
+fn a_queued_notice_is_checked_as_the_raw_text_the_hook_delivers() {
+    // Only a pushed notice carries the pane prefix; a queued one at exactly
+    // the limit was refused because its unused prefix was counted.
+    let limit = "a".repeat(10_000);
+    assert_eq!(
+        delivered::routed_notice("claude", &limit, false).unwrap(),
+        limit
+    );
+    assert!(delivered::routed_notice("claude", &format!("{limit}a"), false).is_err());
+    let error = delivered::routed_notice("claude", &limit, true).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .starts_with("REVIEW_REMINDER_NATIVE_LIMIT"),
+        "{error}"
+    );
+    let fits = "a".repeat(10_000 - delivered::pushed_text("").encode_utf16().count());
+    assert_eq!(
+        delivered::routed_notice("claude", &fits, true).unwrap(),
+        delivered::pushed_text(&fits)
+    );
+}

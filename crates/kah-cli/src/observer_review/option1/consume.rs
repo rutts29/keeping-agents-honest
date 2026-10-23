@@ -143,12 +143,11 @@ fn checkpoint_notice(
         request.head.as_deref().unwrap_or("unknown"),
         request.id
     );
-    let typed = super::super::delivered::typed_notice(&state.worker.provider, &text)?;
     let original = &request.trigger["option1"]["original_trigger"];
+    let pushed = super::super::delivered::push_notice(original, &state.worker.project);
+    let sent = super::super::delivered::routed_notice(&state.worker.provider, &text, pushed)?;
     // If the push fails, today's queued reminder still carries the notice.
-    if super::super::delivered::push_notice(original, &state.worker.project)
-        && super::advance::prompt(state, &typed).is_ok()
-    {
+    if pushed && super::advance::prompt(state, &sent).is_ok() {
         return Ok(());
     }
     super::super::reminder_queue::save(

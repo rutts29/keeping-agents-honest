@@ -88,6 +88,16 @@ pub fn pushed_text(notice: &str) -> String {
 
 /// The pushed text for this worker; it is what is typed, so it is what must
 /// fit the native size limit.
+/// The notice as its route sends it: typed into the pane when `pushed`, else
+/// the raw text a hook reminder delivers.
+pub fn routed_notice(provider: &str, notice: &str, pushed: bool) -> Result<String> {
+    if pushed {
+        return typed_notice(provider, notice);
+    }
+    super::reminder::validate_native(provider, notice)?;
+    Ok(notice.into())
+}
+
 pub fn typed_notice(provider: &str, notice: &str) -> Result<String> {
     let typed = pushed_text(notice);
     super::reminder::validate_native(provider, &typed)?;
