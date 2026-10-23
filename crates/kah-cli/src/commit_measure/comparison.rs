@@ -4,11 +4,6 @@ use super::*;
 use std::collections::BTreeSet;
 pub fn omitted(repo: &Path, input: &Input) -> Result<BTreeMap<String, Value>> {
     let mut omitted = BTreeMap::new();
-    for hunk in input.hunks.values() {
-        if hunk.file.starts_with("docs/gates/evidence/") {
-            omitted.insert(hunk.file.clone(), json!({"reason":"generated_evidence_data","production_policy":"undecided; comparison only"}));
-        }
-    }
     let Some(base) = &input.baseline else {
         return Ok(omitted);
     };

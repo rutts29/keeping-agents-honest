@@ -103,7 +103,7 @@ pub fn run(manifest: &Manifest, output: &Path) -> Result<Value> {
     Ok(
         json!({"records":records,"cost_from_actual_usage_usd":spend,"stop":stop,
         "planned_calls":manifest.jobs.len(),"actual_calls":records.len(),"no_retries":true,"approved_money_stop_usd":approved_stop,
-        "authority":manifest.option1.as_ref().map_or("Explicit approval for one replay with an actual-spend safeguard",|p|p.authority.as_str()),"option1":manifest.option1}),
+        "authority":manifest.option1.as_ref().map_or("default spend safeguard: ONE decisive run, $0.46",|p|p.authority.as_str()),"option1":manifest.option1}),
     )
 }
 fn execute(

@@ -1,5 +1,4 @@
 //! Decisive measurement: frozen source-derived rules, neutral SHA-only cases.
-//! The plant manifest is not an argument and is never opened by this pipeline.
 use super::*;
 use atomization::{AtomicRule, Item};
 use kah_core::intent_history::{
@@ -118,9 +117,9 @@ fn bundle(
             hunks,
             files,
             matrix: vec![],
-            carried: json!({"source":"source-only rule extraction","not_diff_checkable":rules.iter().filter(|r|!r.diff_checkable).map(|r| &r.rule_id).collect::<Vec<_>>(),"selection":"All frozen diff-checkable rules; no label-derived component mapping"}),
+            carried: json!({"source":"source-only atomization","not_diff_checkable":rules.iter().filter(|r|!r.diff_checkable).map(|r| &r.rule_id).collect::<Vec<_>>(),"selection":"All frozen diff-checkable rules; no label-derived component mapping"}),
         },
-        matrix_source: "fresh_native_required_same_session".into(),
+        matrix_source: "fresh_native_required".into(),
         native_usage: None,
         calibration: Some(calibration.clone()),
     })
@@ -147,7 +146,7 @@ fn history(items: &[Item], rules: &[AtomicRule]) -> Result<History> {
     let source = SourceRef::new(
         SourceProvider::Bundle,
         "decisive-source-only",
-        "revision28",
+        "source-only",
         SourceRole::User,
         commit_check::digest(&serde_json::to_vec(items)?),
     );

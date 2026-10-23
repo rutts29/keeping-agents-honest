@@ -1,4 +1,5 @@
-//! Existing C owns evidence validation/cache eligibility; this bridge only scopes.
+//! The verdict cache owns evidence validation and cache eligibility; this bridge
+//! only scopes.
 use super::*;
 use crate::observer_review::{state::Request, verdict_cache};
 pub fn apply(private: &Path, request: &mut Request, bundle: &mut Bundle) -> Result<()> {
