@@ -3,7 +3,7 @@ use serde_json::json;
 use std::{fs, path::PathBuf, process::Command};
 
 #[test]
-#[ignore = "authorized lossless real observer migration; make gate PHASE=5o-bound"]
+#[ignore = "authorized lossless real observer migration"]
 fn migrate_real_observer_sources_without_losing_evidence() {
     let worker = std::env::var("KAH_GATE_REAL_SESSION").unwrap();
     let state = Store::read(&worker).unwrap().unwrap();

@@ -20,7 +20,7 @@ mod real;
 mod selection;
 pub(super) mod usage;
 pub fn launch() {
-    assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
+    assert_eq!(std::env::var("KAH_LIVE_CONTROLLER").as_deref(), Ok("1"));
     let fixture = fixture::Fixture::new();
     save(&fixture.evidence.join("native-versions.json"), &versions());
     drive(fixture);
@@ -28,7 +28,7 @@ pub fn launch() {
 /// Labelled flags on the generated corpus, confirmed in one native session
 /// that this journey creates; later cases must resume that same session.
 pub fn confirmation_replay() {
-    assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
+    assert_eq!(std::env::var("KAH_LIVE_CONTROLLER").as_deref(), Ok("1"));
     let mut fixture = fixture::Fixture::new();
     corpus::flags(&fixture.corpus);
     fixture.mode = "confirmation".into();

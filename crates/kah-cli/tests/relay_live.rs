@@ -26,12 +26,12 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf, process::Command, time::Duration};
 
 #[test]
-#[ignore = "early verify-first journey with private kah/HOME/Herdr; make gate only"]
+#[ignore = "early verify-first journey with private kah/HOME/Herdr; opt-in live run"]
 fn early_verification_first_private() {
     track2_support::launch("verify");
 }
 #[test]
-#[ignore = "current private Claude B2 journey; make gate and bundle estimate required"]
+#[ignore = "current private Claude B2 journey; bundle estimate required"]
 fn phase3_verification_first_private() {
     assert_eq!(
         std::env::var("KAH_GATE_REVIEW_PROVIDER").as_deref(),
@@ -40,7 +40,7 @@ fn phase3_verification_first_private() {
     track2_support::launch("verify");
 }
 #[test]
-#[ignore = "hosted search in a private volume HOME/Herdr with a pinned binary; make gate only"]
+#[ignore = "hosted search in a private volume HOME/Herdr with a pinned binary; opt-in live run"]
 fn phase3_hosted_search_private() {
     assert_eq!(
         std::env::var("KAH_GATE_REVIEW_PROVIDER").as_deref(),
@@ -49,7 +49,7 @@ fn phase3_hosted_search_private() {
     track2_support::launch("search");
 }
 #[test]
-#[ignore = "selected relay case in a private volume fixture; count and make gate required"]
+#[ignore = "selected relay case in a private volume fixture; count required"]
 fn phase3_relay_private() {
     assert!(matches!(
         std::env::var("KAH_TRACK2_RELAY_ROUTE").as_deref(),
