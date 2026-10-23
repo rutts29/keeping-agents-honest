@@ -12,19 +12,26 @@ fn fixture_settings_use_the_native_config_root_and_detect_changes() {
     fs::create_dir_all(root.join("home/.claude")).unwrap();
     fs::create_dir_all(root.join("native")).unwrap();
     fs::write(root.join("home/.claude/settings.json"), "wrong root").unwrap();
-    let status = Command::new(std::env::current_exe().unwrap())
+    let output = Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
             "fixture_settings_use_the_native_config_root_and_detect_changes",
-            "--nocapture",
         ])
         .env("KAH_SETTINGS_SNAPSHOT_CHILD", "1")
         .env("HOME", root.join("home"))
         .env("CLAUDE_CONFIG_DIR", root.join("native"))
-        .status()
+        .output()
         .unwrap();
     fs::remove_dir_all(root).unwrap();
-    assert!(status.success());
+    let report = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{report}");
+    // The child expects one panic (a directory where the file should be). Its
+    // text must not reach the suite output, where it reads like a failure.
+    assert!(!report.contains("panicked at"), "{report}");
 }
 
 fn child() {
