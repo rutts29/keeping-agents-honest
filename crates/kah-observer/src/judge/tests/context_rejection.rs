@@ -2,7 +2,7 @@ use super::context_rejection;
 use serde_json::json;
 
 #[test]
-fn actual_builder_response_routes_to_whole_item_preparation() {
+fn provider_context_400_routes_to_whole_item_preparation() {
     let captured: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/real-context-400.json")).unwrap();
     assert_eq!(captured["status"], 400);

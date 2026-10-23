@@ -6,7 +6,7 @@ use serde_json::json;
 use std::{fs, path::PathBuf};
 
 #[test]
-#[ignore = "live TypeSafe HTTP contract using host-only key; not a gate journey"]
+#[ignore = "live TypeSafe HTTP contract; requires a TypeSafe key; run manually"]
 fn live_jev_atomic_contract() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let judge = Jev {

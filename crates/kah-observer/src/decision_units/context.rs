@@ -1,4 +1,4 @@
-//! V8 projects the thinker's checked selection, never arbitrary byte windows.
+//! Projects the thinker's checked selection, never arbitrary byte windows.
 //! Each independent decision keeps its whole evidence and original authority.
 use serde_json::{Value, json};
 use std::collections::BTreeSet;

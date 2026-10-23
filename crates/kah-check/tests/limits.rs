@@ -76,10 +76,8 @@ fn shell_entrypoints_must_be_strictly_under_100_lines() {
 }
 
 #[test]
-fn extensionless_shell_entrypoints_are_checked_and_import_references_are_exempt() {
+fn extensionless_shell_entrypoints_are_checked() {
     let fixture = Fixture::new("shell-shebang");
-    fixture.write("docs/imports/sandbox/sbx-run", 200);
-    assert!(kah_check::check_tree(&fixture.0).is_ok());
     fs::create_dir_all(fixture.0.join(".githooks")).unwrap();
     fs::write(
         fixture.0.join(".githooks/pre-commit"),

@@ -82,7 +82,7 @@ fn verified_quote(citation: &Citation, document: &Document) -> Result<Value, Str
         .filter(|b| *b == b'\n')
         .count()
         + 1;
-    // The brain chooses a complete meaningful span, including any nearby
+    // The reviewer model chooses a complete meaningful span, including any nearby
     // context it needs. Keep the full source in the immutable snapshot/CAS;
     // repeating it here would undo evidence extraction and swamp Jev.
     let evidence = json!({"source":document.id,"kind":document.kind,"uri":document.uri,"digest":digest,"quote":citation.quote,"start_byte":start,"end_byte":end,"line":line});

@@ -1,16 +1,17 @@
-//! Claude Code 2.1.292 project keys, matching shipped uI/k/Le/_re functions.
-//! Native transcript path encoding follows the provider version named above.
+//! Claude Code project keys: every non-alphanumeric character becomes `-`; a key
+//! over 200 characters keeps its first 200 followed by `-` and a base36 hash.
+//! The scheme was derived from the behaviour of Claude Code 2.1.292.
 use std::path::{Path, PathBuf};
 use unicode_normalization::UnicodeNormalization;
 
-/// Claude2.1.292 we(): explicit native root or HOME/.claude, NFC-normalized.
+/// The explicit native root (CLAUDE_CONFIG_DIR) or HOME/.claude, NFC-normalized.
 pub fn config_root(home: &Path) -> PathBuf {
     let root = std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".claude"));
     root.to_string_lossy().nfc().collect::<String>().into()
 }
-/// Native production Gbr(): explicit config dir also owns .claude.json.
+/// An explicit config dir also owns .claude.json; otherwise it lives in HOME.
 pub fn global_config(home: &Path) -> PathBuf {
     std::env::var_os("CLAUDE_CONFIG_DIR")
         .filter(|v| !v.is_empty())

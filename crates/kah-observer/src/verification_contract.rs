@@ -1,5 +1,6 @@
 //! The thinker names an item's objective check; Jev validates coverage, code
-//! owns exact execution receipts. Missing coverage is worker work, never risk.
+//! owns exact execution receipts. Missing coverage is worker work; it routes to a
+//! risk question only after one completed round, never for a failed check.
 use crate::{
     decision_units::confirmed,
     judge::{Judgment, Question, Questions},

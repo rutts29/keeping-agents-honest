@@ -1,6 +1,6 @@
 //! Queued reminders reach the worker through native hooks. A Claude string
 //! over its native limit goes in ordered parts: Claude would save it to a file
-//! that kah's worker permissions deny (probe-14, fix-14). The native limit check
+//! that kah's worker permissions deny. The native limit check
 //! also stays for messages typed into a pane.
 use super::state::{Request, State, Store};
 use crate::Result;

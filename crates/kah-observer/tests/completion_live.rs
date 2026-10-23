@@ -5,7 +5,7 @@ use kah_observer::judge::{
 use serde_json::json;
 use std::{fs, path::PathBuf};
 #[test]
-#[ignore = "live Jev positive and negative completion judgments; gate only"]
+#[ignore = "live Jev completion judgments; requires a TypeSafe key; run manually"]
 fn completion_distinguishes_satisfied_violated_and_missing_evidence() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let judge = Jev {

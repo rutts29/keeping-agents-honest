@@ -1,4 +1,4 @@
-//! Brain-selected whole evidence units; source and exclusions remain auditable.
+//! Observer-selected whole evidence units; source and exclusions remain auditable.
 use super::*;
 
 pub fn apply(original: &Value, manifest: &Value) -> Result<Value> {

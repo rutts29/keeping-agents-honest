@@ -17,7 +17,7 @@ fn remote_executor_exposes_only_project_and_public_binary_with_no_local_fallback
         LaunchOptions::default(),
         Path::new("/var/tmp/public-codex"),
         "sha256:image",
-        65532,
+        42420,
     )
     .unwrap();
     let args = executor.args;
@@ -68,7 +68,7 @@ fn online_is_explicit_and_invalid_mount_syntax_is_refused() {
         yolo: false,
     };
     let untrusted =
-        Executor::new(&project(Domain::Untrusted), options, binary, "image", 65532).unwrap();
+        Executor::new(&project(Domain::Untrusted), options, binary, "image", 42420).unwrap();
     assert!(
         untrusted
             .args
@@ -76,7 +76,7 @@ fn online_is_explicit_and_invalid_mount_syntax_is_refused() {
             .any(|args| args == ["--network", "bridge"])
     );
     let executor =
-        Executor::new(&project(Domain::Research), options, binary, "image", 65532).unwrap();
+        Executor::new(&project(Domain::Research), options, binary, "image", 42420).unwrap();
     assert!(
         executor
             .args
@@ -86,7 +86,7 @@ fn online_is_explicit_and_invalid_mount_syntax_is_refused() {
     let mut invalid = project(Domain::Research);
     invalid.root = PathBuf::from("/repo,readonly/escape");
     assert_eq!(
-        Executor::new(&invalid, LaunchOptions::default(), binary, "image", 65532)
+        Executor::new(&invalid, LaunchOptions::default(), binary, "image", 42420)
             .unwrap_err()
             .code,
         "MOUNT_PATH"
@@ -100,7 +100,7 @@ fn observer_workspace_mount_can_be_read_only() {
         LaunchOptions::default(),
         Path::new("/var/tmp/public-codex"),
         "image",
-        65532,
+        42420,
     )
     .unwrap()
     .read_only_project();
@@ -122,7 +122,7 @@ fn readonly_parent_promotes_nested_binds_without_duplicate_targets() {
         LaunchOptions::default(),
         Path::new("/fixture/codex"),
         "image",
-        65532,
+        42420,
     )
     .unwrap();
     let admin = p.root.join(".git");
@@ -146,7 +146,7 @@ fn readonly_parent_promotes_nested_binds_without_duplicate_targets() {
 #[test]
 fn only_the_runsc_sandbox_start_failure_is_a_start_failure() {
     use kah_sandbox::sandbox_start_failed;
-    // Container startup errors can occur during Git and bundle operations.
+    // Docker reports a runsc sandbox-start failure.
     let start = "docker: Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: creating container: cannot create sandbox: cannot read client sync file: waiting for sandbox to start: EOF\n\nRun 'docker run --help' for more information\n";
     assert!(sandbox_start_failed(start));
     assert!(!sandbox_start_failed(""));
@@ -207,7 +207,7 @@ fn only_tmp_allows_exec_among_the_sandbox_tmpfs_mounts() {
         LaunchOptions::default(),
         Path::new("/var/tmp/public-codex"),
         "sha256:image",
-        65532,
+        42420,
     )
     .unwrap();
     executor.use_nobody();

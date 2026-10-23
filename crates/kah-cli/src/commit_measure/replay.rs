@@ -47,7 +47,7 @@ pub fn run(repo: &Path, labels_path: &Path, output: &Path) -> Result<()> {
     cases.extend(extras::coverage(repo, output)?);
     cases.extend(extras::drift(repo, output)?);
     let report = json!({"mode":"count_only","cases":cases,"controls":controls,
-        "sampling":"SHA-sorted, evenly spaced first-parent main commits Oct2–8, exclusions from reviewer labels; at least4x real positives",
+        "sampling":"SHA-sorted, evenly spaced first-parent commits (window from KAH_MEASURE_CONTROL_SINCE/UNTIL), exclusions from the label file; at least 4x real positives",
         "calibration":calibration,"actual_jev_calls":0,"actual_jev_cost_usd":0.0,"false_flags":null,"misses":null,
         "matrix_accuracy":null,"jev_false_flags":null,"post_confirmation_false_flags":null,"confirmation":"same persistent native session; actual typed flags required; not run","quality":"not_run; missing native matrices are explicit, no synthetic predictions",
         "cost_is_pass_fail":false,"caps":false});
@@ -110,6 +110,8 @@ pub fn summarize(cases: &[Value]) -> Value {
         "note":"Matrix-only quality is not the unrun Jev pipeline quality."})
 }
 
+/// Reads the calibration archive from the default evaluation data directory,
+/// `~/.local/share/kah-eval/coverage-decisions`.
 pub(super) fn calibration() -> Result<estimate::Calibration> {
     let home = std::env::var_os("HOME").ok_or("MEASURE_HOME stage=estimate")?;
     let root = Path::new(&home).join(".local/share/kah-eval/coverage-decisions");
@@ -152,7 +154,7 @@ fn real_case(
     bundle.calibration = Some(calibration.clone());
     let mut case = record(repo, output, id, kind, label.clone(), &bundle)?;
     // Scoring eligibility is recorded AFTER independent request construction.
-    // F19 was a reviewer quality finding, not a contemporaneous user rule.
+    // A reviewer quality finding is not a contemporaneous user rule.
     if label["category"] == "quality" {
         case["label_derivability"] = json!({"status":"not derivable from intent","reason":"Reviewer quality finding; no equivalent literal-question user rule in the retained active ledger. No rule injected."});
     }

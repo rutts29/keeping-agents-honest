@@ -96,7 +96,7 @@ pub struct ProjectionOverflow {
     pub budget: usize,
     /// Number of intent/conflict items represented by that payload.
     pub item_count: usize,
-    /// `None` means the payload is within budget; `Some` is a blocking reason.
+    /// `None` means nothing blocks the payload; `Some` is a blocking reason.
     pub reason: Option<String>,
 }
 
@@ -107,7 +107,7 @@ impl ProjectionOverflow {
     }
 }
 
-/// The bounded active intent projection consumed by a continuation prompt.
+/// The active intent projection consumed by a continuation prompt.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ActiveProjection {
     /// Optional prompt-only synthesis; canonical items and goal remain verbatim.
@@ -135,7 +135,7 @@ impl ActiveProjection {
         project(history, config)
     }
 
-    /// Serialize exactly the prompt payload whose bytes are budgeted.
+    /// Serialize exactly the prompt payload whose bytes are counted.
     pub fn try_rendered_prompt(&self) -> Result<String, ProjectionError> {
         if let Some(compaction) = &self.compaction {
             return serde_json::to_string(&serde_json::json!({
@@ -157,7 +157,7 @@ impl ActiveProjection {
         .map_err(ProjectionError::from)
     }
 
-    /// Serialize exactly the prompt payload whose bytes are budgeted.
+    /// Serialize exactly the prompt payload whose bytes are counted.
     #[must_use]
     pub fn rendered_prompt(&self) -> String {
         self.try_rendered_prompt()
@@ -267,7 +267,7 @@ impl ProjectionError {
     }
 }
 
-/// A bounded interpretation, linked to every verbatim input by item ID and digest.
+/// An interpretation, linked to every verbatim input by item ID and digest.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompactedIntent {
     pub source_digest: String,

@@ -17,7 +17,7 @@ fn protected_git_controls_keep_host_git_operations_native() {
         LaunchOptions::default(),
         Path::new("/fixture/codex"),
         "fixture:1",
-        65532,
+        42420,
     )
     .unwrap();
     let executor = git_guard::protect(executor, &root, None).unwrap();
@@ -91,7 +91,7 @@ fn linked_admin_is_pinned_once_and_aliased_controls_are_rejected() {
             LaunchOptions::default(),
             Path::new("/fixture/codex"),
             "fixture:1",
-            65532,
+            42420,
         )
         .unwrap()
     };

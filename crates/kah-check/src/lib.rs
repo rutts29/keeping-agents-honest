@@ -10,20 +10,20 @@ pub fn check_tree(root: &Path) -> Result<(), String> {
 /// Check every source file under `root` except the `excluded` subtree.
 pub fn check_tree_excluding(root: &Path, excluded: Option<&Path>) -> Result<(), String> {
     let excluded = excluded.and_then(|path| fs::canonicalize(path).ok());
-    visit(root, root, excluded.as_deref())
+    visit(root, excluded.as_deref())
 }
 
-fn visit(root: &Path, path: &Path, excluded: Option<&Path>) -> Result<(), String> {
+fn visit(path: &Path, excluded: Option<&Path>) -> Result<(), String> {
     for entry in fs::read_dir(path).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let path = entry.path();
         let kind = entry.file_type().map_err(io_error)?;
         if kind.is_dir() {
             if !skipped(&entry.file_name().to_string_lossy(), &path, excluded) {
-                visit(root, &path, excluded)?;
+                visit(&path, excluded)?;
             }
         } else if kind.is_file() {
-            check_file(root, &path)?;
+            check_file(&path)?;
         }
     }
     Ok(())
@@ -34,14 +34,10 @@ fn skipped(name: &str, path: &Path, excluded: Option<&Path>) -> bool {
         || excluded.is_some_and(|dir| fs::canonicalize(path).is_ok_and(|real| real == dir))
 }
 
-fn check_file(root: &Path, path: &Path) -> Result<(), String> {
+fn check_file(path: &Path) -> Result<(), String> {
     let bytes = fs::read(path).map_err(io_error)?;
     let source = String::from_utf8_lossy(&bytes);
-    let reference = path
-        .strip_prefix(root)
-        .unwrap_or(path)
-        .starts_with("docs/imports/sandbox");
-    let limit = if is_shell(path, &source) && !reference {
+    let limit = if is_shell(path, &source) {
         99
     } else if is_test(path) {
         600

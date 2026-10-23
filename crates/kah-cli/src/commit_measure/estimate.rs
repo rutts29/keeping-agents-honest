@@ -50,7 +50,7 @@ impl Calibration {
         let tokens = bytes as f64 * self.input_tokens as f64 / self.input_utf8_bytes as f64;
         json!({"empirical_input_tokens":tokens,"observed_ratio_range_tokens":[bytes as f64*self.minimum_ratio,bytes as f64*self.maximum_ratio],
             "estimated_usd":tokens*0.042/1_000_000.0,"model":"jev-1.13.0",
-            "price_source":"https://docs.typesafe.ai/models checked live2026-10-10: $0.042/M input; no output charge",
+            "price_source":"https://docs.typesafe.ai/models checked live 2026-10-10: $0.042/M input; no output charge",
             "actual_tokens":null,"planning_only":true,"not_a_tokenizer_or_bound":true,"calibration_samples":self.samples})
     }
 }

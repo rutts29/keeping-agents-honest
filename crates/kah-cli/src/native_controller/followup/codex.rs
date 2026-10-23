@@ -1,4 +1,4 @@
-//! Codex installed0.162.1 native items/turns APIs; pagination has no content cap.
+//! Codex 0.162.1 (tested version) native items/turns APIs; pagination has no content cap.
 use super::*;
 use kah_codex::control::Control;
 use serde_json::{Value, json};

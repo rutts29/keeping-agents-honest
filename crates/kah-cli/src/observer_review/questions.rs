@@ -213,8 +213,7 @@ fn relay_command(question: &Value, id: &str) -> String {
         )
     }
 }
-/// A question stored after this job listed its questions starts no job
-/// (finding #21).
+/// A question stored after this job listed its questions starts no job.
 pub fn deliver(worker: &str) -> Result<()> {
     let lease = super::job_lease::lease(worker, "__review-questions")?;
     deliver_with(worker, &lease, || pass(worker))

@@ -13,7 +13,12 @@ fn input() -> Input {
         History::new(GoalRevision::new(1, "Build kah", vec![source.clone()])).unwrap();
     history
         .append(Event::RequirementAdded {
-            item: IntentItem::new("junk", IntentKind::Constraint, "-builder", vec![source]),
+            item: IntentItem::new(
+                "junk",
+                IntentKind::Constraint,
+                "unrelated-fragment",
+                vec![source],
+            ),
             approval: None,
         })
         .unwrap();
@@ -107,7 +112,7 @@ fn full_history_and_standing_words_are_accounted_and_permissions_are_rule_local(
             .find(|s| s.id == "intent:junk")
             .unwrap()
             .text,
-        "-builder"
+        "unrelated-fragment"
     );
 }
 #[test]
@@ -144,8 +149,8 @@ fn malformed_or_stale_projection_never_becomes_a_question_set() {
 }
 #[test]
 fn link_errors_name_the_clause_and_how_to_fix_it() {
-    // 5h-f: the observer saw only "only current clauses support rules" for
-    // merged clauses without rules and could not correct its report.
+    // Link errors must name the clause and explain how to correct it;
+    // a bare "only current clauses support rules" message is insufficient.
     let input = input();
     let original = candidate(&input);
     let err = |set: RuleSet| set.validate(&input, None).unwrap_err();

@@ -136,7 +136,7 @@ fn missing_global_identity_changes_nothing_and_does_not_fail() {
 
 #[test]
 fn observer_workspace_without_a_repository_launches_with_a_global_identity() {
-    // OBS-ACCEPT lab-cp1 (real HOME): the observer workspace is a plain
+    // The observer workspace is a plain
     // directory; writing identity there failed every Claude observer launch.
     let f = Fixture(std::env::temp_dir().join(format!("kah-ident-ws-{}", std::process::id())));
     let root = f.0.join("research").join("observer-workspace");

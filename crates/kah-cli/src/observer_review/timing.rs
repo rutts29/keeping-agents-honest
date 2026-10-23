@@ -34,8 +34,8 @@ pub fn mark(worker: &str, request: &str, stage: &str, at_ms: u64) -> Result<()> 
     }
     super::source_store::save(&root, &name, &record)
 }
-/// Stop means the native main agent finished its response (Claude hooks docs,
-/// installed2.1.292; Codex0.160 Stop is already validated by the adapter).
+/// Stop means the native main agent finished its response (Claude Code hooks
+/// docs; the Codex adapter validates Stop).
 /// This is the HOST RECEIPT time, not an invented provider timestamp.
 pub fn native_end(worker: &str, event: &super::hook_queue::Event) -> Result<()> {
     if event.input["hook_event_name"] != "Stop" {

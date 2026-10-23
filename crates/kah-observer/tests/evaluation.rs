@@ -19,8 +19,8 @@ fn gold_state_is_rebuilt_across_holdout_rows_without_sending_labels() {
         cases[0].state["event"]["previous_assistant"],
         "Prior agent context"
     );
-    assert!(validation_id("sdm-0122"));
-    assert!(!validation_id("sdm-0123"));
+    assert!(validation_id("example-0122"));
+    assert!(!validation_id("example-0123"));
 }
 #[test]
 fn inconsistent_gold_prior_and_duplicate_ids_are_rejected() {
@@ -37,9 +37,9 @@ fn inconsistent_gold_prior_and_duplicate_ids_are_rejected() {
 #[test]
 #[ignore = "private gold-dataset consistency preflight; no model calls"]
 fn real_dataset_gold_contexts_rebuild_before_any_evaluation() {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
-    let text =
-        std::fs::read_to_string(home.join(".local/share/kah-eval/steering-v1.jsonl")).unwrap();
+    let input =
+        std::env::var_os("KAH_TEST_GOLD_DATASET").expect("explicit evaluation dataset required");
+    let text = std::fs::read_to_string(input).unwrap();
     let rows = text
         .lines()
         .map(|l| serde_json::from_str::<Row>(l).unwrap())

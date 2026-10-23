@@ -1,5 +1,5 @@
 //! Shared service probe, not a native observer turn or a deadline on a review.
-//! TypeSafe pinned pages/api.md: 529 overload requires exponential backoff.
+//! TypeSafe documents exponential backoff for 529 overload.
 use super::*;
 use crate::judge::{Judge, Question, Questions, jev};
 use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt};

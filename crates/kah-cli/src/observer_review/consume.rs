@@ -268,7 +268,7 @@ pub fn take(worker: &str, event: &str, turn: &str) -> Result<Option<Value>> {
         reminder["text"] = format!("[kah confirmed finding from previous turn {}; retained context, not new user steering] {}",reminder["turn"],reminder["text"].as_str().unwrap_or("")).into();
     }
     let text = reminder["text"].as_str().unwrap_or("").to_owned();
-    // fix-14: a long Claude reminder goes in ordered parts at later hooks; the
+    // A long Claude reminder goes in ordered parts at later hooks; the
     // rest stays in this file, so no other reminder goes first. Never held.
     let (text, rest) = if parts > 0 || text.encode_utf16().count() > super::reminder::CLAUDE_LIMIT {
         let state = store.load()?.ok_or("REVIEW_STATE_MISSING stage=reminder")?;

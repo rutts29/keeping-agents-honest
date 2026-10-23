@@ -25,7 +25,7 @@ pub(super) fn coverage(repo: &Path, output: &Path) -> Result<Vec<Value>> {
         let state = &original["state"];
         let mut bundle = snapshot(state)?;
         bundle.input.code_changed = true;
-        bundle.matrix_source = "retained_v12_reasoning; matrix quote adaptation pending".into();
+        bundle.matrix_source = "retained_reasoning".into();
         let head = state["event"]["head"].as_str().unwrap_or("retained-native");
         bundle.input.revision = head.into();
         bundle.input.files = super::code::coverage(state, head)?;
@@ -48,12 +48,15 @@ pub(super) fn coverage(repo: &Path, output: &Path) -> Result<Vec<Value>> {
     let _ = repo;
     Ok(cases)
 }
+/// Planted-drift cases read `verified-drift-{provider}.json` from the directory
+/// named by KAH_MEASURE_DRIFT_EVIDENCE; without it there are no drift cases.
 pub(super) fn drift(repo: &Path, output: &Path) -> Result<Vec<Value>> {
     let mut cases = vec![];
+    let Some(directory) = std::env::var_os("KAH_MEASURE_DRIFT_EVIDENCE") else {
+        return Ok(cases);
+    };
     for provider in ["codex", "claude"] {
-        let path = repo.join(format!(
-            "docs/gates/evidence/phase-5o-b/verified-drift-{provider}.json"
-        ));
+        let path = std::path::Path::new(&directory).join(format!("verified-drift-{provider}.json"));
         let original: Value = serde_json::from_slice(&fs::read(&path)?)?;
         let state = &original["fullVerifier"]["jev_state"];
         let mut bundle = snapshot(state)?;

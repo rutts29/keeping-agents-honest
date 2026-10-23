@@ -7,8 +7,9 @@ use std::{
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
-    // Old stored bindings migrate to the current user policy. Historical
-    // judgments retain their original backend string and cannot gate actions.
+    // Stored bindings that name a legacy backend (`luna`) migrate to Jev.
+    // Historical judgments retain their original backend string and cannot
+    // gate actions.
     #[default]
     #[serde(alias = "luna")]
     Jev,

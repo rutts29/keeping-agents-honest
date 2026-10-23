@@ -56,8 +56,9 @@ pub fn standing_sources(project: &Path) -> Result<Vec<Source>, String> {
             snapshot(&scope.join(name), scope, &mut files)?;
         }
     }
-    // This project's instruction chain explicitly designates this plan. Keep its
-    // historical sections verbatim; the observer accounts for them as context.
+    // An instruction file that names docs/PLAN.md pulls that plan in as a
+    // standing source. Keep its sections verbatim; the observer accounts for
+    // them as context.
     if files
         .values()
         .any(|(text, _, _)| text.contains("docs/PLAN.md"))

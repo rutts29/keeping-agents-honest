@@ -1,5 +1,5 @@
 //! Legacy summary decoding and model-choice compatibility only. Automatic
-//! synthesis was retired in Phase 5O; full native sessions own compaction.
+//! synthesis was retired; full native sessions own compaction.
 use kah_core::projection::{ActiveProjection, CompactedIntent};
 use sha2::{Digest, Sha256};
 mod config;

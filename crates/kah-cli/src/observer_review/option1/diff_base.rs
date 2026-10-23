@@ -4,9 +4,9 @@ use std::path::Path;
 
 /// The recorded baseline's head. With no baseline file, a kah run worktree
 /// starts from the commit its run was created from, never the empty tree
-/// (5h-d1, 2026-10-18: a dispatched worker's first HEAD sample saw no HEAD, so
-/// no baseline was seeded and its checkpoint counted the fixture's committed
-/// AGENTS.md and CLAUDE.md as new). Interactive sessions are unchanged.
+/// (otherwise the first checkpoint would count files already committed in the
+/// base, such as AGENTS.md and CLAUDE.md, as new). Interactive sessions are
+/// unchanged.
 pub fn diff_base(baseline: Option<&Value>, project: &Path) -> Option<String> {
     match baseline {
         Some(baseline) => baseline["head"].as_str().map(str::to_owned),

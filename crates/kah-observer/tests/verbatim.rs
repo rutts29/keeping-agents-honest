@@ -186,14 +186,20 @@ fn uncertain_presence_is_retained_for_review_without_supersession() {
     let mut j = judgment("correction", &old, 0.99);
     j.answers
         .insert("is_steering".into(), Answer::Noul { noul: 0.63 });
-    verbatim::apply(&mut h, "Remove the previously configured usage limit.", source("u2"), &j).unwrap();
+    verbatim::apply(
+        &mut h,
+        "Perhaps relax the example limit if appropriate.",
+        source("u2"),
+        &j,
+    )
+    .unwrap();
     assert_eq!(h.intents().values().filter(|i| i.is_active()).count(), 2);
     assert!(h.intents().values().any(|i| i.review_required));
 }
 
 #[test]
 fn a_partial_goal_change_cannot_supersede_the_original_task() {
-    let text = "Build the requested system; stop at 30% usage";
+    let text = "Build the example index; stop after 30 files";
     let mut h = History::new(GoalRevision::new(1, text, vec![source("goal")])).unwrap();
     verbatim::apply(
         &mut h,
@@ -205,7 +211,7 @@ fn a_partial_goal_change_cannot_supersede_the_original_task() {
     let original = h.intents().keys().next().unwrap().to_string();
     verbatim::apply(
         &mut h,
-        "The allowance is now 60%",
+        "The file limit is now 60 files",
         source("u2"),
         &judgment("correction", &original, 0.99),
     )

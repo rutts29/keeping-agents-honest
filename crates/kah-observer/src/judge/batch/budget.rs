@@ -2,7 +2,8 @@
 use super::*;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
-// https://docs.typesafe.ai/models checked2026-10-12: $0.042/M input, output free.
+// Assumed rate, which may change (https://docs.typesafe.ai/models, checked
+// 2026-10-12): $0.042/M input, output free.
 const NANODOLLARS_PER_TOKEN: u64 = 42;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 pub(super) struct Budget {

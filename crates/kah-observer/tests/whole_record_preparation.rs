@@ -8,6 +8,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 #[ignore = "seven retained actual rejects; explicit output path; zero native/provider inference"]
 fn retained_whole_records_prove_mechanics_not_selection_quality() {
     let mut results = vec![];
+    let mut budget_controls = 0;
     for entry in fs::read_dir(corpus::path("preparation/jev")).unwrap() {
         let path = entry.unwrap().path();
         if !path
@@ -29,10 +30,12 @@ fn retained_whole_records_prove_mechanics_not_selection_quality() {
             format!("sha256:{:x}", Sha256::digest(&bytes))
         );
         let body: Value = serde_json::from_slice(&bytes).unwrap();
+        budget_controls += usize::from(response["job"]["request_budget_control"] == true);
         results.push(exercise(&body, response["job"].clone()));
         assert_eq!(bytes, fs::read(&path).unwrap());
     }
     assert_eq!(results.len(), 7);
+    assert_eq!(budget_controls, 1);
     results.sort_by_key(|v| v["job"]["path"].as_str().unwrap().to_owned());
     let output = std::env::var_os("KAH_WHOLE_RECORD_OUTPUT").unwrap();
     let output = corpus::fresh_output(Path::new(&output), &[&corpus::root()]);
@@ -91,7 +94,7 @@ fn exercise(body: &Value, job: Value) -> Value {
     assert!(
         matches!(prepare(body,&catalogue,&selected,&Policy::default()).unwrap(),Outcome::DirectObserverReview{gap} if gap.reason=="calibration_unavailable")
     );
-    if job["case_id"] == "case-83e046372c9a" {
+    if job["request_budget_control"] == true {
         request_budget_control(body, &catalogue, &selected);
     }
     json!({"job":job,"keep_all":keep_all,"mechanics_only_fit":estimate,"deterministic":true,"invalid_controls_rejected":true})

@@ -19,8 +19,8 @@ pub fn retain_rethink(root: &Path, request: &Request, assessment: &Value) -> Res
     {
         return Ok(());
     }
-    // Apply the one-round verification condition:
-    // a rethought checkpoint proceeds through verification, not another ask.
+    // One-round rule: a rethought checkpoint proceeds through verification,
+    // not another ask.
     if request.purpose == super::super::state::Purpose::Checkpoint
         && request.trigger["reconsideration"].is_object()
     {

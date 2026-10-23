@@ -1,4 +1,4 @@
-//! Reviewer-labelled real commits; labels never enter the thinker input.
+//! Labelled real commits; labels never enter the thinker input.
 use super::*;
 use kah_core::intent_history::{
     Event, GoalRevision, History, IntentItem, IntentKind, SourceProvider, SourceRef, SourceRole,
@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 pub fn history(text: &str, id: &str, origin: &str) -> Result<History> {
     let source = SourceRef::new(
         SourceProvider::Bundle,
-        "phase1-retained-corpus",
+        "retained-corpus",
         origin,
         SourceRole::User,
         commit_check::digest(text.as_bytes()),
@@ -92,6 +92,9 @@ pub fn real_commit_with_snapshot(
         calibration: None,
     })
 }
+/// Samples control commits from first-parent history. KAH_MEASURE_CONTROL_SINCE
+/// and KAH_MEASURE_CONTROL_UNTIL (ISO 8601 timestamps) bound the window; an
+/// unset bound leaves that side of the history open.
 pub fn controls(repo: &Path, labels: &Value) -> Result<Vec<String>> {
     let mut excluded = BTreeSet::new();
     let positives = labels["positives"]
@@ -109,17 +112,18 @@ pub fn controls(repo: &Path, labels: &Value) -> Result<Vec<String>> {
             );
         }
     }
-    let commits = source::git(
-        repo,
-        &[
-            "log",
-            "--first-parent",
-            "--since=2026-10-02T00:00:00Z",
-            "--until=2026-10-08T23:59:59Z",
-            "--format=%H",
-            "HEAD",
-        ],
-    )?;
+    let mut log = vec!["log".to_owned(), "--first-parent".to_owned()];
+    for (variable, flag) in [
+        ("KAH_MEASURE_CONTROL_SINCE", "--since"),
+        ("KAH_MEASURE_CONTROL_UNTIL", "--until"),
+    ] {
+        if let Some(bound) = std::env::var(variable).ok().filter(|b| !b.is_empty()) {
+            log.push(format!("{flag}={bound}"));
+        }
+    }
+    log.extend(["--format=%H".to_owned(), "HEAD".to_owned()]);
+    let log: Vec<&str> = log.iter().map(String::as_str).collect();
+    let commits = source::git(repo, &log)?;
     let mut normal: Vec<_> = commits
         .lines()
         .filter(|sha| !excluded.contains(*sha))

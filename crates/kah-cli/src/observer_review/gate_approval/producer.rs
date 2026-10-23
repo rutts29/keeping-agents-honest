@@ -103,7 +103,7 @@ fn jobs(root: &Path) -> Result<Vec<std::path::PathBuf>> {
     Ok(paths)
 }
 /// A round begun after this job listed its jobs, or builder progress that the
-/// controller saw while it ran, starts no job (finding #21).
+/// controller saw while it ran, starts no job.
 pub fn run(worker: &str) -> Result<()> {
     let lease = super::super::job_lease::lease(worker, "__gate-followup")?;
     run_with(worker, &lease, || pass(worker))

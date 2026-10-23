@@ -1,4 +1,4 @@
-//! #52b: which pages of which source an observer was served, per review request, and the submit check that
+//! Which pages of which source an observer was served, per review request, and the submit check that
 //! every page of the request's required evidence (context-input.json `sources`) was read.
 //! The ledger is `<workspace>/outbox/read-pages-<request view>.jsonl`, one line per served page, keyed by the
 //! digest of the expanded source text, so a changed source is a different source. The outbox is the one place

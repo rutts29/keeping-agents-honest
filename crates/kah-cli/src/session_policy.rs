@@ -127,7 +127,7 @@ fn initial_policy(current: &SessionPolicy, input: &Value) -> Result<SessionPolic
     if input["hook_event_name"] == "SessionStart" && input["source"] == "startup" {
         return Ok(current.clone());
     }
-    // Gate 2 rollouts predate the policy store; their stable kah overlay path
+    // Older rollouts predate the policy store; their stable kah overlay path
     // supplies the original policy. Never infer opt-ins from a project file.
     let transcript = input["transcript_path"].as_str().map(Path::new);
     if transcript.is_some_and(|p| p.starts_with(current.overlay.join("sessions"))) {

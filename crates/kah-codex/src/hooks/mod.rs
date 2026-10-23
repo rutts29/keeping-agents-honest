@@ -1,4 +1,4 @@
-//! Native hook input and projection encoding, extracted from driftctl codex_hook.
+//! Native hook input and projection encoding for the Codex provider.
 use kah_core::projection::ActiveProjection;
 use serde::Deserialize;
 use serde_json::{Value, json};

@@ -44,6 +44,10 @@ pub fn register(binding: &Binding, input: &Value, provider: &str) -> Result<()> 
     kah_core::run_store::ensure_private_directory(&directory)?;
     crate::unattended_report::save(&directory, "config.json", &serde_json::to_value(config)?)
 }
+/// Interactive projects are reviewed by location: `~/repos/mine/<project>` and
+/// `~/repos/research/<project>` are enabled, `~/repos/untrusted/<project>` never
+/// is, and any other interactive project is disabled. An `kah run` worktree is
+/// enabled unless its run domain is untrusted.
 pub(crate) fn enabled(binding: &Binding) -> Result<bool> {
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=scope")?);
     if binding.project.starts_with(home.join("repos/untrusted")) {

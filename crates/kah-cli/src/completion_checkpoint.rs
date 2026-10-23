@@ -74,8 +74,8 @@ pub fn request(
 
 /// The queued trigger waits for host admission. When admission is blocked,
 /// each controller instance retries it once; a block recorded after that
-/// retry stops the run with its reason (5r-i: RUN_SHARE_ACL left a run waiting
-/// with no limit). A retry that succeeds clears the block.
+/// retry stops the run with its reason, so a run never waits forever on a
+/// blocked admission. A retry that succeeds clears the block.
 fn admission(directory: &Path, worker: &str, key: &Key) -> Result<Status> {
     let path = Store::directory(worker)?.join("admission-blocked.json");
     let Some(block): Option<Value> = observer_review::state::read(&path)? else {
@@ -180,8 +180,8 @@ fn unconfirmed_terminal(checkpoint: &Value, key: &Key, revision: u64) -> bool {
         && checkpoint["intent_revision"] == revision
 }
 
-/// The task is confirmed when every goal and user
-/// row is satisfied and no row is violated. Then a terminal checkpoint whose
+/// The task is confirmed when every goal and user row is satisfied and no row
+/// is violated. Then a terminal checkpoint whose
 /// only unconfirmed rows are standing rules (derived_rule authority) completes,
 /// and those rules are reported as not confirmed. Anything else is not a pass.
 fn accepted_unconfirmed(checkpoint: &Value, authorities: &Value) -> Option<Vec<String>> {

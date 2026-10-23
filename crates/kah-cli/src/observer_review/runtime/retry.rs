@@ -180,7 +180,7 @@ fn working(store: &Store, state: &State, request: &str, gap: &Path) -> Result<bo
         review::hook::spawn("__review-consume", &state.worker.session)?;
         return Ok(true);
     }
-    // #47: the old observer lost its exec transport and its turn ended. Herdr
+    // The old observer lost its exec transport and its turn ended. Herdr
     // can still show it Working at that Stop. It can never run this request,
     // so it does not hold the retry; delivery closes it and resumes a new one.
     if review::delivery_outcome::replacement_requested(&store.directory, request)? {

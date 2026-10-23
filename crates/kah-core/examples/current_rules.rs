@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ))
                 })
                 .collect::<Result<Vec<_>, std::io::Error>>()?;
+            // Fixed example observation time, not the time these inputs were collected.
             let input = Input::from_history(&history, standing, "2026-10-11T00:00:00Z")?;
             fs::write(&args[2], serde_json::to_vec_pretty(&input)?)?;
             println!("{}", input.digest()?);

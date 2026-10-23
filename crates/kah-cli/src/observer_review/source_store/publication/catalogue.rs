@@ -35,7 +35,7 @@ pub(super) fn files(private: &Path, input: &Path, catalogue: &Value) -> Result<B
     }
     // Every file in the request view belongs to this request, so its sources
     // must resolve in the view too: preparation manifests and manifest.json,
-    // whose compacted documents the observer reads (878-11: ENOENT, refused).
+    // whose compacted documents the observer reads (a missing file is refused).
     // Staged writes (*.tmp) are not files of the request yet.
     for entry in fs::read_dir(input)? {
         let entry = entry?;

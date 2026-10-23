@@ -116,7 +116,7 @@ pub fn run(worker: &str) -> Result<()> {
     Ok(())
 }
 /// The __review-kick job. Its conditions stay true while the jobs it starts
-/// own them, so it settles on spawn requests (finding #21).
+/// own them, so it settles on spawn requests.
 pub fn kick(worker: &str) -> Result<()> {
     let lease = super::job_lease::lease(worker, "__review-kick")?;
     kick_with(worker, &lease, || super::queue::kick(worker))

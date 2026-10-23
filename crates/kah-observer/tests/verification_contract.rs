@@ -46,7 +46,7 @@ fn passing_without_touching_the_export_is_not_verification() {
     assert!(i.covered(&judgment("supported", "supported")));
 }
 #[test]
-fn missing_executable_coverage_never_becomes_a_user_risk() {
+fn needs_check_is_uncovered_and_has_no_selected_command() {
     let mut i = item();
     i.method = Method::NeedsCheck {
         why: "No check exercises this export yet.".into(),

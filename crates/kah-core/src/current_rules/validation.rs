@@ -129,8 +129,8 @@ fn validate_clause(
     }
     Ok(())
 }
-/// Messages name the clause and the fix: 5h-f's observer saw only "only
-/// current clauses support rules" for a merged clause without rules.
+/// Messages name the clause and the fix, so an observer sees what to change
+/// (a bare "only current clauses support rules" was too vague).
 fn clause_links(
     clause: &Clause,
     contributes: bool,

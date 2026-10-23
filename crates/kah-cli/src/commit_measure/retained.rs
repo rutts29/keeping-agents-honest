@@ -1,4 +1,4 @@
-//! Adapter for existing source-verified light/v12 findings; no generated facts.
+//! Adapter for existing source-verified review findings; no generated facts.
 use super::*;
 use kah_observer::{
     commit_check::{CodeQuote, FindingKind, Row, Status},

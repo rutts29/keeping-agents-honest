@@ -1,6 +1,6 @@
 //! An observer turn that ends without a report for the pending request must
-//! not leave it silently pending (for example, after the transport drops and the
-//! request remains queued). Retry it once in a fresh turn; if that turn
+//! not leave it silently pending (for example when the executor transport
+//! dropped and the request stayed pending indefinitely). Retry it once in a fresh turn; if that turn
 //! also ends without a report, retire it with a visible, typed gap. A request
 //! that no native turn accepts by UNDELIVERED_MS is retired the same way.
 use super::state::Store;
@@ -28,13 +28,14 @@ pub const UNDELIVERED: Gap = Gap {
     code: "REVIEW_OBSERVER_UNDELIVERED",
     reason: "no native observer turn accepted the request within 10 minutes",
 };
-/// If the observer declines the request again after its one
-/// automatic redelivery.
+/// The observer declined the request again after its one automatic
+/// redelivery.
 pub const REFUSED: Gap = Gap {
     code: "REVIEW_OBSERVER_REFUSED",
     reason: "the observer declined the request after its one automatic redelivery",
 };
-/// An undelivered request can wait while Herdr still shows the pane Working.
+/// A request not accepted by any native turn within 10 minutes of its first
+/// redelivery is retired.
 pub const UNDELIVERED_MS: u64 = 600_000;
 
 /// Counted from the host's first redelivery, so a request that only waited

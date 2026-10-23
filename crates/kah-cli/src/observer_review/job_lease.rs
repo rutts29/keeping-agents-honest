@@ -10,7 +10,7 @@ use std::{
 };
 
 /// Jobs whose input stays true while they or the jobs they start own it, so
-/// it cannot be their recheck (finding #21). They settle on spawn requests.
+/// it cannot be their recheck. They settle on spawn requests.
 /// __checkpoint-claims is listed too: a Stop with no assistant text writes no
 /// claim, so only its request makes the job check the delivered-change review.
 const REQUESTED: [&str; 5] = [

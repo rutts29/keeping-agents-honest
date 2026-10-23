@@ -64,7 +64,7 @@ pub(super) fn inspect_at(
     result
 }
 
-/// Re-import the exact selected parent after a paid resolver call and reject
+/// Re-import the exact selected parent after an external resolver call and reject
 /// a stale result without exposing the private session locator.
 pub fn verify_unchanged(root: &Path, expected: &ImportedSession) -> Result<(), SourceError> {
     let selection = SessionSelection::Explicit {

@@ -71,7 +71,7 @@ pub(super) fn scan(
     Ok((found, offset))
 }
 fn policy<'a>(provider: &str, row: &'a Row) -> Option<&'a str> {
-    // openai/codex rust-v0.162.1 protocol/src/protocol.rs:1879.
+    // openai/codex rust-v0.162.1 protocol/src/protocol.rs.
     if provider == "codex"
         && row.kind == "event_msg"
         && row.payload.kind == "task_complete"
@@ -83,8 +83,9 @@ fn policy<'a>(provider: &str, row: &'a Row) -> Option<&'a str> {
     {
         return Some("misalignment_policy_violation");
     }
-    // Claude Code2.1.296 native xho predicate; binary24972e3b…: Is constructor
-    // byte219977006. Official SDK schema documents these terminal policy errors.
+    // Claude Code 2.1.296 session log: assistant rows with stop_reason refusal,
+    // or apiError dlp_request_denied / safety_monitor_blocked (documented SDK
+    // terminal errors).
     if provider == "claude" && row.kind == "assistant" && !row.sidechain {
         if row.message.as_ref().and_then(|m| m.stop_reason.as_deref()) == Some("refusal") {
             return Some("refusal");
