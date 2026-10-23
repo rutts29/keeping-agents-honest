@@ -1,25 +1,17 @@
-//! Frozen ordinary-ack negative from track2; use the EXACT product question.
+//! Ordinary startup acknowledgement negative; use the EXACT product question.
 //! Real Jev, no agent/headless session, no wording or threshold tuning.
 use kah_cli::observer_review::claims;
 use kah_observer::judge::routing::{self, Backend};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{fs, path::PathBuf};
 #[test]
-#[ignore = "real Jev claim screen; make gate only after the current live gate ends"]
-fn frozen_ordinary_ack_does_not_route_to_a_gate() {
+#[ignore = "paid live Jev claim screen; run explicitly with --ignored"]
+fn ordinary_startup_ack_does_not_route_to_a_gate() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let freeze: Value = serde_json::from_str(include_str!(
-        "../../../docs/gates/evidence/phase-5o-efficiency-b/cases-frozen.json"
-    ))
-    .unwrap();
-    let case = freeze["cases"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["id"] == "plain-startup-ack-is-not-a-gate")
-        .unwrap();
-    let state =
-        json!({"turn":"retained-startup-ack","native_assistant_text":case["nativeAssistantText"]});
+    let case = json!({"id":"plain-startup-ack-is-not-a-gate",
+        "nativeAssistantText":"Session ready. I have read the task notes and am waiting for the first assignment.",
+        "expected":"No completion claim; no gate label"});
+    let state = json!({"turn":"startup-ack","native_assistant_text":case["nativeAssistantText"]});
     let judgment = routing::evaluate(
         &home,
         Backend::Jev,
@@ -33,10 +25,10 @@ fn frozen_ordinary_ack_does_not_route_to_a_gate() {
         }
         Err(e) => json!({"error":e.to_string()}),
     };
-    let root = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
+    let root = std::env::var_os("KAH_GATE_EVIDENCE").map_or_else(std::env::temp_dir, PathBuf::from);
     fs::write(root.join(format!("ack-{}.json",kah_cli::relay_store::nonce())),serde_json::to_vec_pretty(&json!({"case":case,"state":state,"outcome":outcome,"questionSet":claims::VERSION,"questionsUnchanged":true,"thresholdsUnchanged":true})).unwrap()).unwrap();
     assert_eq!(
         outcome["claimScreenTriggered"], false,
-        "Retain miss and stop; no thresholds/wording iteration"
+        "Record the miss and stop; no thresholds/wording iteration"
     );
 }

@@ -1,4 +1,4 @@
-//! Retained live binary shape; no native agent, provider request or live-store edit.
+//! Authored binary shape; no native agent, provider request or live-store edit.
 use kah_cli::observer_review::{option1::input, source_store};
 use kah_core::intent_history::{GoalRevision, History, SourceProvider, SourceRef, SourceRole};
 use kah_observer::rule_source::Resolved;
@@ -15,8 +15,7 @@ fn binary_descriptor_is_native_evidence_and_the_whole_blob_stays_on_demand() {
     fs::create_dir_all(private.join("sources")).unwrap();
     source_store::initialize(&private, &workspace).unwrap();
     fs::create_dir_all(&view).unwrap();
-    let bytes =
-        include_bytes!("../../../docs/gates/evidence/phase3-tag-import/retained-source.bundle");
+    let bytes: &[u8] = &[0x00, 0xff, 0xfe, 0x80, 0x42, 0x00];
     let digest = format!("{:x}", Sha256::digest(bytes));
     fs::write(private.join("sources").join(&digest), bytes).unwrap();
     let reference = json!({"$kah_source":digest,"encoding":"binary"});

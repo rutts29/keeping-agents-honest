@@ -66,26 +66,27 @@ fn unchanged_item_sha_and_checked_evidence_do_not_start_another_automatic_cycle(
 }
 
 #[test]
-fn retained_loop_case_uses_whole_original_quotes_and_reopens_on_new_evidence() {
-    let captured: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/repeated-checkpoint-evidence.json")).unwrap();
+fn repeated_checkpoint_uses_whole_quotes_and_reopens_on_new_evidence() {
+    let head = "c0ffee".repeat(6) + "abcd";
+    let authority = "Ship the parser change only after its unit checks pass.";
+    let completion =
+        "The parser change is delivered. All unit checks pass on the delivered commit.";
     let (mut request, report) = fixture();
-    request.head = captured["head"].as_str().map(str::to_owned);
-    request.intent["goal"] = captured["authorityQuote"].clone();
+    request.head = Some(head);
+    request.intent["goal"] = json!(authority);
     request.documents[0] = Document::new(
         "transcript",
         "worker_transcript",
         "native:worker",
-        captured["completionQuote"].as_str().unwrap(),
+        completion,
     );
     let mut raw = serde_json::to_value(report).unwrap();
     raw["decision_units"]["requirements"][0]["citations"][0]["digest"] =
         json!(request.documents[0].digest);
-    raw["decision_units"]["requirements"][0]["citations"][0]["quote"] =
-        captured["completionQuote"].clone();
+    raw["decision_units"]["requirements"][0]["citations"][0]["quote"] = json!(completion);
     let report: Report = serde_json::from_value(raw.clone()).unwrap();
     let assessment = json!({"needs_thinker":["closure"]});
-    let root = std::env::temp_dir().join(format!("kah-retained-rethink-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("kah-repeated-rethink-{}", std::process::id()));
     assert!(uncertainty::fresh_followup(&root, &request, &report, &assessment).unwrap());
     request.id = "review-later".into();
     assert!(!uncertainty::fresh_followup(&root, &request, &report, &assessment).unwrap());

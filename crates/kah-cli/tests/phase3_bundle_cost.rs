@@ -1,14 +1,25 @@
 #[path = "track2_support/bundle_cost.rs"]
 mod cost;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     fs,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 #[test]
-fn retained_finish_usage_is_charged_once_across_archives_and_throttle_is_separate() {
-    let raw = include_str!("../../../docs/gates/evidence/phase3-claude/b2/budget-events.jsonl");
+fn finish_usage_is_charged_once_across_archives_and_throttle_is_separate() {
+    let finish = |request: &str, ticket: &str, status: u64, tokens: Option<u64>| {
+        json!({"at_ms":1_700_000_000_000_u64,"kind":"finish","request":request,"ticket":ticket,
+            "status":status,"exact_input_tokens":tokens})
+    };
+    let raw = [
+        finish("batch-1", "1", 429, None),
+        finish("batch-2", "2", 200, Some(4321)),
+    ]
+    .iter()
+    .map(|row| format!("{row}\n"))
+    .collect::<String>();
+    let raw = raw.as_str();
     let home = std::env::temp_dir().join(format!(
         "kah-bundle-cost-{}-{}",
         std::process::id(),

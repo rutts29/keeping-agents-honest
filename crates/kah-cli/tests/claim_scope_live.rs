@@ -3,18 +3,43 @@ use kah_observer::judge::routing::{self, Backend};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 
+/// Authored native assistant messages and the review class each should route to.
+fn cases() -> Vec<Value> {
+    let case = |id: &str, expected: &str, text: &str| json!({"id":id,"expected":expected,"nativeSource":{"turn":format!("turn-{id}"),"native_assistant_text":text}});
+    vec![
+        case(
+            "gate-phase-complete",
+            "gate",
+            "Phase 2 of the execution plan is complete: every journey in the phase passed and the gate evidence is saved.",
+        ),
+        case(
+            "gate-passed",
+            "gate",
+            "Gate 3 has passed. All of its live journeys ran green and the gate report is written.",
+        ),
+        case(
+            "commit-slice-done",
+            "commit",
+            "I fixed the retry bug and committed it. The change is checked in; the phase itself is still in progress.",
+        ),
+        case(
+            "plain-ack",
+            "none",
+            "Understood. I am ready and waiting for the next instruction.",
+        ),
+    ]
+}
+
 #[test]
-#[ignore = "real Jev replay; run only through make gate PHASE=5o-claim-routing"]
-fn frozen_native_claims_route_to_the_user_authorized_classes() {
-    let freeze: Value = serde_json::from_str(include_str!(
-        "../../../docs/gates/evidence/phase-5o-claim-routing/cases-frozen.json"
-    ))
-    .unwrap();
+#[ignore = "paid live Jev routing; run explicitly with --ignored and KAH_GATE_EVIDENCE set"]
+fn native_claims_route_to_the_user_authorized_classes() {
+    let cases = cases();
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let output = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
+    let output =
+        std::env::var_os("KAH_GATE_EVIDENCE").map_or_else(std::env::temp_dir, PathBuf::from);
     let mut outcomes = vec![];
     let mut failures = vec![];
-    for case in freeze["cases"].as_array().unwrap() {
+    for case in &cases {
         let started = std::time::Instant::now();
         let judgment = routing::evaluate(
             &home,
@@ -38,6 +63,6 @@ fn frozen_native_claims_route_to_the_user_authorized_classes() {
     }
     assert!(
         failures.is_empty(),
-        "Frozen replay misses retained: {failures:?}; do not wire or tune silently"
+        "Routing misses: {failures:?}; do not wire or tune silently"
     );
 }

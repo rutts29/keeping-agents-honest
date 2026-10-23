@@ -1,4 +1,4 @@
-//! Retained native terminal error; no agent, provider call or keyboard operation.
+//! Native terminal error record; no agent, provider call or keyboard operation.
 use kah_cli::observer_review::{
     liveness, source_store,
     state::{State, Store},
@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::fs;
 
 #[test]
-fn retained_native_policy_error_is_terminal_and_preserves_pending() {
+fn native_policy_error_is_terminal_and_preserves_pending() {
     std::env::var_os("XDG_STATE_HOME").expect("private check-tests state required");
     let worker = format!("provider-block-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
@@ -49,13 +49,12 @@ fn retained_native_policy_error_is_terminal_and_preserves_pending() {
 }
 fn fixture(root: &std::path::Path, worker: &str) -> State {
     let transcript = root.join("native.jsonl");
-    fs::write(
-        &transcript,
-        include_bytes!(
-            "../../../docs/gates/evidence/phase3-provider-block/retained-native-tail.jsonl"
-        ),
-    )
-    .unwrap();
+    // One authored terminal record at byte zero, as a Codex turn ends it.
+    let record = json!({"timestamp":"2026-01-01T00:00:00.000Z","type":"event_msg","payload":{
+        "type":"task_complete","turn_id":"turn-block-1","last_agent_message":null,
+        "error":{"message":"The provider stopped this turn under its usage policy.",
+            "codex_error_info":"misalignment_policy_violation"}}});
+    fs::write(&transcript, format!("{record}\n")).unwrap();
     serde_json::from_value(json!({
         "worker":{"provider":"codex","session":worker,"project":root,"pane":null,"socket":null},
         "observer":{"session":"observer-unit","pane":null,"name":"fixture","workspace":root,

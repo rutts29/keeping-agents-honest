@@ -2,8 +2,8 @@ mod completion_support;
 use kah_observer::judge;
 
 #[test]
-fn recorded_false_stops_complete_at_the_provisional_completion_bar() {
-    let data = completion_support::recorded();
+fn false_stop_samples_complete_at_the_provisional_completion_bar() {
+    let data = completion_support::false_stop_sample();
     let task = data["task"].as_str().unwrap();
     for receipt in data["receipts"].as_array().unwrap() {
         assert_eq!(receipt["completed"], false);
@@ -22,7 +22,7 @@ fn recorded_false_stops_complete_at_the_provisional_completion_bar() {
                 .collect::<Vec<_>>();
             passed += usize::from(judge::decision::complete(&judgment, &outcomes));
         }
-        // Both channels of each recorded false stop (correct work) now pass.
+        // Both channels of each false-stop sample (correct work) now pass.
         assert_eq!(passed, 2);
     }
     assert_eq!(judge::questions::UNATTENDED_COMPLETE_PROBABILITY, 0.85);
@@ -32,9 +32,9 @@ fn recorded_false_stops_complete_at_the_provisional_completion_bar() {
 }
 
 #[test]
-fn the_labeled_reconstruction_has_both_completion_views() {
-    let case = completion_support::reconstructed();
-    assert_eq!(case.name, "reconstructed-code-task");
+fn the_synthetic_case_has_both_completion_views() {
+    let case = completion_support::synthetic_case();
+    assert_eq!(case.name, "synthetic-code-task");
     assert_eq!(case.evidence["tests"]["success"], true);
     kah_cli::completion_inputs::states(&case.intent, &case.evidence).unwrap();
 }

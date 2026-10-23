@@ -1,4 +1,4 @@
-//! VF16: a native decline must never become thirteen automatic pasted wakes.
+//! A native decline must never become many automatic pasted wakes.
 use kah_cli::observer_review::{
     delivery, delivery_outcome, delivery_text,
     failure::Origin,
@@ -9,23 +9,44 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, io::Cursor, path::PathBuf};
 
-const REQUEST: &str = "review-1000000000013-1";
-const SESSION: &str = "00000000-0000-4000-8000-100000000012";
+const REQUEST: &str = "review-1700000000001-1000001";
+const SESSION: &str = "5e55a1a0-0000-4000-8000-0000000000a1";
 
 #[test]
 fn terminal_delivery_outcomes_are_never_report_corrections() {
     for code in ["DELIVERY_REFUSED", "DELIVERY_UNANSWERED"] {
         assert!(!redelivery::retryable(
             Origin::Delivery,
-            &format!("{code} stage=delivery: review-1000000000013-1")
+            &format!("{code} stage=delivery: {REQUEST}")
         ));
     }
 }
 
-fn retained() -> Vec<Value> {
-    include_str!("fixtures/delivery-outcome/claude-refusal.jsonl")
-        .lines()
-        .map(|s| serde_json::from_str(s).unwrap())
+/// A kah review request prompt as the controller authors it.
+fn prompt() -> String {
+    format!(
+        "kah review request {REQUEST} (Option1). Continue this persistent observer session. \
+         Sources are listed below; read them and submit one report through the outbox. \
+         Do not poll or start new turns."
+    )
+}
+/// A Claude user row carrying the prompt as a native pasted block.
+fn pasted_user_row(prompt: &str) -> Value {
+    let content =
+        format!("\n\n<pasted_content id=\"a1b2\">\n{prompt}\n</pasted_content id=\"a1b2\">\n");
+    json!({"type":"user","sessionId":SESSION,"message":{"role":"user","content":content}})
+}
+/// A Claude assistant row that ends its turn with a plain-text reply.
+fn assistant_row(reply: &str) -> Value {
+    json!({"type":"assistant","sessionId":SESSION,
+        "message":{"role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":reply}]}})
+}
+/// Prompt/reply pairs: the same request delivered once per authored reply.
+fn exchanges(replies: &[&str]) -> Vec<Value> {
+    let prompt = prompt();
+    replies
+        .iter()
+        .flat_map(|reply| [pasted_user_row(&prompt), assistant_row(reply)])
         .collect()
 }
 fn body(row: &Value) -> String {
@@ -48,16 +69,16 @@ fn digest(body: &str) -> String {
 }
 
 #[test]
-fn retained_free_form_refusal_stops_after_two_deliveries_not_thirteen() {
-    let rows = retained();
+fn free_form_refusal_stops_after_two_deliveries_not_three() {
+    let rows = exchanges(&[
+        "I will not act on this request.",
+        "This is outside what I can do here.",
+        "Still not acting on it.",
+    ]);
     let body_digest = digest(&body(&rows[0]));
-    // The correction removes only the host's invented report-error diagnostic
-    // on missing replies. Replay all 13 EXACT retained assistant answers against
-    // the unchanged original user body, not a newly classified prose signature.
-    let replay: Vec<Value> = rows
-        .chunks_exact(2)
-        .flat_map(|pair| [rows[0].clone(), pair[1].clone()])
-        .collect();
+    // Replay three authored non-report answers against the unchanged original
+    // user body; the scan must stop at the second, before reading to the end.
+    let replay = rows;
     let path = native(&replay);
     let mut progress = delivery_outcome::Progress::default();
     let outcome = delivery_outcome::scan(
@@ -118,7 +139,7 @@ fn records(provider: &str, prompt: &str, reply: &str) -> Vec<Value> {
 
 #[test]
 fn fixed_instruction_is_outside_paste_and_preserves_receipt_and_hook_binding() {
-    let prompt = body(&retained()[0]);
+    let prompt = prompt();
     let mut sent = vec![];
     delivery_text::submit("claude", "private-pane", &prompt, |args| {
         sent.push(args.iter().map(|s| s.to_string()).collect::<Vec<_>>());
@@ -177,29 +198,29 @@ fn state(root: &std::path::Path, worker: &str, native: &std::path::Path) -> Stat
         "latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],"wakes":0,"native_tokens":0,"stopped":false})).unwrap()
 }
 
-/// The 878-12c request: a pending Option1 gate checkpoint.
-/// A test runner records job spawns in job-<command>.log and starts no job
-/// (#53), so nothing else acts on this state.
+/// A pending Option1 gate checkpoint request.
+/// A test runner records job spawns in job-<command>.log and starts no job,
+/// so nothing else acts on this state.
 fn refusal_fixture(provider: &str) -> (String, PathBuf, PathBuf, String) {
     std::env::var_os("XDG_STATE_HOME").expect("isolated test state");
     let worker = format!("delivery-outcome-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     let root = store.directory.clone();
     kah_core::run_store::ensure_private_directory(root.parent().unwrap()).unwrap();
-    let prompt = body(&retained()[0]);
+    let prompt = prompt();
     let path = native(&records(provider, &prompt, &refusal()));
     let mut state = state(&root, &worker, &path);
     state.worker.provider = provider.into();
     store.save(&state).unwrap();
     source_store::save(&root.join("requests"), &format!("{REQUEST}.json"),
         &json!({"id":REQUEST,"worker":worker,"purpose":"checkpoint","turn":"t","head":null,"intent":{},
-            "trigger":{"review_class":"gate","events":[{"kind":"delivered_change","head":"27b3d42"}]},
+            "trigger":{"review_class":"gate","events":[{"kind":"delivered_change","head":"0123abc"}]},
             "documents":[],"created_ms":1})).unwrap();
     drop(store);
     delivery_outcome::begin(&state, REQUEST, &prompt, 0).unwrap();
     (worker, root, path, prompt)
 }
-/// Job starts that hook::spawn recorded for `command` (#53).
+/// Job starts that hook::spawn recorded for `command`.
 fn spawns(root: &std::path::Path, command: &str) -> usize {
     fs::read_to_string(root.join(format!("job-{command}.log")))
         .unwrap_or_default()
@@ -216,9 +237,9 @@ fn redeliver(worker: &str, path: &std::path::Path, prompt: &str, rows: &[Value])
     }
 }
 
-/// 878-12c (#52): Codex cut two tool outputs and the observer declined the
-/// checkpoint. Other turns read the same evidence, so one fresh turn of the
-/// same request is worth it; repeated polls of one decline never add more.
+/// A Codex observer declined the checkpoint after tool outputs were cut.
+/// Other turns read the same evidence, so one fresh turn of the same request
+/// is worth it; repeated polls of one decline never add more.
 #[test]
 fn a_refusal_is_redelivered_once_and_repeated_polls_never_add_a_second() {
     let (worker, root, path, _) = refusal_fixture("codex");
@@ -251,13 +272,13 @@ fn a_refusal_is_redelivered_once_and_repeated_polls_never_add_a_second() {
 }
 
 /// A second decline of the same request retires that request only, as NOT
-/// reviewed with a gap and a notice. Later triggers are admitted again: in
-/// 878-12c a steering job waited behind the retained refusal.
+/// reviewed with a gap and a notice. Later triggers are admitted again: a
+/// steering job must not wait behind the retained refusal.
 #[test]
 fn a_second_refusal_retires_only_that_request_and_the_queue_continues() {
     for provider in ["codex", "claude"] {
         let (worker, root, path, prompt) = refusal_fixture(provider);
-        // An intent-sync steering job can queue behind a refusal.
+        // An intent-sync steering job queued behind the refusal.
         queue::enqueue(
             &worker,
             Purpose::Steering,
@@ -319,7 +340,7 @@ fn free_form_backstop_survives_restart_but_a_submitted_report_is_not_unanswered(
         let worker = format!("delivery-outcome-{}", kah_cli::relay_store::nonce());
         let store = Store::open(&worker).unwrap();
         let root = store.directory.clone();
-        let prompt = body(&retained()[0]);
+        let prompt = prompt();
         let first = records("claude", &prompt, "I decline this request.");
         let path = native(&first);
         let state = state(&root, &worker, &path);
@@ -411,10 +432,10 @@ fn incomplete_work_other_session_and_changed_body_are_not_terminal_refusals() {
 
 #[test]
 fn codex_receives_instruction_and_request_in_one_paste_so_no_typed_text_is_dropped() {
-    // The provider paste-burst buffer can drop the typed
+    // Codex's paste-burst buffer once dropped the typed
     // instruction's tail when the request paste arrived, so the native row
     // contain an incomplete instruction and no matching receipt.
-    let prompt = body(&retained()[0]);
+    let prompt = prompt();
     let mut sent = vec![];
     delivery_text::submit("codex", "private-pane", &prompt, |args| {
         sent.push(args.iter().map(|s| s.to_string()).collect::<Vec<_>>());
@@ -446,10 +467,9 @@ fn codex_receives_instruction_and_request_in_one_paste_so_no_typed_text_is_dropp
     assert!(!delivery::receipt(Cursor::new(&damaged), "codex", SESSION, &marker).unwrap());
 }
 
-/// The host's rootless dockerd restarted, so the Codex
-/// observer's gVisor exec-server stopped. Codex 0.162.1 then rejects every
-/// command at process creation (core/src/unified_exec/errors.rs:8), and the
-/// observer declined the request. That is a lost observer process, not a
+/// When the host's container daemon restarts, the Codex observer's sandbox
+/// exec-server stops and every command is rejected at process creation, so
+/// the observer declines the request. That is a lost observer process, not a
 /// review decision.
 fn exec_lost_rows(prompt: &str, reply: &str) -> Vec<Value> {
     let mut rows = records("codex", prompt, reply);
@@ -491,9 +511,8 @@ fn a_turn_whose_commands_could_not_start_is_an_exec_loss_not_only_a_refusal() {
     }
 }
 
-/// After the one redelivery, any end of the request
-/// retires it with its reason; a second exec loss that ends unanswered was
-/// still retained and jammed the queue.
+/// After the one redelivery, any end of the request retires it with its
+/// reason; a second exec loss that ends unanswered must not jam the queue.
 #[test]
 fn any_end_after_the_one_redelivery_retires_the_request_with_its_reason() {
     for exec_lost in [true, false] {
@@ -547,7 +566,7 @@ fn an_exec_loss_replaces_the_observer_once_then_stays_terminal() {
     assert!(delivery_outcome::replacement_requested(&root, REQUEST).unwrap());
     assert!(!delivery_outcome::replacement_requested(&root, "review-other").unwrap());
     // The fresh observer lost its exec transport too: no second replacement
-    // and no refusal retry; this second refusal retires the request (#52).
+    // and no refusal retry; this second refusal retires the request.
     redeliver(
         &worker,
         &path,
