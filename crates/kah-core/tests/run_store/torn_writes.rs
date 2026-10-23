@@ -124,3 +124,20 @@ fn a_recreated_pending_file_is_private() {
     RunStore::open(&root, &repository, "run_01").expect("reopen with private pending file");
     fs::remove_dir_all(root).expect("remove isolated test directory");
 }
+
+#[test]
+fn a_rejected_supersession_edge_never_reaches_the_pending_file() {
+    let (root, repository, store, history) = create_store("bad-edge");
+    let mut record = pending_record(&history, "i-1");
+    if let Event::RequirementAdded { item, .. } = &mut record.event {
+        item.supersedes = vec![kah_core::intent_history::IntentId::new("missing")];
+    }
+    let before = pending_bytes(&store);
+    store
+        .append_pending(record)
+        .expect_err("malformed edge is refused");
+    assert_eq!(pending_bytes(&store), before);
+    drop(store);
+    RunStore::open(&root, &repository, "run_01").expect("the run still opens");
+    fs::remove_dir_all(root).expect("remove isolated test directory");
+}

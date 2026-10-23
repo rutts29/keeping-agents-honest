@@ -25,6 +25,13 @@ pub(super) fn requirement_added(
 ) -> Result<(), HistoryError> {
     ensure_started(state, "requirement_added")?;
     validate_new_item(item, approval.as_ref(), "requirement_added")?;
+    if !item.supersedes.is_empty() {
+        return Err(HistoryError::InvalidTransition {
+            event: "requirement_added",
+            reason: "an added intent cannot name superseded intents; use requirement_superseded"
+                .to_owned(),
+        });
+    }
     if state.intents.contains_key(&item.id) {
         return Err(HistoryError::DuplicateId {
             kind: "intent",
