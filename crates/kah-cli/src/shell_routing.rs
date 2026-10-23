@@ -1,4 +1,5 @@
 //! The shell convenience function preserves native administration commands.
+use crate::native_options::{Take, takes};
 use std::{os::unix::process::CommandExt, process::Command};
 
 pub fn route(mut arguments: Vec<String>) -> crate::Result<Vec<String>> {
@@ -31,26 +32,7 @@ pub fn with_help(arguments: &[String], help: Option<&str>) -> bool {
         match arg.as_str() {
             "--" => return false,
             "--help" | "-h" | "--version" | "-V" => return true,
-            "-c"
-            | "--config"
-            | "--enable"
-            | "--disable"
-            | "--remote"
-            | "--remote-auth-token-env"
-            | "-i"
-            | "--image"
-            | "-m"
-            | "--model"
-            | "--local-provider"
-            | "-p"
-            | "--profile"
-            | "-s"
-            | "--sandbox"
-            | "-C"
-            | "--cd"
-            | "--add-dir"
-            | "-a"
-            | "--ask-for-approval" => {
+            value if takes(value) == Take::Next => {
                 args.next();
             }
             value if value.starts_with('-') => (),

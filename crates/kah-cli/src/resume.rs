@@ -1,5 +1,8 @@
 //! Resolve native saved-session location before choosing a domain overlay.
-use crate::{Arguments, Result};
+use crate::{
+    Arguments, Result,
+    native_options::{Take, takes},
+};
 use kah_codex::{
     control::Control,
     overlay::{self, Policy},
@@ -102,19 +105,24 @@ pub fn apply_location(home: &Path, rollout: &Path, args: &mut Arguments) {
     }
 }
 
-fn session_id(args: &[String]) -> Option<&str> {
+/// The saved session a `resume` or `fork` names. Only the first argument that
+/// is neither an option nor an option's value can be that subcommand, and
+/// nothing after the native `--` is an option.
+pub fn session_id(args: &[String]) -> Option<&str> {
     let mut tokens = args.iter();
     while let Some(token) = tokens.next() {
         match token.as_str() {
-            "-m" | "--model" | "-c" | "--config" | "-i" | "--image" => {
-                tokens.next();
-            }
+            "--" => return None,
             "resume" | "fork" => {
                 let id = tokens.next()?;
                 return (id.len() == 36 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
                     .then_some(id.as_str());
             }
-            _ => (),
+            token if takes(token) == Take::Next => {
+                tokens.next();
+            }
+            token if token.starts_with('-') => (),
+            _ => return None,
         }
     }
     None
