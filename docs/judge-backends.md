@@ -12,7 +12,9 @@ decisions.
 Steering text is stored verbatim with its native source reference. Jev
 classifies `is_steering` and `steer_kind` and selects a superseded active ID (or
 `none`). Rust applies the operation. An ambiguous replacement retains both items
-with explicit `uncertain_supersedes` links. The original goal never changes. A
+with explicit `uncertain_supersedes` links. The recorded goal text is never
+edited; only an explicit whole-goal replacement (`goal_change`) supersedes the
+goal requirement. A
 confident withdrawal retains the exact withdrawal message as an active scope
 constraint and the withdrawn text in history.
 
@@ -40,7 +42,8 @@ and a known oversized prepared body can route to direct observer review.
 The adapter sends structured requests with `model`, `state` and `questions`. It
 validates typed questions and serializes their instruction strings in the
 request. Request validation checks typed content without fixed state-byte or
-question-count limits. Responses are Noul (no confidence), Choice (choice,
+question-count limits; each Choice question needs 2 to 255 criteria and each
+Score question 2 to 10. Responses are Noul (no confidence), Choice (choice,
 probabilities, confidence) or Score (score, legend, probabilities, confidence),
 with the model and input/output token usage.
 
@@ -64,13 +67,17 @@ scrubbing removes recognized credential patterns.
 
 ## Retries and failures
 
-The scalar routing path makes at most three attempts for transient failures
-(timeouts, transport errors, 408, 429 and 5xx), with 250 ms and 1 s delays
-between attempts. The batch transport uses response retry headers or its own
-backoff policy. Permanent failures remain explicit errors, while service
-availability state can prevent further calls. Successful-retry metrics count all
-attempts and flag failed calls with incomplete token accounting; latency
-includes backoff.
+The scalar routing path makes at most three outer attempts for transient
+failures (timeouts, transport errors, 408, 429 and 5xx), with 250 ms and 1 s
+delays between attempts. The live client sends every scalar call through the
+batch transport, which repeats a request answered with HTTP 429 or 529, without
+a fixed limit, after the response's retry headers or its own backoff delay. Those
+repeats happen inside one outer attempt. Permanent failures remain explicit
+errors, while service availability state can prevent further calls. Routing
+metrics count outer attempts and flag failed calls with incomplete token
+accounting; latency includes backoff. The batch transport's backoff events
+record each repeated HTTP request. The 20-second deadline applies to each HTTP
+exchange, not to the whole call.
 
 A service failure is recorded explicitly rather than converted into a successful
 judgment. kah does not select a substitute backend when Jev fails, and a failed
@@ -100,11 +107,14 @@ establish truth or permission. See
 The configured thresholds are decision policy, not an accuracy or calibration
 guarantee.
 
-- **Completion checks** ask one Choice per requirement (satisfied, violated,
-  unclear). Code combines all required results at probability 0.90 and
-  confidence 0.85.
-- **Unattended completion** checks each outcome with probability 0.85 and
-  confidence 0.80 in both required judgments. A completion judgment must support
+- **Checkpoint and review decisions** are validated by Choice questions, for
+  example whether a typed decision is supported, contradicted or unclear from
+  its cited evidence; some decisions add applicability or blocker questions,
+  and controller facts can skip the semantic question. A confirmed answer needs
+  probability 0.90 and confidence 0.85.
+- **Unattended completion** asks one Choice per outcome (satisfied, violated,
+  unclear) and checks each outcome with probability 0.85 and confidence 0.80
+  in both required judgments. A completion judgment must support
   every required outcome. Tests and the current user-sequence and commit checks
   remain separate mandatory checks.
 - **Message typing** records steering when its presence probability is at
@@ -112,10 +122,12 @@ guarantee.
   presence retains the exact message with `review_required`. Kind uncertainty
   is recorded separately as `kind_uncertain`. A message with clear steering
   presence can have an uncertain kind without requiring review. Replacement
-  requires clear steering presence, kind probability and confidence of at least
-  0.70, and target probability of at least 0.90 with confidence of at least 0.85.
-  An uncertain replacement keeps both exact messages. Unresolved presence or
-  replacement review flags block automated completion and drift reminders.
+  requires clear steering presence, a kind of correction, scope reduction or
+  goal change, kind probability and confidence of at least 0.70, and target
+  probability of at least 0.90 with confidence of at least 0.85. Only a goal
+  change can replace the goal requirement. An uncertain replacement keeps both
+  exact messages. Unresolved presence or replacement review flags block
+  unattended completion; drift reminders continue.
   API and validation errors are recorded as gaps.
 
 ## Cost

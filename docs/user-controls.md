@@ -23,8 +23,9 @@ Leading `!` invokes the native shell in both TUIs and is not a kah override.
 Codex control delivery uses a user-message client ID of the form
 `kah-user:operator:<receipt>`; Herdr steering uses a saved relayed-user envelope.
 Either way, the main agent's model, effort, project and execution policy are
-preserved. `kah steer RUN TEXT` queues operator input for unattended runs, whose
-source records also use the `kah-user:` namespace. kah checks native session
+preserved. `kah steer RUN TEXT` queues operator input for an unattended run; the
+run controller types it into the run's pane and matches it in the native
+history by its exact text. kah checks native session
 ownership before socket delivery and can fall back to the session's recorded
 Herdr pane without resuming it. It never resumes a dormant session in a
 different policy.
@@ -38,7 +39,9 @@ kah ledger SESSION --confirm ITEM_ID
 kah ledger SESSION --dismiss ITEM_ID
 ```
 
-Without SESSION, `kah ledger --review` lists known sessions. `--json` gives a
+The review list shows every item awaiting review and at most the 12 most
+recent ignored, aside or gap sources. Without SESSION, `kah ledger --review`
+lists known sessions. `--json` gives a
 machine-readable view. Confirm accepts an active item and clears review flags;
 it does not silently delete another requirement. Dismiss removes the selected
 item from active intent, or excludes an ignored source from future reconsideration.
@@ -51,6 +54,13 @@ Delegate messages can use a native control endpoint or a recorded Herdr pane:
 ```
 kah send SESSION '[kah-reviewer] Review message' --sender kah-reviewer --receipt review-001
 ```
+
+The sender defaults to `kah-builder`. A sender must be `kah-` followed by
+lowercase letters, digits or `-`, at most 32 characters in all, so its
+`[sender]` prefix marks the message as delegate context in both adapters;
+`kah-user` is reserved and refused. A receipt is at most 128 letters, digits,
+`.`, `_` or `-`. Without `--receipt`, kah generates a new receipt and prints it,
+so a retry without the same `--receipt` is a new message.
 
 Every new message needs a distinct receipt. Reuse the same receipt and exact text
 on retry. The Codex control path checks durable native `clientId` receipts before
@@ -79,10 +89,11 @@ an item accepts its text; it does not certify its category or remove another ite
 
 Persisted ledger events remain available as history, including unresolved review
 flags, and kah does not rewrite old events or silently confirm old review flags.
-User review can resolve those flags. Unresolved presence or replacement flags still conservatively
-suppress automatic drift reminders and unattended completion; context injection
-continues. Context preparation preserves whole source records and reports an
-explicit gap when a request cannot be prepared.
+User review can resolve those flags. Unresolved presence or replacement flags
+still conservatively block unattended completion (`RUN_INTENT_UNCERTAIN`);
+drift reminders and context injection continue. Context preparation preserves
+whole source records and reports an explicit gap when a request cannot be
+prepared.
 
 The implementation defines explicit steering and replacement thresholds. kah does
 not automatically retune judgment thresholds from operator review decisions.

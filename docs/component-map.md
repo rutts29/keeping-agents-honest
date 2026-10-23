@@ -37,7 +37,7 @@ declaration alone. Unmapped changes remain explicit, while unrelated cached
 requirements can be reused only after their own evidence checks pass. Cache
 planning checks recorded component, source, authority and test-receipt
 dependencies. Runtime file-read validation is not captured: runtime test reads
-and failures in untouched components are marked **not captured**.
+and failures in untouched components are marked `not yet captured`.
 
 ## Versioned Git references
 

@@ -1,6 +1,8 @@
 # Unattended work
 
-Start inside Herdr, from a project under `~/repos/{mine,research,untrusted}`:
+Start inside Herdr, from a project under `~/repos/{mine,research,untrusted}`.
+The project must be an ordinary repository (a `.git` directory, no alternates
+object store) with at least one commit:
 
 ```sh
 kah run --agent claude --test 'make check' 'Implement the requested change'
@@ -14,15 +16,20 @@ kah resume run-ID
 
 The run commands support Codex and Claude through their native interactive
 sessions. The default agent is Codex. Model and effort are optional native choices.
-`--observer-model` and `--observer-effort` configure the observer binding, while
-`--jev-model` selects its Jev model.
+`--observer-model` and `--observer-effort` configure the observer binding; the
+defaults are `gpt-6.1-sol` for a Codex run or `claude-sonnet-5-5` for a Claude
+run, with effort `low`. The observer model must match the run's provider (a
+`claude-` model exactly when the agent is Claude), or the run is refused with
+`OBSERVER_PROVIDER_MODEL`. `--jev-model` selects the Jev model (default
+`jev-latest`).
 
 A run starts at committed HEAD in a private worktree and its own Herdr pane.
 New-project initialization leaves its guidance files uncommitted. The user or
 native agent makes the source repository's first commit before starting a run.
 Uncommitted source edits are not imported. The task is the first native prompt;
-there is no exec/print worker or required JSON reply. Native consent and prompts
-remain native. Codex Mine-source runs mark their private path trusted in kah's
+there is no exec/print worker or required JSON reply. Claude runs start with
+`--permission-mode acceptEdits`, so Claude's file-edit prompts are accepted;
+other native consent and prompts remain native. Codex Mine-source runs mark their private path trusted in kah's
 own overlay, matching the user's trust in the source repository. Codex restricted
 sources remain explicitly untrusted; Claude private repositories also need native
 startup consent before work can proceed. kah shows a Herdr notification
@@ -78,8 +85,10 @@ Each verification uses a fresh checkout of that exact HEAD SHA, outside the work
 mount, with Git metadata read-only. Ignored worker files cannot satisfy it. Use
 the project's normal verification entrypoint so steering can update its tests
 without changing the host command. Completion requires unchanged candidate
-verification, current user sequence and HEAD matching, and two Jev judgments
-satisfying the recorded outcomes. Both unattended completion judgments must meet
+verification, current user sequence and HEAD matching, a passed observer
+completion checkpoint for that delivery, and two Jev judgments satisfying the
+recorded outcomes. A run cannot complete while its delivery awaits a
+checkpoint. Both unattended completion judgments must meet
 probability 0.85 and confidence 0.80 for each required outcome. Agent claims
 alone are not completion.
 
@@ -87,12 +96,15 @@ The completion questions are focused on delivered project code. Passing file
 checks alone does not establish that every required outcome is satisfied, and
 completion can remain unverified after the test command succeeds. Reports
 preserve separate assessment receipts, verification and the resulting state.
-Commit evidence includes reachable changes across the delivered range, so adding
-private notes and deleting them in a later commit does not hide them from the judge.
+Commit evidence names the paths changed in every delivered commit, so a file
+added in one commit and deleted in a later one still appears to the judge by
+name; file contents are read only from the net diff.
 Reports name the delivered commit and only attach tests that verified that SHA.
 
-`--budget-tokens N` counts reported native and observer tokens, including cached
-input. Native usage can arrive only after work has consumed it, and interrupted
+`--budget-tokens N` counts the reported native tokens of the worker session and
+its native descendants, including cached input, plus the Jev usage recorded
+for the run's primary observer. Tokens used by a separate native observer
+review session are recorded with that review but not counted. Native usage can arrive only after work has consumed it, and interrupted
 calls may lack a final report; these counters are not billing totals. Time and
 token counters survive resume. Exhausted allowances are not reset. kah never
 resets provider usage or requests a reset.
@@ -118,5 +130,7 @@ kah cleanup preserves native transcript records. Recorded session IDs and
 native-home paths identify the history associated with a run. A kah-controlled
 run requires its worktree to continue.
 
-Reports live at `~/.local/state/kah/runs/run-ID/report.json`. Review the delivered
-branch, the verification receipts and the recorded run status before merging.
+Reports live at `runs/run-ID/report.json` in the kah state root
+(`$XDG_STATE_HOME/kah` when that is absolute, otherwise `~/.local/state/kah`).
+Review the delivered branch, the verification receipts and the recorded run
+status before merging.

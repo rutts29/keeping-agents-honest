@@ -20,7 +20,11 @@ kah -- resume --all              # native picker, no kah combined view
 kah --agent claude -- --resume SESSION_ID
 ```
 
-Model and effort remain native choices; kah supplies no default override. Mine
+Model and effort remain native choices; kah supplies no default override.
+The observer is separate: `--observer-model` defaults to `gpt-6.1-sol` for
+Codex and `claude-sonnet-5-5` for Claude (a Claude session needs a `claude-`
+observer model), `--observer-effort` defaults to `low`, and `--jev-model`
+defaults to `jev-latest`. Mine
 uses host workspace permissions. Research and Untrusted keep the controller and
 subscription login on the host, with commands in rootless gVisor. Codex native
 file tools also use its executor. Claude uses native project file tools with
@@ -48,11 +52,13 @@ still work. Inherited ACLs keep sandbox-created files editable by the user.
 
 Installed Bash routing sends interactive `codex`, resume and fork through kah under
 the three domain roots. Recognized native management commands pass through; the
-classifier reads installed help with a version cache and a static fallback.
+classifier reads `codex --help` on each call, with a static fallback when that
+fails.
 `command codex` bypasses this convenience function. `cx` forwards to `kah`.
 
-Codex overlays are stable per domain/network policy and project under
-`~/.local/state/kah/codex`. They share the native login and history stores while
+Codex overlays are stable per domain/network policy and project under `codex/`
+in the kah state root (`$XDG_STATE_HOME/kah` when that is absolute, otherwise
+`~/.local/state/kah`). They share the native login and history stores while
 keeping independent writable config. Keep overlay paths: saved rollouts reference
 them. Claude uses its configured native store, which defaults to `~/.claude`, with
 project-keyed history and invocation-local settings. No kah cross-domain picker or credential copy
