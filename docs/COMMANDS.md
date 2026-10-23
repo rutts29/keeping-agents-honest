@@ -88,8 +88,10 @@ Research executor, checks host isolation and cleans up. It uses your configured
 model/login and incurs one short model turn. Run it explicitly when you want to
 check the configured native launch and sandbox.
 
-`kah eval replay DATASET.jsonl [--validation]` replays a saved judgment dataset;
-thresholds are unchanged.
+`kah eval replay DATASET.jsonl [--validation]` evaluates a labelled message
+dataset. Matching cached results are reused; uncached eligible user rows are
+sent to the live Jev API, requiring a TypeSafe key and incurring API usage.
+Policy and thresholds are unchanged.
 
 Completion diagnostics: `kah eval completion ~/.local/share/kah-eval/completion/FILE.json`
 replays the saved scrubbed Jev request without changing an active run or its
