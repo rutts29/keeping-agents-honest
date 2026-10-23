@@ -18,6 +18,7 @@ use std::{
 };
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn every_source_of_a_published_and_redelivered_view_resolves_in_the_view() {
     let worker = format!("manifest-view-unit-{}", std::process::id());
     // CAS sharing uses hard links; keep this workspace on the state filesystem.

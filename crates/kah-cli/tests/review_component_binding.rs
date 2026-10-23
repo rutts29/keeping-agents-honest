@@ -28,6 +28,7 @@ fn setup() -> (Store, Request, Report, std::path::PathBuf) {
     (store, request, report, workspace)
 }
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn checked_private_pointer_binds_collector_and_public_replacement_is_not_trusted() {
     let (store, request, report, workspace) = setup();
     assert!(
@@ -77,6 +78,7 @@ fn checked_private_pointer_binds_collector_and_public_replacement_is_not_trusted
     std::fs::remove_dir_all(root).unwrap();
 }
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn later_checked_declaration_changes_pointer_without_losing_the_original() {
     let (store, mut request, report, workspace) = setup();
     producer::record(&store, &request, &workspace, &report).unwrap();

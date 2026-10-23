@@ -15,6 +15,7 @@ fn acl(path: &Path) -> String {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn gate_candidate_traversal_preserves_strict_session_privacy() {
     let base = kah_core::run_store::RunStore::default_state_root().unwrap();
     let worker = format!("vf16-privacy-{}", crate::relay_store::nonce());
@@ -90,6 +91,7 @@ fn retained_candidate(root: &Path, home: &Path, worker: &str) -> Worktree {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn private_state_candidate_is_rejected_before_any_acl_changes() {
     let base = kah_core::run_store::RunStore::default_state_root().unwrap();
     let worker = format!("vf16-forbidden-{}", crate::relay_store::nonce());

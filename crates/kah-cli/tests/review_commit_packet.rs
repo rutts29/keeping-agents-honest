@@ -145,6 +145,7 @@ fn host_expansion_requires_its_own_request_and_unchanged_report_digest() {
     assert!(!root.exists());
 }
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn persisted_catalog_keeps_only_an_index_in_the_packet_and_recovers_complete_sources() {
     use kah_cli::observer_review::{
         source_store,
