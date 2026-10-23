@@ -1,36 +1,51 @@
-# Component map — C, native inventory slice
+# Component maps and cached review evidence
 
-The thinker-maintained declaration is version1 with components containing name,
-path_globs, requirement ids, named test commands and named E2E commands. These
-commands are proposals; the map collector never executes them. The existing
-context collector accepts a map file, and restricted collections mount that
-file read-only into the existing gVisor executor.
+A component map is a declaration (version 1) of components. Each component has
+a name, `path_globs`, requirement ids, named test commands and named end-to-end
+commands. The commands are proposals; the map collector never executes them. The
+existing context collector accepts a map file, and restricted collections mount
+that file read-only into the existing gVisor executor.
 
-Git's native `:(top,glob)` pathspecs resolve paths at the exact captured HEAD.
-The diff from the captured baseline includes deletions. Current committed blob
-IDs and the component declaration form its fingerprint, independently of the
-baseline. Unmapped changed paths stay explicit; they must receive a scope/check
-decision before caching can consider unaffected work. Names, unsafe patterns
-and requirement links have typed validation errors. No contents are cut.
+Light commit reports can supply a component map that kah validates against the
+request and its requirement IDs. The producer accepts an optional declaration in
+the light report, validates its structure and exact requirement ids, and
+retains the consumed request, worker and SHA provenance. It publishes the native
+input in a separate read-only map directory, which keeps the observer's writable
+outbox. Reports without a map remain readable; heavy gates reject the
+light-only declaration. The source tree includes the component-map producer and
+the verdict-cache planning code.
 
-Native co-change history is retained between the exact endpoints. Runtime test
-reads and failures in untouched components are currently marked **not captured**.
-The pushed0afe240 producer accepts an optional declaration in the existing light
-report, validates its structure and exact requirement ids, and retains consumed
-request/worker/SHA provenance. It publishes native input in a separate read-only
-map directory, preserving the observer's writable outbox. Legacy map-free
-reports remain readable; heavy gates reject the light-only declaration.
-The earlier foundation does not yet include this producer. Runtime
-dependency validations and cache planning/carry remain unfinished. Public/private
-digest binding is implemented in the working tree and is being checked: the
-private pointer verifies its immutable source, and capture compares that digest
-with the native collector's returned declaration. A public-only file grants no
-trust. No C/KEEP-UP pass or cache-reuse claim is made.
+## Capture
 
-Official installed-version references:
+Git's `:(top,glob)` pathspecs resolve paths at the exact captured HEAD. The diff
+from the captured baseline includes deletions. The current committed blob IDs
+and the component declaration form the map's fingerprint, independently of the
+baseline. Unmapped changed paths remain explicit in the collected evidence. Names, unsafe
+patterns and requirement links have typed validation errors, and no contents
+are cut. Native co-change history is retained between the exact endpoints.
+
+## Digest binding
+
+The public map file grants no trust. The private pointer verifies its immutable
+source, and capture compares that digest with the declaration returned by the
+native collector. kah checks the private map record's digest this way.
+
+## Cache validation
+
+Cache reuse requires validated matching evidence and does not follow from a map
+declaration alone. Unmapped changes remain explicit, while unrelated cached
+requirements can be reused only after their own evidence checks pass. Cache
+planning checks recorded component, source, authority and test-receipt
+dependencies. Runtime file-read validation is not captured: runtime test reads
+and failures in untouched components are marked **not captured**.
+
+## Versioned Git references
+
+These are references for Git 2.53:
 [pathspec glob](https://github.com/git/git/blob/v2.53.0/Documentation/glossary-content.adoc),
 [exact endpoint diff](https://github.com/git/git/blob/v2.53.0/Documentation/git-diff.adoc),
 [co-change log](https://github.com/git/git/blob/v2.53.0/Documentation/git-log.adoc).
-Installed Git2.53 confirms diff supports glob magic; ls-tree rejects it, so it is
-used only for the unfiltered metadata inventory. No custom glob matcher or new
-dependency was added. Frozen cases precede implementation in phase-5o-cache.
+The collector uses Git glob pathspecs for diffs and an unfiltered `ls-tree`
+inventory for blob metadata, because `ls-tree` rejects glob magic. There is no
+custom glob matcher. The component-map and cache-planning tests show the
+assertions exercised by the source tree.

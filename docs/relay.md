@@ -16,7 +16,7 @@ quote matching is needed. `--receipt ID` makes an explicit retry idempotent.
 
 This trusts host-side submission, not a cryptographic proof of the original user:
 Research/Untrusted tools have no Herdr socket, and kah's state is outside their
-writable boundary. A host orchestrator is authorized to relay the user's decision.
+writable boundary. Use host-side steering only when authorized to submit the user's instruction.
 The relayer is a courier, not a lower authority. Plain `[kah-reviewer]` messages
 remain delegate context and cannot enter the user ledger through this path.
 
@@ -37,7 +37,8 @@ The message ID is the adapter's source record ID (for Claude, a native message
 UUID may have a content-block suffix). Delegate messages, tool results, summaries
 and subagent messages cannot supply a user quote. The complete selected text is
 copied verbatim with provider/session/message provenance; it is never extracted
-or summarized by a model. Quotes are limited to 16 KiB.
+or summarized by a model. Relay preserves the complete selected user record and
+validates its source identity and content digest.
 
 Jev checks whether the separate paraphrase is supported by the quote. Below 0.90
 support probability, or on judge failure, the paraphrase is labeled UNCONFIRMED.
@@ -65,11 +66,11 @@ invariants, prohibitions, validation rules, stop conditions, corrections and sco
 reductions are always inherited. Uncertain categories and inherited scope whose
 original expansion/reduction category is unavailable are retained conservatively.
 Only clear goal/outcome or scope-expansion items are relevance-filtered by Jev;
-uncertain relevance is retained. Selection examines at most 24 active items
-and imports at most 22, reserving the worker's own goal/task outcomes;
-an overfull or unreadable source fails before starting a worker, never silently
-drops requirements. Items stay whole, so split unrelated requirements in the
-parent ledger when their scopes need to differ.
+uncertain relevance is retained. Dispatch considers active parent items and does not impose a selection or import
+count. An unreadable or invalid inherited source fails before a worker starts and
+never silently drops requirements. Inherited items remain whole and retain their
+original source references, so split unrelated requirements in the parent ledger
+when their scopes need to differ.
 
 Before the first native tool, kah copies selected items into the worker ledger
 with original source pointers, categories and uncertainty. It preserves the worker
@@ -79,9 +80,8 @@ flagged for review. The completion controller also imports the items before
 evaluating a tool-free turn. Imports survive native resume and deduplicate by
 original source identity. Receipt intake uses a separate short I/O lock, so an
 in-flight background judge cannot stall receipt recording.
-The native startup hook supplies the selected quotes before the worker plans its
-first action. This initial context is limited to 48 KiB and is checked before the
-run starts. Native resume uses the current ledger instead of reinjecting an older
+The native startup hook supplies the selected inherited quotes before the worker
+plans its first action, without a startup-context size check. Native resume uses the current ledger instead of reinjecting an older
 parent context.
 
 Private kah host state is the trust boundary for receipts. Restricted tools cannot

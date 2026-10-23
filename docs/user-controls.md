@@ -4,13 +4,14 @@ At the start of a chat message, `steer:` forces recording and `aside:` excludes
 it from steering. Prefixes are case-insensitive and allow leading whitespace.
 Both skip steering inference entirely and preserve the exact message text.
 Type them directly in the native TUI; they are ordinary text, not shell commands.
-Normal observation of subsequent actions still uses Jev. Ignored messages stay
-in private source history and remain promotable. Recent model-ignored messages
-are included in bounded drift context; explicit asides and dismissed/promoted
-sources are excluded from that recheck.
+kah records instructions separately from reviewing work. Ordinary tool and turn
+events synchronize recorded instructions. Commit and checkpoint reviews evaluate
+work against that intent. Ignored user sources remain in private source history
+and can be reviewed or promoted. Explicit asides do not become steering
+automatically.
 
-For a live, initialized session with a reachable native control socket, the
-out-of-band path remains (embedded kah TUIs currently have no such socket):
+Use `kah steer` for a live session with a reachable native control endpoint or a
+recorded Herdr pane:
 
 ```sh
 kah steer SESSION 'steer: Keep the API unchanged' --receipt user-change-001
@@ -20,12 +21,14 @@ kah steer SESSION 'aside: This is only a note' --receipt user-note-001
 Leading `!` invokes the native shell in both TUIs. The old bang prefixes are no
 longer deterministic overrides; old stored source decisions remain historical.
 
-This uses the supported native message API with `kah-user:operator:<receipt>`;
-it preserves the main agent's model, effort, project and execution policy.
-`kah steer RUN TEXT` still queues operator input for unattended runs, whose source
-records also use the `kah-user:` namespace. Native senders use the session's saved
-overlay socket, or the global daemon socket for sessions without a kah overlay;
-they never resume a dormant session in a different policy.
+Codex control delivery uses a user-message client ID of the form
+`kah-user:operator:<receipt>`; Herdr steering uses a saved relayed-user envelope.
+Either way, the main agent's model, effort, project and execution policy are
+preserved. `kah steer RUN TEXT` queues operator input for unattended runs, whose
+source records also use the `kah-user:` namespace. kah checks native session
+ownership before socket delivery and can fall back to the session's recorded
+Herdr pane without resuming it. It never resumes a dormant session in a
+different policy.
 
 Review uncertainty and recent ignored input:
 
@@ -44,50 +47,51 @@ Promote makes an ignored original active, marked `user_confirmed`; the original
 text remains unchanged. These local operator decisions call no judge. Inactive
 and ignored originals remain retrievable with `kah ledger SESSION --json`.
 
-Delegate delivery to a reachable native control socket:
+Delegate messages can use a native control endpoint or a recorded Herdr pane:
 
 ```
 kah send SESSION '[kah-reviewer] Review message' --sender kah-reviewer --receipt review-001
 ```
 
 Every new message needs a distinct receipt. Reuse the same receipt and exact text
-on retry. The sender checks durable native `clientId` receipts before retrying,
-handles an active-to-idle race, and keeps the text prefix for compatibility.
-An uncertain transport failure stays pending; it is never blindly resent. A
-visible receipt resolves it on retry. If it never becomes visible, deliberate
+on retry. The Codex control path checks durable native `clientId` receipts before
+retrying, handles an active-to-idle race, and keeps the text prefix for
+compatibility. An uncertain transport failure stays pending; it is never blindly
+resent. A native control receipt can resolve an uncertain socket delivery on
+retry. If it never becomes visible, deliberate
 use of a new receipt risks a duplicate and is an operator decision.
 
 Client-ID namespaces take precedence over compatibility prefixes. Delegate and
 system messages cannot become user steering, even if they contain `steer:` or `aside:`.
-Herdr's unmarked terminal paste has no recoverable sender metadata; native source
-IDs avoid that ambiguity for the new channel. These are provenance conventions
-within the accepted single-user host trust model, not authentication against
-another process with operator authority. Research and Untrusted executors cannot
+Raw terminal pastes lack verified sender provenance; kah's Herdr delivery uses
+saved receipts and host-hook session bindings. These provenance checks assume
+that processes with operator access to private host state are trusted, and they
+are not authentication against another process with operator authority. Research and Untrusted executors cannot
 reach the host control sockets, Herdr binary or HERDR_* environment.
 
 Steering presence and kind have separate meanings. Jev records presence at
 `>=0.8`; at `<=0.2` the source is ignored but remains promotable. Between those
-bands the exact text is injected with `review_required: true`, including after
-compaction. The agent continues with that unconfirmed context without waiting
+bands the exact text is injected with `review_required: true`; unconfirmed
+steering retains its exact text and a review flag in the current intent context. The agent continues with that unconfirmed context without waiting
 for a review action. `kind_uncertain` labels an uncertain category and does not
 prevent recording. `replacement_review` is separate: a proposed replacement
 was not sufficiently certain, so both instructions remain active. Confirming
 an item accepts its text; it does not certify its category or remove another item.
 
-Existing persisted decisions remain historical; this change does not rewrite
-old ledger events or silently confirm old review flags. User review can resolve
-those flags. Unresolved presence or replacement flags still conservatively
+Persisted ledger events remain available as history, including unresolved review
+flags, and kah does not rewrite old events or silently confirm old review flags.
+User review can resolve those flags. Unresolved presence or replacement flags still conservatively
 suppress automatic drift reminders and unattended completion; context injection
-continues. If exact unconfirmed text itself exceeds the compaction budget, kah
-reports an explicit compaction gap instead of silently dropping it.
+continues. Context preparation preserves whole source records and reports an
+explicit gap when a request cannot be prepared.
 
-Thresholds are explicit project policy. Future retuning uses actual
-operator review decisions after about a week of use, with a development/validation
-split and misses-first comparison. It is never automatic.
+The implementation defines explicit steering and replacement thresholds. kah does
+not automatically retune judgment thresholds from operator review decisions.
 
-
-Gate 3f verified that embedded kah TUIs have no control socket. Their history is
-shared, but kah send and native-session kah steer fail closed rather than delivering
-through the global daemon. Use typed steer:/aside: in those TUIs. Native delivery
-to the existing managed-daemon sessions and run-ID steering are separate paths.
-See startup-modes.md for the pending shared Mine proof and app visibility limits.
+Embedded Codex sessions do not depend on a global-daemon control socket. For an
+embedded session, `kah send` and `kah steer` can use a validated Herdr binding.
+Type `steer:` or `aside:` in the native TUI when no host delivery route is
+available. Unattended run-ID controls use their recorded run pane, while
+native-session delivery uses its available socket or Herdr binding. See
+[startup modes](startup-modes.md) for the difference between saved history and
+live session control.
