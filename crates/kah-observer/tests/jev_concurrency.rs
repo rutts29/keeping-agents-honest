@@ -99,8 +99,14 @@ fn evidence(root: &std::path::Path, name: &str, details: Value) {
 #[ignore = "actual process kill/restart against retained local HTTP replay; no live Jev"]
 fn killed_batch_reuses_only_durable_answers_and_sends_unanswered_requests() {
     let corpus = Corpus::load();
-    let root = private_root("restart");
     if let Some(address) = std::env::var_os("KAH_CONCURRENCY_CHILD") {
+        // Both children reopen the output the parent validated and created.
+        let root = PathBuf::from(std::env::var_os("KAH_CONCURRENCY_CHILD_ROOT").unwrap());
+        assert_eq!(
+            root.canonicalize().unwrap(),
+            root,
+            "CHILD_ROOT stage=restart"
+        );
         let client = HttpClient::replay(address.to_str().unwrap().parse().unwrap()).unwrap();
         let outcome = Batch::new(&root.join("batch"), &root.join("rate"))
             .unwrap()
@@ -114,8 +120,9 @@ fn killed_batch_reuses_only_durable_answers_and_sends_unanswered_requests() {
         .unwrap();
         return;
     }
+    let root = private_root("restart");
     let stub = Stub::start(&corpus, false);
-    let mut first = child(stub.address);
+    let mut first = child(stub.address, &root);
     let receipt_root = root.join("batch/receipts");
     loop {
         let complete = receipts(&receipt_root);
@@ -134,7 +141,7 @@ fn killed_batch_reuses_only_durable_answers_and_sends_unanswered_requests() {
     let answered = receipts(&receipt_root);
     assert!(answered.len() < corpus.requests.len());
     let before = stub.counts();
-    assert!(child(stub.address).wait().unwrap().success());
+    assert!(child(stub.address, &root).wait().unwrap().success());
     let after = stub.counts();
     for receipt in &answered {
         assert_eq!(
@@ -150,7 +157,7 @@ fn killed_batch_reuses_only_durable_answers_and_sends_unanswered_requests() {
         json!({"durable_before":answered.len(),"completed_after":corpus.requests.len(),"answered_resent":0,"killed_process":true}),
     );
 }
-fn child(address: std::net::SocketAddr) -> std::process::Child {
+fn child(address: std::net::SocketAddr, root: &std::path::Path) -> std::process::Child {
     std::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -159,6 +166,7 @@ fn child(address: std::net::SocketAddr) -> std::process::Child {
             "--nocapture",
         ])
         .env("KAH_CONCURRENCY_CHILD", address.to_string())
+        .env("KAH_CONCURRENCY_CHILD_ROOT", root)
         .spawn()
         .unwrap()
 }
