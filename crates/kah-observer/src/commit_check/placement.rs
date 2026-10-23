@@ -1,4 +1,5 @@
-//! Adopted after frozen31-case b3853d8 replay: no unrelated rule-state hops.
+//! Keep the rule text inside the question so the model makes no unrelated
+//! rule-state hops.
 use super::*;
 pub fn rule_in_question(original: &Prepared) -> Result<Prepared, String> {
     let mut result = original.clone();

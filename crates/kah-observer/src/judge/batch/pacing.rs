@@ -4,8 +4,8 @@ use serde_json::Value;
 use std::time::Duration;
 mod state;
 use state::{Start, Window};
-/// https://docs.typesafe.ai/models checked live 2026-10-11: 80 RPS / 100K TPS.
-/// The pinned 2026-09-30 mirror says 40 RPS; it is not the current limit.
+/// Default limits of 80 RPS / 100K TPS (https://docs.typesafe.ai/models, checked
+/// 2026-10-11); rate-limit response headers override them.
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Limits {
     pub requests_per_second: f64,

@@ -1,4 +1,4 @@
-//! Phase1: deterministic commit preparation and citation identity; no client.
+//! Deterministic commit preparation and citation identity; no client.
 //! TypeSafe: state/primitives, jev-1.13 Literal reading/Indirection/Large state,
 //! citation_check and sde_cascade. Decisions use named keys, never array offsets.
 use serde::{Deserialize, Serialize};

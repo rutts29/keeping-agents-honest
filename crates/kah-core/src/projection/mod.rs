@@ -1,4 +1,4 @@
-//! Deterministic, bounded active-intent projections.
+//! Deterministic active-intent projections.
 //!
 //! This module folds the already validated [`crate::intent_history::History`]
 //! state into the prompt-facing projection.  It deliberately does not call a
@@ -128,6 +128,7 @@ fn closure_blockers(
     blockers
 }
 
+/// Records the exact size of the rendered prompt payload; it never limits content.
 fn account_overflow(projection: &mut ActiveProjection) -> Result<(), ProjectionError> {
     let bytes = projection.try_rendered_prompt()?.len();
     projection.overflow.bytes = bytes;

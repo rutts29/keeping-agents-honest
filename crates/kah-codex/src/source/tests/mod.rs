@@ -10,7 +10,7 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn directory(name: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!(
-        "driftctl-path-scan-{}-{}-{name}",
+        "kah-path-scan-{}-{}-{name}",
         std::process::id(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ));

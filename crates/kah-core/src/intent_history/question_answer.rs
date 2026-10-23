@@ -1,7 +1,7 @@
 use super::*;
 
 /// The one canonical question id: `question-` and the lowercase hex digest.
-/// Every non-gate creator uses this; the frozen gate creator uses the same form.
+/// Every creator uses this form.
 #[must_use]
 pub fn question_id(digest: &[u8]) -> String {
     let hex = digest

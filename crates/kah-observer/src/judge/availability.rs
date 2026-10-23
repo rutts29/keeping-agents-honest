@@ -1,5 +1,6 @@
 //! HTTP account state, not a judgment or a report-validation error.
-//! Pinned TypeSafe pages/api.md: HTTP errors use standard status codes.
+//! Documented TypeSafe HTTP contract (https://docs.typesafe.ai/api): HTTP errors
+//! use standard status codes.
 use super::Error;
 use serde_json::{Value, json};
 use std::{fs, path::Path};

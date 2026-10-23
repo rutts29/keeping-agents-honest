@@ -20,7 +20,8 @@ impl<'a> CompactorConfig<'a> {
     pub fn new(model: &'a str, reasoning: Option<&'a str>) -> Result<Self, String> {
         let model = match model {
             // Existing native sessions can retain an older observer binding in
-            // their environment. Honor the new floor without launching it.
+            // their environment. Map it to a supported model instead of
+            // launching it.
             "luna" | "sol" | "terra" | "gpt-6-luna" | "gpt-6-sol" | "gpt-reserve"
             | "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.6-luna" | "gpt-5.5" => "gpt-6.1-sol",
             "haiku" | "sonnet" | "claude-sonnet-5" | "claude-haiku-4-5-20251001" => {

@@ -1,4 +1,4 @@
-//! Validated, provider-neutral history imported from driftctl.
+//! Validated, provider-neutral intent history.
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
