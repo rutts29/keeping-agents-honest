@@ -159,6 +159,49 @@ fn a_catalogue_view_recovers_nested_json_and_segmented_text_without_unrelated_so
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
+fn publication_revokes_write_access_of_the_real_service_principal() {
+    // source_store::share resolves the service principal itself, so the
+    // check must name that principal, never the neutral fixture id.
+    let uid = kah_run::access::service_uid().unwrap();
+    assert_ne!(uid, synthetic_uid());
+    let root =
+        std::env::temp_dir().join(format!("source-publication-write-{}", std::process::id()));
+    let private = root.join("private");
+    let public = root.join("observer");
+    fs::create_dir_all(&private).unwrap();
+    source_store::initialize(&private, &public).unwrap();
+    let (input, _, _) = catalogue_fixture(&private, &public);
+    // A writable grant to the real principal, as a legacy publication left it.
+    kah_run::access::share_tree(&input, uid, true).unwrap();
+    let writable = format!("user:{uid}:rw");
+    assert!(acl(&input.join("record.txt")).contains(&writable));
+    source_store::share(&private, &input).unwrap();
+    let mut paths = vec![
+        input.clone(),
+        input.join("record.txt"),
+        input.join("sources"),
+    ];
+    for entry in fs::read_dir(input.join("sources")).unwrap() {
+        paths.push(entry.unwrap().path());
+    }
+    assert!(paths.len() > 3, "the catalogue published its source");
+    for path in paths {
+        let permissions = acl(&path);
+        assert!(
+            !permissions.contains(&writable),
+            "{}: {permissions}",
+            path.display()
+        );
+        assert!(
+            permissions.contains(&format!("user:{uid}:r")),
+            "{permissions}"
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn catalogue_fixture(
     private: &Path,
     public: &Path,
