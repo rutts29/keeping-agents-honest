@@ -1,7 +1,10 @@
 //! An absolute XDG_STATE_HOME moves the state root, but overlays and saved
 //! policies made before it was set keep working: a resumed session reuses its
 //! saved overlay and an old rollout still carries its online or yolo choice.
-use kah_cli::{Arguments, resume, session_policy::SessionPolicy};
+use kah_cli::{
+    Arguments, resume,
+    session_policy::{self, SessionPolicy},
+};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path, process::Command};
 
@@ -45,6 +48,7 @@ fn overlay_compat_child() {
     old_rollouts_keep_their_choice(&home, &active, &former);
     overlay_choice(&home, &active, &former);
     saved_policy_keeps_its_overlay(&home, &former);
+    old_rollout_without_a_policy_record_resumes_in_its_overlay(&home, &active, &former);
 }
 
 fn choice(home: &Path, rollout: &Path) -> (bool, bool) {
@@ -127,4 +131,57 @@ fn saved_policy_keeps_its_overlay(home: &Path, former: &Path) {
     // The launch for that session picks the same overlay, so the policy guard sees equal bindings.
     let chosen = resume::overlay_for(home, "research-online", HASH, args.saved_overlay.as_deref());
     assert_eq!(chosen, saved.overlay);
+}
+
+/// No policy record in the active root and an overlay in both roots: the old
+/// rollout names the overlay its session was started in, and the resume hook
+/// accepts exactly that one.
+fn old_rollout_without_a_policy_record_resumes_in_its_overlay(
+    home: &Path,
+    active: &Path,
+    former: &Path,
+) {
+    let project = home.join("repos/mine/older");
+    fs::create_dir_all(&project).unwrap();
+    let hash = format!(
+        "{:x}",
+        Sha256::digest(project.as_os_str().as_encoded_bytes())
+    );
+    let hash = &hash[..16];
+    let (new, old) = (
+        active.join("mine-yolo").join(hash),
+        former.join("mine-yolo").join(hash),
+    );
+    fs::create_dir_all(&new).unwrap();
+    fs::create_dir_all(&old).unwrap();
+    let session = "00000000-0000-4000-8000-000000000002";
+    let rollout = old.join("sessions/rollout.jsonl");
+    let mut args = Arguments::default();
+    let target = resume::restore_policy(&project, &rollout, home, session, &mut args).unwrap();
+    assert_eq!(target, project);
+    assert!(args.options.yolo, "the old rollout restores the choice");
+    let overlay = resume::overlay_for(home, "mine-yolo", hash, args.saved_overlay.as_deref());
+    assert_eq!(
+        overlay, old,
+        "the session's own overlay, not the active one"
+    );
+    let current = SessionPolicy {
+        project: project.clone(),
+        policy: "mine-yolo".into(),
+        overlay,
+    };
+    let input = serde_json::json!({
+        "session_id": session, "hook_event_name": "SessionStart", "source": "resume",
+        "transcript_path": rollout, "cwd": project,
+    });
+    let base = Path::new(&std::env::var_os("XDG_STATE_HOME").unwrap()).join("kah");
+    session_policy::validate(&base, &current, &input).unwrap();
+    // A rollout of another project's overlay is not taken for this one.
+    let other = old
+        .with_file_name("ffffffffffffffff")
+        .join("sessions/rollout.jsonl");
+    let mut foreign = Arguments::default();
+    resume::apply_location(home, &other, &mut foreign);
+    let chosen = resume::overlay_for(home, "mine-yolo", hash, foreign.saved_overlay.as_deref());
+    assert_eq!(chosen, new, "an overlay of another project is ignored");
 }

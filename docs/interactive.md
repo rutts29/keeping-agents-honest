@@ -60,9 +60,10 @@ Codex overlays are stable per domain/network policy and project under `codex/`
 in the kah state root (`$XDG_STATE_HOME/kah` when that is absolute, otherwise
 `~/.local/state/kah`). They share the native login and history stores while
 keeping independent writable config. Keep overlay paths: saved rollouts reference
-them. An overlay made in the default location before `XDG_STATE_HOME` was set
-stays in use for its project and policy, and a resumed session reuses the
-overlay in its saved policy. Claude uses its configured native store, which defaults to `~/.claude`, with
+them. New overlays go under that root. One made in the default location before
+`XDG_STATE_HOME` was set is reused while no overlay exists under the active root,
+and a resumed session reuses the overlay in its saved policy, or the one its
+native rollout path names. Claude uses its configured native store, which defaults to `~/.claude`, with
 project-keyed history and invocation-local settings. No kah cross-domain picker or credential copy
 exists. Native `--all` passes through. Global provider configuration is unchanged.
 

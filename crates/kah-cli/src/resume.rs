@@ -129,22 +129,25 @@ pub fn overlay_for(home: &Path, policy: &str, hash: &str, saved: Option<&Path>) 
         .clone()
 }
 
-/// Only a native session's kah-owned rollout path carries a previous opt-in.
+/// Only a native session's kah-owned rollout path carries a previous opt-in. The
+/// overlay that path names is kept as the session's overlay, so a session
+/// without a policy record resumes in the overlay it was started in.
 pub fn apply_location(home: &Path, rollout: &Path, args: &mut Arguments) {
-    let Some(relative) = overlay_roots(home)
-        .iter()
-        .find_map(|root| rollout.strip_prefix(root).ok())
+    let Some((root, relative)) = overlay_roots(home)
+        .into_iter()
+        .find_map(|root| Some((root.clone(), rollout.strip_prefix(&root).ok()?.to_owned())))
     else {
         return;
     };
-    match relative
-        .components()
-        .next()
-        .and_then(|c| c.as_os_str().to_str())
-    {
+    let mut parts = relative.components().filter_map(|c| c.as_os_str().to_str());
+    let (policy, hash) = (parts.next(), parts.next());
+    match policy {
         Some("research-online" | "untrusted-online") => args.options.online = true,
         Some("mine-yolo") => args.options.yolo = true,
         _ => (),
+    }
+    if let (Some(policy), Some(hash)) = (policy, hash) {
+        args.saved_overlay = Some(root.join(policy).join(hash));
     }
 }
 
