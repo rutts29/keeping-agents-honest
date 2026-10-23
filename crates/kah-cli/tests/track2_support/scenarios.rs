@@ -159,8 +159,8 @@ fn hooks(worker: &Worker, state: &review::state::State) -> Value {
         .lines()
         .map(|l| serde_json::from_str::<Value>(l).unwrap())
         .collect::<Vec<_>>();
-    // Claude does not expose the Codex HookRunSummary wire event. Require actual
-    // Tracker39 removed per-tool Jev; require the current intake/stop path.
+    // Claude does not expose the Codex HookRunSummary wire event.
+    // Require the intake and stop hook path from host receipts.
     let events = hook_events::complete(&observed);
     let passed = events && errors.is_empty() && (worker.provider == "claude" || !native.is_empty());
     json!({"passed":passed,"native_hook_runs":native,"errors":errors,"host_event_count":observed.len(),

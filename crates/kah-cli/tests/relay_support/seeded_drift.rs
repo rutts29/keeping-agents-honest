@@ -1,5 +1,5 @@
-//! Seeded accidental drift with the Claude worker as a Herdr pane agent. Since
-//! d4a209b drift is caught at commit checks (the mid-turn Purpose::Drift lane is
+//! Seeded accidental drift with the Claude worker as a Herdr pane agent.
+//! Drift is caught at commit checks (the mid-turn Purpose::Drift lane is
 //! retired): the worker commits the wrong marker, the commit review reports the
 //! violation, and kah's reminder reaches the worker's pane to unlock correction.
 use super::*;
@@ -58,7 +58,7 @@ pub(super) fn run(_root: &Path) -> Value {
     assert_eq!(inputs.len(), 1);
     assert_eq!(inputs[0].text, TASK);
     json!({"passed":true,"versions":versions(&home),"fixtureModel":"claude-sonnet-5-5","observer":crate::claude_support::observer::evidence(),
-        "lane":"commit review (mid-turn Purpose::Drift retired in d4a209b)",
+        "lane":"commit review (mid-turn Purpose::Drift retired)",
         "workerCommits":commits.iter().map(|c| json!({"commit":c.0,"answerTxt":c.1})).collect::<Vec<_>>(),
         "reminderInWorkerTranscript":reminder,"deliveredChange":format!("{:?}", delivered_change(&claude.id)),"reviews":review_ids(&claude.id),
         "finalMarker":"BETA","humanInputs":inputs.len(),"observerUsage":state.usage,
@@ -519,7 +519,7 @@ fn journal_tail(id: &str) -> Value {
     )
 }
 
-/// Diagnostic rule for a commit that produced no review.
+/// Diagnosis for a commit that produced no review.
 fn diagnosis(id: &str, directory: &Path) -> Value {
     let read = |name: &str| -> Value {
         fs::read(directory.join(name))

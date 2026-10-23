@@ -1,4 +1,4 @@
-//! Compact transport with identical Jev decision units.
+//! Compact transport expands to the same Jev units as the full format.
 use kah_cli::observer_review::{
     light_report,
     state::{Purpose, Request},
@@ -96,7 +96,7 @@ fn compact_transport_does_not_change_the_generated_jev_questions() {
 
 #[test]
 fn report_type_errors_name_the_field_the_observer_must_correct() {
-    // A/B v1apic: "invalid type: map, expected usize" gave no field path.
+    // A type error must name the field path the observer needs to correct.
     let mut req = request();
     req.trigger = json!({});
     let report = json!({"request_id":"review-light","findings":[{"topic":"intent",

@@ -45,7 +45,7 @@ fn midturn_and_uncertain_claims_do_not_become_unconditional_completion_events() 
     let mut r = request();
     r.trigger = json!({"events":[{"kind":"native_phase_claim","judgment":{"backend":"jev"},"uncertain":true}]});
     completion_due::add(&mut r).unwrap();
-    // Reviewer correction: candidate routing is not a confirmed completion fact.
+    // Candidate routing is not a confirmed completion fact.
     assert!(r.documents.is_empty());
 }
 

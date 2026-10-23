@@ -1,10 +1,11 @@
-//! Deterministic REVIEW_BUSY after drop in the retained post-ACK regression.
+//! Regression for REVIEW_BUSY after the review store is dropped.
 use super::*;
 use std::os::fd::AsRawFd;
 
 #[test]
 fn review_store_drop_releases_immediately_while_an_inherited_description_survives() {
-    std::env::var_os("XDG_STATE_HOME").expect("isolated check-tests fixture required");
+    std::env::var_os("XDG_STATE_HOME")
+        .expect("run through demos/check-tests.sh with isolated temporary state");
     let worker = format!("review-drop-{}", crate::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     let directory = store.directory.clone();

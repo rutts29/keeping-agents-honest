@@ -2,8 +2,18 @@ use super::*;
 use serde_json::json;
 use std::io::Cursor;
 
-const SESSION: &str = "00000000-0000-4000-8000-100000000006";
-const REQUEST: &str = "review-1000000000014-1";
+const SESSION: &str = "00000000-0000-4000-8000-000000000001";
+const REQUEST: &str = "review-1000000-1";
+fn fixture_path(root: &Path, value: &serde_json::Value) -> std::path::PathBuf {
+    let relative = Path::new(value.as_str().unwrap());
+    assert!(!relative.as_os_str().is_empty());
+    assert!(
+        relative
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+    );
+    root.join(relative)
+}
 fn transcript() -> String {
     let meta = json!({"type":"session_meta","payload":{"id":SESSION,"session_id":SESSION,
         "cwd":"/observer","source":"cli","originator":"codex-tui","model_provider":"openai"}});
@@ -65,29 +75,32 @@ fn an_assistant_echo_or_partial_request_id_is_not_a_native_receipt() {
 #[ignore = "private retained native corpus; no model or provider call"]
 fn retained_startup4_native_record_proves_the_original_unbound_submission() {
     let root = std::path::PathBuf::from(std::env::var_os("KAH_STARTUP4_CORPUS").unwrap());
-    let file = root.join(format!(
-        "home/.codex/sessions/2000/01/01/rollout-2000-01-01T00-00-00-{SESSION}.jsonl"
-    ));
-    let cwd = root.join("home/.cache/kah-observers/000000000000000000000002");
+    let case: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("fixture.json")).unwrap()).unwrap();
+    let session = case["session"].as_str().unwrap();
+    let request = case["request"].as_str().unwrap();
+    let file = fixture_path(&root, &case["transcript"]);
+    let cwd = fixture_path(&root, &case["workspace"]);
     assert!(root.join("handoff-diagnosis.json").exists());
     let proof = verify(
         std::io::BufReader::new(std::fs::File::open(&file).unwrap()),
-        SESSION,
+        session,
         &cwd,
-        &format!("kah review request {REQUEST} "),
+        &format!("kah review request {request} "),
     )
     .unwrap()
     .expect("retained real receipt must bind");
-    assert_eq!(proof.session, SESSION);
+    assert_eq!(proof.session, session);
     let (store, mut state, _) = binding_fixture();
     state.observer.workspace = cwd;
+    state.pending.as_mut().unwrap().id = request.into();
     store.save(&state).unwrap();
     let worker = state.worker.session.clone();
     let submitted = state
         .observer
         .workspace
         .join("outbox")
-        .join(format!("submitted-{REQUEST}.json"));
+        .join(format!("submitted-{request}.json"));
     let before = std::fs::read(&submitted).unwrap();
     drop(store);
     assert!(recovery::persist(&state, &file, &proof).unwrap());
@@ -117,11 +130,11 @@ fn binding_fixture() -> (
         "pending":null,"latest":null,"last_verified_turn":null,"checkpoint":null,"deferrals":[],
         "wakes":0,"native_tokens":0,"stopped":false
     })).unwrap();
-    state.observer.pane = Some("w999:p1".into());
+    state.observer.pane = Some("w0:p0".into());
     state.pending = Some(Pending {
         id: REQUEST.into(),
         purpose: Purpose::Checkpoint,
-        turn: "retained-startup4".into(),
+        turn: "fixture-turn".into(),
         head: None,
         created_ms: 0,
         native_tokens_before: None,
@@ -205,7 +218,7 @@ fn a_newer_pending_request_or_changed_pane_cannot_inherit_the_receipt() {
 #[test]
 fn advisory_id_without_owned_pane_scope_is_rejected() {
     let (store, state, _) = binding_fixture();
-    let pane = json!({"pane_id":"w999:p1","agent":"codex","foreground_cwd":state.observer.workspace,
+    let pane = json!({"pane_id":"w0:p0","agent":"codex","foreground_cwd":state.observer.workspace,
         "agent_session":{"kind":"id","source":"herdr:codex","value":SESSION}});
     assert_eq!(recovery::pane_session(&state, &pane).unwrap(), SESSION);
     for (field, value) in [
@@ -284,7 +297,7 @@ fn warm_submission_gets_its_own_receipt_after_the_first_request_was_consumed() {
     recovery::persist(&state, &path, &proof).unwrap();
     let store = crate::observer_review::state::Store::open(&worker).unwrap();
     let mut bound = store.load().unwrap().unwrap();
-    let next = "review-1000000000016-1";
+    let next = "review-1000000-2";
     bound.pending.as_mut().unwrap().id = next.into();
     store.save(&bound).unwrap();
     let submitted = bound
@@ -331,16 +344,16 @@ fn working_or_unbound_submitted_requests_are_never_visibly_redelivered() {
 #[ignore = "private retained native corpus; no model or provider call"]
 fn retained_startup5_warm_submission_hands_off_existing_bytes() {
     let root = std::path::PathBuf::from(std::env::var_os("KAH_STARTUP5_CORPUS").unwrap());
-    let session = "00000000-0000-4000-8000-100000000007";
-    let first = "review-1000000000015-1";
-    let next = "review-1000000000016-1";
-    let native = root.join(format!(
-        "home/.codex/sessions/2000/01/02/rollout-2000-01-02T00-00-00-{session}.jsonl"
-    ));
+    let case: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("fixture.json")).unwrap()).unwrap();
+    let session = case["session"].as_str().unwrap();
+    let first = case["first_request"].as_str().unwrap();
+    let next = case["next_request"].as_str().unwrap();
+    let native = fixture_path(&root, &case["transcript"]);
     let text = std::fs::read_to_string(&native).unwrap();
     assert_eq!(successful_submissions(&text, next), 4);
     let (store, mut state, _) = binding_fixture();
-    state.observer.workspace = root.join("home/.cache/kah-observers/000000000000000000000003");
+    state.observer.workspace = fixture_path(&root, &case["workspace"]);
     state.pending.as_mut().unwrap().id = first.into();
     store.save(&state).unwrap();
     let first_proof = verify(
@@ -413,9 +426,9 @@ fn a_later_report_without_its_exact_native_request_receipt_stays_unbound() {
 fn launched_views(state: &crate::observer_review::state::State) -> [serde_json::Value; 3] {
     let cwd = &state.observer.workspace;
     [
-        json!({"pane_id":"w999:p1","agent":null,"foreground_cwd":cwd}),
-        json!({"pane_id":"w999:p1","agent":"codex","foreground_cwd":cwd}),
-        json!({"pane_id":"w999:p1","agent":"codex","foreground_cwd":cwd,
+        json!({"pane_id":"w0:p0","agent":null,"foreground_cwd":cwd}),
+        json!({"pane_id":"w0:p0","agent":"codex","foreground_cwd":cwd}),
+        json!({"pane_id":"w0:p0","agent":"codex","foreground_cwd":cwd,
             "agent_session":{"kind":"id","source":"herdr:codex","value":SESSION}}),
     ]
 }

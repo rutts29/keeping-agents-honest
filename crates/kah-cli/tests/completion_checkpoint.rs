@@ -73,9 +73,8 @@ fn only_a_matching_passed_checkpoint_unblocks_completion() {
 
 #[test]
 fn a_blocked_admission_stops_the_waiting_completion_with_its_reason() {
-    // 5r-i on 1a4ef14: admission of the queued run_completion trigger failed
-    // with RUN_SHARE_ACL. Nothing retried it, and the run waited with no
-    // limit until the 1800 s journey deadline.
+    // Admission of the queued run_completion trigger failed with RUN_SHARE_ACL.
+    // Without a retry or terminal failure, the run waited indefinitely.
     let worker = format!("completion-admission-unit-{}", std::process::id());
     let store = Store::open(&worker).unwrap();
     let directory = store.directory.clone();

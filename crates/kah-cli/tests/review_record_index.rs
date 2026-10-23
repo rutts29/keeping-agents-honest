@@ -1,4 +1,4 @@
-//! B': existing kah NativeRecord offsets; serde_json RawValue preserves JSON units.
+//! Indexes use NativeRecord offsets; serde_json RawValue preserves JSON units.
 use kah_cli::observer_review::{indexed_sources, source_store};
 use kah_observer::review_evidence::{Document, NativeRecord};
 use serde_json::json;

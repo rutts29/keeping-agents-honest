@@ -1,4 +1,4 @@
-//! After-tag #25: the Stop-before-admission race of 5f, on an interactive Codex
+//! The Stop-before-admission race on an interactive Codex
 //! worker. Codex 0.162.1 runs the Stop hooks inside the turn and only then
 //! writes the turn's task_complete row to the rollout, as Claude writes
 //! turn_duration after its Stop hooks. Admission reads those rows. These replay

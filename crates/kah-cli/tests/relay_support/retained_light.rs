@@ -6,11 +6,17 @@ use kah_cli::observer_review::{
     packet_references, snapshot, source_store,
     state::{Request, Store as Reviews},
 };
-const ORIGINAL: &str = "review-1000000000005-1";
-const ORIGINAL_WORKER: &str = "00000000-0000-4000-8000-100000000005";
+#[derive(serde::Deserialize)]
+struct ReplayCase {
+    request: String,
+    worker: String,
+    native_tokens_before: u64,
+}
 const START: &str = "steer: Remain idle as a private transport for a controller review of archived work. Do not create files, implement a task, commit, tag, push or dispatch workers. Acknowledge readiness; the archived snapshot, not this empty transport project, is the subject.";
 
 pub fn run(root: &Path) -> Value {
+    let case: ReplayCase =
+        serde_json::from_slice(&fs::read(root.join("retained-light-case.json")).unwrap()).unwrap();
     assert!(
         std::env::var("HERDR_SOCKET_PATH")
             .unwrap()
@@ -43,7 +49,7 @@ pub fn run(root: &Path) -> Value {
     }
     drop(store);
     let state = super::review::quiescent(&worker, "codex");
-    let (original, packet_bytes) = scoped(&worker, state);
+    let (original, packet_bytes) = scoped(&worker, state, &case);
     let id = original.id.clone();
     let submitted = retained_submission(&original);
     let pane = Pane {
@@ -54,7 +60,7 @@ pub fn run(root: &Path) -> Value {
     }
     let reviewed = super::review::wait_review(&worker, &pane, "codex");
     assert_eq!(reviewed.latest.as_ref().unwrap()["request"], id);
-    finish(root, &home, &reviewed, packet_bytes, &before);
+    finish(root, &home, &reviewed, packet_bytes, &before, &case);
     let result =
         serde_json::from_slice(&fs::read(root.join("retained-light.json")).unwrap()).unwrap();
     drop(panes);
@@ -64,15 +70,16 @@ pub fn run(root: &Path) -> Value {
 fn scoped(
     worker: &str,
     mut state: kah_cli::observer_review::state::State,
+    case: &ReplayCase,
 ) -> (Request, (usize, usize)) {
     let mut original: Request = source_store::read(
-        &Reviews::directory(ORIGINAL_WORKER)
+        &Reviews::directory(&case.worker)
             .unwrap()
             .join("requests")
-            .join(format!("{ORIGINAL}.json")),
+            .join(format!("{}.json", case.request)),
     )
     .unwrap();
-    assert_eq!(original.id, ORIGINAL);
+    assert_eq!(original.id, case.request);
     assert_eq!(original.trigger["review_class"], "commit");
     let original_intent = original.intent.clone();
     let bytes_before = bytes(&original);
@@ -82,7 +89,7 @@ fn scoped(
         kah_observer::session::now_ms(),
         std::process::id()
     );
-    original.trigger["historical_replay"] = json!({"original_request":ORIGINAL,"subject_worker":ORIGINAL_WORKER,"original_sha":original.head,"original_created_ms":original.created_ms});
+    original.trigger["historical_replay"] = json!({"original_request":case.request,"subject_worker":case.worker,"original_sha":original.head,"original_created_ms":original.created_ms});
     original.trigger["subject"] = json!(
         "Review the archived worker and exact captured SHA/evidence. The disposable transport project is not the subject; do not infer its empty tree is the delivered code."
     );
@@ -109,6 +116,7 @@ fn finish(
     state: &kah_cli::observer_review::state::State,
     packet_bytes: (usize, usize),
     configs: &[(PathBuf, Vec<u8>)],
+    case: &ReplayCase,
 ) {
     let worker = &state.worker.session;
     let id = state.latest.as_ref().unwrap()["request"].as_str().unwrap();
@@ -126,9 +134,9 @@ fn finish(
     for (path, bytes) in configs {
         assert_eq!(fs::read(path).unwrap(), *bytes);
     }
-    let output = json!({"passed":true,"versions":versions(home),"model":"gpt-6.1-sol","effort":"low","original_request":ORIGINAL,"subject_worker":ORIGINAL_WORKER,
+    let output = json!({"passed":true,"versions":versions(home),"model":"gpt-6.1-sol","effort":"low","original_request":case.request,"subject_worker":case.worker,
         "replay_request":id,"sha":result["head"],"goal_and_items_unchanged":true,"packet_bytes_before":before,"packet_bytes_after":after,
-        "native_tokens_before":2209898,"native_tokens_after":result["native_tokens"],"native_history_and_cache_differ":true,"seeded_completed_task":false,
+        "native_tokens_before":case.native_tokens_before,"native_tokens_after":result["native_tokens"],"native_history_and_cache_differ":true,"seeded_completed_task":false,
         "assessment":result["assessment"]["state"],"elapsed_ms":result["elapsed_ms"],"observer":state.observer.session,"pane":state.observer.pane,
         "mechanics_only":true,"phase5o_gate_passed":false,"global_configs_unchanged":true,"private_herdr":true});
     fs::write(

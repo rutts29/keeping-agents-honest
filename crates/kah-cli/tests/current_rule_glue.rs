@@ -28,6 +28,7 @@ fn fixture() -> Fixture {
     fs::create_dir_all(&project).unwrap();
     fs::write(project.join("AGENTS.md"), "Never truncate inputs.").unwrap();
     let h = History::new(GoalRevision::new(1, "Preserve inputs", vec![source()])).unwrap();
+    // Run through demos/check-tests.sh to isolate the default state root.
     let base = RunStore::default_state_root().unwrap();
     let worker = format!("current-glue-{}", kah_cli::relay_store::nonce());
     let binding = session::Binding {
@@ -228,6 +229,7 @@ fn intake_gap_cannot_use_an_otherwise_current_set_and_direct_keeps_whole_sources
     let f = fixture();
     let r = rebuild(&f);
     adopt(&f, &r);
+    // Run through demos/check-tests.sh to isolate the default state root.
     let base = RunStore::default_state_root().unwrap();
     let mut primary = session::Store::open_wait(&base, &f.binding.session).unwrap();
     let mut s = primary.load().unwrap().unwrap();

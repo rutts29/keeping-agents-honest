@@ -1,4 +1,4 @@
-//! F-COLD-BIND-15S: a cold observer that is visibly working is not stalled.
+//! A cold observer that is visibly working is not stalled.
 use kah_cli::observer_review::{
     delivery,
     state::{Pending, Purpose, State, Store},
@@ -12,7 +12,7 @@ use std::{
 };
 
 const WORKER: &str = "cold-progress-worker";
-const REQUEST: &str = "review-1000000000017-1";
+const REQUEST: &str = "review-1000000-1";
 // Herdr reports the native agent's turn state; the binding is still absent.
 const SHIM: &str = "#!/bin/sh
 case \"$1 $2\" in

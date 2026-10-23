@@ -142,7 +142,7 @@ fn an_already_purged_project_is_recognized_among_other_notice_lines() {
         "No Claude Code project state found for {} under {home}/.claude.",
         project.display()
     );
-    // Claude 2.1.302 prints a rename notice first (5h-d on 8558946).
+    // Claude 2.1.302 prints a rename notice first.
     let text = format!(
         "'claude project purge' is now 'claude purge'. The old name still works for now.\n{result}\n"
     );

@@ -27,11 +27,11 @@ impl Fixture {
                 LaunchOptions::default(),
                 &self.0.join("native"),
                 "image",
-                42420,
+                65532,
             )
             .unwrap(),
             temporary: Some(self.0.join("temp")),
-            service_uid: 42420,
+            service_uid: 65532,
             environment: vec![],
         }
     }
@@ -106,6 +106,7 @@ fn native_temp_access_does_not_follow_links_or_change_ownership() {
     f.spec().command(&f.0, &["/bin/true".into()]).unwrap();
     assert_eq!(fs::metadata(&private).unwrap().mode() & 0o777, 0o600);
     assert_eq!(fs::metadata(&native).unwrap().uid(), owner);
+    // Requires the ACL tools and ACL-capable temporary storage.
     let acl = std::process::Command::new("/usr/bin/getfacl")
         .args(["-cpn"])
         .arg(&native)
@@ -115,6 +116,6 @@ fn native_temp_access_does_not_follow_links_or_change_ownership() {
     assert!(
         String::from_utf8(acl.stdout)
             .unwrap()
-            .contains("user:42420:rw-")
+            .contains("user:65532:rw-")
     );
 }

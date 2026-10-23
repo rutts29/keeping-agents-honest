@@ -47,8 +47,8 @@ fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
     }
     kah_core::run_store::ensure_private_directory(destination)?;
     let entries = match fs::read_dir(source) {
-        // 5r-i: the observer sandbox made outbox/build-o48f with mode 0700
-        // and another uid. Note it and go on; the trace must not fail on it.
+        // The observer sandbox can create mode-0700 directories owned by
+        // another UID. Record the unreadable directory without failing the trace.
         Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             eprintln!(
                 "private review trace: skipped {}: {error}",
@@ -96,6 +96,7 @@ fn retain(source: &Path, destination: &Path) -> kah_cli::Result<()> {
 
 #[test]
 fn retain_notes_an_unreadable_directory_and_goes_on() {
+    // Requires an unprivileged runner: mode 000 must deny directory reads.
     use std::os::unix::fs::PermissionsExt;
     let root = std::env::temp_dir().join(format!("kah-review-trace-{}", std::process::id()));
     let foreign = root.join("outbox/build-o48f");

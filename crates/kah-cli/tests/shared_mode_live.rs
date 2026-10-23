@@ -1,4 +1,4 @@
-//! Restricted routing negatives; the global-daemon probe was retired after Phase 5b.
+//! Restricted routing negatives; the global-daemon probe was retired.
 #[path = "journeys/fixture.rs"]
 mod fixture;
 use serde_json::{Value, json};

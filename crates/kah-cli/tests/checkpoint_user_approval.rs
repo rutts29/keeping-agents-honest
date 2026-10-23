@@ -33,7 +33,7 @@ fn assessment() -> serde_json::Value {
 }
 #[test]
 fn only_rethought_positive_uncertainty_with_exact_delivery_can_ask_for_approval() {
-    // Reconsideration alone does not complete the verification round.
+    // A user receipt is required: rethink alone is insufficient.
     assert!(!gate_approval::eligible(
         &request(),
         &report(),
@@ -304,7 +304,7 @@ fn replayed_receipt_cannot_approve_a_later_sha_after_original_resolution() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-// Controller-only fixtures for the user-approved one verification round.
+// Controller-only fixtures for a single follow-up verification round.
 fn archive(root: &std::path::Path, req: &Request) {
     kah_cli::observer_review::source_store::save(
         &root.join("requests"),

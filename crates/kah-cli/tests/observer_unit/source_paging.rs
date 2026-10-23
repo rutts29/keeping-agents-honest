@@ -1,4 +1,4 @@
-//! #52b: read-source pages. Each page stays under the byte budget, pages concatenate to the exact source,
+//! Read-source pages. Each page stays under the byte budget, pages concatenate to the exact source,
 //! and every page but the last ends with the footer line naming the exact command for the next page.
 use super::*;
 
@@ -33,7 +33,7 @@ fn follow(text: &str) -> (Vec<String>, String) {
         .collect::<String>();
     (pages, joined)
 }
-/// About the size of the 67k-token option1.txt of 878-12c: 264,592 bytes, mixed ASCII and multibyte.
+/// Large synthetic input: at least 264,592 bytes, mixing ASCII and multibyte text.
 fn big(lines: bool) -> String {
     let mut text = String::new();
     let mut n = 0;

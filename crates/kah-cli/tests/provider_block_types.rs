@@ -11,7 +11,7 @@ fn native_policy_classes_block_but_prose_rate_limits_and_tool_errors_do_not() {
         std::env::temp_dir().join(format!("provider-types-{}", kah_cli::relay_store::nonce()));
     fs::create_dir(&root).unwrap();
     let path = root.join("records.jsonl");
-    // Native2.1.296 xho: message.stop_reason refusal, apiError DLP/safety.
+    // Claude Code 2.1.296 transcript fields: refusal stop reason and DLP/safety errors.
     for row in [
         json!({"type":"assistant","apiError":"dlp_request_denied"}),
         json!({"type":"assistant","apiError":"safety_monitor_blocked"}),

@@ -9,7 +9,7 @@ fn wake() -> Wake {
     Wake {
         purpose: Purpose::Checkpoint,
         turn: "old-turn".into(),
-        trigger: json!({"review_class":"gate","events":[{"kind":"native_phase_claim","head":"a".repeat(40),"question_set":2,"source":{"native_assistant_text":"Fix installed; Phase5O remains unproven."},"judgment":{"old":"whole record"}}],"user_authority_change":{"receipt":"real-authority","text":"Whole user words."}}),
+        trigger: json!({"review_class":"gate","events":[{"kind":"native_phase_claim","head":"a".repeat(40),"question_set":2,"source":{"native_assistant_text":"Fix installed; Phase two remains unproven."},"judgment":{"old":"whole record"}}],"user_authority_change":{"receipt":"real-authority","text":"Whole user words."}}),
     }
 }
 fn judged(phase: f64, implementation: f64) -> Judgment {

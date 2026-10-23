@@ -216,7 +216,7 @@ impl Fixture {
     }
 }
 
-/// A tester shell inside Claude Code exports its own session identity, e.g.
+/// A shell started inside Claude Code exports its own session identity, e.g.
 /// CLAUDE_CODE_CHILD_SESSION, which stops the fixture writing a transcript.
 /// Drop every inherited CLAUDE* name except the user's config root.
 pub(crate) fn inherited_claude_names() -> Vec<String> {

@@ -1,4 +1,4 @@
-//! USER private-receipt-omitted: migrate legacy commits, never real gates.
+//! Legacy commit wakes migrate to light reviews; explicit gates do not.
 use kah_cli::observer_review::{
     queue::{Wake, migration},
     state::Purpose,

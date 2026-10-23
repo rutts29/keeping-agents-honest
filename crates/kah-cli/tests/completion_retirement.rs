@@ -86,7 +86,7 @@ impl Drop for Fixture {
     }
 }
 
-/// #52: a completion request the observer declined twice is retired too; a
+/// A completion request the observer declined twice is retired too; a
 /// non-terminal retirement would leave the run Pending until its deadline.
 #[test]
 fn retired_completion_is_terminal_and_reviewed_completion_still_passes() {

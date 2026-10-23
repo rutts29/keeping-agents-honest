@@ -59,7 +59,7 @@ fn settings(home: &Path, role: &str, project: &Path, session: &str, tier: Value)
     // core/session/mod.rs InitialHistory::New defers the initial turn context;
     // protocol/src/protocol.rs TurnContextItem carries model/effort, not tier.
     // Fresh sessions need not emit ThreadSettingsApplied.
-    // The fixtures request native -c service_tier="fast" (user rule: Codex always fast).
+    // The fixtures request native -c service_tier="fast".
     // config/read on this separate history client is NOT the TUI's runtime tier.
     // app-server-protocol/src/protocol/v2/thread_data.rs Thread.path.
     let directory = Reviews::directory(session).unwrap();

@@ -69,7 +69,7 @@ fn send_probe(id: &str, terminal: &Terminal) -> Value {
         ])
         .output()
         .unwrap();
-    // Since 985814f (10-06) a TUI without a control socket receives delegate
+    // A TUI without a control socket receives delegate
     // messages through native Herdr agent prompt, never as user authority.
     assert!(
         sender.status.success(),

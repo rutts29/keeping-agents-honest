@@ -1,4 +1,4 @@
-//! Jobs whose input stays true while they own it (finding #21) settle on spawn
+//! Jobs whose input stays true while they own it settle on spawn
 //! requests: hook::spawn records one before its try_lock, and the running job
 //! takes it after each pass.
 use kah_cli::observer_review::{hook, job_lease, state::Store};
@@ -284,8 +284,8 @@ fn recorded(job: &Job, command: &str) -> bool {
         .is_ok_and(|log| log.contains(&format!("\"recorded_spawn\":\"{command}\"")))
 }
 
-/// #53: hook::spawn ran the INSTALLED kah (often an older build) on a test's
-/// state, which raced the test (integ-13). A library test runner now records
+/// hook::spawn ran the installed kah (often an older build) on a test's
+/// state, which raced the test. A library test runner now records
 /// the spawn in the job log and starts no kah binary. The installed kah here is
 /// a stub that logs any start.
 #[test]

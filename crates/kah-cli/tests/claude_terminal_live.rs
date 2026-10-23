@@ -35,7 +35,7 @@ fn mine_claude_startup() {
 }
 
 #[test]
-#[ignore = "real Claude TUI and Jev hooks; run only through make gate"]
+#[ignore = "live test; requires the Claude TUI, native login and a TypeSafe key"]
 fn mine_claude_observer_and_native_edits() {
     let fixture = Fixture::new();
     let version = Command::new("claude").arg("--version").output().unwrap();

@@ -1,3 +1,4 @@
+//! Maintainer live-test support; requires externally supplied inputs and host setup.
 mod bundle_cost;
 mod cache_benchmark;
 mod claude_invocation;

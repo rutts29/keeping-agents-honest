@@ -56,7 +56,7 @@ fn clause(id: &str, main: Words, witnesses: Vec<Words>) -> Clause {
         witnesses,
     }
 }
-/// One conflict can be reported by three clauses,
+/// One conflict reported by three clauses,
 /// one of them listing the same goal text twice.
 fn live_conflict() -> RuleSet {
     let standing = || words("standing:AGENTS.md", EVERY);
@@ -301,7 +301,7 @@ fn position(question: &Value, text: &str) -> usize {
         .unwrap()
 }
 
-/// The live v5 state: three stored legacy questions for one conflict.
+/// Legacy state: three stored questions for one conflict.
 fn stored_legacy(worker: &str) -> Vec<String> {
     let directory = Store::directory(worker).unwrap().join("questions");
     kah_core::run_store::ensure_private_directory(&directory).unwrap();

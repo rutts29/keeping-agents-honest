@@ -10,7 +10,7 @@ fn judgment(noul: f64) -> Judgment {
     }
 }
 #[test]
-fn the_real_claude_partial_phase_claim_cannot_be_silently_ignored() {
+fn a_partial_phase_claim_cannot_be_silently_ignored() {
     assert!(kah_cli::observer_review::claims::needs_review(&judgment(
         0.76
     )));
@@ -78,7 +78,7 @@ fn doubtful_claim_requires_thinker_selected_native_assistant_evidence() {
 
 #[test]
 fn a_claim_written_while_the_claims_job_holds_its_lock_is_not_stranded() {
-    // The checkpoint-worker lost wakeup (5f, 2026-10-17) in the claims job: a
+    // A lost wakeup in the claims job: a
     // Stop writes its claim while the previous Jev screen still runs, so
     // hook::spawn starts nothing. An idle worker's last claim was never screened.
     let worker = format!("claims-wakeup-unit-{}", std::process::id());

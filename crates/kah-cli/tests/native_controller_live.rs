@@ -57,7 +57,7 @@ fn journey(agent: &str) {
         std::thread::sleep(Duration::from_millis(200));
     };
     let notification_rendered = terminal.output().contains("kah run needs attention");
-    // 5r-i: a failed archive in preserve_failure hid this line.
+    // A failed archive in preserve_failure used to hide this diagnostic.
     if evidence["passed"] != true {
         eprintln!("PRIMARY FAILURE (reported before cleanup): {evidence}");
     }

@@ -77,7 +77,7 @@ fn drift_reconsideration_survives_until_an_event_and_keeps_its_original_decision
 
 #[test]
 fn a_rethought_checkpoint_keeps_uncertainty_visible_without_another_reask() {
-    // Allow one follow-up verification round.
+    // One follow-up round is allowed; another re-ask must not be queued.
     let root = std::env::temp_dir().join(format!("kah-no-reask-{}", std::process::id()));
     let request = Request {
         id: "review-followup".into(),

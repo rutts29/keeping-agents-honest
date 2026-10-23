@@ -1,4 +1,4 @@
-//! 5h-d1 (2026-10-18): a dispatched kah run worker had no baseline file (its
+//! A dispatched kah run worker had no baseline file (its
 //! first HEAD sample saw no HEAD), so its checkpoint diffed against the empty
 //! tree and counted the fixture's committed AGENTS.md and CLAUDE.md as new.
 use kah_cli::observer_review::option1::diff_base::diff_base;

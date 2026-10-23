@@ -1,4 +1,4 @@
-//! Regression for host-side object-only export.
+//! Host export of a linked worktree must transfer objects only.
 use super::*;
 use crate::observer_review::state::State;
 use kah_sandbox::{Domain, Project};

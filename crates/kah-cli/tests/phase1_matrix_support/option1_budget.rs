@@ -6,6 +6,7 @@ pub fn check(f: &fixture::Fixture) -> Value {
     // Scalar intake also uses the shared Batch events; primary usage is a
     // subset/diagnostic, never an additional physical charge.
     let tokens = batch_tokens;
+    // Historical fixture estimate, not a current price quote or billing receipt.
     let usd = tokens as f64 * 0.042 / 1_000_000.0;
     let estimate: Value = serde_json::from_slice(
         &fs::read(std::env::var_os("KAH_OPTION1_ESTIMATE").unwrap()).unwrap(),

@@ -188,7 +188,7 @@ fn confirmed_not_due_is_cached_but_unconfirmed_applicability_is_not() {
         judge::{Judgment, Metrics},
         review_evidence::Report,
     };
-    // USER C: every non-always verdict carries until its evidence changes/gate.
+    // Every non-always verdict carries until its evidence changes or a gate runs.
     let (mut request, mut requirement) = request_and_requirement();
     request.worker = format!("cache-not-due-{}", crate::relay_store::nonce());
     requirement.applicability.as_mut().unwrap().due = false;

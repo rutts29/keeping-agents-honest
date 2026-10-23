@@ -6,7 +6,8 @@ use std::fs;
 fn a_persisted_fast_verdict_is_measured_at_its_actual_host_receipt() {
     use kah_cli::observer_review::{option1::journal, source_store, state::Store};
     use kah_observer::commit_review::{DoubtLine, classify};
-    std::env::var_os("XDG_STATE_HOME").expect("private check-tests state required");
+    std::env::var_os("XDG_STATE_HOME")
+        .expect("run through demos/check-tests.sh with isolated temporary state");
     let worker = format!("keep-up-fast-boundary-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     let root = store.directory.clone();

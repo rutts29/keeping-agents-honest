@@ -60,8 +60,8 @@ fn a_current_phase_completion_requirement_must_use_the_supplied_controller_recei
 fn native_contract_explains_typed_blockers_exact_questions_and_literal_timing() {
     for purpose in [Purpose::Drift, Purpose::Checkpoint, Purpose::Steering] {
         let s = workspace::decision_instructions(&purpose);
-        // V10 contract keeps retained protocols and derives fresh submissions
-        // from the captured request/schema, not a stale v8/v9 instruction.
+        // Fresh submissions derive their protocol from the captured request/schema;
+        // retained requests keep their recorded protocol.
         assert!(s.contains("exact const in this request's schema.json"));
         assert!(s.contains("New captured requests use v12"));
         assert!(s.contains("retained earlier requests keep their recorded protocol"));

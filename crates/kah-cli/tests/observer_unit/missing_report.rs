@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn a_missing_report_is_retried_once_then_retired_never_left_pending() {
-    // If the observer's executor transport drops and its turn ends without
-    // a report, the queued request must not remain pending indefinitely.
+    // The observer transport dropped and its turn ended without a report.
+    // The request must retry or retire instead of remaining pending.
     let directory = std::env::temp_dir().join(format!(
         "kah-missing-report-{}",
         crate::relay_store::nonce()
@@ -33,8 +33,8 @@ fn a_retired_request_is_recorded_as_not_reviewed_and_never_as_a_pass() {
 
 #[test]
 fn an_unaccepted_request_is_retired_only_after_the_delivery_deadline() {
-    // 5r-i: the checkpoint request waited 23 min with no native receipt.
-    let first = 1_792_244_221_881;
+    // A checkpoint request waited without a native receipt.
+    let first = 1_000_000;
     assert!(!undelivered_expired(
         Some(first),
         first + UNDELIVERED_MS - 1,

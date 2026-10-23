@@ -4,7 +4,7 @@ use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 /// A kah whose own executable was replaced (/proc/self/exe names a deleted
 /// inode) still starts detached jobs with the installed kah. A disposable home
 /// without an installation runs this kah. A caller that is not kah, such as a
-/// library test runner, starts no job (#53).
+/// library test runner starts no job.
 #[test]
 fn detached_jobs_use_installed_kah_instead_of_the_callers_executable() {
     let root = std::env::temp_dir().join(format!("job-program-{}", std::process::id()));

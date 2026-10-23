@@ -76,7 +76,7 @@ fn claude_herdr_and_new_project() {
         "globalSettingsUnchanged":true})).unwrap()).unwrap();
 }
 
-/// Since 0eaa4f3 (10-02) kah initializes new projects without a commit;
+/// kah initializes new projects without a commit;
 /// the agent owns the first commit.
 fn assert_initialized_without_commit(project: &std::path::Path) {
     let git = |args: &[&str]| {

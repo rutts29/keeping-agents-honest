@@ -1,4 +1,4 @@
-//! Reviewer reconciliation of the accepted c5753c6 B2/C coverage contract.
+//! Explicit-gate coverage, verification and approval boundaries.
 //! Pure host routing and recorded judgments: no provider or native sessions.
 use kah_cli::observer_review::{
     gate_approval, option1, source_store,
@@ -279,7 +279,7 @@ fn interactive_no_recorded_checks_waits_on_one_named_risk_never_a_pass() {
         &json!(req),
     )
     .unwrap();
-    // Missing recorded checks still require the verification round before asking.
+    // Missing recorded checks cannot request approval before the verification round.
     assert!(
         gate_approval::store(&root, &req, &report, &result, &proof, &json!({}))
             .unwrap()

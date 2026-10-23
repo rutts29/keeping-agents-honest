@@ -1,4 +1,4 @@
-//! fix-14: a direct Jev call with no size handling stopped the Stop claim
+//! A direct Jev call with no size handling stopped the Stop claim
 //! check. Every raw Jev entry in crates/*/src is a known site with a note: its
 //! size handling, or why it is safe or out of scope. A new site fails here.
 use std::{collections::BTreeMap, fs, path::Path};
@@ -42,7 +42,7 @@ const KNOWN: &[(&str, &str, usize, &str)] = &[
         "kah-cli/src/observer_review/claims.rs",
         "routing::evaluate",
         1,
-        "fix-14: JEV_CONTEXT_LIMIT goes to the observer, else a gap; the claim never blocks",
+        "JEV_CONTEXT_LIMIT goes to the observer, else a gap; the claim never blocks",
     ),
     (
         "kah-cli/src/observer_review/queue/claim_migration/driver.rs",
@@ -60,7 +60,7 @@ const KNOWN: &[(&str, &str, usize, &str)] = &[
         "kah-cli/src/unattended_observer.rs",
         "routing::evaluate",
         1,
-        "#58 open: no size handling; kah run is out of the benchmark, fix after it",
+        "No size handling is implemented at this unattended completion call site.",
     ),
     (
         "kah-observer/src/judge/routing.rs",

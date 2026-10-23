@@ -6,7 +6,8 @@ use std::fs;
 
 #[test]
 fn only_a_new_persisted_fast_screen_gets_a_real_judged_receipt() {
-    std::env::var_os("XDG_STATE_HOME").expect("private check-tests state required");
+    std::env::var_os("XDG_STATE_HOME")
+        .expect("run through demos/check-tests.sh with isolated temporary state");
     let worker = format!("fast-boundary-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     let policy: DoubtLine =

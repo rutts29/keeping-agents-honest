@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf};
 
 #[test]
-#[ignore = "read-only real main observer preparation share; make gate only"]
+#[ignore = "requires externally supplied observer review data and an output path"]
 fn retained_preparation_time_and_token_share() {
     let root = PathBuf::from(std::env::var_os("KAH_C_COST_REVIEW_ROOT").unwrap());
     let output = PathBuf::from(std::env::var_os("KAH_C_COST_OUTPUT").unwrap());

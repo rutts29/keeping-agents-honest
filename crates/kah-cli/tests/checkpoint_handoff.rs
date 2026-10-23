@@ -13,7 +13,7 @@ fn busy_checkpoint_transfer_is_queued_once_and_cannot_repeat_itself_after_review
     kah_core::run_store::ensure_private_directory(&root).unwrap();
     let whole = json!({"kind":"user_gate","at_ms":1,"meaning":"whole original event"});
     kah_cli::unattended_report::save(&root, "first.json", &whole).unwrap();
-    // P0 admission recovery: run() now waits in its detached admission phase.
+    // run() waits in its detached admission phase.
     // This held-lock test checks the independent durable transfer seam; both
     // admission continuations are covered by review_queue's threaded regressions.
     events::transfer(&worker).unwrap();
@@ -32,7 +32,7 @@ fn busy_checkpoint_transfer_is_queued_once_and_cannot_repeat_itself_after_review
 
 #[test]
 fn an_event_written_while_the_running_job_holds_its_lock_is_not_stranded() {
-    // 5f on fff5b2e: the tag job wrote the worker commit's checkpoint event
+    // The tag job wrote the worker commit's checkpoint event
     // while __checkpoint-worker was draining (delivering current_rules), so
     // hook::spawn found the job lock held and started nothing. The running job
     // then exited without a second transfer and the commit was never reviewed.

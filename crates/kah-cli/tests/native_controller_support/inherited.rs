@@ -58,7 +58,7 @@ pub fn run_dispatch(root: &Path, agent: &str, parent: &str) -> Value {
 }
 /// The pane that `kah run` started and printed ("Run <id>; native pane <pane>").
 /// The run store gets it only after the worker in that pane has built its
-/// sandbox, which took 30-44 s under load (5h-d on 9915d32).
+/// sandbox, which can take time under load.
 fn launched_pane<'a>(output: &'a str, id: &str) -> &'a str {
     let prefix = format!("Run {id}; native pane ");
     output

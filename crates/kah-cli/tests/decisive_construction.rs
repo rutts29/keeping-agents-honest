@@ -6,7 +6,7 @@ fn fixture() -> Prepared {
     let name = "item_abcdefghijklmnopqrstuvwxyz";
     let rule_id = format!("user-{}-rule-002", "f11d18e5".to_owned() + &"a".repeat(56));
     Prepared {
-        state: json!({"diff_hunks":{"original_hunk":{"file":"a.rs","text":"whole changed file\n"},"second_hunk":{"file":"b.rs","text":"second whole file\n"}},"checks":{name:{"requirement":rule_id,"rule":"Never impose KB caps anywhere.","rule_origin":"user","source_ids":[{"id":"full source identity","digest":"exact original digest"}],"hunk_ids":["original_hunk","second_hunk"],"permission_ids":["p"]}},"current_permissions":{"p":{"text":"exact user permission context"}}}),
+        state: json!({"diff_hunks":{"original_hunk":{"file":"a.rs","text":"whole changed file\n"},"second_hunk":{"file":"b.rs","text":"second whole file\n"}},"checks":{name:{"requirement":rule_id,"rule":"Never truncate example input files.","rule_origin":"user","source_ids":[{"id":"full source identity","digest":"exact original digest"}],"hunk_ids":["original_hunk","second_hunk"],"permission_ids":["p"]}},"current_permissions":{"p":{"text":"exact user permission context"}}}),
         questions: BTreeMap::from([(
             format!("rule.{name}"),
             Query::Noul {

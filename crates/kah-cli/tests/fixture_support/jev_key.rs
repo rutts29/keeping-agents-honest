@@ -14,7 +14,7 @@ pub fn install(actual: &Path, home: &Path) {
         .mode(0o600)
         .open(dir.join("typesafe.key"))
         .unwrap();
-    // The approved step-5 fixture route: private key bytes never enter evidence.
+    // Copy into the mode-0600 fixture file; never include key bytes in evidence.
     std::io::copy(&mut source, &mut target).unwrap();
 }
 

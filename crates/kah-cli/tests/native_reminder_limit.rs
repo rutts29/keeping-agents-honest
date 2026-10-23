@@ -61,7 +61,7 @@ fn an_oversized_claude_reminder_is_delivered_whole_and_removed() {
 }
 #[test]
 fn an_oversized_claude_reminder_does_not_block_the_next_one() {
-    // An oversized reminder stayed at the queue head, so each hook
+    // The oversized reminder stayed at the queue head, so each hook
     // repeated its gap and a later reminder was never delivered.
     let (worker, directory) = claude_worker("native-reminder-order");
     let large = "a".repeat(10_001);
@@ -122,7 +122,7 @@ fn drain(worker: &str) -> Vec<String> {
 }
 #[test]
 fn a_long_claude_reminder_never_relies_on_a_file_the_worker_cannot_read() {
-    // probe-14: over 10,000 characters Claude saves the hook text to
+    // For oversized reminders Claude saves the hook text to
     // <config root>/projects/<project>/<session>/tool-results/ and gives the
     // model a ~2,000-character preview and the path.
     let home = std::env::temp_dir().join(format!("kah-reminder-denied-{}", std::process::id()));

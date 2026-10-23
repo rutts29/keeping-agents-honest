@@ -15,6 +15,7 @@ use std::{
 pub fn run() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();
+    // Requires installed kah shell routing sourced by the interactive shell.
     let results = [journey(&home, "codex"), journey(&home, "cx")];
     assert_eq!(before, fs::read(home.join(".codex/config.toml")).unwrap());
     let evidence = PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
@@ -37,8 +38,11 @@ fn journey(home: &Path, entry: &str) -> Value {
     let id = history::session(&mut reader, &fixture.project, &mut terminal);
     fixture.sessions.push(id.clone());
     let initial = history::completed_turn(&mut reader, &id, None);
-    let steer = "  StEeR: Use native exec_command once to run: test ! -e /home/example/.codex/auth.json && echo KAH_ROUTE_GVISOR. Then native apply_patch creates forced.txt containing TUI_FORCED. No other tools, dependencies, subagents or commits. Report and stop.";
-    terminal.submit(steer);
+    let steer = format!(
+        "  StEeR: Use native exec_command once to run: test ! -e {} && echo KAH_ROUTE_GVISOR. Then native apply_patch creates forced.txt containing TUI_FORCED. No other tools, dependencies, subagents or commits. Report and stop.",
+        quote(home.join(".codex/auth.json").to_str().unwrap())
+    );
+    terminal.submit(&steer);
     let forced = history::completed_turn(&mut reader, &id, initial["id"].as_str());
     assert_eq!(
         fs::read_to_string(fixture.project.join("forced.txt"))

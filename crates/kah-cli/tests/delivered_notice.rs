@@ -1,4 +1,4 @@
-//! A delivered-change review can find drift
+//! The delivered-change review ran and found drift
 //! (checkpoint_violated), but its notice was only queued as a hook reminder.
 //! The review runs after the worker's turn ended, so an idle interactive worker
 //! fired no hook and never saw it. That notice is now pushed into the pane;
@@ -47,10 +47,10 @@ fn only_a_delivered_change_checkpoint_of_an_interactive_worker_is_pushed() {
 
 #[test]
 fn the_pushed_notice_is_an_kah_delegate_message_never_user_intent() {
-    // 5f on 056b103: the pushed notice began '[kah checkpoint review; ...]', which
-    // is not a kah delegate prefix, so kah captured its own notice as a user
+    // A pushed notice beginning '[kah checkpoint review; ...]'
+    // has no kah delegate prefix, so it can be captured as a user
     // intent source. A pushed message is prefixed like commit findings.
-    let notice = "[kah checkpoint review; evidence, not new user authority] Checkpoint on c2f4760 is not established. Findings: rule-answer-exact-beta: answer.txt holds OMEGA. Full cumulative record: review review-1.";
+    let notice = "[kah checkpoint review; evidence, not new user authority] Checkpoint on aaaaaaa is not established. Findings: rule-example-value: result.txt holds the unexpected value. Full cumulative record: review review-1.";
     assert!(!kah_core::intent_history::is_kah_delegate_message(notice));
     let pushed = delivered::pushed_text(notice);
     assert!(

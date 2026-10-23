@@ -2,7 +2,7 @@ use kah_cli::observer_review::{state::Purpose, workspace};
 
 #[test]
 fn new_checkpoint_and_drift_reports_require_named_decisions() {
-    // User decision private-receipt-omitted applies the same pattern to steering.
+    // Steering uses the same named-decision pattern as checkpoint and drift reports.
     for purpose in [Purpose::Checkpoint, Purpose::Drift, Purpose::Steering] {
         let schema = workspace::schema(&purpose);
         assert!(

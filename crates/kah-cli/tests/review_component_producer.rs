@@ -1,4 +1,4 @@
-//! User-approved C: thinker declarations remain metadata, not user authority.
+//! Observer declarations remain metadata, not user authority.
 use kah_cli::observer_review::{
     component_map::producer,
     light_report, source_store,

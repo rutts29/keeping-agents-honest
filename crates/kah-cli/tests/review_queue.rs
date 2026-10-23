@@ -165,6 +165,7 @@ fn blocked_admission(
         send.send(run().map_err(|e| e.to_string())).unwrap();
     });
     let tid = tid_recv.recv().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
         if let Ok(result) = recv.try_recv() {
             panic!("admission returned while the store was still held: {result:?}");
@@ -174,6 +175,10 @@ fn blocked_admission(
         if wait.trim() == "locks_lock_inode_wait" {
             break;
         }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "test requires observable Linux flock wait state in /proc/<tid>/wchan"
+        );
         std::thread::yield_now();
     }
     (thread, recv)
@@ -188,14 +193,14 @@ fn gate_precedes_fair_lane_service_with_every_item_and_sha_delivered_once() {
         (
             Purpose::Checkpoint,
             "commit-a",
-            "63700d34fd9fe967b1bed5b7f9a2971aaa1db5a7",
+            "1111111111111111111111111111111111111111",
         ),
         (Purpose::Checkpoint, "gate", ""),
         (Purpose::Steering, "intent-b", ""),
         (
             Purpose::Checkpoint,
             "commit-b",
-            "d15e9f532a44948fe842e01e239a068d0367a80a",
+            "2222222222222222222222222222222222222222",
         ),
     ];
     for (purpose, id, sha) in &cases {

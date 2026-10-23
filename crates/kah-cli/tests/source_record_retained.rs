@@ -1,4 +1,4 @@
-//! Storage replay of retained real data; no native agent or Jev request.
+//! Storage replay of an externally supplied corpus; no native agent or Jev request.
 use kah_cli::observer_review::source_store;
 use serde_json::{Value, json};
 use std::{
@@ -6,14 +6,14 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-const IDS: [&str; 2] = [
-    "5c5b7d141ff22df1884a7fe8c0dd8347127ac33a8c9b82c8e6bccf15c0255cc6",
-    "0eb089bbbcf6274e5432f21b235f24ec358a6356df968873a8bd5ce14d62573b",
-];
 #[test]
 #[ignore = "retained storage replay; KAH_RECORD_CAS_SOURCE and KAH_RECORD_CAS_EVIDENCE"]
 fn retained_real_skeletons_reuse_records_without_changing_any_value() {
     let source = PathBuf::from(std::env::var_os("KAH_RECORD_CAS_SOURCE").unwrap());
+    let ids: [String; 2] = serde_json::from_slice(
+        &fs::read(source.parent().unwrap().join("fixture-records.json")).unwrap(),
+    )
+    .unwrap();
     let evidence = PathBuf::from(std::env::var_os("KAH_RECORD_CAS_EVIDENCE").unwrap());
     let base = std::env::var_os("KAH_RECORD_CAS_BENCH_ROOT")
         .map(PathBuf::from)
@@ -36,7 +36,7 @@ fn retained_real_skeletons_reuse_records_without_changing_any_value() {
     let before = inventory(&probe.join("sources"));
     let mut rows = vec![];
     let mut prior = before;
-    for (index, id) in IDS.into_iter().enumerate() {
+    for (index, id) in ids.iter().enumerate() {
         kah_cli::unattended_report::save(
             &reader,
             "input.json",

@@ -6,8 +6,8 @@ use std::{
     process::Command,
 };
 
-pub const TEMPLATE_HOME: &str = "/mnt/kah-fixtures/cargo/claude-fixture-home";
-pub const CONFIG_DIR: &str = "/mnt/kah-fixtures/cargo/claude-fixture-home/.claude";
+pub const TEMPLATE_HOME: &str = "/var/tmp/kah-claude-test-home";
+pub const CONFIG_DIR: &str = "/var/tmp/kah-claude-test-home/.claude";
 pub const AUTH_ENV: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",

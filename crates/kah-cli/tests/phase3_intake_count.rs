@@ -81,11 +81,8 @@ fn scan(
             )
         })
         .collect::<Vec<_>>();
-    let calibration_source: Value = serde_json::from_slice(
-        &fs::read("/mnt/kah-fixtures/cargo/step5a-placement-count-20261011/count-only.json")
-            .unwrap(),
-    )
-    .unwrap();
+    let calibration_source: Value =
+        serde_json::from_slice(&fs::read(root.join("calibration.json")).unwrap()).unwrap();
     let calibration = Calibration {
         input_utf8_bytes: 1_000_000,
         input_tokens: (calibration_source["calibration"]["tokens_per_byte"]

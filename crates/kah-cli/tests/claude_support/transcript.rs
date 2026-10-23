@@ -1,5 +1,5 @@
 //! Native hook transcript_path is authoritative; root and encoding are native.
-//! Claude v2.1.296 release/settings checked; product resolver already validates
+//! The product resolver validates
 //! the supplied pointer and uses the installed-source encoder as fallback.
 use super::*;
 pub(super) fn path(fixture: &Fixture) -> PathBuf {

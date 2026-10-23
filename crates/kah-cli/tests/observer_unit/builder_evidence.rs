@@ -86,7 +86,7 @@ fn an_assistant_reply_before_the_ask_snapshot_cannot_end_the_evidence_wait() {
 
 #[test]
 fn claude_mid_turn_queued_ask_bounds_a_reply_that_omits_the_full_receipt() {
-    // A/B v1apic: Claude Code delivered the evidence request during a running
+    // Claude Code delivered the evidence request during a running
     // turn as a queued_command attachment; the reply cited a shortened id.
     let receipt = "followup-d09028c6ebf455c0-builder";
     let enqueued = json!({"type":"queue-operation","operation":"enqueue",

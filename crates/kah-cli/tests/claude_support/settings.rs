@@ -1,7 +1,6 @@
 //! Read public settings only, never credentials or the native global login file.
-//! anthropics/claude-code v2.1.296 release checked, then official settings docs
-//! https://code.claude.com/docs/en/settings and installed config-root evidence:
-//! Use the documented provider configuration-root contract.
+//! Configuration behavior inspected with Claude Code v2.1.296.
+//! Settings reference: https://code.claude.com/docs/en/settings.
 use std::path::Path;
 #[path = "../terminal_support/public_config.rs"]
 mod public_config;

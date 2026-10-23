@@ -94,7 +94,7 @@ fn failed_redelivery(origin: kah_cli::observer_review::failure::Origin, error: &
 #[test]
 fn redelivery_refreshes_old_helper_and_schema_without_changing_request_sources() {
     let worker = format!("redelivery-upgrade-unit-{}", std::process::id());
-    // CAS sharing uses hard links; keep this workspace on the state filesystem.
+    // Keep the fixture workspace under the isolated test state root.
     let home = kah_core::run_store::RunStore::default_state_root()
         .unwrap()
         .join(&worker);
@@ -119,7 +119,7 @@ fn redelivery_refreshes_old_helper_and_schema_without_changing_request_sources()
     let prompt =
         kah_cli::observer_review::redelivery::prompt(&home, &store, &state, &request, &request.id)
             .unwrap();
-    // Real native-lifecycle-1 failure: redelivery republishes an existing input.
+    // Regression: redelivery republishes an input that already exists.
     kah_cli::observer_review::redelivery::prompt(&home, &store, &state, &request, &request.id)
         .unwrap();
     assert!(prompt.contains("applicability first"));

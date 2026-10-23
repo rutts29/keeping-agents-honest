@@ -1,8 +1,8 @@
-//! #42 live fault: the Codex observer's gVisor exec-server dies under a
-//! delivered review after a daemon restart. kah must replace the
+//! Live fault: the Codex observer's gVisor exec-server dies during a
+//! delivered review. kah must replace the
 //! observer process once per request on the SAME native session, redeliver
 //! the SAME body. A second loss for that request retires it as not reviewed
-//! (#52) and later triggers are still reviewed. The fixture only kills
+//! and later triggers are still reviewed. The fixture only kills
 //! containers and reads state: it never retries or kicks the queue itself.
 use super::*;
 use kah_cli::observer_review::{
@@ -78,7 +78,7 @@ fn courier(home: &Path, panes: &mut Panes) -> (String, crate::fixture::Fixture) 
 }
 
 /// A user row of the courier's native rollout names `request`. Herdr's recent
-/// screen text missed the notice in live -13 run 2 (10-20), although Codex
+/// screen text can miss a notice even after Codex
 /// had submitted it (history.jsonl), so the fixture reads the rollout.
 fn received(home: &Path, session: &str, request: &str) -> bool {
     let name = format!("-{session}.jsonl");
@@ -151,7 +151,7 @@ fn replaced_once(id: &str, worker: &Pane) -> Value {
 
 /// Fault 2 kills the replacement's container mid-turn, after its first
 /// command completed, so the next command start meets a dead transport.
-/// #52: after its one replacement, that second loss retires the request.
+/// After its one replacement, a second loss retires the request.
 fn second_loss(id: &str, worker: &Pane, home: &Path, courier: &str) -> (Value, State) {
     let before = super::review::quiescent(id, "codex");
     let killed = kill(&before.observer.workspace);
@@ -193,7 +193,7 @@ fn second_loss(id: &str, worker: &Pane, home: &Path, courier: &str) -> (Value, S
     (result, watch.state)
 }
 
-/// #52: the retired request no longer blocks the queue. kah admits the review
+/// The retired request no longer blocks the queue. kah admits the review
 /// of a later user rule and finishes it; the fixture never kicks the queue.
 fn queue_continues(id: &str, worker: &Pane, before: &State) -> Value {
     let request = steer(id, worker, STEER_C, before);
@@ -389,7 +389,7 @@ impl Watch {
             .is_some_and(|p| p.id == self.request)
     }
 
-    /// The durable result of a request retired as not reviewed (#52). The
+    /// The durable result of a request retired as not reviewed. The
     /// reason names the path that retires first after the replacement: the
     /// Stop handler's second turn without a report (NO_REPORT),
     /// or the retry job's decline (REFUSED).
@@ -456,8 +456,8 @@ impl Watch {
         );
         assert_ne!(self.state.observer.pid, before.observer.pid);
         assert!(!self.directory.join("observer-replace.json").exists());
-        // Use durable records. A sampler may miss a transient gap.json,
-        // so sampled gaps and digests are evidence, not required observations.
+        // Durable records only: transient gap files may be missed by sampling,
+        // so sampled gaps and digests are evidence, not assertions.
         let current: Value = read(&self.outcome.join("current.json")).unwrap();
         assert_eq!(current["request"], self.request.as_str());
         let body = current["body_digest"].as_str().unwrap();

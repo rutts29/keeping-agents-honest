@@ -1,4 +1,4 @@
-//! 878-11: the observer refused a checkpoint because `read-source
+//! Regression: the observer refused a checkpoint because `read-source
 //! manifest.json` failed with ENOENT. Its document blobs were in the private
 //! store but never in the request's sandbox view.
 use kah_cli::{
@@ -20,7 +20,7 @@ use std::{
 #[test]
 fn every_source_of_a_published_and_redelivered_view_resolves_in_the_view() {
     let worker = format!("manifest-view-unit-{}", std::process::id());
-    // CAS sharing uses hard links; keep this workspace on the state filesystem.
+    // Keep the fixture workspace under the isolated test state root.
     let home = kah_core::run_store::RunStore::default_state_root()
         .unwrap()
         .join(&worker);
@@ -48,7 +48,7 @@ fn every_source_of_a_published_and_redelivered_view_resolves_in_the_view() {
     workspace::prepare(&home, &state).unwrap();
     workspace::publish(&store, &state, &request).unwrap();
     assert_view_resolves(&store.directory, &input);
-    // The 878-11 refusal came on the redelivered request (12:35:14).
+    // The refusal occurred on the redelivered request.
     redelivery::prompt(&home, &store, &state, &request, &request.id).unwrap();
     assert_view_resolves(&store.directory, &input);
     let directory = store.directory.clone();

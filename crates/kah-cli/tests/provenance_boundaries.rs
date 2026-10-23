@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf, time::Duration};
 
 #[test]
-#[ignore = "live Research/Untrusted Herdr control-plane isolation"]
+#[ignore = "live Research/Untrusted isolation; requires Codex login, Herdr and sandbox host setup"]
 fn restricted_executors_cannot_reach_herdr() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();

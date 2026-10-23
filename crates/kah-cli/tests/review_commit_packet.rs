@@ -215,7 +215,7 @@ fn steering_scope_does_not_advance_the_last_code_reviewed_sha() {
 #[test]
 fn an_unproven_or_failed_review_never_advances_the_aligned_diff_baseline() {
     use kah_cli::observer_review::{source_store, state::Store};
-    // User private-receipt-omitted: only the aligned reviewed commit is baseline.
+    // Only the aligned, reviewed commit becomes the diff baseline.
     let (mut request, _) = fixture("whole file");
     request.worker = format!("aligned-baseline-{}", kah_cli::relay_store::nonce());
     request.purpose = Purpose::Checkpoint;

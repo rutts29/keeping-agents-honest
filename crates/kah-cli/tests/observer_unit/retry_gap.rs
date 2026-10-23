@@ -142,7 +142,7 @@ fn reject_outside(
     (outside, error)
 }
 
-/// #52: the one redelivery after a decline is the same request, not a report
+/// The one redelivery after a decline is the same request, not a report
 /// correction.
 #[test]
 fn a_declined_request_is_redelivered_with_the_identical_body() {
@@ -158,7 +158,7 @@ fn a_replaced_observer_gets_the_identical_request_body() {
     })));
 }
 
-/// #47: at the Stop of the turn that lost its exec transport, Herdr still
+/// At the Stop of the turn that lost its exec transport, Herdr still
 /// showed the old observer pane Working, so the retry that replace() starts
 /// was held and only the stall watcher redelivered. That old process can
 /// never run the request; the retry closes it and resumes a fresh one.

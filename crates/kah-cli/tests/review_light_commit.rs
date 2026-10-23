@@ -1,4 +1,4 @@
-//! USER private-receipt-omitted: one light report, no rethink/verify-first.
+//! A light review uses one report without rethink or verify-first.
 use kah_cli::observer_review::{
     light_commit,
     state::{Purpose, Request, Store},

@@ -1,4 +1,4 @@
-//! #52b through the binary the observer runs: `kah observe read-source PATH [--page N]` pages a 67k-token source,
+//! Through the observer binary, `kah observe read-source PATH [--page N]` pages a large synthetic source,
 //! the footer command works as printed, and `kah observe report` refuses a submit until every page was read.
 use kah_cli::observer_review::source_store;
 use serde_json::json;
@@ -17,7 +17,7 @@ fn out(o: &std::process::Output) -> String {
 fn err(o: &std::process::Output) -> String {
     String::from_utf8_lossy(&o.stderr).into_owned()
 }
-/// 264,592 bytes: the size of the 878-12c option1.txt (66,754 tokens in Codex's count).
+/// Synthetic source containing at least 264,592 bytes.
 fn source() -> String {
     let mut text = String::new();
     let mut n = 0u64;

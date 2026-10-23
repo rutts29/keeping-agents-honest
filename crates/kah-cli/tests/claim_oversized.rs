@@ -1,4 +1,4 @@
-//! fix-14: Jev refused a worker reply too large for its context. The claim
+//! Jev refused a worker reply too large for its context. The claim
 //! file stayed, so every later Stop failed on the same file and the
 //! delivered-change check never ran. A fake Jev transport; no real Jev call.
 use kah_cli::observer_review::{

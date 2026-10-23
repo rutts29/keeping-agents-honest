@@ -25,12 +25,17 @@ impl Drop for Fixture {
         }
         for id in &self.sessions {
             cleanup_observer(&self.project, id);
-            let _ = Command::new("/home/example/.local/bin/codex")
-                .args(["delete", "--force", id])
-                .env_remove("CODEX_HOME")
-                .env_remove("HERDR_ENV")
-                .env_remove("CODEX_THREAD_ID")
-                .output();
+            let _ = Command::new(
+                PathBuf::from(
+                    std::env::var_os("HOME").expect("HOME is required for native cleanup"),
+                )
+                .join(".local/bin/codex"),
+            )
+            .args(["delete", "--force", id])
+            .env_remove("CODEX_HOME")
+            .env_remove("HERDR_ENV")
+            .env_remove("CODEX_THREAD_ID")
+            .output();
         }
         let ids = Command::new("/usr/bin/docker")
             .args([
@@ -86,7 +91,7 @@ pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixtu
     }
     let args = Arguments::parse(input).unwrap();
     let launch = Launch::prepare(home, home, args).unwrap();
-    // Codex always runs on the fast tier (user rule). Fixture overlay only.
+    // Fixtures select the fast service tier in their own overlay.
     kah_codex::overlay::write_settings(&launch.overlay, serde_json::json!({"service_tier":"fast"}))
         .unwrap();
     let f = Fixture {

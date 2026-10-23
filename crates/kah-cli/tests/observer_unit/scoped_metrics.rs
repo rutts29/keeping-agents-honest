@@ -42,8 +42,8 @@ fn decision_requests_keep_authority_and_parent_binding_without_cloning_full_sour
 #[test]
 fn post_ack_check_manifest_failure_keeps_report_origin_and_recovers_when_corrected() {
     use crate::observer_review::failure::{Origin, correctable, origin};
-    // The thinker can select an assertion while omitting its
-    // cited command/result/SHA dependency. This must never become a host gap.
+    // A report omitted the assertion's cited command/result/SHA dependency.
+    // This must remain a report error, not a host gap.
     let mut input = json!({"intent":{"goal":"Check pipeline","items":[]},"event":{"head":"a".repeat(40)},"decision":{"requirements":{"pipeline":{"authority_items":["goal"],"name":"Pipeline composes modules","citations":[{"quote":"assertion"},{"quote":"command and result"}],"checks":[{"command_citation":1,"result_citation":1,"sha_citation":1}],"judgment":{"reasoning":"Checks cover composition","evidence_citations":[0]}}}}});
     let error = report_context(&input, "requirement.pipeline").unwrap_err();
     assert!(

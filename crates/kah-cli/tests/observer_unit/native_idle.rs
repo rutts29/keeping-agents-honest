@@ -1,13 +1,13 @@
 use super::*;
 
-const SESSION: &str = "00000000-0000-4000-8000-100000000008";
+const SESSION: &str = "00000000-0000-4000-8000-000000000001";
 
 fn claude(rows: &[Value]) -> String {
     rows.iter().map(|r| format!("{r}\n")).collect()
 }
 
-/// A transcript tail can show that the turn and its Stop hook ended,
-/// while Herdr still shows the pane Working.
+/// A synthetic transcript tail where the turn and Stop hook ended,
+/// while the pane still reports Working.
 fn ended_turn() -> Vec<Value> {
     vec![
         json!({"type":"user","sessionId":SESSION,"message":{"role":"user","content":"kah review request review-1 ..."}}),
@@ -74,8 +74,8 @@ const MARKER: &str = "kah review request review-1 ";
 
 #[test]
 fn a_receipt_from_a_turn_that_ended_without_a_report_does_not_count_for_a_redelivery() {
-    // 5h-f: the turn that received review-1 ended "Not submitted"; 43
-    // redeliveries then returned Ok on that old receipt and sent nothing.
+    // A receipt from a turn that ended without a report must not satisfy
+    // a later redelivery.
     let text = claude(&ended_turn());
     assert!(!open_receipt(&text, "claude", SESSION, MARKER));
 }

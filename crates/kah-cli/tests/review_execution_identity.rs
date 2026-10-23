@@ -1,5 +1,5 @@
-//! Native fields checked against official installed-version references in
-//! docs/gates/evidence/phase-5o-cache/receipt-cases-frozen.json.
+//! Synthetic native execution records verify command/result identity
+//! and detect changes to recorded results.
 use kah_cli::observer_review::capture;
 use serde_json::json;
 #[test]

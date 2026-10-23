@@ -1,4 +1,4 @@
-//! Native CLAUDE_CONFIG_DIR: official settings docs and installed2.1.292 we/Gbr.
+//! Native configuration-root inheritance and repository-setting isolation.
 //! Invocations inherit the operator's directory; repo settings cannot set it.
 use serde_json::json;
 use std::{fs, path::PathBuf, process::Command};

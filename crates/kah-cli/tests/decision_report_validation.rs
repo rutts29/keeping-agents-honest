@@ -84,7 +84,7 @@ fn native_report_cannot_omit_due_at_event_validation() {
         "id":"receipt","name":"Post-commit check","dimension":"drift","authority_items":["goal"],"citations":[],"components":[],"checks":[],
         "judgment":{"kind":"semantic","decision":"violated","reasoning":"No receipt yet.","evidence_citations":[0]}
     }]}});
-    // Reviewer-approved v8 preserves the ladder's mid-turn applicability rule.
+    // Protocol v8 preserves the mid-turn applicability rule.
     value["decision_units"]["version"] = json!(8);
     assert!(
         workspace::require_units(&request, &serde_json::from_value(value.clone()).unwrap())

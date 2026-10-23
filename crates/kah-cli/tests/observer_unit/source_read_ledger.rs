@@ -1,4 +1,4 @@
-//! #52b: the read ledger and the submit check. A source of 7 pages read up to page 2 blocks the submit with one
+//! The read ledger and the submit check. A source of 7 pages read up to page 2 blocks the submit with one
 //! plain message naming the unread pages and their exact commands; once every page was served it passes.
 use super::*;
 use crate::observer_review::source_store::paging;

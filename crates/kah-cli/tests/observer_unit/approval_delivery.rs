@@ -45,7 +45,7 @@ fn only_the_exact_answer_can_extend_an_approved_delivery_sequence() {
 
 #[test]
 fn a_terminal_unconfirmed_checkpoint_is_a_decided_non_pass_for_its_delivery() {
-    // 5h-b/5h-f/5r-i stalls: Option1 stored passed:null with terminal:true for
+    // A terminal checkpoint stored passed:null with terminal:true for
     // the exact delivery; completion kept waiting for a pass that never comes.
     let key = Key {
         instance: "run".into(),

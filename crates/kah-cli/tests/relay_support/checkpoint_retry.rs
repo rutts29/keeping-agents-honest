@@ -47,7 +47,7 @@ fn recoverable(origin: Origin, error: &str) -> bool {
 
 #[test]
 fn late_native_binding_does_not_abort_a_review_that_is_already_working() {
-    // Real v2 journey: 15s handshake gap, then bound native session and Working
+    // A handshake gap is followed by a bound native session and Working
     // pane. The existing loop must keep watching; redeliver only once idle.
     let error = "REVIEW_SUBMISSION_UNCONFIRMED stage=delivery: cold native binding absent; request retained";
     assert!(recoverable(Origin::Delivery, error));
@@ -89,7 +89,7 @@ fn fixture_uses_product_retry_policy_for_liveness_and_keeps_identity_errors_fata
 
 #[test]
 fn real_claude_uri_in_source_field_diagnostic_keeps_review_recoverable() {
-    let error = "REVIEW_SOURCE_UNKNOWN stage=evidence: citation.source=\"native:claude:00000000-0000-4000-8000-01a11278cba5\" is not a document id. Use manifest document ids, not URIs or paths. Matching URI document ids: [\"transcript\"]";
+    let error = "REVIEW_SOURCE_UNKNOWN stage=evidence: citation.source=\"native:claude:00000000-0000-4000-8000-000000000001\" is not a document id. Use manifest document ids, not URIs or paths. Matching URI document ids: [\"transcript\"]";
     assert!(recoverable(Origin::ReportValidation, error));
     assert!(
         retry_outcome(kah_cli::observer_review::failure::validation(

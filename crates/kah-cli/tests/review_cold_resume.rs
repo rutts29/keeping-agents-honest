@@ -1,4 +1,4 @@
-//! #51: a resumed observer appends to the transcript of its old process. The
+//! A resumed observer appends to the transcript of its old process. The
 //! old rows of the same request are not a receipt for the new process.
 use kah_cli::observer_review::{
     delivery, delivery_text,

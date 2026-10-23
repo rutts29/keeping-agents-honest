@@ -1,7 +1,7 @@
 //! A Codex worker that does its whole task in one first turn gets intake at
 //! its first prompt: no Stop is needed for the run, rules or commit intent.
 //! Each test reruns itself with a private HOME whose `.local/bin/kah` only logs
-//! detached job names, so no native or Jev process starts ($0).
+//! detached job names, so no native or Jev process starts.
 use kah_cli::{
     observer_review::{option1, queue},
     prompt_intake,
@@ -115,7 +115,7 @@ fn prompt_hook(binding: &Binding, home: &Path) -> (Value, Duration) {
     let start = Instant::now();
     prompt_intake::schedule(binding, &hook).unwrap();
     let latency = start.elapsed();
-    // A test runner records the detached job instead of starting it (#53).
+    // A test runner records the detached job instead of starting it.
     let log = kah_cli::observer_review::state::Store::directory(&binding.session)
         .unwrap()
         .join("job-__prompt-intake.log");

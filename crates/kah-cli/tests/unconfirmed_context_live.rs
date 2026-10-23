@@ -20,7 +20,7 @@ use std::{
 };
 
 #[test]
-#[ignore = "native agent receives exact unconfirmed text despite a legacy summary cache"]
+#[ignore = "live Codex and Jev test; requires native login, sandbox setup and explicit evidence inputs"]
 fn unconfirmed_context_is_visible_without_user_review() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();

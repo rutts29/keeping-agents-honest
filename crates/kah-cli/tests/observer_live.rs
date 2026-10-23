@@ -12,7 +12,7 @@ use std::{
 };
 
 #[test]
-#[ignore = "automatic native observer and real Luna calls; gate only"]
+#[ignore = "live native observer test; requires provider login, sandbox setup and a TypeSafe key"]
 fn automatic_observer_records_user_intent() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let before = fs::read(home.join(".codex/config.toml")).unwrap();

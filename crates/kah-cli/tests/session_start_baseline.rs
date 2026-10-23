@@ -408,7 +408,7 @@ fn seeded_with_tag(name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::
 
 #[test]
 fn tags_at_the_session_start_are_the_baseline_and_a_later_tag_is_reviewed() {
-    // Pilot #41: the first sample reviewed every existing tag, so a checkpoint
+    // The first sample reviewed every existing tag, so a checkpoint
     // ran on the untouched start commit before the worker changed anything.
     let (root, project, review) = seeded_with_tag("session-start-tags");
     capture_start(&review, &project);
@@ -421,7 +421,7 @@ fn tags_at_the_session_start_are_the_baseline_and_a_later_tag_is_reviewed() {
 
 #[test]
 fn tags_made_with_a_commit_before_the_first_sample_are_reviewed() {
-    // 0673c8b: a late first sample must not hide the agent's first tag. The
+    // A late first sample must not hide the agent's first tag. The
     // start HEAD is not accepted, so the sample cannot tell old tags from new.
     let (root, project, review) = seeded_with_tag("session-start-tag-race");
     capture_start(&review, &project);

@@ -1,4 +1,4 @@
-//! A worker can commit a change whose review defers
+//! The worker committed a change and the commit review deferred
 //! the obligation, but no delivered-change review ran. The commit's admission
 //! waited behind the cold current_rules review, the worker's Stop came first,
 //! and its turn-end check found no deferral yet. Admission now asks the
@@ -116,7 +116,7 @@ fn admission_before_stop_is_unchanged_and_queues_one_review() {
 
 #[test]
 fn a_later_turn_does_not_hide_the_commit_turns_end() {
-    // Codex review: turn 2 starts before turn 1's delayed Stop handler and
+    // Turn 2 starts before turn 1's delayed Stop handler and
     // before turn 1's admission. Turn 1's end stays in the transcript.
     let f = Fixture::new("later-turn");
     commit_turn(&f);
@@ -233,7 +233,7 @@ fn only_interactive_sessions_catch_up_an_unattended_run_keeps_todays_path() {
         delivered::catch_up_applies(&home.join("repos/research/project")),
         "interactive"
     );
-    // The same late order as 5f: Stop, then admission.
+    // Replay the late order: Stop, then admission.
     let interactive = Fixture::new("interactive-late");
     commit_turn(&interactive);
     interactive.stop("2026-10-17T19:00:02.000Z");

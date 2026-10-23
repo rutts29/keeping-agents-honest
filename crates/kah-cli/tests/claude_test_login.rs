@@ -146,7 +146,7 @@ fn test_environment_disables_updates_and_removes_alternate_auth_inputs() {
     login::command_environment(&mut command);
     assert!(command.get_envs().any(|(k, v)| k == "CLAUDE_CONFIG_DIR"
         && v == Some(std::ffi::OsStr::new(
-            "/mnt/kah-fixtures/cargo/claude-fixture-home/.claude"
+            "/var/tmp/kah-claude-test-home/.claude"
         ))));
     for key in login::AUTH_ENV {
         assert!(command.get_envs().any(|(k, v)| k == *key && v.is_none()));

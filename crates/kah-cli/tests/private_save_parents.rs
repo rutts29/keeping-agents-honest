@@ -21,6 +21,7 @@ fn mode(path: &Path) -> u32 {
     fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 #[test]
+#[ignore = "requires the sandbox service account and ACL-capable host setup"]
 fn saves_create_all_missing_private_levels_and_preserve_existing_traverse_acl() {
     let root = std::env::temp_dir().join(format!("save-parent-{}", kah_cli::relay_store::nonce()));
     fs::create_dir(&root).unwrap();

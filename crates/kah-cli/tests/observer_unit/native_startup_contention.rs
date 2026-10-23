@@ -9,7 +9,7 @@ use std::{fs, path::Path, time::Duration};
 fn keeper(root: &Path) -> Result<Store> {
     Ok(Store::open(
         root,
-        "01a11893-4c7e-73a0-8da6-18b8b16e276c",
+        "00000000-0000-4000-8000-000000000001",
         Duration::ZERO,
     )?)
 }
@@ -39,13 +39,13 @@ fn writer(root: &Path) -> (History, RunStore) {
     (history, writer)
 }
 #[test]
-fn retained_startup_busy_codes_defer_the_poll_and_recover_after_both_writers_release() {
+fn startup_busy_codes_defer_the_poll_and_recover_after_both_writers_release() {
     let root = std::env::temp_dir().join(format!("kah-startup-contention-{}", std::process::id()));
     fs::create_dir_all(root.join("project")).unwrap();
     let busy = keeper(&root).unwrap();
     assert!(
         poll(|| keeper(&root)).unwrap().is_none(),
-        "The retained OBSERVER_BUSY startup report must remain pending, not stop the run"
+        "The OBSERVER_BUSY startup report must remain pending, not stop the run"
     );
     drop(busy);
     assert!(poll(|| keeper(&root)).unwrap().is_some());
@@ -54,7 +54,7 @@ fn retained_startup_busy_codes_defer_the_poll_and_recover_after_both_writers_rel
         poll(|| RunStore::open(&root, root.join("project"), "startup-case").map_err(Into::into))
             .unwrap()
             .is_none(),
-        "The retained STORE_BUSY startup report must remain pending"
+        "The STORE_BUSY startup report must remain pending"
     );
     drop(busy);
     let recovered =
