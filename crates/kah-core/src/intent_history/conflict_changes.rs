@@ -91,6 +91,16 @@ pub(super) fn conflict_resolved(
             .get_mut(&intent_id)
             .expect("validated intent id exists");
         item.lifecycle = IntentLifecycle::Active;
+        if item.text != selected_text {
+            // Evidence proved the old wording. It stays in the history but
+            // can no longer satisfy, or be revived for, the chosen text.
+            state
+                .evidence_invalidated
+                .extend(item.evidence.iter().map(|evidence| evidence.id.clone()));
+            if !item.evidence.is_empty() {
+                item.evidence_state = EvidenceState::Reopened;
+            }
+        }
         item.text.clone_from(&selected_text);
         append_sources(&mut item.changed_by, &resolution.source_refs);
         if let Some(approval) = &resolution.approval {

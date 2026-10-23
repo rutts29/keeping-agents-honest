@@ -223,6 +223,85 @@ fn conflicts_block_until_an_authorized_resolution() {
     );
 }
 
+/// An item with two satisfied evidence records, then a resolution that
+/// selects a different wording for it.
+fn reworded_after_evidence() -> History {
+    let mut history = History::new(goal("Ship the MVP", "goal-1")).expect("start history");
+    history
+        .append(Event::RequirementAdded {
+            item: item("i-1", "retain the API", "intent-1"),
+            approval: None,
+        })
+        .expect("add requirement");
+    for (id, record) in [("e-1", "check-1"), ("e-2", "check-2")] {
+        history
+            .append(Event::EvidenceAttached {
+                intent_id: IntentId::new("i-1"),
+                evidence: evidence(id, record),
+            })
+            .expect("attach evidence");
+    }
+    let conflict = Conflict::new(
+        "c-1",
+        vec![IntentId::new("i-1")],
+        vec![
+            ConflictAlternative::new("keep", "keep the API", vec![user_source("alt-1")]),
+            ConflictAlternative::new("replace", "replace the API", vec![user_source("alt-2")]),
+        ],
+        vec![user_source("conflict-1")],
+    );
+    history
+        .append(Event::ConflictRaised {
+            conflict,
+            approval: None,
+        })
+        .expect("raise conflict");
+    history
+        .append(Event::ConflictResolved {
+            conflict_id: "c-1".into(),
+            resolution: ConflictResolution::new("replace", vec![user_source("resolution-1")], None),
+        })
+        .expect("resolve conflict");
+    history
+}
+
+#[test]
+fn a_resolution_that_changes_the_wording_reopens_its_old_evidence() {
+    // The resolved item took the chosen alternative's text but kept the
+    // satisfied evidence of its old wording, so the run could close on it.
+    let mut history = reworded_after_evidence();
+    let resolved = history.intent("i-1").expect("resolved item");
+    assert_eq!(resolved.text, "replace the API");
+    assert_eq!(resolved.lifecycle, IntentLifecycle::Active);
+    assert_eq!(resolved.evidence_state, EvidenceState::Reopened);
+    assert_eq!(resolved.evidence.len(), 2, "evidence history is kept");
+    assert!(!history.evidence_is_valid(&"e-1".into()));
+    assert!(!history.evidence_is_valid(&"e-2".into()));
+    let close = Event::RunClosed {
+        source_refs: vec![user_source("close-1")],
+        approval: None,
+    };
+    assert!(history.append(close.clone()).is_err());
+    // Neither old record can be invalidated again to revive the other.
+    assert!(
+        history
+            .append(Event::EvidenceInvalidated {
+                intent_id: IntentId::new("i-1"),
+                evidence_id: "e-1".into(),
+                source_refs: vec![assistant_source("check-3")],
+                reason: "superseded wording".into(),
+            })
+            .is_err()
+    );
+    history
+        .append(Event::EvidenceAttached {
+            intent_id: IntentId::new("i-1"),
+            evidence: evidence("e-3", "check-4"),
+        })
+        .expect("attach fresh evidence");
+    history.append(close).expect("close with fresh evidence");
+}
+
 #[test]
 fn replay_rejects_unknown_versions_gaps_duplicate_ids_impossible_transitions_and_tail_events() {
     let start = EventRecord::new(
