@@ -22,19 +22,41 @@ fn quote(path: &Path) -> String {
 /// Runs a freshly written executable. Parallel tests fork while the file is
 /// still open for writing; the forked child keeps that descriptor until its
 /// own exec, so the kernel can answer ETXTBSY. No test can close a descriptor
-/// that another thread's child holds. Retry only that error, at most 3 tries.
+/// that another thread's child holds. Retry only that error, at most 5 tries
+/// with a short pause, because the child needs a moment to reach its own exec.
 pub fn output_retrying_text_file_busy(mut build: impl FnMut() -> Command) -> Output {
     const ETXTBSY: i32 = 26;
+    retry_text_file_busy(
+        || build().output(),
+        |result| match result {
+            Err(error) => error.raw_os_error() == Some(ETXTBSY),
+            Ok(out) => {
+                !out.status.success()
+                    && String::from_utf8_lossy(&out.stderr).contains("Text file busy")
+            }
+        },
+    )
+    .unwrap()
+}
+/// The same retry for library code that executes a freshly written file and
+/// reports the error as text.
+#[allow(dead_code)] // used by the tests that include this file for the result form only
+pub fn result_retrying_text_file_busy<T, E: std::fmt::Display>(
+    run: impl FnMut() -> Result<T, E>,
+) -> Result<T, E> {
+    retry_text_file_busy(
+        run,
+        |result| matches!(result, Err(error) if error.to_string().contains("Text file busy")),
+    )
+}
+fn retry_text_file_busy<T>(mut attempt: impl FnMut() -> T, busy: impl Fn(&T) -> bool) -> T {
     let mut tries = 1;
     loop {
-        match build().output() {
-            Err(error) if error.raw_os_error() == Some(ETXTBSY) && tries < 3 => {}
-            Ok(out)
-                if !out.status.success()
-                    && String::from_utf8_lossy(&out.stderr).contains("Text file busy")
-                    && tries < 3 => {}
-            other => return other.unwrap(),
+        let result = attempt();
+        if !busy(&result) || tries >= 5 {
+            return result;
         }
+        std::thread::sleep(std::time::Duration::from_millis(25 * tries));
         tries += 1;
     }
 }

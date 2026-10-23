@@ -1,4 +1,7 @@
 //! The session-start HEAD is the accepted baseline; only later commits are judged.
+#[allow(dead_code)]
+#[path = "track2_support/claude_invocation.rs"]
+mod invocation;
 use kah_cli::observer_review::{
     delivered, option1, queue,
     state::{State, Store},
@@ -138,7 +141,11 @@ fn seed_violation_is_the_accepted_baseline_and_a_later_agent_violation_is_review
     assert_eq!(checkpoint["covered_commits"], json!([]));
     assert!(sample(&review, &project).is_empty());
     let state = state(&root, &project, "session-start-baseline-worker");
-    let start = option1::direct::context(&root, &state, &review, &seed).unwrap();
+    // The copied binary was just written; retry the exec if a forked child still holds it open.
+    let start = invocation::result_retrying_text_file_busy(|| {
+        option1::direct::context(&root, &state, &review, &seed)
+    })
+    .unwrap();
     assert_eq!(start["touched_files"], json!([]));
     // (b) An agent commit with the same violation is reviewed as a diff only.
     let agent = commit(&project, &[("src/summary.py", WRAPPER)], None);
