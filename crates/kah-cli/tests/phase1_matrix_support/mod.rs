@@ -8,6 +8,7 @@ use std::{
 mod atomize;
 mod checkpoint;
 mod confirmation;
+pub(super) mod corpus;
 mod current_rules;
 mod fixture;
 #[path = "../fixture_support/jev_key.rs"]
@@ -24,57 +25,19 @@ pub fn launch() {
     save(&fixture.evidence.join("native-versions.json"), &versions());
     drive(fixture);
 }
+/// Labelled flags on the generated corpus, confirmed in one native session
+/// that this journey creates; later cases must resume that same session.
 pub fn confirmation_replay() {
     assert_eq!(std::env::var("KAH_PHASE1_MAKE_GATE").as_deref(), Ok("1"));
-    let original = PathBuf::from(std::env::var_os("KAH_PHASE1_NATIVE_ROOT").unwrap());
-    let mut f = fixture::Fixture::read(&original);
-    if std::env::var_os("KAH_PHASE1_NATIVE_PROJECT").is_some() {
-        f.corpus = PathBuf::from(std::env::var_os("KAH_PHASE1_CORPUS").unwrap());
-        f.project = PathBuf::from(std::env::var_os("KAH_PHASE1_NATIVE_PROJECT").unwrap());
-        let head = Command::new("/usr/bin/git")
-            .arg("-C")
-            .arg(&f.project)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .unwrap();
-        assert!(head.status.success());
-        assert_eq!(
-            String::from_utf8(head.stdout).unwrap().trim(),
-            "cd415f4066df4da06751303ca9d27756c755ff9f"
-        );
-        assert!(
-            !f.project
-                .join("docs/observer-phase1/decisive-plants")
-                .exists()
-        );
-    }
-    f.name = format!(
-        "kah-phase1-confirmation-{}",
-        kah_observer::session::now_ms()
-    );
-    let root = PathBuf::from("/tmp").join(&f.name);
-    kah_core::run_store::ensure_private_directory(&root).unwrap();
-    fs::copy(f.root.join("herdr.toml"), root.join("herdr.toml")).unwrap();
-    f.root = root;
-    let protected = fs::read(f.evidence.join("global-config-before.json")).unwrap();
-    f.evidence = PathBuf::from(std::env::var_os("KAH_PHASE1_CONFIRM_EVIDENCE").unwrap());
-    kah_core::run_store::ensure_private_directory(&f.evidence).unwrap();
-    fs::write(f.evidence.join("global-config-before.json"), protected).unwrap();
+    let mut fixture = fixture::Fixture::new();
+    corpus::flags(&fixture.corpus);
+    fixture.mode = "confirmation".into();
     save(
-        &f.root.join("fixture.json"),
-        &serde_json::to_value(&f).unwrap(),
+        &fixture.root.join("fixture.json"),
+        &serde_json::to_value(&fixture).unwrap(),
     );
-    save(
-        &f.evidence.join("ownership.json"),
-        &serde_json::to_value(&f).unwrap(),
-    );
-    fs::copy(
-        original.join("fixture.json"),
-        f.evidence.join("original-fixture.json"),
-    )
-    .unwrap();
-    // Same private native HOME/transcript, new Herdr control session only.
-    drive(f);
+    save(&fixture.evidence.join("native-versions.json"), &versions());
+    drive(fixture);
 }
 fn drive(fixture: fixture::Fixture) {
     let command = format!(
@@ -151,7 +114,7 @@ pub fn entry() {
             checkpoint::run(&fixture)
         } else if std::env::var_os("KAH_PHASE1_SELECTION_JOBS").is_some() {
             selection::run(&fixture)
-        } else if std::env::var_os("KAH_PHASE1_JEV_OUTPUT").is_some() {
+        } else if fixture.mode == "confirmation" {
             real::run(&fixture)
         } else {
             journey::run(&fixture)

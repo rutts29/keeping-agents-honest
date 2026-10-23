@@ -28,7 +28,7 @@ pub fn run(root: &Path) -> Value {
     };
     let mut outcomes = vec![];
     let mut observer = None;
-    for case in cases::load(&home) {
+    for case in cases::load(root) {
         let outcome = review_case(&home, &worker, &case, &mut panes);
         let native = Reviews::read(&worker)
             .unwrap()

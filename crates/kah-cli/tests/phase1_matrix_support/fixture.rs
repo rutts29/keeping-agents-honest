@@ -8,6 +8,9 @@ pub struct Fixture {
     pub evidence: PathBuf,
     pub name: String,
     pub corpus: PathBuf,
+    /// "confirmation" runs the confirmation journey; empty runs the matrices.
+    #[serde(default)]
+    pub mode: String,
 }
 impl Fixture {
     pub fn new() -> Self {
@@ -40,20 +43,11 @@ impl Fixture {
             ),
         )
         .unwrap();
-        let corpus = PathBuf::from(std::env::var_os("KAH_PHASE1_CORPUS").unwrap());
-        let configs = [".codex/config.toml", ".codex/hooks.json"]
-            .into_iter()
-            .filter_map(|relative| {
-                let path = actual.join(relative);
-                fs::read(&path).ok().map(|b| {
-                    (
-                        path.to_string_lossy().to_string(),
-                        kah_observer::commit_check::digest(&b),
-                    )
-                })
-            })
-            .collect::<std::collections::BTreeMap<_, _>>();
-        save(&evidence.join("global-config-before.json"), &json!(configs));
+        let corpus = super::corpus::generate(&root);
+        save(
+            &evidence.join("global-config-before.json"),
+            &config_digests(&actual),
+        );
         let fixture = Self {
             root,
             home,
@@ -61,6 +55,7 @@ impl Fixture {
             evidence,
             name,
             corpus,
+            mode: String::new(),
         };
         save(
             &fixture.root.join("fixture.json"),
@@ -77,6 +72,22 @@ impl Fixture {
     }
 }
 
+/// Digests of the operator's native config, which the journey must not change.
+fn config_digests(actual: &Path) -> Value {
+    let configs = [".codex/config.toml", ".codex/hooks.json"]
+        .into_iter()
+        .filter_map(|relative| {
+            let path = actual.join(relative);
+            fs::read(&path).ok().map(|b| {
+                (
+                    path.to_string_lossy().to_string(),
+                    kah_observer::commit_check::digest(&b),
+                )
+            })
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    json!(configs)
+}
 fn native_home(actual: &Path, home: &Path) {
     let capacity = usage::resources(home);
     let required = fs::metadata(env!("CARGO_BIN_EXE_kah")).unwrap().len();

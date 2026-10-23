@@ -77,7 +77,7 @@ fn verify_private_cwd(f: &fixture::Fixture, native: &Value) {
     );
     save(
         &f.evidence.join("private-project.json"),
-        &json!({"native_session":native["session"],"cwd":cwd,"baseline":"cd415f4","scoring_files_present":false,"source":"native turn_context plus private project preflight"}),
+        &json!({"native_session":native["session"],"cwd":cwd,"scoring_files_present":false,"source":"native turn_context plus private project preflight"}),
     );
 }
 fn finish_case(

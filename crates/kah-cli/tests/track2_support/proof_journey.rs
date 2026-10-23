@@ -9,7 +9,7 @@ use std::{fs, path::Path, process::Command};
 mod numeric;
 
 pub fn run(root: &Path) -> Value {
-    let registration = proof_inputs::registration();
+    let registration = proof_inputs::registration(root);
     let mut outcomes = vec![];
     for provider in ["codex", "claude"] {
         let project = root.join(format!("home/repos/mine/fixture-{provider}"));

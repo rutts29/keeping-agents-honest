@@ -1,10 +1,20 @@
 //! Clean persistent native thinker; first input contains resolved intent only.
 use super::*;
 use kah_cli::commit_measure::atomization::{self, AtomicRule, Item};
+/// `atomize-refine` first writes the draft in this fixture, then refines it in
+/// the same native session.
 pub fn run(f: &fixture::Fixture) {
+    let mut pane = None;
+    if std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("atomize-refine") {
+        pass(f, false, &mut pane);
+        pass(f, true, &mut pane);
+    } else {
+        pass(f, false, &mut pane);
+    }
+}
+fn pass(f: &fixture::Fixture, refinement: bool, pane: &mut Option<String>) {
     let input = f.corpus.join("intent-only.json");
     let items: Vec<Item> = serde_json::from_slice(&fs::read(&input).unwrap()).unwrap();
-    let refinement = std::env::var("KAH_PHASE1_REPLAY_STAGE").as_deref() == Ok("atomize-refine");
     let draft = f.project.join("atomic-rules.json");
     let prior: Option<Vec<AtomicRule>> =
         refinement.then(|| serde_json::from_slice(&fs::read(&draft).unwrap()).unwrap());
@@ -36,8 +46,12 @@ pub fn run(f: &fixture::Fixture) {
         "input_digest":kah_observer::commit_check::digest(&fs::read(&input).unwrap()),
         "blind_input":"Only resolved active Constraint/Invariant items; clean native session"}),
     );
-    let pane = journey::start(f, &prompt);
-    journey::wait(f, &pane, &output);
+    if let Some(pane) = pane.as_deref() {
+        herdr(&["agent", "prompt", pane, &prompt]);
+    } else {
+        *pane = Some(journey::start(f, &prompt));
+    }
+    journey::wait(f, pane.as_deref().unwrap(), &output);
     fs::copy(&output, f.evidence.join("atomic-rules-unvalidated.json")).unwrap();
     let native = retain_native(f);
     let rules: Vec<AtomicRule> = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();

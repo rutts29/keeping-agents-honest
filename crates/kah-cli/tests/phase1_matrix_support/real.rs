@@ -1,18 +1,20 @@
-//! Confirm actual request-bound Jev evidence in the retained native session.
+//! Confirm request-bound flag records in one native session. The first case
+//! creates the session; every later case must resume that same session.
 use super::*;
 pub fn run(f: &fixture::Fixture) {
-    let groups = groups();
+    let groups = groups(f);
     let mut pane: Option<String> = None;
+    let mut session = None;
     for (id, records) in groups {
-        confirm(f, &id, &records, &mut pane);
+        confirm(f, &id, &records, &mut pane, &mut session);
     }
     save(
         &f.evidence.join("complete.json"),
-        &json!({"same_session":std::env::var("KAH_PHASE1_RESUME_SESSION").unwrap(),"no_additional_jev_calls":true}),
+        &json!({"same_session":session,"no_additional_jev_calls":true}),
     );
 }
-fn groups() -> std::collections::BTreeMap<String, Vec<Value>> {
-    let source = PathBuf::from(std::env::var_os("KAH_PHASE1_JEV_OUTPUT").unwrap());
+fn groups(f: &fixture::Fixture) -> std::collections::BTreeMap<String, Vec<Value>> {
+    let source = f.corpus.join("jev-output");
     let result: Value =
         serde_json::from_slice(&fs::read(source.join("complete.json")).unwrap()).unwrap();
     let mut groups = std::collections::BTreeMap::<String, Vec<Value>>::new();
@@ -26,7 +28,13 @@ fn groups() -> std::collections::BTreeMap<String, Vec<Value>> {
     }
     groups
 }
-fn confirm(f: &fixture::Fixture, id: &str, records: &[Value], pane: &mut Option<String>) {
+fn confirm(
+    f: &fixture::Fixture,
+    id: &str,
+    records: &[Value],
+    pane: &mut Option<String>,
+    session: &mut Option<Value>,
+) {
     let dir = f.evidence.join(id);
     kah_core::run_store::ensure_private_directory(&dir).unwrap();
     let current = f
@@ -51,8 +59,8 @@ fn confirm(f: &fixture::Fixture, id: &str, records: &[Value], pane: &mut Option<
     }
     let after = usage::snapshot(&f.home, &f.project);
     assert_eq!(
-        after["session"],
-        std::env::var("KAH_PHASE1_RESUME_SESSION").unwrap()
+        *session.get_or_insert_with(|| after["session"].clone()),
+        after["session"]
     );
     assert_eq!(after["model"], "gpt-6.1-sol");
     let answer: Value = serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
@@ -96,7 +104,7 @@ fn request_prompt(f: &fixture::Fixture, id: &str, packet: &Path) -> (PathBuf, St
     );
     let prompt = if correction {
         format!(
-            "{prompt} Your previous answer {} failed exact source quote validation: MEASURE_QUOTE_RANGE for crates/kah-cli/src/observer_review/checkpoint_claim/wait.rs. Keep that original intact. Re-check EVERY quoted span against the supplied source's exact lines/digest and correct coordinates or text; never invent lines. Account for all flags again. This is a source-binding correction, not new authority, new Jev wording or new evidence.",
+            "{prompt} Your previous answer {} failed exact source quote validation (MEASURE_QUOTE_RANGE). Keep that original intact. Re-check EVERY quoted span against the supplied source's exact lines/digest and correct coordinates or text; never invent lines. Account for all flags again. This is a source-binding correction, not new authority, new Jev wording or new evidence.",
             f.project
                 .join(format!("{id}-jev-confirmation.json"))
                 .display()
