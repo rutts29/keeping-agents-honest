@@ -154,8 +154,7 @@ fn overlay_directory(home: &Path, project: &Project, args: &Arguments) -> (Strin
         "{:x}",
         Sha256::digest(project.root.as_os_str().as_encoded_bytes())
     );
-    let overlay = home
-        .join(".local/state/kah/codex")
+    let overlay = crate::resume::overlay_root(home)
         .join(&policy_name)
         .join(&hash[..16]);
     (policy_name, overlay)

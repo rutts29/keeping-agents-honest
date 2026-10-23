@@ -15,7 +15,7 @@ pub(crate) fn target(home: &Path, cwd: &Path, args: &mut Arguments) -> Result<Pa
     let Some(id) = session_id(&args.native).map(str::to_owned) else {
         return Ok(cwd.into());
     };
-    let inspection = home.join(".local/state/kah/codex/control");
+    let inspection = overlay_root(home).join("control");
     overlay::prepare(
         &home.join(".codex"),
         &inspection,
@@ -81,10 +81,14 @@ fn restore_policy(
     Ok(cwd.into())
 }
 
+/// The Codex overlays' parent in the kah state root.
+pub fn overlay_root(home: &Path) -> PathBuf {
+    kah_core::run_store::RunStore::state_root_for(home).join("codex")
+}
+
 /// Only a native session's kah-owned rollout path carries a previous opt-in.
 pub fn apply_location(home: &Path, rollout: &Path, args: &mut Arguments) {
-    let root = home.join(".local/state/kah/codex");
-    let Ok(relative) = rollout.strip_prefix(root) else {
+    let Ok(relative) = rollout.strip_prefix(overlay_root(home)) else {
         return;
     };
     match relative

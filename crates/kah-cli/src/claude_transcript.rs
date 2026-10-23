@@ -118,10 +118,8 @@ pub fn resolve(
     Ok(path)
 }
 fn directory(home: &Path, session: &str) -> Result<PathBuf> {
-    let base = if env::var_os("HOME").is_some_and(|actual| Path::new(&actual) == home) {
-        RunStore::default_state_root()?
-    } else {
-        home.join(".local/state/kah")
-    };
-    Ok(kah_observer::session::Store::directory(&base, session))
+    Ok(kah_observer::session::Store::directory(
+        &RunStore::state_root_for(home),
+        session,
+    ))
 }

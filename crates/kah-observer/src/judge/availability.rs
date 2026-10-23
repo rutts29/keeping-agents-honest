@@ -7,7 +7,7 @@ use std::{fs, path::Path};
 pub mod recovery;
 
 fn path(home: &Path) -> std::path::PathBuf {
-    home.join(".local/state/kah/jev-service.json")
+    kah_core::run_store::RunStore::state_root_for(home).join("jev-service.json")
 }
 pub fn unavailable(home: &Path) -> Result<bool, Error> {
     Ok(snapshot(home)?.is_some_and(|v| v["http_status"] == 402 || v["blocked"] == true))

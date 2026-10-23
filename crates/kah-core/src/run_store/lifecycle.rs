@@ -17,6 +17,18 @@ impl RunStore {
         Ok(root.join(APPLICATION_DIRECTORY))
     }
 
+    /// The state root for `home`, which every kah store uses: the
+    /// [`Self::default_state_root`] of this process's own `$HOME`, otherwise
+    /// (a fixture home) `home/.local/state/kah`.
+    pub fn state_root_for(home: &Path) -> PathBuf {
+        if env::var_os("HOME").is_some_and(|actual| Path::new(&actual) == home)
+            && let Ok(root) = Self::default_state_root()
+        {
+            return root;
+        }
+        home.join(".local/state").join(APPLICATION_DIRECTORY)
+    }
+
     /// Derive the local path without retaining a raw repository path in it.
     pub fn path_for(
         state_root: impl AsRef<Path>,

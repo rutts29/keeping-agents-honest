@@ -34,7 +34,7 @@ pub fn permissions(
         home.join(".git-credentials"),
         home.join(".netrc"),
         home.join(".npmrc"),
-        home.join(".local/state/kah"),
+        kah_core::run_store::RunStore::state_root_for(home),
         home.join(".local/share/kah-eval"),
         private.into(),
     ];
