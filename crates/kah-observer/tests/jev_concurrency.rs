@@ -79,7 +79,11 @@ fn lower_stub_limits_and_retry_after_finish_without_judgment_drift() {
 }
 fn private_root(label: &str) -> PathBuf {
     let base = PathBuf::from(std::env::var_os("KAH_CONCURRENCY_FIXTURE").unwrap());
-    assert!(base.starts_with("/mnt/kah-fixtures/cargo/test-fixtures"));
+    let fixture_base = PathBuf::from(
+        std::env::var_os("KAH_TEST_FIXTURE_BASE").expect("explicit fixture base required"),
+    );
+    assert!(fixture_base.is_absolute());
+    assert!(base.is_absolute() && base.starts_with(&fixture_base));
     let root = base.join(label);
     kah_core::run_store::ensure_private_directory(&root).unwrap();
     root
