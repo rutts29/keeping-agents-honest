@@ -4,7 +4,12 @@ use kah_claude::paths;
 use std::{path::Path, process::Command};
 #[test]
 fn native_config_directory_is_shared_directly_with_no_private_credential_store() {
-    for value in [None, Some("/template/.claude"), Some("/template/e\u{301}")] {
+    for value in [
+        None,
+        Some(""),
+        Some("/template/.claude"),
+        Some("/template/e\u{301}"),
+    ] {
         let mut command = Command::new(std::env::current_exe().unwrap());
         command
             .args(["--exact", "native_config_child", "--nocapture"])
@@ -28,6 +33,8 @@ fn native_config_child() {
     }
     let home = Path::new("/fixture/home");
     let configured = std::env::var("CLAUDE_CONFIG_DIR").ok();
+    // An empty value is no override, as for the global config file.
+    let configured = configured.filter(|value| !value.is_empty());
     let root = match configured.as_deref() {
         None => "/fixture/home/.claude",
         Some("/template/.claude") => "/template/.claude",
@@ -42,8 +49,7 @@ fn native_config_child() {
             .unwrap_or(home)
             .join(".claude.json")
     );
-    assert!(
-        paths::transcript(home, Path::new("/project"), "session")
-            .starts_with(Path::new(root).join("projects"))
-    );
+    let transcript = paths::transcript(home, Path::new("/project"), "session");
+    assert!(transcript.is_absolute(), "{transcript:?}");
+    assert!(transcript.starts_with(Path::new(root).join("projects")));
 }

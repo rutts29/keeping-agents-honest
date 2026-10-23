@@ -4,9 +4,11 @@
 use std::path::{Path, PathBuf};
 use unicode_normalization::UnicodeNormalization;
 
-/// The explicit native root (CLAUDE_CONFIG_DIR) or HOME/.claude, NFC-normalized.
+/// The explicit native root (CLAUDE_CONFIG_DIR, when not empty) or HOME/.claude,
+/// NFC-normalized.
 pub fn config_root(home: &Path) -> PathBuf {
     let root = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".claude"));
     root.to_string_lossy().nfc().collect::<String>().into()
