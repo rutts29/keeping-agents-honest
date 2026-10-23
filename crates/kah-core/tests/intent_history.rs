@@ -337,3 +337,30 @@ fn goal_revisions_are_monotonic_and_source_linked() {
     stale.supersedes_revision = Some(2);
     assert!(history.append(Event::GoalRevised { goal: stale }).is_err());
 }
+
+#[test]
+fn an_added_requirement_cannot_name_superseded_intents() {
+    let mut history = History::new(goal("Ship the MVP", "goal-1")).expect("start history");
+    history
+        .append(Event::RequirementAdded {
+            item: item("i-1", "Keep the source read-only", "intent-1"),
+            approval: None,
+        })
+        .expect("add requirement");
+    let before = history.records().to_vec();
+    for target in ["i-1", "missing"] {
+        let mut added = item("i-2", "Keep the source strictly read-only", "intent-2");
+        added.supersedes = vec![IntentId::new(target)];
+        let error = history
+            .append(Event::RequirementAdded {
+                item: added,
+                approval: None,
+            })
+            .expect_err("only requirement_superseded may carry a supersession edge");
+        assert!(
+            error.to_string().contains("requirement_superseded"),
+            "{error}"
+        );
+        assert_eq!(history.records(), before.as_slice());
+    }
+}

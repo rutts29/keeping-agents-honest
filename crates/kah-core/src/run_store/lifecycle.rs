@@ -56,10 +56,25 @@ impl RunStore {
     ) -> Result<Self, RunStoreError> {
         validate_projection(history, projection)?;
         let path = Self::path_for(state_root, repository, run_id)?;
-        create_run_directory(&path)?;
-        let lock = acquire_lock(&path)?;
-        let store = Self { path, _lock: lock };
+        let staging = create_run_directory(&path)?;
+        let built = Self::build(&staging, &path, history, projection);
+        if built.is_err() {
+            let _ = fs::remove_dir_all(&staging);
+        }
+        built
+    }
 
+    fn build(
+        staging: &Path,
+        path: &Path,
+        history: &History,
+        projection: &ActiveProjection,
+    ) -> Result<Self, RunStoreError> {
+        let lock = acquire_lock(staging)?;
+        let mut store = Self {
+            path: staging.to_path_buf(),
+            _lock: lock,
+        };
         let initial_segment = store.history_path().join(segment_name(history.records())?);
         write_new_file(
             &initial_segment,
@@ -70,6 +85,8 @@ impl RunStore {
         store.write_projection(projection)?;
         write_new_file(&store.pending_path(), "", "open pending delta")?;
         sync_directory(&store.path)?;
+        publish_run_directory(staging, path)?;
+        store.path = path.to_path_buf();
         Ok(store)
     }
 

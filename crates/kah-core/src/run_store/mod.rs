@@ -55,6 +55,8 @@ mod filesystem;
 mod identity;
 mod lifecycle;
 mod paths;
+#[cfg(test)]
+mod publish_tests;
 mod recovery;
 mod validation;
 mod writes;

@@ -102,6 +102,8 @@ fn pending_record(history: &History, id: &str) -> kah_core::intent_history::Even
     )
 }
 
+#[path = "run_store/atomic_create.rs"]
+mod atomic_create;
 #[path = "run_store/locking.rs"]
 mod locking;
 #[path = "run_store/path_safety.rs"]
@@ -110,3 +112,5 @@ mod path_safety;
 mod recovery;
 #[path = "run_store/source_cursor.rs"]
 mod source_cursor;
+#[path = "run_store/torn_writes.rs"]
+mod torn_writes;

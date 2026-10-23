@@ -18,12 +18,7 @@ impl RunStore {
         all_records.extend(pending_delta.iter().cloned());
         let history = History::replay(all_records)?;
 
-        let projection_path = self.projection_path();
-        ensure_private_regular(&projection_path)?;
-        let contents = fs::read_to_string(&projection_path)
-            .map_err(|error| io_error("read projection", &projection_path, error))?;
-        let projection: ActiveProjection = serde_json::from_str(&contents)
-            .map_err(|error| RunStoreError::Serialization(error.to_string()))?;
+        let projection = self.read_projection()?;
 
         let budget = projection.overflow.budget;
         let mut accepted_projection = project(&accepted_history, budget)?;
@@ -39,6 +34,15 @@ impl RunStore {
             pending_delta,
             source_cursor: None,
         })
+    }
+
+    pub(super) fn read_projection(&self) -> Result<ActiveProjection, RunStoreError> {
+        let projection_path = self.projection_path();
+        ensure_private_regular(&projection_path)?;
+        let contents = fs::read_to_string(&projection_path)
+            .map_err(|error| io_error("read projection", &projection_path, error))?;
+        serde_json::from_str(&contents)
+            .map_err(|error| RunStoreError::Serialization(error.to_string()))
     }
 
     pub(super) fn read_history_segments(&self) -> Result<Vec<EventRecord>, RunStoreError> {
@@ -85,9 +89,37 @@ impl RunStore {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(io_error("inspect pending delta", &pending, error)),
         }
-        let input = fs::read_to_string(&pending)
-            .map_err(|error| io_error("read pending delta", &pending, error))?;
-        parse_jsonl(&input)
+        let bytes =
+            fs::read(&pending).map_err(|error| io_error("read pending delta", &pending, error))?;
+        let input = std::str::from_utf8(committed_prefix(&bytes))
+            .map_err(|error| RunStoreError::Serialization(error.to_string()))?;
+        parse_jsonl(input)
+    }
+
+    /// A record is committed by its newline. A crash can leave an unfinished
+    /// last line; drop exactly that tail so the next append starts a clean line.
+    /// Malformed newline-terminated records are never touched.
+    pub(super) fn repair_pending_tail(&self) -> Result<(), RunStoreError> {
+        let pending = self.pending_path();
+        match fs::symlink_metadata(&pending) {
+            Ok(_) => ensure_private_regular(&pending)?,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(io_error("inspect pending delta", &pending, error)),
+        }
+        let bytes =
+            fs::read(&pending).map_err(|error| io_error("read pending delta", &pending, error))?;
+        let keep = committed_prefix(&bytes).len();
+        if keep == bytes.len() {
+            return Ok(());
+        }
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&pending)
+            .map_err(|error| io_error("open pending delta", &pending, error))?;
+        file.set_len(keep as u64)
+            .map_err(|error| io_error("trim unfinished pending record", &pending, error))?;
+        file.sync_all()
+            .map_err(|error| io_error("sync pending delta", &pending, error))
     }
 
     pub(super) fn read_source_cursor(&self) -> Result<Option<SourceCursor>, RunStoreError> {

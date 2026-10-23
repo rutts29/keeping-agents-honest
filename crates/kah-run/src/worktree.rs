@@ -66,10 +66,7 @@ impl Worktree {
     }
 
     pub fn create(source: &Path, directory: &Path, id: &str) -> Result<Self, String> {
-        if !id.starts_with("run-")
-            || id.len() > 80
-            || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
-        {
+        if !crate::store::valid_run_id(id) {
             return Err("RUN_ID stage=worktree".into());
         }
         let source = source.canonicalize().map_err(io_error)?;

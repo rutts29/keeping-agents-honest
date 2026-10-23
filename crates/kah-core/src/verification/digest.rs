@@ -68,7 +68,7 @@ pub(crate) fn candidate_digest(candidate: &Path) -> Result<String, VerificationE
     paths.sort();
     paths.dedup();
     let mut hasher = Sha256::new();
-    hasher.update(b"driftctl.candidate.v1\0");
+    hasher.update(b"driftctl.candidate.v2\0");
     for relative in paths {
         hash_candidate_path(&mut hasher, candidate, &relative)?;
     }
@@ -121,9 +121,19 @@ fn hash_candidate_path(
     }
     update_os_hash(hasher, relative.as_os_str());
     let path = candidate.join(relative);
-    let metadata = fs::symlink_metadata(&path)
-        .map_err(|error| VerificationError::io("inspect candidate file", error))?;
+    // Each entry carries a kind tag so one state can never pass for another.
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        // A tracked file the verifier (or the user) removed is a state of the
+        // candidate, not a failure to inspect it.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            hasher.update(b"a");
+            return Ok(());
+        }
+        Err(error) => return Err(VerificationError::io("inspect candidate file", error)),
+    };
     if metadata.file_type().is_symlink() {
+        hasher.update(b"l");
         update_os_hash(
             hasher,
             fs::read_link(&path)
@@ -131,11 +141,20 @@ fn hash_candidate_path(
                 .as_os_str(),
         );
     } else if metadata.file_type().is_file() {
+        hasher.update(b"f");
         update_hash(
             hasher,
             &fs::read(&path)
                 .map_err(|error| VerificationError::io("read candidate file", error))?,
         );
+    } else if metadata.is_dir() {
+        // A submodule or a nested repository. Its contents are not part of the
+        // candidate digest, so it cannot be certified by it: refuse, never
+        // fingerprint it by commit and status alone.
+        return Err(VerificationError::invalid(
+            "VERIFICATION_SUBMODULE",
+            "candidate contains a submodule or nested repository, which verification does not support",
+        ));
     } else {
         return Err(VerificationError::invalid(
             "VERIFICATION_FILE_TYPE",

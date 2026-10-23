@@ -61,24 +61,25 @@ impl Ledger {
 
     pub fn steer(&mut self, requirement: impl Into<String>) -> Result<String, LedgerError> {
         let requirement = non_empty(requirement.into(), "steering requirement")?;
-        let state = self.fold()?;
-        ensure_open(&state)?;
-
-        let mut suffix = state.requirements.len() + 1;
-        let id = loop {
-            let candidate = format!("R{suffix}");
-            if !state.requirements.contains_key(&candidate) {
-                break candidate;
-            }
-            suffix += 1;
-        };
-        self.append(Event::SteeringAdded {
-            requirement: Requirement {
-                id: id.clone(),
-                text: requirement,
-            },
-        })?;
-        Ok(id)
+        self.locked_append::<_, LedgerError>(|state| {
+            ensure_open(state)?;
+            let mut suffix = state.requirements.len() + 1;
+            let id = loop {
+                let candidate = format!("R{suffix}");
+                if !state.requirements.contains_key(&candidate) {
+                    break candidate;
+                }
+                suffix += 1;
+            };
+            let event = Event::SteeringAdded {
+                requirement: Requirement {
+                    id: id.clone(),
+                    text: requirement,
+                },
+            };
+            Ok(Some((event, id)))
+        })?
+        .ok_or_else(|| LedgerError::new("LEDGER_CLOSED", "run is already closed"))
     }
 
     pub fn satisfy(
@@ -88,18 +89,21 @@ impl Ledger {
     ) -> Result<(), LedgerError> {
         let requirement_id = non_empty(requirement_id.to_owned(), "requirement id")?;
         let evidence = non_empty(evidence.into(), "evidence")?;
-        let state = self.fold()?;
-        ensure_open(&state)?;
-        if !state.requirements.contains_key(&requirement_id) {
-            return Err(LedgerError::new(
-                "REQUIREMENT_UNKNOWN",
-                format!("unknown requirement: {requirement_id}"),
-            ));
-        }
-        self.append(Event::RequirementSatisfied {
-            requirement_id,
-            evidence,
-        })
+        self.locked_append::<_, LedgerError>(|state| {
+            ensure_open(state)?;
+            if !state.requirements.contains_key(&requirement_id) {
+                return Err(LedgerError::new(
+                    "REQUIREMENT_UNKNOWN",
+                    format!("unknown requirement: {requirement_id}"),
+                ));
+            }
+            let event = Event::RequirementSatisfied {
+                requirement_id,
+                evidence,
+            };
+            Ok(Some((event, ())))
+        })?;
+        Ok(())
     }
 
     pub fn snapshot(&self) -> Result<Snapshot, LedgerError> {
@@ -127,16 +131,22 @@ impl Ledger {
     }
 
     pub fn close(&mut self) -> Result<(), ClosureError> {
-        let snapshot = self.snapshot()?;
-        if snapshot.closed {
-            return Ok(());
-        }
-        if !snapshot.unresolved_requirement_ids.is_empty() {
-            return Err(ClosureError::UnresolvedRequirements(
-                snapshot.unresolved_requirement_ids,
-            ));
-        }
-        self.append(Event::RunClosed)?;
+        self.locked_append(|state| {
+            if state.closed {
+                return Ok(None);
+            }
+            let unresolved: Vec<String> = state
+                .requirements
+                .iter()
+                .filter(|(_, requirement)| requirement.evidence.is_none())
+                .map(|(id, _)| id.clone())
+                .collect();
+            if unresolved.is_empty() {
+                Ok(Some((Event::RunClosed, ())))
+            } else {
+                Err(ClosureError::UnresolvedRequirements(unresolved))
+            }
+        })?;
         Ok(())
     }
 
@@ -150,25 +160,53 @@ impl Ledger {
         Ok(())
     }
 
-    fn append(&self, event: Event) -> Result<(), LedgerError> {
+    /// One mutation under an exclusive lock on the ledger file: repair an
+    /// unfinished last line, validate against the folded state, pick the next
+    /// sequence number, append and sync. `plan` returns the event to append
+    /// (with a value for the caller), or `None` when there is nothing to add.
+    /// The lock also keeps a second writer from trimming a record this one
+    /// has just acknowledged.
+    fn locked_append<T, E: From<LedgerError>>(
+        &self,
+        plan: impl FnOnce(&FoldedState) -> Result<Option<(Event, T)>, E>,
+    ) -> Result<Option<T>, E> {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(LedgerError::from)?;
+        file.lock().map_err(LedgerError::from)?;
+        let bytes = fs::read(&self.path).map_err(LedgerError::from)?;
+        let keep = committed_prefix(&bytes).len();
+        if keep != bytes.len() {
+            file.set_len(keep as u64).map_err(LedgerError::from)?;
+            file.sync_data().map_err(LedgerError::from)?;
+        }
         let records = self.records()?;
-        let sequence = u64::try_from(records.len())
-            .map_err(|_| LedgerError::new("SEQUENCE_EXHAUSTED", "ledger sequence exhausted"))?
-            .checked_add(1)
+        let count = records.len();
+        let state = Self::fold_records(records)?;
+        let Some((event, value)) = plan(&state)? else {
+            return Ok(None);
+        };
+        let sequence = u64::try_from(count)
+            .ok()
+            .and_then(|count| count.checked_add(1))
             .ok_or_else(|| LedgerError::new("SEQUENCE_EXHAUSTED", "ledger sequence exhausted"))?;
         let record = Record {
             schema_version: SCHEMA_VERSION,
             sequence,
             event,
         };
-        let mut file = OpenOptions::new().append(true).open(&self.path)?;
         write_record(&mut file, &record)?;
-        file.sync_data()?;
-        Ok(())
+        file.sync_data().map_err(LedgerError::from)?;
+        Ok(Some(value))
     }
 
     fn fold(&self) -> Result<FoldedState, LedgerError> {
-        let records = self.records()?;
+        Self::fold_records(self.records()?)
+    }
+
+    fn fold_records(records: Vec<Record>) -> Result<FoldedState, LedgerError> {
         let mut records = records.into_iter();
         let first = records
             .next()
@@ -204,7 +242,10 @@ impl Ledger {
     }
 
     fn records(&self) -> Result<Vec<Record>, LedgerError> {
-        let contents = fs::read_to_string(&self.path)?;
+        let bytes = fs::read(&self.path)?;
+        let contents = std::str::from_utf8(committed_prefix(&bytes)).map_err(|error| {
+            LedgerError::new("LEDGER_JSON", format!("invalid ledger text: {error}"))
+        })?;
         if contents.is_empty() {
             return Err(LedgerError::new("LEDGER_EMPTY", "ledger is empty"));
         }
@@ -273,10 +314,19 @@ fn ensure_open(state: &FoldedState) -> Result<(), LedgerError> {
 }
 
 fn write_record(file: &mut fs::File, record: &Record) -> Result<(), LedgerError> {
-    serde_json::to_writer(&mut *file, record)?;
-    file.write_all(b"\n")?;
+    let mut line = serde_json::to_vec(record)?;
+    line.push(b'\n');
+    file.write_all(&line)?;
     file.flush()?;
     Ok(())
+}
+
+/// The bytes up to and including the last newline: the committed records.
+fn committed_prefix(bytes: &[u8]) -> &[u8] {
+    bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(&[][..], |last| &bytes[..=last])
 }
 
 fn apply_record(state: &mut FoldedState, record: Record) -> Result<(), LedgerError> {
