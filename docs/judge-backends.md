@@ -1,101 +1,134 @@
 # Observer judgments
 
-Per PLAN §8a (2026-09-30), Jev supplies typed Noul, Choice and Score judgments
-in Mine, Research and Untrusted. Only Jev answers can drive probability or
-confidence gates. The native text-generating Luna judge and its comparison were
-removed. Historical Luna numbers are not acceptance evidence. Old saved observer
-bindings migrate to Jev; old recorded judgments retain their original backend
-and are refused by the drift/completion decision functions.
+Jev supplies typed Noul, Choice and Score judgments in Mine, Research and
+Untrusted. Only Jev answers can drive probability or confidence gates. The
+public backend selector accepts `jev`; it rejects other backend names. Old saved
+observer bindings migrate to Jev. Judgments recorded by a different backend keep
+their original backend name and do not authorize current drift or completion
+decisions.
 
-Per §8b, steering is now stored verbatim with its native record reference.
-Jev classifies `is_steering` and `steer_kind` and selects a superseded active ID
-(or `none`). Rust applies the operation. Ambiguous replacement retains both
-items with explicit `uncertain_supersedes` links. The original goal never changes.
-A confident withdrawal retains the exact withdrawal message as an active scope
+## Steering and intent
+
+Steering text is stored verbatim with its native source reference. Jev
+classifies `is_steering` and `steer_kind` and selects a superseded active ID (or
+`none`). Rust applies the operation. An ambiguous replacement retains both items
+with explicit `uncertain_supersedes` links. The original goal never changes. A
+confident withdrawal retains the exact withdrawal message as an active scope
 constraint and the withdrawn text in history.
 
-**Current implementation:** persistent native preparation is wired; live proof is pending. The old
-headless synthesizer was retired; canonical user words remain verbatim. The
-approved replacement uses the persistent full native observer to choose whole
-relevant items for one decision, with recorded selections/exclusions, reasons,
-source pointers and digests. Rust must preserve goal text and reject exclusion
-of active user/relayed items unless a verified superseding item is cited. The retired headless ledger summarizer remains absent; this is whole-item request selection, not user-text synthesis.
+Canonical user instructions retain their original text. Accepted decisions are
+journaled before history mutation, so an interrupted intake reuses the same
+decision, and no model call happens for an already accepted cursor. Source
+replay rebuilds from native user records.
 
-New verbatim runs have a separate stable identity. Existing synthesized ledgers
-remain on disk; source replay rebuilds from native user records rather than
-claiming old generated text was verbatim. Accepted decisions are journaled before
-history mutation so an interrupted intake reuses the same decision. No model
-call happens for an already accepted cursor.
+## Context preparation
 
-Local reference: `~/.local/share/typesafe-docs`, pinned 2026-09-30. Checked against
-`sdk/js-v0.6.0/types.ts`: kah sends `{model,state,questions}`; its nonempty string
-instructions/criteria are a supported subset of SDK `EntryType`. Responses match
-Noul (no confidence), Choice (choice/probabilities/confidence), Score
-(score/legend/probabilities/confidence), model and input/output token usage.
-kah's invented state/question byte bounds and 32-question bound are removed.
-The provider owns the documented token limits: 32k for state plus the longest
-question, 64k per request. There is no official tokenizer/count endpoint; actual
-usage.input_tokens may calibrate planning, never a hard rejection estimate.
-Genuine context rejection must invoke observer preparation and one recorded
-retry; its native live proof is pending. No mirror auto-update is used.
+The source tree includes persistent native preparation of whole-record evidence.
+The native observer can select whole relevant items for one decision with
+recorded reasons, source pointers and digests. Preparation validates source
+identities, required records and selection manifests before rendering a request.
+Rust preserves the goal text and rejects the exclusion of active user or relayed
+items unless a verified superseding item is cited. Source digests bind stored
+evidence to the request that used it.
 
-The HTTP adapter follows the [API reference](https://docs.typesafe.ai/api),
-[Python](https://docs.typesafe.ai/sdk/python) and
-[JavaScript](https://docs.typesafe.ai/sdk/javascript) examples. It uses fixed TLS
-origin, no redirects, a 20-second request deadline and a bounded response. The
-host-only mode-600 key is a sensitive Authorization header; errors never render
-vendor bodies or credentials. ureq 3.4.2 is maintained (repository dates to 2018)
-and covered by cargo audit. No TypeSafe SDK or other TypeSafe feature is used.
+Automatic ledger summarization is disabled; native sessions manage their own
+conversation compaction. Context rejection can stage whole-record preparation,
+and a known oversized prepared body can route to direct observer review.
 
-429, 529, other server errors and transport/timeouts get at most two retries,
-after 250 ms and 1 s. Permanent errors are not retried. Exhaustion becomes an
-explicit observer gap; no different model supplies substitute numbers. Successful
-retry metrics count all attempts and flag failed calls with incomplete token
-accounting. Latency includes backoff. Bounded context excludes transcripts and
-credentials in every domain.
+## Requests and the HTTP adapter
+
+The adapter sends structured requests with `model`, `state` and `questions`. It
+validates typed questions and serializes their instruction strings in the
+request. Request validation checks typed content without fixed state-byte or
+question-count limits. Responses are Noul (no confidence), Choice (choice,
+probabilities, confidence) or Score (score, legend, probabilities, confidence),
+with the model and input/output token usage.
+
+Context planning uses 32,000 tokens for state plus the longest question and
+64,000 tokens for the complete request as implementation thresholds. Observed
+input-token usage can calibrate request estimates, but estimates are planning
+data and not proof that a provider will accept a request. The runtime does not
+require a local documentation mirror.
+
+The HTTP client uses a fixed production TLS origin, disables redirects and sets a
+20-second request deadline. It reads the complete response body before
+validating its JSON. The host-only mode-600 key is sent as a sensitive
+Authorization header; errors never render vendor bodies or credentials. The
+observer crate pins `ureq` to version 3.4.2 with TLS and JSON support. kah uses
+its own HTTP adapter rather than a TypeSafe SDK dependency. Jev API
+authentication is separate from the native coding agent's login; keep provider
+credentials in their documented host-side configuration.
+
+Review requests may contain selected native transcript evidence, and privacy
+scrubbing removes recognized credential patterns.
+
+## Retries and failures
+
+The scalar routing path makes at most three attempts for transient failures
+(timeouts, transport errors, 408, 429 and 5xx), with 250 ms and 1 s delays
+between attempts. The batch transport uses response retry headers or its own
+backoff policy. Permanent failures remain explicit errors, while service
+availability state can prevent further calls. Successful-retry metrics count all
+attempts and flag failed calls with incomplete token accounting; latency
+includes backoff.
+
+A service failure is recorded explicitly rather than converted into a successful
+judgment. kah does not select a substitute backend when Jev fails, and a failed
+or invalid judgment does not satisfy a required outcome. Adding another judgment
+backend would require an explicit implementation and policy change. A different
+model's probabilities are not interchangeable with the configured Jev
+thresholds.
+
+## Question design
 
 Questions run independently against named structured state in one batch. Their
-IDs are not shown to Jev, so the instructions carry their full meaning. These
-choices follow [fan-out](https://docs.typesafe.ai/patterns/fan-out),
-[intent routing](https://docs.typesafe.ai/patterns/intent-routing), and the
-[building guide](https://docs.typesafe.ai/concepts/how-to-build-with-system-one),
-plus typesafe-ai/skills@65a39f3.
+IDs are not shown to Jev, so each question's instructions must carry its full
+meaning. The design follows the TypeSafe documentation on
+[fan-out](https://docs.typesafe.ai/patterns/fan-out),
+[intent routing](https://docs.typesafe.ai/patterns/intent-routing) and the
+[building guide](https://docs.typesafe.ai/concepts/how-to-build-with-system-one).
 
-Noul returns a yes-probability, with no separate confidence. Choice/Score retain
-returned distributions and confidence; Rust computes no substitute confidence.
-Score is an expectation over descriptive levels. Typed answers do not establish
-truth or permission. Thresholds remain provisional, evaluated by the live
-journeys rather than treated as calibration guarantees. See
-[primitives](https://docs.typesafe.ai/primitives),
-[confidence](https://docs.typesafe.ai/confidence), and
-[current limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13).
+Noul returns a yes-probability with no separate confidence. Choice and Score
+retain the returned distributions and confidence; Rust computes no substitute
+confidence. Score is an expectation over descriptive levels. Typed answers do not
+establish truth or permission. See
+[primitives](https://docs.typesafe.ai/primitives) and
+[confidence](https://docs.typesafe.ai/confidence).
 
-For returned snapshot jev-1.13.0, the estimated cost uses the documented $0.042
-per million input tokens, output free (checked 2026-09-29). Unknown snapshots get
-no invented price. Native compaction through Codex login has no available
-per-call cash charge. See [models and pricing](https://docs.typesafe.ai/models).
-Gate 3 reports Jev labels, false reminders, missed drift, tokens and latency,
-including any size-triggered compaction overhead; it is a small journey set, not a
-broad accuracy benchmark.
+## Thresholds
 
-Phase 4 question set 4 asks one Choice per requirement (satisfied, violated,
-unclear). Code combines all required results at the unchanged 0.90 probability
-and 0.85 confidence thresholds; two independent calls must agree. A redundant
-whole-task classification was removed after it vetoed a live candidate whose
-individual requirements all passed. Tests and current user-sequence/commit checks
-remain independent mandatory gates. No generation model supplies the numbers.
+The configured thresholds are decision policy, not an accuracy or calibration
+guarantee.
 
-Gate 3b question set 5 separates message typing (before deterministic intake)
-from action assessment (after intake). The dependency requires two calls when
-both are new; independent questions in each call still fan out. Confident steering uses
-Noul >=0.80. At <=0.20, no steering operation is applied. Intermediate presence
-or low kind confidence retains the exact message with `review_required` and
-uncertainty links; it cannot replace anything or authorize automated completion
-or drift reminders. Later source records still advance. Replacement needs kind probability/confidence
->=0.70 and target
-probability >=0.90 and confidence >=0.85. API/validation errors record gaps; uncertain replacement preserves both exact messages. These are evaluated policy thresholds,
-not a general accuracy guarantee.
+- **Completion checks** ask one Choice per requirement (satisfied, violated,
+  unclear). Code combines all required results at probability 0.90 and
+  confidence 0.85.
+- **Unattended completion** checks each outcome with probability 0.85 and
+  confidence 0.80 in both required judgments. A completion judgment must support
+  every required outcome. Tests and the current user-sequence and commit checks
+  remain separate mandatory checks.
+- **Message typing** records steering when its presence probability is at
+  least 0.80. At 0.20 or below, no steering operation is applied. Intermediate
+  presence retains the exact message with `review_required`. Kind uncertainty
+  is recorded separately as `kind_uncertain`. A message with clear steering
+  presence can have an uncertain kind without requiring review. Replacement
+  requires clear steering presence, kind probability and confidence of at least
+  0.70, and target probability of at least 0.90 with confidence of at least 0.85.
+  An uncertain replacement keeps both exact messages. Unresolved presence or
+  replacement review flags block automated completion and drift reminders.
+  API and validation errors are recorded as gaps.
 
-## Backend scope
+## Cost
 
-Alternative backend integrations require separate validation.
+For the `jev-1.13.0` model ID, this tree estimates input cost at $0.042 per
+million tokens and assigns no output-token charge. Other model IDs get no
+estimated price. Native-session token usage is separate from this estimate.
+Judgment records include reported usage and elapsed time; these metrics do not
+establish general model accuracy, and usage and latency records describe only
+the requests measured.
+
+## Testing
+
+Synthetic tests check adapter request and answer formats with authored requests.
+Saved request and response records can contain private evidence and should stay
+local. A format test does not establish a product gating policy.

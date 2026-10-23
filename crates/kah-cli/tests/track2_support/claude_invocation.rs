@@ -5,12 +5,12 @@ use std::{
     path::Path,
     process::{Command, Output},
 };
-pub fn install(home: &Path, native: &Path) {
+pub fn install(home: &Path, native: &Path, config: &Path) {
     let path = home.join(".local/bin/claude");
     let settings = r#"{"model":"claude-sonnet-5-5","effortLevel":"low","fastMode":false}"#;
     let script = format!(
         "#!/bin/bash\nset -eu\nargs=(\"$@\")\nfound=false\nfor ((i=0; i<${{#args[@]}}; i++)); do\n  if [ \"${{args[i]}}\" = -- ]; then break; fi\n  if [ \"${{args[i]}}\" = --settings ]; then\n    ((i+=1))\n    args[i]=$(/usr/bin/jq -ce --argjson fixture '{settings}' '. + $fixture' <<<\"${{args[i]}}\")\n    found=true\n  fi\ndone\nif ! $found; then args=(--settings '{settings}' \"${{args[@]}}\"); fi\nexport CLAUDE_CONFIG_DIR={} DISABLE_AUTOUPDATER=1\nexec {} \"${{args[@]}}\"\n",
-        quote(Path::new(super::claude_login::CONFIG_DIR)),
+        quote(config),
         quote(native)
     );
     fs::write(&path, script).unwrap();

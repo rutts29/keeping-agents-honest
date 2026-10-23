@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn binary_descriptor_is_native_evidence_and_the_whole_blob_stays_on_demand() {
     let root = std::env::temp_dir().join(format!("binary-review-{}", std::process::id()));
     let private = root.join("private");
@@ -57,6 +58,7 @@ fn binary_descriptor_is_native_evidence_and_the_whole_blob_stays_on_demand() {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn publishing_git_bytes_keeps_the_binary_patch_out_of_the_native_input() {
     use kah_cli::observer_review::{
         option1::binary,

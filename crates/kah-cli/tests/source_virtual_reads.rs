@@ -60,6 +60,7 @@ fn read_all(workspace: &std::path::Path, digest: &str) -> Vec<u8> {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn native_relative_virtual_document_resolves_and_expands_its_complete_catalogue() {
     let (root, private, workspace) = fixture();
     let view = workspace.join("inputs/current");
@@ -88,6 +89,7 @@ fn native_relative_virtual_document_resolves_and_expands_its_complete_catalogue(
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn virtual_segmented_text_reads_every_byte_and_rejects_corrupt_published_bytes() {
     let (root, private, workspace) = fixture();
     let view = workspace.join("inputs/current");

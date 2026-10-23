@@ -11,6 +11,14 @@ pub(super) struct Fixture {
     pub(super) overlay: PathBuf,
     pub(super) stderr: PathBuf,
     pub(super) sessions: Vec<String>,
+    /// The operator's native Codex, captured before any fixture HOME change.
+    pub(super) codex: PathBuf,
+}
+
+/// The rootless Docker endpoint of the sandbox service account.
+pub(super) fn docker_host() -> String {
+    let uid = kah_run::access::service_uid().unwrap();
+    format!("unix:///run/user/{uid}/docker.sock")
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -25,38 +33,22 @@ impl Drop for Fixture {
         }
         for id in &self.sessions {
             cleanup_observer(&self.project, id);
-            let _ = Command::new(
-                PathBuf::from(
-                    std::env::var_os("HOME").expect("HOME is required for native cleanup"),
-                )
-                .join(".local/bin/codex"),
-            )
-            .args(["delete", "--force", id])
-            .env_remove("CODEX_HOME")
-            .env_remove("HERDR_ENV")
-            .env_remove("CODEX_THREAD_ID")
-            .output();
+            let _ = Command::new(&self.codex)
+                .args(["delete", "--force", id])
+                .env_remove("CODEX_HOME")
+                .env_remove("HERDR_ENV")
+                .env_remove("CODEX_THREAD_ID")
+                .output();
         }
+        let host = docker_host();
         let ids = Command::new("/usr/bin/docker")
-            .args([
-                "--host",
-                "unix:///run/user/2001/docker.sock",
-                "ps",
-                "-aq",
-                "--filter",
-            ])
+            .args(["--host", host.as_str(), "ps", "-aq", "--filter"])
             .arg(format!("label=dev.kah.project={}", self.project.display()))
             .output()
             .unwrap();
         for id in String::from_utf8_lossy(&ids.stdout).split_whitespace() {
             let _ = Command::new("/usr/bin/docker")
-                .args([
-                    "--host",
-                    "unix:///run/user/2001/docker.sock",
-                    "rm",
-                    "-f",
-                    id,
-                ])
+                .args(["--host", host.as_str(), "rm", "-f", id])
                 .output();
         }
         let _ = fs::remove_dir_all(&self.project);
@@ -100,6 +92,7 @@ pub(super) fn prepare(home: &Path, domain: &str, online: bool) -> (Launch, Fixtu
         canary: home.join(format!(".cache/{name}-canary")),
         stderr: home.join(format!(".cache/{name}-stderr")),
         sessions: vec![],
+        codex: home.join(".local/bin/codex"),
     };
     fs::write(&f.canary, "untouched").unwrap();
     (launch, f)

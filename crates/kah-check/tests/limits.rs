@@ -49,6 +49,17 @@ fn build_output_is_excluded() {
 }
 
 #[test]
+fn a_configured_build_directory_with_any_name_is_excluded() {
+    let fixture = Fixture::new("custom-build");
+    fixture.write("out/debug/generated.rs", 1000);
+    assert!(kah_check::check_tree(&fixture.0).is_err());
+    let build = fixture.0.join("out");
+    assert!(kah_check::check_tree_excluding(&fixture.0, Some(&build)).is_ok());
+    fixture.write("src/lib.rs", 401);
+    assert!(kah_check::check_tree_excluding(&fixture.0, Some(&build)).is_err());
+}
+
+#[test]
 fn non_rust_test_files_also_obey_the_test_size_limit() {
     let fixture = Fixture::new("shell-test");
     fixture.write("tests/journey.txt", 601);

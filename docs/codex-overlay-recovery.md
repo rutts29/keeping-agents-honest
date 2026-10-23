@@ -1,6 +1,6 @@
 # Native Codex overlay recovery
 
-Checked against installed `codex-cli 0.160.0`, upstream tag `rust-v0.160.0`
+The native-writer references in this page describe Codex tag `rust-v0.160.0`
 (`79b1b666f2e8551f8abbbca34957227f67f3f553`). The configuration reference exposes
 the credential backend and SQLite directory, but no independent auth, session-index,
 history or model-cache file path. File auth stays under `CODEX_HOME`; switching
@@ -25,10 +25,12 @@ Source traces: [index writer](https://github.com/openai/codex/blob/rust-v0.160.0
 [cache writer](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/models-manager/src/cache.rs),
 [history writer](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/message-history/src/lib.rs).
 kah's first-turn naming and run names call the same native name API; they do not
-rewrite the index themselves. The exact historical actor that replaced the user's
-link is not established by its mtime. It is not attributed to rename without proof.
+rewrite the index themselves. A replaced overlay link is a recovery
+condition; its modification time alone does not identify the operation that
+replaced it. Recovery validates the current files before deciding whether they
+can be merged or relinked.
 
-Every overlay preparation now distinguishes a link from a regular file before
+Every overlay preparation distinguishes a link from a regular file before
 reading a link target. Recovery runs only for the four known mutable files:
 
 - Index: parse RFC3339 timestamps (including offsets), retain every id's newest
@@ -51,8 +53,8 @@ in-process. Native deletion/replacement during repair is detected; the local cop
 is retained for retry. History uses native-compatible locking. These controls do
 not make uncooperative native filesystem operations a cross-process transaction.
 
-Auth's current native writer preserves links, so no refresh divergence is created
-by kah. If an auth fork already exists, recovery refuses while native Codex clients
+The linked `rust-v0.160.0` auth writer preserves existing links when it saves a
+record, so kah does not create a refresh divergence. If an auth fork already exists, recovery refuses while native Codex clients
 using that fork are running. Promoting a newer fork also requires canonical-store
 clients to be closed: its auth refresh lock is process-local. Keeping a newer
 canonical record does not require stopping its clients. Close affected clients
@@ -65,6 +67,6 @@ with contents withheld. Unknown replacement types and foreign links are retained
 No global config or provider binary is edited. This does not invent a new auth
 store, gateway, background synchronizer or daemon policy.
 
-Fixture cleanup now clears inherited `CODEX_HOME` for native deletion of its
-explicitly tracked fixture IDs. It uses the canonical native home instead of
-possibly rewriting the builder's overlay index. No user sessions are deleted.
+Fixture cleanup clears inherited `CODEX_HOME` and uses the canonical native home
+for its explicitly recorded fixture session IDs, instead of possibly rewriting an
+overlay index. No user sessions are deleted.

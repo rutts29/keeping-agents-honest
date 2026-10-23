@@ -164,13 +164,7 @@ fn own_hook(f: &Fixture, overlay: &Path) {
     )
     .unwrap();
     fs::set_permissions(&handler, fs::Permissions::from_mode(0o700)).unwrap();
-    install_session_hook(
-        Path::new("/home/example/.local/bin/codex"),
-        overlay,
-        &f.project,
-        &handler,
-    )
-    .unwrap();
+    install_session_hook(&super::native_codex(), overlay, &f.project, &handler).unwrap();
     assert_eq!(run(overlay, f, false)["status"], "completed");
     assert_eq!(fs::read_to_string(canary).unwrap(), "owned");
     assert!(canaries(f).iter().all(|(_, hit)| !hit));

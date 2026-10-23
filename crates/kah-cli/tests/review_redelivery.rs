@@ -92,6 +92,7 @@ fn failed_redelivery(origin: kah_cli::observer_review::failure::Origin, error: &
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn redelivery_refreshes_old_helper_and_schema_without_changing_request_sources() {
     let worker = format!("redelivery-upgrade-unit-{}", std::process::id());
     // Keep the fixture workspace under the isolated test state root.
@@ -173,6 +174,7 @@ fn setup(worker: &str, home: &Path) -> State {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn context_redelivery_does_not_republish_unrelated_report_documents() {
     use kah_cli::observer_review::{preparation, redelivery};
     let worker = format!("redelivery-context-only-{}", kah_cli::relay_store::nonce());
@@ -233,6 +235,7 @@ fn context_redelivery_does_not_republish_unrelated_report_documents() {
     fs::remove_dir_all(home).unwrap();
 }
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn restoring_a_reference_counts_as_expansion_without_increasing_document_count() {
     if let Some(path) = std::env::var_os("KAH_RETAINED_REFERENCE_CASE") {
         retained_restoration::run(Path::new(&path));

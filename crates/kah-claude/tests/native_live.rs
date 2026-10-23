@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf, process::Command};
 
 #[test]
-#[ignore = "real Claude login, transcript and hooks; run only through make gate"]
+#[ignore = "real Claude login, transcript and hooks; opt-in live run"]
 fn installed_transcript_and_hooks() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let project = home.join(format!(

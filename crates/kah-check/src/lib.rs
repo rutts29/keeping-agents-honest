@@ -1,23 +1,37 @@
 use std::{fs, path::Path};
 
+/// Check every source file under `root`, skipping a build directory named by
+/// `CARGO_TARGET_DIR` (relative values resolve against `root`).
 pub fn check_tree(root: &Path) -> Result<(), String> {
-    visit(root, root)
+    let target = std::env::var_os("CARGO_TARGET_DIR").map(|dir| root.join(dir));
+    check_tree_excluding(root, target.as_deref())
 }
 
-fn visit(root: &Path, path: &Path) -> Result<(), String> {
+/// Check every source file under `root` except the `excluded` subtree.
+pub fn check_tree_excluding(root: &Path, excluded: Option<&Path>) -> Result<(), String> {
+    let excluded = excluded.and_then(|path| fs::canonicalize(path).ok());
+    visit(root, root, excluded.as_deref())
+}
+
+fn visit(root: &Path, path: &Path, excluded: Option<&Path>) -> Result<(), String> {
     for entry in fs::read_dir(path).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let path = entry.path();
         let kind = entry.file_type().map_err(io_error)?;
         if kind.is_dir() {
-            if !["target", ".git"].contains(&entry.file_name().to_string_lossy().as_ref()) {
-                visit(root, &path)?;
+            if !skipped(&entry.file_name().to_string_lossy(), &path, excluded) {
+                visit(root, &path, excluded)?;
             }
         } else if kind.is_file() {
             check_file(root, &path)?;
         }
     }
     Ok(())
+}
+
+fn skipped(name: &str, path: &Path, excluded: Option<&Path>) -> bool {
+    ["target", ".git"].contains(&name)
+        || excluded.is_some_and(|dir| fs::canonicalize(path).is_ok_and(|real| real == dir))
 }
 
 fn check_file(root: &Path, path: &Path) -> Result<(), String> {

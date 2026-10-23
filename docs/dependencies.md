@@ -1,9 +1,12 @@
-# Added dependencies
+# Dependency notes
 
-`toml = 1.1.6` parses and renders independent Codex overlay configuration. Avoids
-an incomplete custom TOML parser and accidental edits to shared config. MIT/Apache
-2.0, no package build script. The upstream [toml-rs repository](https://github.com/toml-rs/toml)
-has history before December 2019 and was active on September 18, 2026
-(`e4b8bda51c458b3c9b5671b6ad50a0a4a279f583`). Registry identity and source checked
-with `cargo info toml`; transitive parser/writer/serde helpers recorded in the
-lockfile. `make check` audits the resolved graph before commits.
+`toml` parses and renders the independent Codex overlay configuration. It avoids
+an incomplete custom TOML parser and accidental edits to shared config. The
+Cargo manifests pin the dependency, and `Cargo.lock` records its resolved
+dependency graph, including the transitive parser, writer and serde helpers. The
+upstream [toml-rs repository](https://github.com/toml-rs/toml) publishes its
+source and licensing information.
+
+Use the checked-in manifests and lockfile to identify the dependencies in this
+tree. `make audit` runs `cargo audit` against that lockfile; it needs
+`cargo-audit` and an advisory database, and it is separate from `make check`.

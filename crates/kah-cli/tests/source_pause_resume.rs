@@ -7,8 +7,9 @@ use kah_cli::observer_review::source_store;
 use std::{fs, os::unix::fs::PermissionsExt, process::Command};
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn paused_request_publication_restores_descriptor_and_view_read_access() {
-    let fixture_service_uid = kah_run::access::service_uid().unwrap();
+    let uid = kah_run::access::service_uid().unwrap();
     let root = std::env::temp_dir().join(format!("paused-source-{}", std::process::id()));
     let private = root.join("private");
     let workspace = root.join("observer");
@@ -26,7 +27,7 @@ fn paused_request_publication_restores_descriptor_and_view_read_access() {
         .to_string(),
     )
     .unwrap();
-    kah_run::access::share_tree(&input, fixture_service_uid, false).unwrap();
+    kah_run::access::share_tree(&input, uid, false).unwrap();
     fs::write(workspace.join("observer-paused"), "native provider block").unwrap();
     // Atomic private saves mask inherited ACLs until publication grants read.
     source_store::text(&private, &descriptor, "Whole authorized evidence.\n").unwrap();
@@ -36,16 +37,16 @@ fn paused_request_publication_restores_descriptor_and_view_read_access() {
     fs::remove_file(workspace.join("observer-paused")).unwrap();
     source_store::share(&private, &input).unwrap();
     let after = acl(&descriptor);
-    assert!(after.contains(format!("user:{fixture_service_uid}:r-").as_str()), "{after}");
+    assert!(after.contains(&format!("user:{uid}:r-")), "{after}");
     assert!(!after.contains("#effective:---"), "{after}");
-    assert!(!after.contains(format!("user:{fixture_service_uid}:rw").as_str()));
+    assert!(!after.contains(&format!("user:{uid}:rw")));
     assert_eq!(fs::read(&descriptor).unwrap(), original);
     assert_eq!(
         source_store::load_text(&descriptor).unwrap(),
         "Whole authorized evidence.\n"
     );
     for entry in fs::read_dir(private.join("sources")).unwrap() {
-        assert!(!acl(&entry.unwrap().path()).contains(format!("user:{fixture_service_uid}:").as_str()));
+        assert!(!acl(&entry.unwrap().path()).contains(&format!("user:{uid}:")));
     }
     fs::remove_dir_all(root).unwrap();
 }

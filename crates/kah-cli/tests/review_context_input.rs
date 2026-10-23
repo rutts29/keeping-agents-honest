@@ -49,10 +49,9 @@ fn measure_retained_context_catalogues() {
         "review-1000000000009-1",
         "review-1000000000010-1",
     ] {
-        let input = std::path::PathBuf::from(
-            "/home/example/.cache/kah-observers/000000000000000000000001/inputs",
-        )
-        .join(id);
+        let input =
+            std::path::PathBuf::from(std::env::var_os("KAH_CONTEXT_SIZE_INPUT_ROOT").unwrap())
+                .join(id);
         let request: Request =
             kah_cli::observer_review::source_store::read(&input.join("request.json")).unwrap();
         let view = context_input::view(&request, &input);

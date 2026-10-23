@@ -59,6 +59,7 @@ fn optional_map_survives_transport_and_only_bound_light_requirements_are_accepte
     );
 }
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn checked_map_publication_preserves_private_request_sha_provenance_and_plain_native_input() {
     let request = request();
     let report = report(&request);

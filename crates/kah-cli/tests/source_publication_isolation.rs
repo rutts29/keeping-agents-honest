@@ -26,6 +26,7 @@ fn synthetic_uid() -> u32 {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn publishing_and_republishing_evidence_never_share_private_inodes_or_acls() {
     let uid = kah_run::access::service_uid().unwrap();
     let root = std::env::temp_dir().join(format!(
@@ -116,6 +117,7 @@ fn legacy_link_retirement_preserves_private_bytes_without_copying() {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn a_catalogue_view_recovers_nested_json_and_segmented_text_without_unrelated_sources() {
     let uid = kah_run::access::service_uid().unwrap();
     let root = std::env::temp_dir().join(format!("source-view-graph-{}", std::process::id()));

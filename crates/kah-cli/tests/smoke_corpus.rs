@@ -2,6 +2,7 @@
 use std::{fs, os::unix::fs::MetadataExt, process::Command};
 
 #[test]
+#[ignore = "host setup: sandbox service account resolved by the smoke environment script"]
 fn shared_smoke_setup_copies_the_explicit_closed_corpus_without_shared_inodes() {
     let root = std::env::temp_dir().join(format!("kah-smoke-corpus-{}", std::process::id()));
     for path in ["home", "claude", "seeds/kah-eval/completion"] {

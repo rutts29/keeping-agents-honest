@@ -117,7 +117,10 @@ fn launch_command(probe: &Probe, project: &Path, domain: &str) -> String {
     let executable = env::current_exe().unwrap();
     let kah = Path::new(env!("CARGO_BIN_EXE_kah"));
     let name = project.file_name().unwrap().to_str().unwrap();
-    let restricted_prompt = "steer: Use native exec_command once: pwd; test ! -e /home/example/.codex/auth.json && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create herdr-proof.txt containing HERDR_WORKS. Disposable Herdr test, no other tools, subagents or commits. Report and stop.";
+    let restricted_prompt = &format!(
+        "steer: Use native exec_command once: pwd; test ! -e {} && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create herdr-proof.txt containing HERDR_WORKS. Disposable Herdr test, no other tools, subagents or commits. Report and stop.",
+        super::host_codex_login_quoted()
+    );
     let prompt = if domain == "research" {
         restricted_prompt
     } else {

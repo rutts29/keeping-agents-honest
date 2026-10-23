@@ -41,8 +41,9 @@ fn claude_in_gvisor_without_credentials() {
             "/bin/sh",
             "-c",
             &format!(
-                "test \"$(id -u)\" = 65534 && test ! -e '{}' && test ! -e /run/user/2001/docker.sock && echo ISOLATED",
-                f.root.join("host-canary").display()
+                "test \"$(id -u)\" = 65534 && test ! -e '{}' && test ! -e /run/user/{}/docker.sock && echo ISOLATED",
+                f.root.join("host-canary").display(),
+                kah_run::access::service_uid().unwrap()
             ),
         ],
     );

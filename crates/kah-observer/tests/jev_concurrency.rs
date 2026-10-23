@@ -6,6 +6,7 @@ use kah_observer::judge::{
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
+mod corpus;
 mod jev_concurrency_support;
 use jev_concurrency_support::{Corpus, Stub};
 
@@ -79,8 +80,9 @@ fn lower_stub_limits_and_retry_after_finish_without_judgment_drift() {
 }
 fn private_root(label: &str) -> PathBuf {
     let base = PathBuf::from(std::env::var_os("KAH_CONCURRENCY_FIXTURE").unwrap());
-    assert!(base.starts_with("/mnt/kah-fixtures/cargo/test-fixtures"));
-    let root = base.join(label);
+    let corpus_root = std::env::var_os("KAH_CONCURRENCY_CORPUS").map(PathBuf::from);
+    let inputs: Vec<&std::path::Path> = corpus_root.iter().map(PathBuf::as_path).collect();
+    let root = corpus::fresh_output(&base.join(label), &inputs);
     kah_core::run_store::ensure_private_directory(&root).unwrap();
     root
 }

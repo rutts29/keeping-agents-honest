@@ -3,8 +3,11 @@
 | Domain | Interactive execution | Network | Extra option |
 |---|---|---|---|
 | Mine (`~/repos/mine`) | Host workspace permissions | Enabled | `--yolo` for native full host access |
-| Research (`~/repos/research`) | gVisor, project only | Sandbox offline by default; hosted search on | `--online` enables sandbox egress |
-| Untrusted (`~/repos/untrusted`) | gVisor, project only | Sandbox offline by default; hosted search on | `--online` enables sandbox egress; no yolo |
+| Research (`~/repos/research`) | Restricted: gVisor commands, project and selected setup mounts | Sandbox offline by default; hosted search on | `--online` enables sandbox egress |
+| Untrusted (`~/repos/untrusted`) | Restricted: gVisor commands, project and selected setup mounts | Sandbox offline by default; hosted search on | `--online` enables sandbox egress; no yolo |
+
+Restricted commands run in gVisor. Claude's native file tools remain on the host
+under invocation-local permissions; see [Claude execution](claude-adapter.md).
 
 ```sh
 kah                                      # current project
@@ -16,7 +19,8 @@ kah -- resume --all                       # shared native history picker
 kah -- resume SESSION_ID                  # restores saved project and policy
 ```
 
-Plain `codex` in these roots routes through kah via `.bashrc`; `cx` forwards to kah.
+After you source `~/.local/share/kah/shell.sh`, interactive `codex` commands under
+the three domain roots route through kah; `cx` forwards to kah.
 Native Codex management commands pass through, including app-server, login,
 update and features. Existing shells can refresh the function with
 `source ~/.local/share/kah/shell.sh`.
@@ -34,9 +38,9 @@ kah --agent claude -- --resume SESSION_ID
 Start in the saved project when resuming. Omitted model and effort use native
 choices. kah adds invocation-local hooks; global settings/hooks stay intact.
 Restricted launches use user settings plus invocation-local policy; repository
-executable settings are excluded. Native Claude send/steer transport is not
-implemented; type overrides in chat or use Herdr. Unattended run controls use
-their own Herdr pane.
+executable settings are excluded. kah can deliver Claude session
+messages through the Herdr pane recorded by its host hook. Unattended run
+controls use their own Herdr pane.
 
 Type ordinary chat messages beginning `steer: Keep the API unchanged` or
 `aside: This is only a note`. Case and leading whitespace do not matter. `steer:`
@@ -54,9 +58,11 @@ kah steer SESSION_ID 'steer: Keep the API unchanged' --receipt change-001
 kah send SESSION_ID '[kah-reviewer] Review findings' --sender kah-reviewer --receipt review-001
 ```
 
-Native send/steer needs an initialized live conversation with a control socket.
-Embedded kah TUIs currently lack that socket; type steer:/aside: in their chat. Reuse the same receipt
-and exact text on retry; use a new receipt for each new message. `kah send` marks
+Session messaging uses a connected Codex control endpoint or a validated
+recorded Herdr pane. An embedded session can receive CLI messages through Herdr
+when kah has recorded its pane and server; otherwise type `steer:`/`aside:` in its
+chat. Reuse the same receipt and exact text on retry; use a new receipt for each
+new message. `kah send` marks
 delegate provenance and cannot create user intent. Review commands require user
 authority and call no judge. Add `--json` to status/ledger for structured output.
 
@@ -74,12 +80,13 @@ worktree from committed HEAD, with gVisor commands in every domain and model
 logins on the host. Choose `--model`/`--effort` if desired; `--online` opens
 workspace egress, which a task or test that fetches crates or packages needs.
 kah returns a local `kah/run-ID` branch for user review/merge.
-Native launch, completion, steering, kill/resume and limits pass live; see STATUS.
+See [unattended work](unattended.md) for run controls, verification and resume
+behavior.
 
 `kah smoke` runs one ephemeral native Codex command in a disposable offline
 Research executor, checks host isolation and cleans up. It uses your configured
-model/login and incurs one short model turn. Automation may use this smoke;
-ordinary development must not invoke the updater or sudo.
+model/login and incurs one short model turn. Run it explicitly when you want to
+check the configured native launch and sandbox.
 
 Completion diagnostics: `kah eval completion ~/.local/share/kah-eval/completion/FILE.json`
 replays the saved scrubbed Jev request without changing an active run or its

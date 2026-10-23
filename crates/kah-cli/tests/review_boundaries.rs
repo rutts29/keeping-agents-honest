@@ -143,13 +143,31 @@ fn skills(client: &mut Client, project: &Path) -> Value {
     json!({"domain":project.parent().unwrap().file_name().unwrap().to_str(),"restoredSkillsDiscovered":true,"enabledUserSkills":names})
 }
 
+fn quote(path: &Path) -> String {
+    format!("'{}'", path.to_str().unwrap().replace('\'', "'\\''"))
+}
+
 fn native_skill_read(first: &mut Client, id: &str, home: &Path) {
     let skill = home
         .join(".agents/skills/ponytail/SKILL.md")
         .canonicalize()
         .unwrap();
     let skill_before = fs::read(&skill).unwrap();
-    let turn = first.turn(id, &format!("Use native exec_command once: test ! -e /home/example/.config/kah/typesafe.key && echo JEV_KEY_HOST_ONLY; head -n 3 '{}'; test -r '{}' && echo POLICY_SOURCE_READY; if printf FORBIDDEN >> '{}'; then echo UNSAFE_SKILL_WRITE; else echo SKILL_READ_ONLY; fi. Report and stop. No other tools.",skill.display(),skill.display(),skill.display()));
+    // The key may be absent before launch, so a real host-only file proves the hiding.
+    let canary = home.join(format!(
+        ".cache/kah-boundary-canary-{}",
+        kah_cli::relay_store::nonce()
+    ));
+    fs::create_dir_all(canary.parent().unwrap()).unwrap();
+    fs::write(&canary, "host-only").unwrap();
+    assert!(canary.exists());
+    let (key, canary_arg) = (
+        quote(&home.join(".config/kah/typesafe.key")),
+        quote(&canary),
+    );
+    let skill_arg = quote(&skill);
+    let turn = first.turn(id, &format!("Use native exec_command once: test ! -e {key} && test ! -e {canary_arg} && echo JEV_KEY_HOST_ONLY; head -n 3 {skill_arg}; test -r {skill_arg} && echo POLICY_SOURCE_READY; if printf FORBIDDEN >> {skill_arg}; then echo UNSAFE_SKILL_WRITE; else echo SKILL_READ_ONLY; fi. Report and stop. No other tools."));
+    fs::remove_file(&canary).unwrap();
     assert_eq!(skill_before, fs::read(&skill).unwrap());
     assert_eq!(turn["status"], "completed");
     let evidence = serde_json::to_string(&first.events).unwrap();

@@ -70,6 +70,7 @@ fn submit(root: &Path, request: &Request, report: &Path) -> Result<()> {
 }
 
 #[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn a_second_request_with_the_same_anchor_refreshes_a_changed_report_before_expansion() {
     use crate::observer_review::{
         commit_packet, packet_references, source_store,

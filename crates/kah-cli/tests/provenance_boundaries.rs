@@ -6,6 +6,10 @@ use client::Client;
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, time::Duration};
 
+fn quote(path: &std::path::Path) -> String {
+    format!("'{}'", path.to_str().unwrap().replace('\'', "'\\''"))
+}
+
 #[test]
 #[ignore = "live Research/Untrusted isolation; requires Codex login, Herdr and sandbox host setup"]
 fn restricted_executors_cannot_reach_herdr() {
@@ -20,7 +24,9 @@ fn restricted_executors_cannot_reach_herdr() {
         let start = client.request("thread/start", json!({"cwd":f.project}));
         let id = start["thread"]["id"].as_str().unwrap();
         f.sessions.push(id.into());
-        let turn=client.turn(id,"Run exactly this native shell command and report its result; no other work: set -eu; test ! -e /home/example/.config/herdr; test ! -e /home/example/.codex/app-server-control; test ! -e /home/example/.local/bin/herdr; ! command -v herdr; ! env | sed 's/=.*//' | grep '^HERDR_'; printf 'HERDR_ISOLATED\\n'");
+        assert!(f.canary.exists(), "positive host-only canary");
+        let q = |relative: &str| quote(&home.join(relative));
+        let turn=client.turn(id,&format!("Run exactly this native shell command and report its result; no other work: set -eu; test ! -e {}; test ! -e {}; test ! -e {}; test ! -e {}; ! command -v herdr; ! env | sed 's/=.*//' | grep '^HERDR_'; printf 'HERDR_ISOLATED\\n'", q(".config/herdr"), q(".codex/app-server-control"), q(".local/bin/herdr"), quote(&f.canary)));
         assert_eq!(turn["status"], "completed");
         let commands = client
             .events

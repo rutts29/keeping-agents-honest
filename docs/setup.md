@@ -1,9 +1,10 @@
 # Global setup in restricted domains
 
-Phase 5R integration passes live; see STATUS and phase-5r-audit.md for coverage.
+This page describes how restricted launches share installed setup and route hooks
+and MCP servers.
 
-Own MCP servers use an online gVisor executor by default; ordinary sandbox
-commands still follow --online. URL MCP connections remain native host
+Local stdio MCP servers use an online gVisor executor by default, while ordinary
+sandbox commands follow `--online`. URL MCP connections remain native host
 connections. kah does not probe servers or infer their network needs.
 
 Optional ~/.config/kah/setup.json stores persistent operator choices:
@@ -33,9 +34,9 @@ Native hook approvals carry over only when the original definition still has
 its approved native hash; changed or previously unapproved definitions retain
 native review behavior.
 
-Claude uses native ~/.claude for settings, plugins, project history and its one
-subscription credential store. kah never copies that store or selects a
-per-domain CLAUDE_CONFIG_DIR. Invocation-local --settings adds permissions and
+Claude uses its configured native store, which defaults to ~/.claude, for
+settings, plugins, project history and its subscription credentials. kah never
+copies that store and does not create per-domain credential stores. Invocation-local --settings adds permissions and
 observer hooks; the native shell prefix routes existing shell hooks. Native
 --mcp-config overlays route declared stdio servers without editing user config;
 secret-bearing declarations use the native deniedMcpServers setting until enabled.
@@ -43,5 +44,5 @@ secret-bearing declarations use the native deniedMcpServers setting until enable
 Research and Untrusted use native --setting-sources user: repository
 .claude/settings.json and settings.local.json cannot supply host helpers,
 exec-form hooks, or environment overrides. Project CLAUDE.md, skills and agents
-remain available as native instructions. The user's own exec-form hooks remain
-host-side, an accepted limit; shell-form hooks use the gVisor prefix.
+remain available as native instructions. User-owned exec-form hooks can run on the host, while shell-form hooks use the
+gVisor prefix.

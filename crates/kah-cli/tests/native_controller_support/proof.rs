@@ -39,7 +39,22 @@ pub(super) fn native_name(home: &Path, directory: &Path, id: &str, record: &Reco
     }
 }
 
-pub(super) const VERIFY: &str = "node -e 'const a=require(\"node:assert/strict\"), f=require(\"node:fs\"), double=require(\"./double.js\"); a.equal(double(21),42); a.equal(double(-3),-6); a.ok(!f.existsSync(\"/home/example/.codex/auth.json\")); a.ok(!f.existsSync(\"/home/example/.claude/.credentials.json\")); console.log(\"FUNCTION_OK LOGIN_HIDDEN\")'";
+/// Verification command: the function works and neither native login of
+/// `home` and a real host-only `canary` file are visible to it. The paths
+/// reach node as arguments.
+pub(super) fn verify_command(home: &Path, canary: &Path) -> String {
+    let login = |relative: &str| shell_quote(&home.join(relative).display().to_string());
+    format!(
+        "node -e 'const a=require(\"node:assert/strict\"), f=require(\"node:fs\"), double=require(\"./double.js\"); a.equal(double(21),42); a.equal(double(-3),-6); a.ok(!f.existsSync(process.argv[1])); a.ok(!f.existsSync(process.argv[2])); a.ok(!f.existsSync(process.argv[3])); console.log(\"FUNCTION_OK LOGIN_HIDDEN\")' {} {} {}",
+        login(".codex/auth.json"),
+        login(".claude/.credentials.json"),
+        shell_quote(&canary.display().to_string())
+    )
+}
+
+fn shell_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
 
 pub(super) fn native_tools(home: &Path, directory: &Path, record: &Record) {
     let native = record.native.as_ref().unwrap();

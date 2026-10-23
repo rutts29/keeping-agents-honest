@@ -3,7 +3,7 @@ mod helper_binary;
 use serde_json::{Value, json};
 use std::{
     fs,
-    os::unix::fs::{PermissionsExt, symlink},
+    os::unix::fs::{MetadataExt, PermissionsExt, symlink},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -20,17 +20,14 @@ pub struct Fixture {
     operator_config: PathBuf,
     operator_claude: PathBuf,
     claude_before: Value,
+    /// The Claude test-login config, resolved once and only for modes that use Claude.
+    pub claude_config: Option<PathBuf>,
 }
 impl Fixture {
     pub fn new(mode: &str) -> Self {
         let actual = PathBuf::from(std::env::var_os("HOME").unwrap());
         let name = format!("kah-gate-track2-{}", kah_observer::session::now_ms());
-        let base = if mode == "native5e" {
-            PathBuf::from("/tmp")
-        } else {
-            PathBuf::from("/mnt/kah-fixtures/cargo/test-fixtures")
-        };
-        let root = base.join(&name);
+        let root = fixture_base().join(&name);
         assert!(!root.exists(), "TRACK2_EXISTING_FIXTURE stage=prepare");
         kah_core::run_store::ensure_private_directory(&root).unwrap();
         let home = prepare_home(&root, mode);
@@ -45,6 +42,8 @@ impl Fixture {
             operator_config: actual.join(".config/kah"),
             operator_claude: actual.join(".claude"),
             claude_before: super::claude_metadata::snapshot(&actual.join(".claude")),
+            claude_config: super::claude_login::requires_claude(mode)
+                .then(super::claude_login::config_dir),
         };
         save(
             &result.root.join("config-before.json"),
@@ -69,7 +68,13 @@ impl Fixture {
             self.home.join(".local/bin/codex"),
         )
         .unwrap();
-        super::claude_invocation::install(&self.home, &actual.join(".local/bin/claude"));
+        if let Some(config) = &self.claude_config {
+            super::claude_invocation::install(
+                &self.home,
+                &actual.join(".local/bin/claude"),
+                config,
+            );
+        }
         let binary = std::env::var_os("KAH_TRACK2_BINARY")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_kah")));
@@ -114,7 +119,7 @@ impl Fixture {
             let source = PathBuf::from(row["path"].as_str().unwrap());
             assert!(
                 source.starts_with(if row["provider"] == "claude" {
-                    PathBuf::from(super::claude_login::CONFIG_DIR).join("projects")
+                    self.claude_config().join("projects")
                 } else {
                     actual.to_path_buf()
                 }),
@@ -133,7 +138,7 @@ impl Fixture {
             let target = if row["provider"] == "codex" {
                 self.home.join(source.strip_prefix(actual).unwrap())
             } else {
-                PathBuf::from(super::claude_login::CONFIG_DIR)
+                self.claude_config()
                     .join("projects")
                     .join(kah_claude::paths::project_key(
                         &self.home.join("repos/mine/fixture-claude"),
@@ -200,6 +205,11 @@ impl Fixture {
         if super::claude_login::requires_claude(mode) {
             super::trust::preseed_claude(&self.home, &self.home.join("repos/mine/fixture-claude"));
         }
+    }
+    fn claude_config(&self) -> &Path {
+        self.claude_config
+            .as_deref()
+            .expect("TRACK2_CLAUDE_CONFIG stage=sources: this mode has no Claude test login")
     }
     pub fn audit(&self) -> Value {
         let protected = self
@@ -275,12 +285,36 @@ impl Fixture {
         )
     }
 }
+/// The private `track2` directory below `KAH_TEST_FIXTURE_BASE` (or a
+/// directory under the system temporary one). The configured base must be
+/// owned by the operator; it is created private when absent. Shared or
+/// unowned temporary parents are never modified.
+fn fixture_base() -> PathBuf {
+    let configured = std::env::var_os("KAH_TEST_FIXTURE_BASE")
+        .map_or_else(|| std::env::temp_dir().join("kah-fixtures"), PathBuf::from);
+    if !configured.exists() {
+        kah_core::run_store::ensure_private_directory(&configured).unwrap();
+    }
+    let configured = configured.canonicalize().unwrap();
+    assert_eq!(
+        fs::metadata(&configured).unwrap().uid(),
+        kah_sandbox::current_uid().unwrap(),
+        "TRACK2_FIXTURE_BASE_OWNER stage=prepare"
+    );
+    let base = configured.join("track2");
+    kah_core::run_store::ensure_private_directory(&base).unwrap();
+    base
+}
 fn prepare_home(root: &Path, mode: &str) -> PathBuf {
-    // Native Mine runs as the operator. Root-owned tmpfs /tmp rejects ancestor
-    // ACL changes; only sandbox fixtures need service-UID traversal.
+    // Native Mine runs as the operator; only sandbox fixtures need
+    // service-UID traversal.
     if mode != "native5e" {
         let uid = kah_run::access::service_uid().unwrap();
-        for parent in [root, root.parent().unwrap()] {
+        let configured = fixture_base().parent().unwrap().to_path_buf();
+        for parent in root
+            .ancestors()
+            .take_while(|path| path.starts_with(&configured))
+        {
             kah_run::access::traverse(parent, uid).unwrap();
         }
     }

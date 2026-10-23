@@ -13,7 +13,7 @@ fn verification_runs_in_the_same_confined_worktree_and_has_a_deadline() {
         LaunchOptions::default(),
         Path::new("/public/codex"),
         "fixture-image",
-        42420,
+        65532,
     )
     .unwrap();
     executor.use_nobody();

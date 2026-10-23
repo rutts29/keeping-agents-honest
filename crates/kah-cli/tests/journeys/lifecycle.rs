@@ -1,4 +1,7 @@
-use super::{fixture::prepare, operations};
+use super::{
+    fixture::{docker_host, prepare},
+    operations,
+};
 use crate::client::Client;
 use serde_json::{Value, json};
 use std::{
@@ -59,14 +62,9 @@ pub fn resume_and_loss() {
 }
 
 fn kill_executor(project: &Path) -> Vec<String> {
+    let host = docker_host();
     let output = Command::new("/usr/bin/docker")
-        .args([
-            "--host",
-            "unix:///run/user/2001/docker.sock",
-            "ps",
-            "-q",
-            "--filter",
-        ])
+        .args(["--host", host.as_str(), "ps", "-q", "--filter"])
         .arg(format!("label=dev.kah.project={}", project.display()))
         .output()
         .unwrap();
@@ -75,7 +73,7 @@ fn kill_executor(project: &Path) -> Vec<String> {
     assert!(!ids.is_empty(), "expected project executors");
     assert!(
         Command::new("/usr/bin/docker")
-            .args(["--host", "unix:///run/user/2001/docker.sock", "kill"])
+            .args(["--host", host.as_str(), "kill"])
             .args(&ids)
             .output()
             .unwrap()
