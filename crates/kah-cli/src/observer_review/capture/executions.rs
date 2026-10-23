@@ -1,6 +1,6 @@
 //! Native app-server commandExecution and Claude tool-use/result linkage.
-//! Official0.160 API reference; Claude2.1.292 native transcript fields and
-//! official hook tool_use_id/tool_input documentation. No marker-text parsing.
+//! Codex app-server API reference; Claude Code native transcript fields and the
+//! hook tool_use_id/tool_input documentation. No marker-text parsing.
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;

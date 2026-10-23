@@ -1,9 +1,6 @@
 //! Guard the native bottom-pane purchase/usage picker, not transcript prose.
-//! Codex 0.160.0: tui/src/bottom_pane/actionable_banner.rs (numeric CTA footer),
-//! chatwidget/backend_banners.rs (focused reserve picker; CTA copy is server-owned).
-//! Claude 2.1.292: shipped rate-limit-options/pro-trial-expired modules use
-//! _e("What do you want to do?") + Ue(options); official tag publishes changelog
-//! but not those implementation modules. No native billing action is invoked.
+//! Detects the native purchase/usage picker on screen, checked against Codex
+//! 0.160.0 and Claude Code 2.1.292. No native billing action is invoked.
 pub fn active(screen: &str) -> bool {
     let lines: Vec<String> = screen
         .lines()
@@ -64,8 +61,8 @@ fn billing_option(line: &str) -> bool {
     .any(|word| line.contains(word))
 }
 
-// Claude 2.1.292 CP/GXe: bordered amount input with a native confirmation
-// instruction or card-charge disclosure; these are inputs rather than pickers.
+// Bordered amount input with a native confirmation line or card-charge
+// disclosure; these are inputs, not pickers.
 fn amount_dialog(lines: &[String]) -> bool {
     let Some(start) = lines.iter().rposition(|line| {
         line == "buy usage credits" || line == "confirm amount" || line == "set monthly spend limit"

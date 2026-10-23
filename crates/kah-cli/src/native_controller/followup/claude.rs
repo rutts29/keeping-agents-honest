@@ -1,4 +1,4 @@
-//! Claude Code2.1.296 primary reply followed by durable turn_duration.
+//! Claude Code 2.1.296 (tested version) primary reply followed by durable turn_duration.
 use super::*;
 use serde_json::Value;
 
