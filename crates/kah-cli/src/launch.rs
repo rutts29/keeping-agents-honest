@@ -225,3 +225,6 @@ fn configure_observation(
     }
     Ok(Some(serde_json::to_string(&binding)?))
 }
+
+#[cfg(test)]
+mod tests;

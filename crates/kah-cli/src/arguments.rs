@@ -61,6 +61,7 @@ impl Arguments {
     }
 
     /// The explicit native model, the last one when given more than once.
+    /// Native options end at `--`; another option's value is not a model.
     pub fn native_model(&self) -> Option<&str> {
         let mut model = None;
         let mut args = self.native.iter();
@@ -69,6 +70,10 @@ impl Arguments {
                 model = Some(value);
             } else if matches!(arg.as_str(), "--model" | "-m") {
                 model = args.next().map(String::as_str).or(model);
+            } else if arg == "--" {
+                break;
+            } else if NATIVE_VALUE_OPTIONS.contains(&arg.as_str()) {
+                args.next();
             }
         }
         model
@@ -112,6 +117,28 @@ impl Arguments {
         Ok(())
     }
 }
+
+/// Codex options that take the next argument as their value (`codex --help`).
+const NATIVE_VALUE_OPTIONS: &[&str] = &[
+    "-c",
+    "--config",
+    "--enable",
+    "--disable",
+    "--remote",
+    "--remote-auth-token-env",
+    "-i",
+    "--image",
+    "--local-provider",
+    "-p",
+    "--profile",
+    "-s",
+    "--sandbox",
+    "-C",
+    "--cd",
+    "--add-dir",
+    "-a",
+    "--ask-for-approval",
+];
 
 fn value(args: &mut impl Iterator<Item = String>, option: &str) -> Result<String> {
     args.next()

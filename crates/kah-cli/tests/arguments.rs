@@ -92,3 +92,26 @@ fn an_attached_model_value_configures_the_app_server_like_a_separate_one() {
         );
     }
 }
+
+#[test]
+fn the_native_model_ignores_prompt_text_and_other_option_values() {
+    // The native `--` ends options; values of other options are not models.
+    for (args, expected) in [
+        (
+            vec!["--model", "good", "--", "--", "--model=bad"],
+            Some("good"),
+        ),
+        (vec!["--", "--image", "--model=bad"], None),
+        (
+            vec!["--", "-c", "--model=bad", "--model=good"],
+            Some("good"),
+        ),
+        (
+            vec!["--", "-i", "shot.png", "--model", "good"],
+            Some("good"),
+        ),
+        (vec!["--", "--profile", "--model=bad"], None),
+    ] {
+        assert_eq!(parse(&args).native_model(), expected, "{args:?}");
+    }
+}
