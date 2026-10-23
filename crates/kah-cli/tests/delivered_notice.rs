@@ -12,8 +12,8 @@ fn only_a_delivered_change_checkpoint_of_an_interactive_worker_is_pushed() {
     let interactive = home.join("repos/research/project");
     let wake = delivered::wake(
         "t1",
-        "c2f4760",
-        &json!({"head":"c2f4760","rules":["r-beta"]}),
+        "bbbbbbb",
+        &json!({"head":"bbbbbbb","rules":["r-beta"]}),
     );
     assert!(
         delivered::push_notice(&wake.trigger, &interactive),

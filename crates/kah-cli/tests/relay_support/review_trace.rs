@@ -99,7 +99,7 @@ fn retain_notes_an_unreadable_directory_and_goes_on() {
     // Requires an unprivileged runner: mode 000 must deny directory reads.
     use std::os::unix::fs::PermissionsExt;
     let root = std::env::temp_dir().join(format!("kah-review-trace-{}", std::process::id()));
-    let foreign = root.join("outbox/build-o48f");
+    let foreign = root.join("outbox/foreign-build");
     fs::create_dir_all(&foreign).unwrap();
     fs::write(root.join("outbox/report.log"), "kept").unwrap();
     fs::set_permissions(&foreign, fs::Permissions::from_mode(0o000)).unwrap();
@@ -107,6 +107,6 @@ fn retain_notes_an_unreadable_directory_and_goes_on() {
     fs::set_permissions(&foreign, fs::Permissions::from_mode(0o700)).unwrap();
     result.unwrap();
     assert!(root.join("trace/report.log").is_file());
-    assert!(root.join("trace/build-o48f/unreadable.json").is_file());
+    assert!(root.join("trace/foreign-build/unreadable.json").is_file());
     fs::remove_dir_all(root).unwrap();
 }

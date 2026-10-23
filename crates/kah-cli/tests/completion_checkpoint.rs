@@ -111,7 +111,7 @@ fn a_blocked_admission_stops_the_waiting_completion_with_its_reason() {
     assert!(matches!(request(&key), Status::Pending));
     let block = |at_ms: u64| {
         kah_cli::unattended_report::save(&directory, "admission-blocked.json", &json!({"at_ms":at_ms,
-            "error":"RUN_SHARE_ACL stage=worker_prepare: /usr/bin/find: '/w/outbox/build-o48f': Permission denied\n"})).unwrap();
+            "error":"RUN_SHARE_ACL stage=worker_prepare: /usr/bin/find: '/w/outbox/foreign-build': Permission denied\n"})).unwrap();
     };
     block(2000);
     // This controller instance already retried admission once at that block.

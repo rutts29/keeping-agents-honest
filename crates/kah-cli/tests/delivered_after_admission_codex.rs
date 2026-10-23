@@ -7,7 +7,7 @@ use kah_cli::observer_review::{delivered, native_turn_end, state::Store};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
-const HEAD: &str = "c2f4760000000000000000000000000000000000";
+const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const SESSION: &str = "00000000-0000-4000-8000-000000000001";
 /// git %ct of the commit, 2026-10-17T19:00:00Z, in ms (second precision).
 const COMMITTED_MS: u64 = 1_792_263_600_000;
