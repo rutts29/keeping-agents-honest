@@ -1,14 +1,22 @@
 use super::*;
+use std::os::unix::fs::PermissionsExt as _;
 
+/// `program` is the resolved `command[0]`, which is what runs.
 pub(crate) fn verifier_digest(
     candidate: &Path,
+    program: &Path,
     command: &[OsString],
 ) -> Result<String, VerificationError> {
     let mut hasher = Sha256::new();
     hasher.update(b"driftctl.verifier.v1\0");
     for (index, argument) in command.iter().enumerate() {
         update_os_hash(&mut hasher, argument);
-        let Some(path) = input_path(candidate, index, argument) else {
+        let path = if index == 0 {
+            program.exists().then(|| program.to_path_buf())
+        } else {
+            input_path(candidate, argument)
+        };
+        let Some(path) = path else {
             continue;
         };
         let canonical = path
@@ -33,27 +41,44 @@ pub(crate) fn verifier_digest(
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-/// The file an argument names for the command, which runs in `candidate`:
-/// an absolute path; the program, found as `execvp` finds it; or an existing
-/// file relative to `candidate`. A relative argument naming no file, or only a
+/// The program `command[0]` names, resolved once as `execvp` resolves it, so
+/// the file fingerprinted is the file run: a path containing `/` is relative
+/// to `candidate`, the working directory; a bare name is the first executable
+/// regular file on PATH.
+pub(crate) fn program(candidate: &Path, name: &OsStr) -> Result<PathBuf, VerificationError> {
+    let path = Path::new(name);
+    if name.as_encoded_bytes().contains(&b'/') {
+        return Ok(candidate.join(path));
+    }
+    let search = std::env::var_os("PATH").ok_or_else(|| {
+        VerificationError::invalid(
+            "VERIFICATION_PROGRAM",
+            "PATH is unset; name the verifier program by its path",
+        )
+    })?;
+    std::env::split_paths(&search)
+        .map(|directory| candidate.join(directory).join(path))
+        .find(|program| {
+            fs::metadata(program).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+        .ok_or_else(|| {
+            VerificationError::invalid(
+                "VERIFICATION_PROGRAM",
+                "the verifier program is not an executable file on PATH",
+            )
+        })
+}
+
+/// The file a later argument names: an absolute path, or an existing file
+/// relative to `candidate`. A relative argument naming no file, or only a
 /// directory, is an ordinary argument.
-fn input_path(candidate: &Path, index: usize, argument: &OsString) -> Option<PathBuf> {
+fn input_path(candidate: &Path, argument: &OsString) -> Option<PathBuf> {
     let path = Path::new(argument);
     if path.is_absolute() {
         return path.exists().then(|| path.to_path_buf());
     }
-    if index == 0 && !argument.as_encoded_bytes().contains(&b'/') {
-        return std::env::split_paths(&std::env::var_os("PATH")?)
-            .map(|directory| candidate.join(directory).join(path))
-            .find(|program| program.is_file());
-    }
     let relative = candidate.join(path);
-    let named = if index == 0 {
-        relative.exists()
-    } else {
-        relative.is_file()
-    };
-    named.then_some(relative)
+    relative.is_file().then_some(relative)
 }
 
 pub(crate) fn candidate_digest(candidate: &Path) -> Result<String, VerificationError> {

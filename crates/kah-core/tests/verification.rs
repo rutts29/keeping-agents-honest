@@ -208,3 +208,87 @@ fn relative_verifier_paths_follow_the_same_boundary_as_absolute_ones() {
     assert_eq!(plain.status, VerificationStatus::Passed);
     fs::remove_dir_all(root).unwrap();
 }
+
+const PATH_CHILD: &str = "KAH_VERIFICATION_PATH_CHILD";
+
+#[test]
+fn a_program_found_on_path_is_the_one_fingerprinted_and_run() {
+    // The PATH lookup fingerprinted the first regular file, even one that is
+    // not executable, while execution ran a later candidate-owned program.
+    let root = temporary_directory("path");
+    let candidate = candidate(&root);
+    for dir in ["decoy", "good"] {
+        fs::create_dir(root.join(dir)).unwrap();
+    }
+    fs::create_dir(candidate.join("bin")).unwrap();
+    let marker = root.join("ran");
+    script(
+        &candidate,
+        "bin/tool",
+        &format!("touch '{}'", marker.display()),
+    );
+    fs::write(root.join("decoy/tool"), "not a program").unwrap();
+    fs::set_permissions(root.join("decoy/tool"), fs::Permissions::from_mode(0o600)).unwrap();
+    script(&root, "good/checked", "exit 0");
+    let path = format!(
+        "{}:{}:{}:/usr/bin:/bin",
+        root.join("decoy").display(),
+        root.join("good").display(),
+        candidate.join("bin").display()
+    );
+    for (program, path, expected) in [
+        ("tool", Some(path.as_str()), "boundary"),
+        ("checked", Some(path.as_str()), "passed"),
+        ("true", None, "program"),
+    ] {
+        let mut child = Command::new(std::env::current_exe().unwrap());
+        child.args(["--exact", "path_child", "--nocapture"]).env(
+            PATH_CHILD,
+            format!("{}|{program}|{expected}", root.display()),
+        );
+        match path {
+            Some(path) => child.env("PATH", path),
+            None => child.env_remove("PATH"),
+        };
+        assert!(child.status().unwrap().success(), "{program}");
+        assert!(!marker.exists(), "{program}: the candidate's tool ran");
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+/// Runs only as the child above, under its own PATH.
+#[test]
+fn path_child() {
+    let Some(spec) = std::env::var_os(PATH_CHILD) else {
+        return;
+    };
+    let spec = spec.into_string().unwrap();
+    let [root, program, expected] = spec.split('|').collect::<Vec<_>>()[..] else {
+        panic!("{spec}");
+    };
+    let root = Path::new(root);
+    let result = verify(
+        &VerificationRequest::new(
+            root.join("candidate"),
+            "intent-path",
+            [program.into()],
+            root.join("artifacts"),
+        )
+        .unwrap(),
+    );
+    match expected {
+        "passed" => assert_eq!(result.unwrap().status, VerificationStatus::Passed),
+        "boundary" => assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("verifier inputs must remain outside the candidate")
+        ),
+        _ => assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .starts_with("VERIFICATION_PROGRAM"),
+        ),
+    }
+}

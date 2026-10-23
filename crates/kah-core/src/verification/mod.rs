@@ -115,7 +115,8 @@ impl VerificationResult {
 }
 
 pub fn verify(request: &VerificationRequest) -> Result<VerificationResult, VerificationError> {
-    let verifier_before = verifier_digest(&request.candidate, &request.command)?;
+    let program = digest::program(&request.candidate, &request.command[0])?;
+    let verifier_before = verifier_digest(&request.candidate, &program, &request.command)?;
     let candidate_before = candidate_digest(&request.candidate)?;
     ensure_private_directory(&request.artifact_root)?;
     let started_at_unix_ms = SystemTime::now()
@@ -125,7 +126,7 @@ pub fn verify(request: &VerificationRequest) -> Result<VerificationResult, Verif
         })?
         .as_millis();
     let started = Instant::now();
-    let output = Command::new(&request.command[0])
+    let output = Command::new(&program)
         .args(&request.command[1..])
         .current_dir(&request.candidate)
         .output()
@@ -147,7 +148,7 @@ pub fn verify(request: &VerificationRequest) -> Result<VerificationResult, Verif
         &output.stderr,
     )?;
     // The output is kept before any fallible digest of the candidate afterwards.
-    let verifier_after = verifier_digest(&request.candidate, &request.command)?;
+    let verifier_after = verifier_digest(&request.candidate, &program, &request.command)?;
     let candidate_after = candidate_digest(&request.candidate)?;
     let status = if verifier_before != verifier_after {
         VerificationStatus::ProtectedInputChanged
