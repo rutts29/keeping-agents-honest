@@ -45,8 +45,7 @@ A fresh private repository may require native startup consent. kah does not gran
 consent by editing the provider's global trust store. Restricted-source Codex
 runs keep the project untrusted in the kah overlay, and kah does not mark
 restricted-source projects trusted merely to skip a consent prompt. Be prepared
-to answer consent in the new private run repository. This is an explicit startup
-limitation, not a claim of zero-touch launch.
+to answer consent in the new private run repository; launch is not zero-touch.
 
 The subscription login stays on the host. Commands execute in gVisor even for
 Mine-source runs. Codex file tools use its executor; Claude's native project file

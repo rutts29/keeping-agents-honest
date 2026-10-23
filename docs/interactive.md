@@ -3,10 +3,10 @@
 `make install` builds the release launcher and installs it as `~/.local/bin/kah`,
 with its shell helpers in `~/.local/share/kah/shell.sh` and `~/.local/bin/cx`.
 
-`make install` does not install or configure rootless Docker, gVisor, a sandbox
-service account, the sandbox image, the native agent CLIs, Herdr or logins. Those
-belong to the author's server setup and are not packaged yet. No user setup
-guide exists yet.
+Rootless Docker, gVisor, the sandbox service account, the sandbox image, the
+native agent CLIs, Herdr and logins are part of the author's server setup, listed
+as requirements in the [README](../README.md#requirements); `make install` does
+not install or configure them.
 
 ```sh
 kah                              # current project, native Codex
