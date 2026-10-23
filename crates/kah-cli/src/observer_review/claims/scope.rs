@@ -1,5 +1,5 @@
-//! USER private-receipt-omitted. Separate literal assertions before routing.
-//! TypeSafe jev-1.13: Literal reading / Indirection. Frozen cases precede wording.
+//! Separate literal assertions before routing. The questions are scored by the
+//! Jev API, so re-test them when their wording changes.
 use super::*;
 pub const VERSION: u32 = 3;
 pub fn questions() -> BTreeMap<String, Question> {

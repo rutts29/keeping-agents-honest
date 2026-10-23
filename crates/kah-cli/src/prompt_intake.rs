@@ -12,9 +12,9 @@ use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 
 const REQUEST: &str = "prompt-intake.json";
-/// Codex writes the user record after it builds the turn context (about 2.4 s
-/// in the retained startup proof). Turn end still takes the intake if the
-/// record arrives later than this.
+/// Codex writes the user record shortly after it builds the turn context
+/// (typically a few seconds). Turn end still takes the intake if the record
+/// arrives later than this.
 pub const WAIT: Duration = Duration::from_secs(120);
 /// Each read starts a native app-server; back off 0.5, 1, 2, then 4 s.
 const INTERVAL: Duration = Duration::from_millis(500);

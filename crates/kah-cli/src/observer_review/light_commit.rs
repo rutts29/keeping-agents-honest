@@ -1,5 +1,5 @@
-//! USER light class: one report; unresolved evidence is builder work, not a
-//! heavy gate's verify-first/risk lifecycle. Genuine intent questions remain.
+//! Light review: one report; unresolved evidence is worker work, not a heavy
+//! gate's verify-first/risk lifecycle. Genuine intent questions remain.
 use super::{
     commit_packet,
     state::{Request, Store},

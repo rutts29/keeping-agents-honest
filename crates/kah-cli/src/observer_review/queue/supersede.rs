@@ -1,6 +1,6 @@
 //! Git v2.53.0 Documentation/git-merge-base.adoc --is-ancestor: 0=yes,1=no.
-//! USER: queued claims may cover older ancestor claims; explicit gates/tags and
-//! the active HEAD are never superseded.
+//! Queued claims may cover older ancestor claims; explicit gates, tags and the
+//! active HEAD are never superseded.
 use super::*;
 use sha2::Digest;
 use std::{path::Path, process::Command};

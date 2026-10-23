@@ -1,4 +1,5 @@
-//! USER-approved aging schedules work; it never times out an active review.
+//! Lane aging (15 minutes) keeps older lanes from starving; it never times out
+//! an active review.
 use super::*;
 use std::collections::BTreeMap;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

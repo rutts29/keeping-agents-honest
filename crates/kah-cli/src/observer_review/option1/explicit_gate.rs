@@ -1,4 +1,4 @@
-//! C5753c6: cumulative Option1 evidence is input, not the explicit gate decision.
+//! Cumulative Option1 evidence is input, not the explicit gate decision.
 use super::super::{
     queue,
     state::{Purpose, Request, State, Store},

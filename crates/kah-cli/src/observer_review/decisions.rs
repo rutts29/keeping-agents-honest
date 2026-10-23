@@ -1,4 +1,4 @@
-//! Verify the optional v4 report against the complete protected authority set.
+//! Verify the optional report against the complete protected authority set.
 use super::state::Request;
 use crate::Result;
 use kah_observer::review_evidence::Report;

@@ -1,5 +1,5 @@
-//! C: only identical checked evidence may carry a confirmed light verdict.
-//! Heavy gates always rejudge.
+//! Only identical checked evidence may carry a confirmed light verdict; heavy
+//! gates always rejudge.
 use kah_observer::decision_units::Dimension;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

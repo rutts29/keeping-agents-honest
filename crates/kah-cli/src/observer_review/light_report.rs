@@ -1,4 +1,4 @@
-//! B' transport only: code expands bookkeeping, the thinker supplies decisions.
+//! Compact report transport only: code expands bookkeeping, the thinker supplies decisions.
 use super::state::Request;
 use crate::Result;
 use kah_observer::review_evidence::Report;

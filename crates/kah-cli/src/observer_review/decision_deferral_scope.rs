@@ -1,4 +1,4 @@
-//! B places unrelated deferrals behind source links; authority stays verbatim.
+//! Unrelated deferrals are placed behind source links; authority stays verbatim.
 use super::state::Request;
 use crate::Result;
 use serde_json::{Value, json};
