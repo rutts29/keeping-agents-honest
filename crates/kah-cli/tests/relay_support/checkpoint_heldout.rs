@@ -12,8 +12,14 @@ pub(super) fn record(provider: &str, stage: &str, result: &Value) {
             "invalid follow-up label"
         );
     }
-    let expected = stage != "broken";
     let question_set = &result["verified_question_set"];
+    if let Some(expected) = super::checkpoints::question_set() {
+        assert_eq!(
+            *question_set, expected,
+            "checkpoint case ran with another question set"
+        );
+    }
+    let expected = stage != "broken";
     let mut evidence = json!({"provider":provider,"stage":stage,"followup":followup,
         "questionSet":question_set,"expectedPass":expected,
         "matchesExpected":(result["assessment"]["passed"]==true)==expected,"nativeReport":result});

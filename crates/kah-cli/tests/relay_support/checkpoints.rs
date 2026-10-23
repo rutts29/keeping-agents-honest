@@ -6,6 +6,18 @@ mod files;
 pub(super) fn v8_enabled() -> bool {
     files::is_v8()
 }
+/// The question set each selected checkpoint case must run with.
+pub(super) fn question_set() -> Option<u64> {
+    [
+        (files::is_v8(), 11),
+        (files::is_v7(), 7),
+        (files::is_v6(), 6),
+        (files::is_v5(), 5),
+        (files::is_v4(), 4),
+    ]
+    .into_iter()
+    .find_map(|(selected, set)| selected.then_some(set))
+}
 
 pub fn run(_root: &Path) -> Value {
     assert!(
