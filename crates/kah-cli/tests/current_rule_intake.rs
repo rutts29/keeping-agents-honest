@@ -1,4 +1,5 @@
-//! Exact eight retained sources; metadata-only native adoption, no providers.
+//! Eight intake records: six relayed user messages and two delegate messages.
+//! Metadata-only native adoption, no providers.
 use kah_cli::observer_review::option1::current_set;
 use kah_core::{
     current_rules::*,
@@ -8,14 +9,14 @@ use kah_core::{
 };
 use kah_observer::{intake::Input as Intake, session};
 use serde_json::json;
+use sha2::Digest;
 use std::fs;
 
 fn fixture() -> (std::path::PathBuf, session::Binding, Vec<Intake>) {
     std::env::var_os("XDG_STATE_HOME").expect("run through demos/check-tests.sh");
     let root = std::env::temp_dir().join(format!("intake-eight-{}", kah_cli::relay_store::nonce()));
     fs::create_dir(&root).unwrap();
-    let records: Vec<Intake> =
-        serde_json::from_str(include_str!("fixtures/current-intake-eight.json")).unwrap();
+    let records = records();
     let binding = session::Binding {
         session: format!("intake-eight-{}", kah_cli::relay_store::nonce()),
         project: root.clone(),
@@ -56,6 +57,83 @@ fn fixture() -> (std::path::PathBuf, session::Binding, Vec<Intake>) {
     drop(primary);
     drop(kah_cli::observer_review::state::Store::open(&binding.session).unwrap());
     (root, binding, records)
+}
+
+fn steering_judgment() -> kah_observer::judge::Judgment {
+    use kah_observer::judge::{Answer, Judgment};
+    Judgment {
+        backend: "jev".into(),
+        model: "jev-1.13.0".into(),
+        answers: [
+            ("is_steering".into(), Answer::Noul { noul: 0.95 }),
+            (
+                "steer_kind".into(),
+                Answer::Choice {
+                    choice: "new_constraint".into(),
+                    probabilities: [("new_constraint".into(), 0.95), ("none".into(), 0.05)].into(),
+                    confidence: 0.9,
+                },
+            ),
+        ]
+        .into(),
+        metrics: Default::default(),
+        fallback_reason: None,
+    }
+}
+/// Relayed user messages are authority; native "[kah-builder]" messages are
+/// delegate context and can never support a rule.
+fn records() -> Vec<Intake> {
+    let relayed = [
+        "Keep the export columns in the order the user lists them.",
+        "Write the CSV header only once, even when the input is empty.",
+        "Quote a field only when it contains a comma, a quote or a newline.",
+        "Do not add a dependency for CSV writing; the standard library is enough.",
+        "Keep the command's exit code 0 on success and 2 on bad input.",
+        "Add a test for every rule above before you commit.",
+    ];
+    let delegate = [
+        "[kah-builder] Status: the export command builds and its tests pass.",
+        "[kah-builder] Next I will add the empty-input test.",
+    ];
+    let judgment = steering_judgment();
+    let source = |record: String, text: &str, relayer: Option<&str>| {
+        let mut source = SourceRef::new(
+            SourceProvider::Codex,
+            "intake-session",
+            record,
+            SourceRole::User,
+            format!("sha256:{:x}", sha2::Sha256::digest(text)),
+        );
+        if let Some(relayer) = relayer {
+            source.origin = Some(SourceOrigin::Relayed);
+            source.relayer = Some(relayer.into());
+        }
+        source
+    };
+    let relayed = relayed.iter().enumerate().map(|(n, text)| {
+        let record = format!("relayed-user:relay:receipt-{n}");
+        (source(record.clone(), text, Some("relay")), record, text)
+    });
+    let delegate = delegate.iter().enumerate().map(|(n, text)| {
+        let record = format!("turn-{n}:0");
+        (source(record.clone(), text, None), record, text)
+    });
+    relayed
+        .chain(delegate)
+        .map(|(source, record, text)| Intake {
+            source,
+            text: (*text).into(),
+            local_record: Some(record),
+            decision: Some(kah_observer::intake::Decision::Verification {
+                judgment: Box::new(judgment.clone()),
+            }),
+            dismissed: false,
+            promoted: false,
+            rule_set_resolution: None,
+            prior_intent: None,
+            newer_conflicts: vec![],
+        })
+        .collect()
 }
 
 fn candidate(r: &kah_core::run_store::RuleRebuild) -> RuleSet {

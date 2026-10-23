@@ -2,13 +2,79 @@ use kah_cli::observer_review::{
     option1::{prompt, protocol},
     state::{Purpose, Request},
 };
+use kah_core::{
+    current_rules::Source,
+    intent_history::{
+        Event, GoalRevision, History, IntentItem, IntentKind, SourceProvider, SourceRef, SourceRole,
+    },
+    projection::{ActiveProjection, ProjectionConfig},
+    run_store::{RuleRebuild, RuleSync, RunStore},
+};
 use serde_json::json;
-#[test]
-fn retained_attempt_four_rebuild_prompt_and_schema_include_the_approved_criterion() {
-    let input: kah_core::run_store::RuleRebuild = serde_json::from_str(include_str!(
-        "../../../docs/gates/evidence/current-rule-set-glue/attempt-4-rebuild-input.json"
-    ))
+
+/// A rule rebuild at revision 3: a goal and two later user requirements.
+fn rebuild(root: &std::path::Path) -> RuleRebuild {
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let user = |record: &str| {
+        SourceRef::new(
+            SourceProvider::Codex,
+            "session",
+            record,
+            SourceRole::User,
+            format!("sha256:{record}"),
+        )
+    };
+    let goal = GoalRevision::new(1, "Build a CSV export command", vec![user("goal")]);
+    let mut history = History::new(goal).unwrap();
+    let projection = |h: &History| ActiveProjection::from_history(h, ProjectionConfig::default());
+    let store = RunStore::create(
+        root.join("state"),
+        &project,
+        "run",
+        &history,
+        &projection(&history).unwrap(),
+    )
     .unwrap();
+    for (id, text) in [
+        (
+            "columns",
+            "Keep the columns in the order the user lists them.",
+        ),
+        (
+            "no-network",
+            "Never call the network from the export command.",
+        ),
+    ] {
+        let item = IntentItem::new(id, IntentKind::Constraint, text, vec![user(id)]);
+        history
+            .append(Event::RequirementAdded {
+                item,
+                approval: None,
+            })
+            .unwrap();
+        store
+            .append_pending(history.records().last().unwrap().clone())
+            .unwrap();
+        store
+            .commit_projection(&projection(&history).unwrap())
+            .unwrap();
+    }
+    let standing = vec![Source::standing(
+        "AGENTS.md",
+        "Run the tests before every commit.",
+        json!({"scope":"project"}),
+    )];
+    match store.sync_current_rules(standing, "1").unwrap() {
+        RuleSync::Rebuild(rebuild) => *rebuild,
+        RuleSync::Ready(_) => panic!("a new rule input must rebuild"),
+    }
+}
+
+#[test]
+fn rebuild_prompt_and_schema_include_the_same_checkability_criterion() {
+    let root = std::env::temp_dir().join(format!("kah-criterion-{}", std::process::id()));
+    let input = rebuild(&root);
     assert_eq!(input.input.revision, 3);
     let req = Request {
         id: "review-criterion".into(),
@@ -34,5 +100,6 @@ fn retained_attempt_four_rebuild_prompt_and_schema_include_the_approved_criterio
         protocol::schema("current_rules")["checkability_criterion"],
         criterion
     );
-    // This checks instruction wiring on real retained input, not model judgment.
+    // This checks instruction wiring, not model judgment.
+    std::fs::remove_dir_all(root).unwrap();
 }

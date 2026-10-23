@@ -11,7 +11,7 @@ use kah_observer::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-/// Criterion for identifying checks that use only a code change.
+/// The generic checkability criterion given to the observer for rule rebuilds.
 pub const CHECKABILITY: &str = "a rule is diff-checkable when the code change alone can break it. Runtime measurements, investigations, sequencing and outside-design references are not diff-checkable";
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
