@@ -16,45 +16,81 @@ use std::{fs, path::PathBuf, process::Command};
 
 const HEAD: &str = "8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c";
 const CHECK: &str = "node verify.cjs";
-/// (requirement id, requirement, code under test, the check's assertion)
-const CASES: [(&str, &str, &str, &str); 4] = [
-    (
-        "normalize",
-        "normalize trims every key",
-        "const normalize = (s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k.trim(), v]));",
-        "assert.deepEqual(normalize({' a ': 1}), {a: 1});",
-    ),
+/// The complete check the receipts come from. It runs and passes.
+const VERIFY: &str = r#"const assert = require('node:assert/strict');
+const normalize = (s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k.trim(), v]));
+const serialize = (s) => JSON.stringify(s, Object.keys(s).sort());
+const pipeline = (s) => serialize(normalize(s));
+const normalizeTest = () => assert.deepEqual(normalize({ ' a ': 1, b: 2 }), { a: 1, b: 2 });
+const serializeTest = () => assert.equal(serialize({ b: 1, a: 2 }), '{"a":2,"b":1}');
+const pipelineTest = () => assert.equal(pipeline({ ' b ': 1, a: 2 }), '{"a":2,"b":1}');
+for (const t of [normalizeTest, serializeTest, pipelineTest]) t();
+console.log('VERIFY_PASS');
+"#;
+/// (requirement id, requirement, cited code lines, cited check lines), 1-based in VERIFY.
+/// First and last line, inclusive.
+type Lines = (usize, usize);
+const CASES: [(&str, &str, Lines, Lines); 4] = [
+    ("normalize", "normalize trims every key", (2, 2), (5, 5)),
     (
         "serialize",
         "serialize writes keys in sorted order",
-        "const serialize = (s) => JSON.stringify(s, Object.keys(s).sort());",
-        "assert.equal(serialize({b: 1, a: 2}), '{\"a\":2,\"b\":1}');",
+        (3, 3),
+        (6, 6),
     ),
     (
         "pipeline",
         "the pipeline normalizes, then serializes",
-        "const pipeline = (s) => serialize(normalize(s));",
-        "assert.equal(pipeline({' b ': 1, a: 2}), '{\"a\":2,\"b\":1}');",
+        (2, 4),
+        (7, 7),
     ),
     (
         "verification_assertions",
         "the check asserts both functions and the pipeline",
-        "for (const t of [normalizeTest, serializeTest, pipelineTest]) t();",
-        "console.log('VERIFY_PASS');",
+        (5, 7),
+        (8, 9),
     ),
 ];
+
+fn lines((first, last): Lines) -> String {
+    VERIFY.lines().collect::<Vec<_>>()[first - 1..last].join("\n")
+}
+/// Runs VERIFY with node in a temporary directory; the receipt is its real result.
+fn run_verify() -> Value {
+    let dir = std::env::temp_dir().join(format!("coverage-verify-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("verify.cjs"), VERIFY).unwrap();
+    let output = Command::new("node")
+        .arg("verify.cjs")
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+    assert!(
+        output.status.success() && stdout == "VERIFY_PASS\n",
+        "{output:?}"
+    );
+    json!({"command":CHECK,"commit":HEAD,"exit_code":output.status.code(),"success":true,"output":stdout})
+}
+
+#[test]
+fn the_authored_check_runs_and_passes() {
+    assert_eq!(run_verify()["exit_code"], 0);
+}
 
 #[test]
 #[ignore = "live Jev check of reasoned coverage on authored evidence; opt-in, needs a Jev key"]
 fn reasoned_coverage_on_authored_evidence() {
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
-    let receipt = json!({"command":CHECK,"commit":HEAD,"exit_code":0,"success":true,"output":"VERIFY_PASS\n"});
+    let receipt = run_verify();
     let mut outcomes = vec![];
     for (id, name, code, test) in CASES {
+        let (code, test) = (lines(code), lines(test));
         let reasoning = format!(
-            "{CHECK} runs `{test}` against `{code}` on this head, so it exercises: {name}."
+            "{CHECK} runs `{test}` against `{code}` on this head and exits 0, so it exercises: {name}."
         );
-        let (state, questions) = case(id, name, code, test, &reasoning, &receipt);
+        let (state, questions) = case(id, name, &code, &test, &reasoning, &receipt);
         outcomes.push(judge(&home, id, &state, &questions, true));
     }
     // Negative control: a command that only prints PASS.
@@ -69,7 +105,7 @@ fn reasoned_coverage_on_authored_evidence() {
     let (state, questions) = case(
         "trivial_passing_command",
         name,
-        code,
+        &lines(code),
         "console.log('PASS')",
         "The command exits 0 and prints PASS, so the requirement is covered.",
         &pass_only,
