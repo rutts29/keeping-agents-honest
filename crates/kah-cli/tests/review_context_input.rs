@@ -45,10 +45,7 @@ fn measure_retained_context_catalogues() {
     let output = std::path::PathBuf::from(std::env::var_os("KAH_CONTEXT_SIZE_OUTPUT").unwrap());
     fs::create_dir(&output).unwrap();
     let mut records = vec![];
-    for id in [
-        "review-1000000000009-1",
-        "review-1000000000010-1",
-    ] {
+    for id in ["review-1000000000009-1", "review-1000000000010-1"] {
         let input =
             std::path::PathBuf::from(std::env::var_os("KAH_CONTEXT_SIZE_INPUT_ROOT").unwrap())
                 .join(id);

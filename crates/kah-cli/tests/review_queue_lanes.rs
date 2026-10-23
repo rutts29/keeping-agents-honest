@@ -90,7 +90,7 @@ fn typed_commit_lane_is_distinct_and_gate_only_queues_keep_existing_final_review
             )
         })
         .collect();
-    lanes::sort(&mut entries, &stamps, None, 1001).unwrap();
+    lanes::sort(&mut entries, &stamps, None, 42420).unwrap();
     assert_eq!(entries[0].0, PathBuf::from("2.json"));
 }
 #[test]
