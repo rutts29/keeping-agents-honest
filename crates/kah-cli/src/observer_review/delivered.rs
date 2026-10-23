@@ -86,6 +86,14 @@ pub fn pushed_text(notice: &str) -> String {
     format!("[kah-observer] {notice}")
 }
 
+/// The pushed text for this worker; it is what is typed, so it is what must
+/// fit the native size limit.
+pub fn typed_notice(provider: &str, notice: &str) -> Result<String> {
+    let typed = pushed_text(notice);
+    super::reminder::validate_native(provider, &typed)?;
+    Ok(typed)
+}
+
 /// Whether a native turn ended at or after the commit. Git's commit time has
 /// one-second precision, so a previous turn's end earlier in the commit's own
 /// second also counts. That needs a new prompt plus a commit within one

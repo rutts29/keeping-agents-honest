@@ -59,3 +59,21 @@ fn the_pushed_notice_is_an_kah_delegate_message_never_user_intent() {
     );
     assert!(pushed.ends_with(notice), "today's notice text is kept");
 }
+
+#[test]
+fn the_typed_notice_fits_the_claude_limit_with_its_prefix() {
+    // The size check ran on the notice, but the pane receives the prefixed
+    // text, so a notice just under the limit was typed over it.
+    let fits = "a".repeat(10_000 - delivered::pushed_text("").encode_utf16().count());
+    let typed = delivered::typed_notice("claude", &fits).unwrap();
+    assert_eq!(typed.encode_utf16().count(), 10_000);
+    let over = format!("{fits}a");
+    let error = delivered::typed_notice("claude", &over).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .starts_with("REVIEW_REMINDER_NATIVE_LIMIT"),
+        "{error}"
+    );
+    assert!(delivered::typed_notice("codex", &over.repeat(3)).is_ok());
+}
