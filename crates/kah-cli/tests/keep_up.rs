@@ -120,9 +120,20 @@ fn metrics_preserve_missing_stages_pending_heads_and_repeated_events() {
 }
 
 #[test]
-#[ignore = "Read-only KEEP-UP recorder: requires explicit live review root, repository and volume output; run via make gate PHASE=5o-keep-up"]
-fn record_builder_keep_up() {
-    support::run().unwrap();
+fn accumulated_metrics_count_each_distinct_gap_and_keep_the_highest_counters() {
+    let mut metrics = support::Accumulator::default();
+    let review = json!({"id":"one","head":"a","review_class":"commit","commit_ms":0,"at_ms":{"judged":600_000}});
+    for (at_ms, repeats) in [(0, 1), (60_000, 3), (120_000, 2)] {
+        metrics.observe(&json!({"at_ms":at_ms,"queue_depth":0,"reviews":[review],
+            "gaps":[{"code":"REVIEW_GAP"}],"notices":[],"counters":{"identical_blocked_repeats":repeats}}));
+    }
+    let snapshot = metrics.snapshot();
+    assert_eq!(snapshot["samples"], 3);
+    assert_eq!(snapshot["counters"]["identical_blocked_repeats"], 3);
+    assert_eq!(
+        snapshot["gap_occurrences"],
+        json!([{"gap":{"code":"REVIEW_GAP"},"count":3}])
+    );
 }
 
 #[test]

@@ -3,18 +3,6 @@ use super::*;
 use kah_cli::observer_review::{source_store, state::Store as Reviews};
 #[path = "checkpoint_files.rs"]
 mod files;
-pub(super) fn v4_enabled() -> bool {
-    files::is_v4()
-}
-pub(super) fn v5_enabled() -> bool {
-    files::is_v5()
-}
-pub(super) fn v6_enabled() -> bool {
-    files::is_v6()
-}
-pub(super) fn v7_enabled() -> bool {
-    files::is_v7()
-}
 pub(super) fn v8_enabled() -> bool {
     files::is_v8()
 }

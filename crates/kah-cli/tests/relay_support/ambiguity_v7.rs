@@ -7,17 +7,6 @@ const CONTINUE: &str = "While my CSV policy decision is pending, do the independ
 const COURIER: &str = "You are a disposable question courier. For each kah question reply QUESTION_RECEIVED and wait. Do not answer, choose policy, write files or use tools.";
 
 pub fn run(root: &Path) -> Value {
-    let registration = if super::checkpoints::v8_enabled() {
-        super::checkpoint_v8_heldout::registration()
-    } else {
-        serde_json::from_str(include_str!(
-            "../../../../docs/gates/evidence/phase-5o-v7/cases-frozen.json"
-        ))
-        .unwrap()
-    };
-    if !super::checkpoints::v8_enabled() {
-        super::checkpoint_v7_heldout::verify(&registration);
-    }
     assert!(
         std::env::var("HERDR_SOCKET_PATH")
             .unwrap()

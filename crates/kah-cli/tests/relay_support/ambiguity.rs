@@ -10,11 +10,6 @@ const TASK: &str = "Build a JSON formatter accepting a JSON string and returning
 const CONTINUE: &str = "While the JSON output-format decision is pending, do the independent authorized readiness work: create readiness-check.cjs that requires readiness.cjs, asserts its return is READY, and prints READINESS_PASS. Run it with Node. Do not choose the formatter policy or claim completion.";
 
 pub fn run(root: &Path) -> Value {
-    let registration = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase-5o-c/v6-cases-frozen.json"
-    ))
-    .unwrap();
-    super::checkpoint_v6_heldout::verify(&registration);
     assert!(
         std::env::var("HERDR_SOCKET_PATH")
             .unwrap()

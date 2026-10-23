@@ -71,26 +71,3 @@ pub fn reconstruct(output: &Path, previous: &mut Value, delta: &Value) -> Result
     }
     Ok(Value::Object(previous.clone()))
 }
-
-/// Metrics need receipts, not repeated assessment bodies; full samples remain in CAS.
-pub fn metrics_sample(sample: &Value) -> Value {
-    let mut value = sample.clone();
-    if let Some(reviews) = value["reviews"].as_array_mut() {
-        for review in reviews {
-            if let Some(fields) = review.as_object_mut() {
-                fields.retain(|key, _| {
-                    [
-                        "id",
-                        "head",
-                        "review_class",
-                        "commit_ms",
-                        "at_ms",
-                        "missing_stages",
-                    ]
-                    .contains(&key.as_str())
-                });
-            }
-        }
-    }
-    value
-}

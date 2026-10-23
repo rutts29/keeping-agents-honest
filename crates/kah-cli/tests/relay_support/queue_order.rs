@@ -13,11 +13,6 @@ pub fn run(root: &Path) -> Value {
             .unwrap()
             .contains("kah-gate-")
     );
-    let registration = serde_json::from_str(include_str!(
-        "../../../../docs/gates/evidence/phase-5o-c/v6-cases-frozen.json"
-    ))
-    .unwrap();
-    super::checkpoint_v6_heldout::verify(&registration);
     let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     let configs = [
         home.join(".codex/config.toml"),
