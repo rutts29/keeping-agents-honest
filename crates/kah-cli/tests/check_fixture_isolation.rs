@@ -1,9 +1,8 @@
 //! Test the actual check wrapper's failed-command cleanup, not a mock store.
 use std::{fs, path::PathBuf, process::Command};
 #[test]
-fn failed_check_command_cleans_private_volume_state_and_keeps_parent_status() {
-    let base = PathBuf::from("/mnt/kah-fixtures/cargo/kah-check-tests")
-        .join(format!("wrapper-test-{}", kah_cli::relay_store::nonce()));
+fn failed_check_command_cleans_private_fixture_state_and_keeps_parent_status() {
+    let base = std::env::temp_dir().join(format!("wrapper-test-{}", kah_cli::relay_store::nonce()));
     fs::create_dir_all(&base).unwrap();
     let output=Command::new("bash").arg("demos/check-tests.sh")
         .args(["sh","-c","printf '%s\\n' \"$XDG_STATE_HOME\"; mkdir -p \"$XDG_STATE_HOME/kah/fixture\"; printf data > \"$XDG_STATE_HOME/kah/fixture/retained\"; exit 7"])

@@ -276,32 +276,29 @@ fn metadata_deltas_reconstruct_versions_removals_and_order_without_rewriting_old
 }
 
 #[test]
-#[ignore = "$0 retained-sample reconstruction; requires explicit old JSONL and private output"]
-fn reconstruct_old_recorder_samples_byte_for_byte() {
-    use std::io::{BufRead, Write};
-    let source = std::env::var("KAH_KEEP_UP_RECONSTRUCT_INPUT").unwrap();
-    let output = std::path::PathBuf::from(std::env::var("KAH_KEEP_UP_RECONSTRUCT_OUTPUT").unwrap());
+fn recorder_samples_reconstruct_byte_for_byte() {
+    let output =
+        std::env::temp_dir().join(format!("keep-up-bytes-{}", kah_cli::relay_store::nonce()));
     std::fs::create_dir(&output).unwrap();
+    // The second sample adds, changes and removes a field.
+    let lines = [
+        json!({"at_ms":1,"queue_depth":2,"reviews":[{"id":"a","status":"pending"}],"stale":true}),
+        json!({"at_ms":2,"queue_depth":1,"reviews":[{"id":"a","status":"done"}],"notices":[]}),
+    ]
+    .map(|sample| sample.to_string());
     let mut recorder = support::Recording::default();
     let mut reconstructed = json!({});
-    let mut deltas = std::fs::File::create(output.join("samples.jsonl")).unwrap();
     let mut count = 0;
-    for line in std::io::BufReader::new(std::fs::File::open(source).unwrap()).lines() {
-        let line = line.unwrap();
-        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+    for line in &lines {
+        let value: serde_json::Value = serde_json::from_str(line).unwrap();
         let delta = recorder.encode(&output, &value).unwrap();
         let restored = support::reconstruct(&output, &mut reconstructed, &delta).unwrap();
         assert_eq!(
             serde_json::to_string(&restored).unwrap().as_bytes(),
             line.as_bytes()
         );
-        writeln!(deltas, "{delta}").unwrap();
         count += 1;
     }
-    std::fs::write(
-        output.join("reconstruction.json"),
-        json!({"samples":count,"byte_identical":true,"provider_calls":0}).to_string(),
-    )
-    .unwrap();
-    assert!(count > 0);
+    assert_eq!(count, lines.len());
+    std::fs::remove_dir_all(output).unwrap();
 }

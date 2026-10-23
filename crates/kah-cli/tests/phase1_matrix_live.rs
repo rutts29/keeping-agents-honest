@@ -4,6 +4,17 @@
 //! They need native Codex and Herdr. `atomize_current_intent` needs
 //! `KAH_PHASE1_REPLAY_STAGE=atomize`, or `atomize-refine` for a draft and its
 //! refinement in one native session.
+//!
+//! Further env-gated stages of `persistent_native_matrices` take operator
+//! inputs (none ship with the tests):
+//! - `KAH_OPTION1_CHECKPOINT_INPUT`: a checkpoint commit_check Input JSON, with
+//!   `KAH_OPTION1_FROZEN_RULES` naming its rule file; runs one full checkpoint.
+//! - `KAH_PHASE1_SELECTION_JOBS`: a JSON array of `{id,input}` preparation jobs
+//!   for whole-item selection in one session.
+//! - `KAH_PHASE1_RESUME_SESSION`: the native session id the stages must keep.
+//! - `KAH_PHASE1_REPLAY_STAGE=option1-e2e` (with `KAH_OPTION1_LARGE_SOURCE`, a
+//!   large JS data file, and `KAH_OPTION1_REAL_HOME`, the home holding the Jev
+//!   key) or `current-rules-e2e`: the full worker and observer route.
 mod phase1_matrix_support;
 #[allow(dead_code)]
 #[path = "terminal_support/processes.rs"]
