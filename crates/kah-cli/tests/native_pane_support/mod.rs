@@ -210,7 +210,8 @@ pub fn cleanup_saved(root: &Path) {
         pane: None,
         session: value["session"].as_str().map(str::to_owned),
         overlay: Some(
-            home.join(".local/state/kah/codex/research-offline")
+            kah_cli::resume::overlay_root(&home)
+                .join("research-offline")
                 .join(&digest[..16]),
         ),
     };

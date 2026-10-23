@@ -43,7 +43,8 @@ pub fn cleanup(root: &Path) {
         Sha256::digest(record.worktree.as_os_str().as_encoded_bytes())
     );
     let _ = fs::remove_dir_all(
-        home.join(".local/state/kah/codex/research-offline")
+        kah_cli::resume::overlay_root(&home)
+            .join("research-offline")
             .join(&hash[..16]),
     );
     let project = Project {

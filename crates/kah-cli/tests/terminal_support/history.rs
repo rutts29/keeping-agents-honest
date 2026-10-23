@@ -10,7 +10,7 @@ use std::{
 };
 
 pub fn connect(home: &Path, project: &Path) -> Control {
-    let inspection = home.join(".local/state/kah/codex/control");
+    let inspection = kah_cli::resume::overlay_root(home).join("control");
     prepare(
         &home.join(".codex"),
         &inspection,
