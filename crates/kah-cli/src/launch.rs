@@ -154,9 +154,12 @@ fn overlay_directory(home: &Path, project: &Project, args: &Arguments) -> (Strin
         "{:x}",
         Sha256::digest(project.root.as_os_str().as_encoded_bytes())
     );
-    let overlay = crate::resume::overlay_root(home)
-        .join(&policy_name)
-        .join(&hash[..16]);
+    let overlay = crate::resume::overlay_for(
+        home,
+        &policy_name,
+        &hash[..16],
+        args.saved_overlay.as_deref(),
+    );
     (policy_name, overlay)
 }
 

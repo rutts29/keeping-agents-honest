@@ -12,6 +12,8 @@ pub struct Arguments {
     pub project: Option<(Domain, String)>,
     pub options: LaunchOptions,
     pub native: Vec<String>,
+    /// Set when resuming: the overlay in the session's saved policy.
+    pub saved_overlay: Option<std::path::PathBuf>,
     pub effort: Option<String>,
     pub help: bool,
     pub no_observer: bool,
