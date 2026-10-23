@@ -161,9 +161,23 @@ impl Ledger {
             sequence,
             event,
         };
+        self.repair_tail()?;
         let mut file = OpenOptions::new().append(true).open(&self.path)?;
         write_record(&mut file, &record)?;
         file.sync_data()?;
+        Ok(())
+    }
+
+    /// A record is committed by its newline; drop an unfinished last line left
+    /// by a crash so the next record starts on a clean line.
+    fn repair_tail(&self) -> Result<(), LedgerError> {
+        let bytes = fs::read(&self.path)?;
+        let keep = committed_prefix(&bytes).len();
+        if keep != bytes.len() {
+            let file = OpenOptions::new().write(true).open(&self.path)?;
+            file.set_len(keep as u64)?;
+            file.sync_data()?;
+        }
         Ok(())
     }
 
@@ -204,7 +218,10 @@ impl Ledger {
     }
 
     fn records(&self) -> Result<Vec<Record>, LedgerError> {
-        let contents = fs::read_to_string(&self.path)?;
+        let bytes = fs::read(&self.path)?;
+        let contents = std::str::from_utf8(committed_prefix(&bytes)).map_err(|error| {
+            LedgerError::new("LEDGER_JSON", format!("invalid ledger text: {error}"))
+        })?;
         if contents.is_empty() {
             return Err(LedgerError::new("LEDGER_EMPTY", "ledger is empty"));
         }
@@ -273,10 +290,19 @@ fn ensure_open(state: &FoldedState) -> Result<(), LedgerError> {
 }
 
 fn write_record(file: &mut fs::File, record: &Record) -> Result<(), LedgerError> {
-    serde_json::to_writer(&mut *file, record)?;
-    file.write_all(b"\n")?;
+    let mut line = serde_json::to_vec(record)?;
+    line.push(b'\n');
+    file.write_all(&line)?;
     file.flush()?;
     Ok(())
+}
+
+/// The bytes up to and including the last newline: the committed records.
+fn committed_prefix(bytes: &[u8]) -> &[u8] {
+    bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(&[][..], |last| &bytes[..=last])
 }
 
 fn apply_record(state: &mut FoldedState, record: Record) -> Result<(), LedgerError> {

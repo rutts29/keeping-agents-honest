@@ -61,6 +61,14 @@ pub(super) fn validate_projection(
     }
 }
 
+/// The bytes up to and including the last newline: the committed records.
+pub(super) fn committed_prefix(bytes: &[u8]) -> &[u8] {
+    bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(&[][..], |last| &bytes[..=last])
+}
+
 pub(super) fn parse_jsonl(input: &str) -> Result<Vec<EventRecord>, RunStoreError> {
     input
         .lines()

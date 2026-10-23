@@ -9,15 +9,22 @@ impl RunStore {
         History::replay(records)?;
 
         let pending = self.pending_path();
-        ensure_private_regular_or_missing(&pending)?;
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
+        self.repair_pending_tail()?;
+        let mut line = serde_json::to_vec(&record)
+            .map_err(|error| RunStoreError::Serialization(error.to_string()))?;
+        line.push(b'\n');
+        let mut options = OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+
+            options.mode(0o600);
+        }
+        let mut file = options
             .open(&pending)
             .map_err(|error| io_error("append pending delta", &pending, error))?;
-        serde_json::to_writer(&mut file, &record)
-            .map_err(|error| RunStoreError::Serialization(error.to_string()))?;
-        file.write_all(b"\n")
+        file.write_all(&line)
             .map_err(|error| io_error("append pending delta", &pending, error))?;
         file.flush()
             .map_err(|error| io_error("flush pending delta", &pending, error))?;
@@ -29,6 +36,7 @@ impl RunStore {
     /// Atomically install a projection, then rotate exactly the pending delta
     /// into a never-overwritten immutable history segment.
     pub fn commit_projection(&self, projection: &ActiveProjection) -> Result<(), RunStoreError> {
+        self.repair_pending_tail()?;
         let pending = self.read_pending()?;
         if !pending.is_empty() {
             let segment = self.history_path().join(segment_name(&pending)?);
