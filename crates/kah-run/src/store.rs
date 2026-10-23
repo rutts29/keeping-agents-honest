@@ -8,6 +8,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// The largest `state.json` (including its newline) that `save` writes and
+/// `read` accepts.
+pub const MAX_STATE_BYTES: usize = 2 * 1024 * 1024;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Record {
@@ -78,7 +82,12 @@ impl Store {
         fs::create_dir(&path).map_err(|e| format!("RUN_CREATE stage=run_store: {e}"))?;
         ensure_private_directory(&path).map_err(|e| e.to_string())?;
         let mut store = Self::open(base, id)?;
-        store.save(&record)?;
+        if let Err(error) = store.save(&record) {
+            // Only the directory this call just reserved is removed.
+            drop(store);
+            let _ = fs::remove_dir_all(&path);
+            return Err(error);
+        }
         Ok(store)
     }
     pub fn open(base: &Path, id: &str) -> Result<Self, String> {
@@ -126,6 +135,16 @@ impl Store {
         reject_symlink(&path)?;
         let temporary = self.path.join(format!("state-{}.tmp", std::process::id()));
         reject_symlink(&temporary)?;
+        let mut bytes = serde_json::to_vec(record)
+            .map_err(|e| format!("RUN_STATE_JSON stage=run_store: {e}"))?;
+        bytes.push(b'\n');
+        // Refuse before touching the last good state: read rejects larger files.
+        if bytes.len() > MAX_STATE_BYTES {
+            return Err(format!(
+                "RUN_STATE_SIZE stage=run_store: state is {} bytes, limit {MAX_STATE_BYTES}",
+                bytes.len()
+            ));
+        }
         let result = (|| {
             let mut file = OpenOptions::new()
                 .create(true)
@@ -134,9 +153,7 @@ impl Store {
                 .mode(0o600)
                 .open(&temporary)
                 .map_err(io_error)?;
-            serde_json::to_writer(&mut file, record)
-                .map_err(|e| format!("RUN_STATE_JSON stage=run_store: {e}"))?;
-            file.write_all(b"\n")
+            file.write_all(&bytes)
                 .and_then(|()| file.sync_all())
                 .map_err(io_error)?;
             fs::rename(&temporary, path).map_err(io_error)?;
@@ -184,10 +201,10 @@ fn read_record(directory: &Path) -> Result<Record, String> {
     let mut bytes = Vec::new();
     File::open(path)
         .map_err(io_error)?
-        .take(2 * 1024 * 1024 + 1)
+        .take(MAX_STATE_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(io_error)?;
-    if bytes.len() > 2 * 1024 * 1024 {
+    if bytes.len() > MAX_STATE_BYTES {
         return Err("RUN_STATE_SIZE stage=run_store".into());
     }
     let record: Record = serde_json::from_slice(&bytes)
