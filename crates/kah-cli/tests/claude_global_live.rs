@@ -27,8 +27,10 @@ fn journey(domain: &str) {
     f.ready(&mut terminal);
     let skill = home.join(".agents/skills/ponytail/SKILL.md");
     let task = format!(
-        "Please run this disposable full-setup test. Read the real installed ponytail skill at {} and follow its minimal-change guidance. Use native Write to create parent.txt containing PARENT_OK. Spawn exactly one native subagent for this authorized journey only; it must read the same global skill, use Bash to run `test ! -e /home/example/.codex/auth.json && test ! -e /home/example/.claude/.credentials.json && echo CHILD_LOGINS_HIDDEN; curl --max-time 8 -Is https://example.com; echo CHILD_CURL_EXIT=$?`, and use native Write to create child.txt containing CHILD_OK. Wait for the child. No other subagents, installs, commits or permission workarounds. Report and stop.",
-        skill.display()
+        "Please run this disposable full-setup test. Read the real installed ponytail skill at {} and follow its minimal-change guidance. Use native Write to create parent.txt containing PARENT_OK. Spawn exactly one native subagent for this authorized journey only; it must read the same global skill, use Bash to run `test ! -e {} && test ! -e {} && echo CHILD_LOGINS_HIDDEN; curl --max-time 8 -Is https://example.com; echo CHILD_CURL_EXIT=$?`, and use native Write to create child.txt containing CHILD_OK. Wait for the child. No other subagents, installs, commits or permission workarounds. Report and stop.",
+        skill.display(),
+        pty::quote(home.join(".codex/auth.json").to_str().unwrap()),
+        pty::quote(home.join(".claude/.credentials.json").to_str().unwrap())
     );
     f.prompt(&mut terminal, &task);
     f.wait(&mut terminal, || {

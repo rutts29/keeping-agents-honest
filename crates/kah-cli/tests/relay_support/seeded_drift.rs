@@ -519,7 +519,7 @@ fn journal_tail(id: &str) -> Value {
     )
 }
 
-/// Diagnostic rule for a commit that produced no review.
+/// The decision rule for a commit that produced no review.
 fn diagnosis(id: &str, directory: &Path) -> Value {
     let read = |name: &str| -> Value {
         fs::read(directory.join(name))

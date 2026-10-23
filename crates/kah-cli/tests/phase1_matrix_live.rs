@@ -1,5 +1,5 @@
 //! Live native journeys on a generated corpus (phase1_matrix_support/corpus.rs).
-//! Opt in with `KAH_PHASE1_MAKE_GATE=1 KAH_PHASE1_EVIDENCE=<new directory>`, then
+//! Opt in with `KAH_LIVE_CONTROLLER=1 KAH_PHASE1_EVIDENCE=<new directory>`, then
 //! `cargo test -p kah-cli --test phase1_matrix_live -- --ignored --exact <test>`.
 //! They need native Codex and Herdr. `atomize_current_intent` needs
 //! `KAH_PHASE1_REPLAY_STAGE=atomize`, or `atomize-refine` for a draft and its

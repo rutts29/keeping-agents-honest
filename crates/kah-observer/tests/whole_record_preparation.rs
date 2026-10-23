@@ -1,14 +1,14 @@
 //! Retained-data mechanics only. Fixtures deliberately do not establish relevance.
 use kah_observer::{context_budget::Calibration, context_selection::digest, whole_preparation::*};
 use serde_json::{Value, json};
+mod corpus;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, fs, path::Path};
-const ROOT: &str = "/mnt/kah-fixtures/cargo/synthetic-preparation";
 #[test]
 #[ignore = "seven retained actual rejects; explicit output path; zero native/provider inference"]
 fn retained_whole_records_prove_mechanics_not_selection_quality() {
     let mut results = vec![];
-    for entry in fs::read_dir(Path::new(ROOT).join("jev")).unwrap() {
+    for entry in fs::read_dir(corpus::path("preparation/jev")).unwrap() {
         let path = entry.unwrap().path();
         if !path
             .file_name()
@@ -22,20 +22,20 @@ fn retained_whole_records_prove_mechanics_not_selection_quality() {
         if response["error_response"]["status"] != 400 {
             continue;
         }
-        let path = Path::new(response["job"]["path"].as_str().unwrap());
-        let bytes = fs::read(path).unwrap();
+        let path = corpus::locator(response["job"]["path"].as_str().unwrap());
+        let bytes = fs::read(&path).unwrap();
         assert_eq!(
             response["job"]["digest"],
             format!("sha256:{:x}", Sha256::digest(&bytes))
         );
         let body: Value = serde_json::from_slice(&bytes).unwrap();
         results.push(exercise(&body, response["job"].clone()));
-        assert_eq!(bytes, fs::read(path).unwrap());
+        assert_eq!(bytes, fs::read(&path).unwrap());
     }
     assert_eq!(results.len(), 7);
     results.sort_by_key(|v| v["job"]["path"].as_str().unwrap().to_owned());
     let output = std::env::var_os("KAH_WHOLE_RECORD_OUTPUT").unwrap();
-    assert!(Path::new(&output).starts_with("/mnt/kah-fixtures/cargo/test-fixtures"));
+    let output = corpus::fresh_output(Path::new(&output), &[&corpus::root()]);
     fs::write(output,serde_json::to_vec_pretty(&json!({"cases":results,"provider_calls":0,"native_calls":0,
         "selection_quality_proven":false,"provider_acceptance_proven":false,
         "fixture":"metadata-only is intentionally incomplete; fit result tests mechanics, never authorizes a send"})).unwrap()).unwrap();

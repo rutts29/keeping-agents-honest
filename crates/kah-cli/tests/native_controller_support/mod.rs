@@ -62,13 +62,18 @@ fn completion(root: &Path, agent: &str) -> Value {
     let project = fixture_project(&home, &name, domain);
     let model = fixture_model(agent);
     let task = completion_task(agent);
+    // A real host-only file proves the hiding even when no login exists yet.
+    let canary = home.join(".cache/kah-controller-host-canary");
+    fs::create_dir_all(canary.parent().unwrap()).unwrap();
+    fs::write(&canary, "host-only").unwrap();
+    assert!(canary.exists());
     let output = launch(
         &home,
         &project.root,
         agent,
         model,
         &task,
-        proof::VERIFY,
+        &proof::verify_command(&home, &canary),
         &[],
     );
     let id = output

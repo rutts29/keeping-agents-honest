@@ -3,18 +3,18 @@ use serde_json::{Value, json};
 use std::{fs, process::Command, time::Duration};
 pub fn launch(mode: &str) {
     assert!(
-        std::env::var("KAH_TRACK2_MAKE_GATE").as_deref() == Ok("1")
+        std::env::var("KAH_LIVE_CONTROLLER").as_deref() == Ok("1")
             || (mode == "lifecycle"
                 && std::env::var("KAH_TRACK2_LIFECYCLE").as_deref() == Ok("1")
                 && std::env::var_os("KAH_TRACK2_DRY_RUN").is_some())
             || (mode == "native5e" && std::env::var("KAH_5E_NATIVE_ONLY").as_deref() == Ok("1")),
-        "TRACK2_GATE_ONLY stage=launch: use make gate"
+        "TRACK2_CONTROLLER_ONLY stage=launch: set KAH_LIVE_CONTROLLER=1 on a prepared host"
     );
     if claude_login::requires_claude(mode) {
         claude_login::require_ready();
         assert_eq!(
             std::env::var("CLAUDE_CONFIG_DIR").as_deref(),
-            Ok(claude_login::CONFIG_DIR),
+            Ok(claude_login::config_dir().to_str().unwrap()),
             "TRACK2_CONFIG_DIR stage=launch"
         );
     }
@@ -107,7 +107,7 @@ fn finish(fixture: &fixture::Fixture, terminal: crate::pty::Terminal, result: Va
 }
 
 fn retain_native_exit(fixture: &fixture::Fixture, audit: &Value) -> std::path::PathBuf {
-    let target = std::path::PathBuf::from("/mnt/kah-fixtures/cargo/test-fixtures")
+    let target = std::path::PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap())
         .join(&fixture.name);
     assert!(!target.exists(), "TRACK2_EXISTING_EVIDENCE stage=retain");
     assert!(
@@ -149,13 +149,22 @@ fn wait(fixture: &fixture::Fixture, terminal: &mut crate::pty::Terminal, mode: &
 
 fn prepare_shell(fixture: &fixture::Fixture) -> std::path::PathBuf {
     let shell = fixture.root.join("shell");
+    let config = fixture
+        .claude_config
+        .as_ref()
+        .map_or(String::new(), |config| {
+            format!(
+                " CLAUDE_CONFIG_DIR={}",
+                crate::pty::quote(config.to_str().unwrap())
+            )
+        });
     let auth_unsets = claude_login::AUTH_ENV
         .iter()
         .map(|key| format!("-u {key}"))
         .collect::<Vec<_>>()
         .join(" ");
-    fs::write(&shell, format!("#!/bin/sh\nexec env {} CLAUDE_CONFIG_DIR={} DISABLE_AUTOUPDATER=1 HOME={} XDG_STATE_HOME={} PS1=KAH_TRACK2_READY /bin/bash --noprofile --norc -i\n",
-        auth_unsets, crate::pty::quote(claude_login::CONFIG_DIR),crate::pty::quote(fixture.home.to_str().unwrap()),
+    fs::write(&shell, format!("#!/bin/sh\nexec env {}{} DISABLE_AUTOUPDATER=1 HOME={} XDG_STATE_HOME={} PS1=KAH_TRACK2_READY /bin/bash --noprofile --norc -i\n",
+        auth_unsets, config,crate::pty::quote(fixture.home.to_str().unwrap()),
         crate::pty::quote(fixture.home.join(".local/state").to_str().unwrap()))).unwrap();
     fixture::executable(&shell);
     shell

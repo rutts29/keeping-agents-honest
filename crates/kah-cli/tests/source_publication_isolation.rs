@@ -19,6 +19,7 @@ fn acl(path: &Path) -> String {
 #[test]
 #[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn publishing_and_republishing_evidence_never_share_private_inodes_or_acls() {
+    let uid = kah_run::access::service_uid().unwrap();
     let root = std::env::temp_dir().join(format!(
         "source-publication-isolation-{}",
         std::process::id()
@@ -37,7 +38,7 @@ fn publishing_and_republishing_evidence_never_share_private_inodes_or_acls() {
     fs::hard_link(&secret, &alias).unwrap();
     for _ in 0..2 {
         source_store::share(&private, &input).unwrap();
-        kah_cli::observer_review::workspace::share_access(&public, kah_run::access::service_uid().unwrap()).unwrap();
+        kah_cli::observer_review::workspace::share_access(&public, uid).unwrap();
         assert_ne!(
             fs::metadata(&secret).unwrap().ino(),
             fs::metadata(&alias).unwrap().ino(),
@@ -48,9 +49,9 @@ fn publishing_and_republishing_evidence_never_share_private_inodes_or_acls() {
             before,
             "publishing may not grant any private-store ACL"
         );
-        assert!(acl(&alias).contains(&format!("user:{}:r--", kah_run::access::service_uid().unwrap())));
-        assert!(!acl(&alias).contains(&format!("user:{}:rw", kah_run::access::service_uid().unwrap())));
-        assert!(acl(&public.join("outbox")).contains(&format!("user:{}:rwx", kah_run::access::service_uid().unwrap())));
+        assert!(acl(&alias).contains(&format!("user:{uid}:r--")));
+        assert!(!acl(&alias).contains(&format!("user:{uid}:rw")));
+        assert!(acl(&public.join("outbox")).contains(&format!("user:{uid}:rwx")));
         assert!(!input.join("sources/unreferenced-record").exists());
     }
     fs::write(&alias, b"fixture changed its copy").unwrap();
@@ -69,14 +70,14 @@ fn publishing_and_republishing_evidence_never_share_private_inodes_or_acls() {
 fn read_only_publication_replaces_legacy_writable_default_acl() {
     let root = std::env::temp_dir().join(format!("source-readonly-default-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
-    kah_run::access::share_tree(&root, 42420, true).unwrap();
-    kah_run::access::share_tree(&root, 42420, false).unwrap();
+    kah_run::access::share_tree(&root, 65532, true).unwrap();
+    kah_run::access::share_tree(&root, 65532, false).unwrap();
     let record = root.join("new-record");
     fs::write(&record, b"whole evidence").unwrap();
     let permissions = acl(&record);
-    assert!(permissions.contains("user:42420:r-x"));
-    assert!(!permissions.contains("user:42420:rw"));
-    assert!(acl(&root).contains("default:user:42420:r-x"));
+    assert!(permissions.contains("user:65532:r-x"));
+    assert!(!permissions.contains("user:65532:rw"));
+    assert!(acl(&root).contains("default:user:65532:r-x"));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -91,13 +92,13 @@ fn legacy_link_retirement_preserves_private_bytes_without_copying() {
     let alias = workspace.join("sources/legacy");
     fs::write(&source, b"complete preserved record").unwrap();
     fs::hard_link(&source, &alias).unwrap();
-    kah_run::access::share_tree(&workspace, 42420, true).unwrap();
-    assert!(acl(&source).contains("user:42420:rw"));
+    kah_run::access::share_tree(&workspace, 65532, true).unwrap();
+    assert!(acl(&source).contains("user:65532:rw"));
     let result = source_store::retire_shared_sources(&private, &workspace).unwrap();
     assert_eq!(result["retired"], 1);
     assert_eq!(result["copied_bytes"], 0);
-    kah_run::access::revoke_tree(&private, 42420).unwrap();
-    assert!(!acl(&source).contains("user:42420:"));
+    kah_run::access::revoke_tree(&private, 65532).unwrap();
+    assert!(!acl(&source).contains("user:65532:"));
     assert_eq!(fs::metadata(&source).unwrap().nlink(), 1);
     assert_eq!(fs::read(&source).unwrap(), b"complete preserved record");
     assert!(!alias.exists());
@@ -107,6 +108,7 @@ fn legacy_link_retirement_preserves_private_bytes_without_copying() {
 #[test]
 #[ignore = "host setup: sandbox service account and host ACL sharing"]
 fn a_catalogue_view_recovers_nested_json_and_segmented_text_without_unrelated_sources() {
+    let uid = kah_run::access::service_uid().unwrap();
     let root = std::env::temp_dir().join(format!("source-view-graph-{}", std::process::id()));
     let private = root.join("private");
     let workspace = root.join("observer");
@@ -135,7 +137,7 @@ fn a_catalogue_view_recovers_nested_json_and_segmented_text_without_unrelated_so
             entry.metadata().unwrap().ino(),
             fs::metadata(original).unwrap().ino()
         );
-        assert!(!acl(&entry.path()).contains(&format!("user:{}:rw", kah_run::access::service_uid().unwrap())));
+        assert!(!acl(&entry.path()).contains(&format!("user:{uid}:rw")));
     }
     source_store::finish_source_view(&workspace, "current").unwrap();
     assert!(!input.join("sources").exists());
@@ -206,19 +208,19 @@ fn importing_a_sandbox_report_keeps_bytes_but_not_its_inode_or_acl() {
     let source = root.join("sandbox.json");
     let target = root.join("private.json");
     fs::write(&source, b"whole sandbox report evidence").unwrap();
-    kah_run::access::share_tree(&root, 42420, true).unwrap();
+    kah_run::access::share_tree(&root, 65532, true).unwrap();
     let original_inode = fs::metadata(&source).unwrap().ino();
     source_store::access_repair::private_copy(&source, &target).unwrap();
     assert_eq!(fs::read(&target).unwrap(), fs::read(&source).unwrap());
     assert_ne!(fs::metadata(&target).unwrap().ino(), original_inode);
-    assert!(!acl(&target).contains("user:42420:"));
+    assert!(!acl(&target).contains("user:65532:"));
     assert_eq!(
         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
         0o600
     );
     source_store::access_repair::private_copy(&source, &source).unwrap();
     assert_ne!(fs::metadata(&source).unwrap().ino(), original_inode);
-    assert!(!acl(&source).contains("user:42420:"));
+    assert!(!acl(&source).contains("user:65532:"));
     assert_eq!(fs::read(&source).unwrap(), b"whole sandbox report evidence");
     fs::remove_dir_all(root).unwrap();
 }

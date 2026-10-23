@@ -173,7 +173,7 @@ fn globals(home: &Path) -> (Vec<u8>, Option<Vec<u8>>) {
 }
 fn version() -> String {
     String::from_utf8(
-        Command::new("/home/example/.local/bin/codex")
+        Command::new(PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/bin/codex"))
             .arg("--version")
             .output()
             .unwrap()

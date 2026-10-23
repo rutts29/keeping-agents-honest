@@ -27,11 +27,11 @@ impl Fixture {
                 LaunchOptions::default(),
                 &self.0.join("native"),
                 "image",
-                42420,
+                65532,
             )
             .unwrap(),
             temporary: Some(self.0.join("temp")),
-            service_uid: 42420,
+            service_uid: 65532,
             environment: vec![],
         }
     }
@@ -115,6 +115,6 @@ fn native_temp_access_does_not_follow_links_or_change_ownership() {
     assert!(
         String::from_utf8(acl.stdout)
             .unwrap()
-            .contains("user:42420:rw-")
+            .contains("user:65532:rw-")
     );
 }

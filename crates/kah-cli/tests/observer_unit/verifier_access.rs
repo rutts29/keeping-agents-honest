@@ -42,7 +42,7 @@ fn sandbox_candidate(root: &Path) -> Worktree {
     let home = root.join("home");
     kah_core::run_store::ensure_save_directory(&home.join(".local/bin")).unwrap();
     symlink(
-        "/home/example/.local/bin/codex",
+        std::path::PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/bin/codex"),
         home.join(".local/bin/codex"),
     )
     .unwrap();

@@ -34,7 +34,10 @@ fn terminal_entrypoints_preserve_project_policy() {
     let before = fs::read(home.join(".codex/config.toml")).unwrap();
     let (_, mut fixture) = fixture::prepare(&home, "research", false);
     let mut reader = history::connect(&home, &fixture.project);
-    let prompt = "Use native exec_command once to run: pwd; test ! -e /home/example/.codex/auth.json && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create terminal-proof.txt containing TERMINAL_WORKS. Disposable launcher test: no other tools, subagents, installs or commits. Report and stop.";
+    let prompt = &format!(
+        "Use native exec_command once to run: pwd; test ! -e {} && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create terminal-proof.txt containing TERMINAL_WORKS. Disposable launcher test: no other tools, subagents, installs or commits. Report and stop.",
+        terminal_support::host_codex_login_quoted()
+    );
     let command = shell(
         &fixture.project,
         &format!(
@@ -57,7 +60,10 @@ fn terminal_entrypoints_preserve_project_policy() {
     first.close();
     assert!(first.output().contains("kah: research project"));
     drop(first);
-    let prompt = "Use native exec_command once to run: test -f terminal-proof.txt && echo PRIOR_EDIT_PRESENT; test ! -e /home/example/.codex/auth.json && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create terminal-resume-proof.txt containing RESUME_WORKS. No other tools, subagents or commits. Report and stop.";
+    let prompt = &format!(
+        "Use native exec_command once to run: test -f terminal-proof.txt && echo PRIOR_EDIT_PRESENT; test ! -e {} && echo HOST_AUTH_HIDDEN; curl --max-time 8 -Is https://example.com; echo CURL_EXIT=$?. Then native apply_patch must create terminal-resume-proof.txt containing RESUME_WORKS. No other tools, subagents or commits. Report and stop.",
+        terminal_support::host_codex_login_quoted()
+    );
     let command = shell(
         &home.join("repos/mine"),
         &format!("codex resume {id} --no-alt-screen {}", quote(prompt)),

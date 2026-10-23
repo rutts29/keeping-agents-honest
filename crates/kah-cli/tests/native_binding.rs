@@ -56,10 +56,8 @@ fn confirmed_claude_input_does_not_depend_on_herdrs_advisory_id() {
 #[test]
 fn native_hook_path_with_underscores_and_non_alphanumerics_is_authoritative() {
     let id = "00000000-0000-4000-8000-000000000011";
-    let project = Path::new("/mnt/kah-fixtures/project.name space+[é]😀");
-    let path = format!(
-        "/home/test/.claude/projects/-mnt-HC-Volume-106758648-project-name-space------/{id}.jsonl"
-    );
+    let project = Path::new("/fixture/project.name space+[é]😀");
+    let path = format!("/home/test/.claude/projects/-fixture-project-name-space------/{id}.jsonl");
     let input = json!({"hook_event_name":"SessionStart","source":"startup","session_id":id,
         "cwd":project,"transcript_path":path});
     let confirmed =

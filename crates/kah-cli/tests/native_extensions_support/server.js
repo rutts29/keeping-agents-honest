@@ -16,7 +16,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   }] };
   if (request.method === 'tools/call') {
     const proof = { cwd: process.cwd(), hostCanaryHidden: !fs.existsSync(process.argv[2]),
-      hostLoginHidden: !fs.existsSync('/home/example/.codex/auth.json'),
+      hostLoginHidden: !fs.existsSync(process.argv[3]),
       networkExit: spawnSync('curl', ['--max-time', '8', '-Is', 'https://example.com']).status };
     fs.writeFileSync('mcp-proof.json', JSON.stringify(proof));
     result = { content: [{ type: 'text', text: JSON.stringify(proof) }] };

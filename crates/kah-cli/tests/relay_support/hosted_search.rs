@@ -38,6 +38,7 @@ fn prepare(home: &Path, root: &Path) -> (kah_cli::Launch, crate::fixture::Fixtur
         canary: root.join("canary"),
         stderr: root.join("codex-stderr"),
         sessions: vec![],
+        codex: home.join(".local/bin/codex"),
     };
     (launch, fixture)
 }

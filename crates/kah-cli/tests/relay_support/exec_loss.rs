@@ -11,7 +11,13 @@ use kah_cli::observer_review::{
 };
 use sha2::{Digest, Sha256};
 
-const DOCKER: [&str; 2] = ["--host", "unix:///run/user/2001/docker.sock"];
+fn docker_args() -> [String; 2] {
+    let uid = kah_run::access::service_uid().unwrap();
+    [
+        "--host".into(),
+        format!("unix:///run/user/{uid}/docker.sock"),
+    ]
+}
 const HOST_ERROR: &str = "Failed to create unified exec process:";
 /// New user rules: each one makes kah queue its own intent-sync review
 /// (observer_intake::after_sync). Fixture Drift wakes are retired unreviewed
@@ -236,7 +242,7 @@ fn steer(id: &str, worker: &Pane, text: &str, before: &State) -> String {
 /// Running observer executors: the observer workspace is their project root.
 fn containers(workspace: &Path) -> Vec<String> {
     let output = Command::new("/usr/bin/docker")
-        .args(DOCKER)
+        .args(docker_args())
         .args(["ps", "-q", "--filter"])
         .arg(format!("label=dev.kah.project={}", workspace.display()))
         .output()
@@ -257,7 +263,7 @@ fn kill(workspace: &Path) -> Vec<String> {
         workspace.display()
     );
     let output = Command::new("/usr/bin/docker")
-        .args(DOCKER)
+        .args(docker_args())
         .arg("kill")
         .args(&ids)
         .output()

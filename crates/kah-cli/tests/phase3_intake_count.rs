@@ -1,4 +1,5 @@
 //! Read-only count of frozen native text. No judge, control client or native session.
+mod corpus;
 use kah_core::intent_history::SourceRole;
 use kah_observer::{
     context_budget::Calibration,
@@ -81,11 +82,9 @@ fn scan(
             )
         })
         .collect::<Vec<_>>();
-    let calibration_source: Value = serde_json::from_slice(
-        &fs::read("/mnt/kah-fixtures/cargo/step5a-placement-count-20261011/count-only.json")
-            .unwrap(),
-    )
-    .unwrap();
+    let calibration_source: Value =
+        serde_json::from_slice(&fs::read(corpus::path("placement/count-only.json")).unwrap())
+            .unwrap();
     let calibration = Calibration {
         input_utf8_bytes: 1_000_000,
         input_tokens: (calibration_source["calibration"]["tokens_per_byte"]

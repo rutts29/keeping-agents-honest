@@ -1,4 +1,5 @@
 //! Retained real bodies through the Untrusted adapter, without network or login.
+mod corpus;
 use kah_cli::observer_review::untrusted;
 use kah_observer::{
     commit_review::DoubtLine,
@@ -30,13 +31,8 @@ fn retained_decisions_are_advisory_and_known_rejections_are_terminal_without_nat
     let policy: DoubtLine =
         serde_json::from_str(include_str!("../../../assets/observer/commit-policy.json")).unwrap();
     let mut cases = BTreeMap::<String, Vec<Value>>::new();
-    for root in [
-        "synthetic-preparation",
-        "synthetic-validation",
-    ] {
-        let path = Path::new("/mnt/kah-fixtures/cargo")
-            .join(root)
-            .join("jev/complete.json");
+    for root in ["preparation", "validation"] {
+        let path = corpus::path(&format!("{root}/jev/complete.json"));
         let archive: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         for row in archive["records"]
             .as_array()
@@ -120,18 +116,18 @@ fn outages(output: &Path, rows: &[Value], policy: &DoubtLine) {
     }
 }
 fn authority(row: &Value) {
-    let root = Path::new(
-        "/mnt/kah-fixtures/cargo/test-fixtures/synthetic-current-rules/native-home/repos/mine/rules-proof/input.json",
-    );
+    let root = corpus::path("current-rules/input.json");
     let source: kah_core::current_rules::Input =
         serde_json::from_slice(&fs::read(root).unwrap()).unwrap();
     let history = kah_core::intent_history::History::replay(source.history).unwrap();
-    let path = Path::new(row["job"]["path"].as_str().unwrap())
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("input.json");
+    let path = corpus::within(
+        &corpus::locator(row["job"]["path"].as_str().unwrap())
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("input.json"),
+    );
     let bundle: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
     let original: kah_observer::commit_check::Input =
         serde_json::from_value(bundle["input"].clone()).unwrap();
@@ -246,13 +242,11 @@ fn cached(
     assert_eq!(json!(again), json!(record));
 }
 fn source_directory(case: &str, rows: &[Value]) -> PathBuf {
-    let body = Path::new(rows[0]["job"]["path"].as_str().unwrap());
+    let body = corpus::locator(rows[0]["job"]["path"].as_str().unwrap());
     if body.parent().unwrap().file_name().unwrap() == "whole-hunks" {
         body.parent().unwrap().parent().unwrap().into()
     } else {
-        Path::new("/mnt/kah-fixtures/cargo/synthetic-packed-construction")
-            .join(case)
-            .join("all_changed_files")
+        corpus::path(&format!("packed/{case}/all_changed_files"))
     }
 }
 fn delivery(output: &Path, case: &str, report: &untrusted::Report) {
@@ -283,7 +277,8 @@ fn corpus(rows: &[Value]) -> (Vec<WireRequest>, Recorded, Vec<f64>, usize) {
     let mut expected = vec![];
     let mut rejected = 0;
     for (index, row) in rows.iter().enumerate() {
-        let body = fs::read_to_string(row["job"]["path"].as_str().unwrap()).unwrap();
+        let body =
+            fs::read_to_string(corpus::locator(row["job"]["path"].as_str().unwrap())).unwrap();
         assert_eq!(
             kah_observer::commit_check::digest(body.as_bytes()),
             row["job"]["digest"]

@@ -2,12 +2,13 @@
 use std::{
     fs,
     os::unix::fs::{MetadataExt, PermissionsExt},
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 
-pub const TEMPLATE_HOME: &str = "/mnt/kah-fixtures/cargo/claude-fixture-home";
-pub const CONFIG_DIR: &str = "/mnt/kah-fixtures/cargo/claude-fixture-home/.claude";
+/// Names the dedicated test-login home; there is no default and no fallback
+/// to the operator's own login.
+pub const HOME_ENV: &str = "KAH_CLAUDE_TEST_HOME";
 pub const AUTH_ENV: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -76,17 +77,32 @@ fn private_directory(directory: &Path, mode: u32) -> bool {
             .join("\n")
             == expected
 }
+/// The absolute test-login home named by `KAH_CLAUDE_TEST_HOME`.
+pub fn template_home() -> PathBuf {
+    let home = std::env::var_os(HOME_ENV)
+        .unwrap_or_else(|| panic!("TRACK2_TEST_LOGIN_REQUIRED stage=login: set {HOME_ENV}"));
+    let home = PathBuf::from(home);
+    assert!(
+        home.is_absolute() && home.is_dir(),
+        "TRACK2_TEST_LOGIN_REQUIRED stage=login: {HOME_ENV} must be an existing absolute directory"
+    );
+    home
+}
+/// The test-login home's Claude config directory.
+pub fn config_dir() -> PathBuf {
+    template_home().join(".claude")
+}
 pub fn require_ready() {
-    ready_at(Path::new(TEMPLATE_HOME))
+    ready_at(&template_home())
         .expect("Claude tests stay paused until the separate interactive login succeeds");
 }
-pub fn command_environment(command: &mut Command) {
+pub fn command_environment(command: &mut Command, config: &Path) {
     for key in AUTH_ENV {
         command.env_remove(key);
     }
     command
         .env("DISABLE_AUTOUPDATER", "1")
-        .env("CLAUDE_CONFIG_DIR", CONFIG_DIR);
+        .env("CLAUDE_CONFIG_DIR", config);
 }
 pub fn requires_claude(mode: &str) -> bool {
     if mode == "cache" || mode == "search" {

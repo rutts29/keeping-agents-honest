@@ -130,7 +130,7 @@ fn configure(home: &std::path::Path, launch: &kah_cli::Launch, f: &fixture::Fixt
     overlay::write_settings(
         &f.overlay,
         json!({"mcp_servers":{"fixture":{
-            "command":"/usr/bin/node","args":[f.project.join("fixture-server.js"),f.canary],
+            "command":"/usr/bin/node","args":[f.project.join("fixture-server.js"),f.canary,home.join(".codex/auth.json")],
             "cwd":f.project,"environment_id":launch.environment_id,"startup_timeout_sec":30
         }}}),
     )
@@ -151,8 +151,9 @@ fn configure(home: &std::path::Path, launch: &kah_cli::Launch, f: &fixture::Fixt
     .unwrap();
     executor.args.truncate(executor.args.len() - 4);
     let check = format!(
-        "test ! -e {} && test ! -e /home/example/.codex/auth.json && printf HOOK_GVISOR > hook-proof.txt",
-        quote(f.canary.to_str().unwrap())
+        "test ! -e {} && test ! -e {} && printf HOOK_GVISOR > hook-proof.txt",
+        quote(f.canary.to_str().unwrap()),
+        quote(home.join(".codex/auth.json").to_str().unwrap())
     );
     executor.args.extend(["/bin/sh".into(), "-c".into(), check]);
     let command = std::iter::once("/usr/bin/docker".to_owned())

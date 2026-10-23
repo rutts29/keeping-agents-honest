@@ -132,8 +132,14 @@ impl Restricted {
             settings["hooks"][event] = json!([{"hooks":[{"type":"command","command":self.home.join(".local/bin/kah"),"args":["__claude-hook"],"timeout":120}]}]);
         }
         let hook = format!(
-            "test ! -e {} && test ! -e /home/example/.claude/.credentials.json && printf HOOK_GVISOR > hook-proof.txt",
-            quote(self.canary.to_str().unwrap())
+            "test ! -e {} && test ! -e {} && printf HOOK_GVISOR > hook-proof.txt",
+            quote(self.canary.to_str().unwrap()),
+            quote(
+                self.home
+                    .join(".claude/.credentials.json")
+                    .to_str()
+                    .unwrap()
+            )
         );
         settings["hooks"]["SessionStart"]
             .as_array_mut()

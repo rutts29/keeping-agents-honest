@@ -1,13 +1,10 @@
+#[path = "track2_support/claude_invocation.rs"]
+mod invocation;
 #[allow(dead_code)]
 #[path = "track2_support/claude_login.rs"]
 mod login;
 #[path = "track2_support/claude_metadata.rs"]
 mod metadata;
-mod claude_login {
-    pub use super::login::CONFIG_DIR;
-}
-#[path = "track2_support/claude_invocation.rs"]
-mod invocation;
 #[path = "track2_support/claude_trust.rs"]
 mod trust;
 use std::{
@@ -40,22 +37,34 @@ fn metadata_only_login_gate_requires_user_success_marker_and_private_files() {
         fs::set_permissions(p, fs::Permissions::from_mode(0o600)).unwrap();
     }
     assert_eq!(login::ready_at(&path), Ok(()));
-    if let Ok(uid) = kah_run::access::service_uid() {
-        for directory in [&path, &path.join(".claude")] {
-            kah_run::access::traverse(directory, uid).unwrap();
-        }
-        assert_eq!(login::ready_at(&path), Ok(()));
-        assert!(
-            Command::new("/usr/bin/setfacl")
-                .args(["-m", &format!("u:{uid}:r-x")])
-                .arg(path.join(".claude"))
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert!(login::ready_at(&path).is_err());
-    }
     fs::set_permissions(path.join(".claude"), fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(login::ready_at(&path).is_err());
+    fs::remove_dir_all(path).unwrap();
+}
+#[test]
+#[ignore = "host setup: sandbox service account and host ACL sharing"]
+fn service_account_traversal_is_accepted_but_listing_access_is_not() {
+    let path = root();
+    for p in [
+        path.join(".claude/.credentials.json"),
+        path.join("test-login-ready"),
+    ] {
+        fs::File::create(&p).unwrap();
+        fs::set_permissions(p, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    let uid = kah_run::access::service_uid().unwrap();
+    for directory in [&path, &path.join(".claude")] {
+        kah_run::access::traverse(directory, uid).unwrap();
+    }
+    assert_eq!(login::ready_at(&path), Ok(()));
+    assert!(
+        Command::new("/usr/bin/setfacl")
+            .args(["-m", &format!("u:{uid}:r-x")])
+            .arg(path.join(".claude"))
+            .status()
+            .unwrap()
+            .success()
+    );
     assert!(login::ready_at(&path).is_err());
     fs::remove_dir_all(path).unwrap();
 }
@@ -115,7 +124,8 @@ fn per_invocation_settings_preserve_hooks_and_argument_boundaries() {
     )
     .unwrap();
     fs::set_permissions(&native, fs::Permissions::from_mode(0o700)).unwrap();
-    invocation::install(&path, &native);
+    let config = path.join(".claude");
+    invocation::install(&path, &native, &config);
     let output = invocation::output_retrying_text_file_busy(|| {
         let mut command = Command::new(path.join(".local/bin/claude"));
         command.args([
@@ -129,7 +139,7 @@ fn per_invocation_settings_preserve_hooks_and_argument_boundaries() {
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
     let lines = text.lines().collect::<Vec<_>>();
-    assert_eq!(lines[0], login::CONFIG_DIR);
+    assert_eq!(lines[0], config.to_str().unwrap());
     let settings: serde_json::Value = serde_json::from_str(lines[2]).unwrap();
     assert_eq!(settings["hooks"]["Stop"][0]["fixture"], true);
     assert_eq!(settings["fastMode"], false);
@@ -143,11 +153,13 @@ fn test_environment_disables_updates_and_removes_alternate_auth_inputs() {
     for key in login::AUTH_ENV {
         command.env(key, "unused-test-sentinel");
     }
-    login::command_environment(&mut command);
-    assert!(command.get_envs().any(|(k, v)| k == "CLAUDE_CONFIG_DIR"
-        && v == Some(std::ffi::OsStr::new(
-            "/mnt/kah-fixtures/cargo/claude-fixture-home/.claude"
-        ))));
+    let config = std::path::Path::new("/fixture/test-login/.claude");
+    login::command_environment(&mut command, config);
+    assert!(
+        command
+            .get_envs()
+            .any(|(k, v)| k == "CLAUDE_CONFIG_DIR" && v == Some(config.as_os_str()))
+    );
     for key in login::AUTH_ENV {
         assert!(command.get_envs().any(|(k, v)| k == *key && v.is_none()));
     }

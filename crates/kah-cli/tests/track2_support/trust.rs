@@ -11,10 +11,10 @@ pub use dialog::folder_dialog;
 
 pub fn preseed_claude(home: &Path, project: &Path) {
     let path = kah_claude::paths::global_config(home);
+    let config = super::claude_login::config_dir();
     assert!(
-        std::env::var_os("CLAUDE_CONFIG_DIR").as_deref()
-            == Some(std::ffi::OsStr::new(super::claude_login::CONFIG_DIR))
-            && path == Path::new(super::claude_login::CONFIG_DIR).join(".claude.json"),
+        std::env::var_os("CLAUDE_CONFIG_DIR").as_deref() == Some(config.as_os_str())
+            && path == config.join(".claude.json"),
         "TRACK2_CLAUDE_CONFIG_SCOPE stage=trust"
     );
     let root = home.parent().unwrap();
@@ -43,7 +43,7 @@ pub fn cleanup_claude(home: &Path) -> Value {
     let path = kah_claude::paths::global_config(home);
     assert_eq!(
         path,
-        Path::new(super::claude_login::CONFIG_DIR).join(".claude.json"),
+        super::claude_login::config_dir().join(".claude.json"),
         "TRACK2_CLAUDE_CONFIG_SCOPE stage=cleanup"
     );
     match super::claude_trust::cleanup(&path, &receipts) {

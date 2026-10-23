@@ -4,9 +4,9 @@ use std::{fs, path::Path};
 #[test]
 fn native_history_reads_native_encoded_project_directory() {
     let home = std::env::temp_dir().join(format!("kah-path-unit-{}", std::process::id()));
-    let project = Path::new("/mnt/kah-fixtures/project.name space+[é]😀");
+    let project = Path::new("/fixture/project.name space+[é]😀");
     let session = "00000000-0000-4000-8000-000000000011";
-    let directory = home.join(".claude/projects/-mnt-HC-Volume-106758648-project-name-space------");
+    let directory = home.join(".claude/projects/-fixture-project-name-space------");
     fs::create_dir_all(&directory).unwrap();
     let row = json!({"type":"user","uuid":"user-one","sessionId":session,"cwd":project,
         "message":{"role":"user","content":"steer: Preserve BLUE."}});

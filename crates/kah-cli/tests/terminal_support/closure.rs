@@ -37,7 +37,10 @@ fn journey(home: &Path, entry: &str) -> Value {
     let id = history::session(&mut reader, &fixture.project, &mut terminal);
     fixture.sessions.push(id.clone());
     let initial = history::completed_turn(&mut reader, &id, None);
-    let steer = "  StEeR: Use native exec_command once to run: test ! -e /home/example/.codex/auth.json && echo KAH_ROUTE_GVISOR. Then native apply_patch creates forced.txt containing TUI_FORCED. No other tools, dependencies, subagents or commits. Report and stop.";
+    let steer = &format!(
+        "  StEeR: Use native exec_command once to run: test ! -e {} && echo KAH_ROUTE_GVISOR. Then native apply_patch creates forced.txt containing TUI_FORCED. No other tools, dependencies, subagents or commits. Report and stop.",
+        super::host_codex_login_quoted()
+    );
     terminal.submit(steer);
     let forced = history::completed_turn(&mut reader, &id, initial["id"].as_str());
     assert_eq!(

@@ -13,12 +13,18 @@ use std::{
 pub fn measure(base: &Path, session: &str, claude: bool, transcript: &Path) -> Value {
     wait(base, session);
     let state = Store::read(base, session).unwrap().unwrap();
+    let baseline = std::env::var("KAH_HOOK_BASELINE_BIN")
+        .expect("KAH_HOOK_BASELINE_BIN names the executable to compare against");
+    assert!(
+        Path::new(&baseline).is_absolute() && Path::new(&baseline).is_file(),
+        "KAH_HOOK_BASELINE_BIN must be an existing absolute executable"
+    );
     let before = sample(
         base,
         &state.binding,
         claude,
         transcript,
-        "/tmp/kah-5h-c-synchronous-release",
+        &baseline,
         "before",
     );
     let after = sample(

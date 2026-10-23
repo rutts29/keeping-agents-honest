@@ -78,20 +78,20 @@ fn owned(project: &Path, sessions: &[String], cwd: &Path, command: &[u8]) -> boo
 
 #[test]
 fn only_exact_fixture_cwd_and_registered_worker_jobs_are_owned() {
-    let project = Path::new("/home/example/repos/research/kah-gate2-owned");
+    let project = Path::new("/home/fixture/repos/research/kah-gate2-owned");
     let sessions = vec!["worker".into()];
-    let command = b"/home/example/.local/bin/kah\0__checkpoint-tags\0worker\0";
+    let command = b"/home/fixture/.local/bin/kah\0__checkpoint-tags\0worker\0";
     assert!(owned(project, &sessions, project, command));
     assert!(owned(
         project,
         &sessions,
-        Path::new("/home/example/repos/research/kah-gate2-owned (deleted)"),
+        Path::new("/home/fixture/repos/research/kah-gate2-owned (deleted)"),
         command
     ));
     assert!(!owned(
         project,
         &sessions,
-        Path::new("/home/example/repos/mine/kah"),
+        Path::new("/home/fixture/repos/mine/kah"),
         command
     ));
     assert!(!owned(

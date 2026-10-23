@@ -1,4 +1,5 @@
 //! Offline integration over the retained native commit-scope corpus.
+mod corpus;
 use kah_cli::observer_review::{
     preparation::Job,
     queue::{self, Wake},
@@ -15,7 +16,7 @@ fn retained_context_jobs_stay_individual_and_captured_reviews_stay_whole() {
     let corpus = std::path::PathBuf::from(std::env::var_os("KAH_PACKET_REMOVAL_CORPUS").unwrap());
     let evidence = std::path::PathBuf::from(std::env::var_os("KAH_GATE_EVIDENCE").unwrap());
     let private = std::path::PathBuf::from(std::env::var_os("XDG_STATE_HOME").unwrap());
-    assert!(private.starts_with("/mnt/kah-fixtures/cargo/test-fixtures"));
+    assert!(private.starts_with(corpus::fixture_base()));
     let worker = format!("packet-removal-{}", kah_cli::relay_store::nonce());
     let store = Store::open(&worker).unwrap();
     assert!(store.directory.starts_with(&private));
