@@ -171,7 +171,15 @@ impl AppServer {
                     "Codex App Server emitted a non-object protocol message",
                 )
             })?;
-            if object.get("method").is_some() && object.get("id").is_none() {
+            // A message with a method comes from the server: a notification is
+            // skipped, a request is declined under its own id.
+            if object.get("method").is_some() {
+                if let Some(server_id) = object.get("id") {
+                    self.write_json(&json!({
+                        "id": server_id,
+                        "error": {"code": -32601, "message": "this client handles no server requests"},
+                    }))?;
+                }
                 continue;
             }
             let response_id = object.get("id").and_then(Value::as_u64).ok_or_else(|| {

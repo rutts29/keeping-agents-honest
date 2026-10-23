@@ -64,6 +64,15 @@ impl Control {
                 return Err(error("CODEX_RPC_TIMEOUT", method));
             }
             let message = self.transport.receive(deadline)?;
+            // A message with a method comes from the server, whatever its id: a
+            // notification is skipped, a request is declined under its own id.
+            // Only a message without a method answers one of our requests.
+            if message.get("method").is_some() {
+                if let Some(server_id) = message.get("id") {
+                    self.transport.send(&json!({"id":server_id,"error":{"code":-32601,"message":"this client handles no server requests"}}))?;
+                }
+                continue;
+            }
             if message.get("id").is_none() {
                 continue;
             }
