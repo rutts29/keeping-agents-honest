@@ -25,10 +25,19 @@ pub fn run(args: &[String]) -> Result<()> {
             _ => return Err("SEND_ARGUMENTS stage=arguments".into()),
         }
     }
+    deliver(&args[1], &args[2], sender, receipt, false)
+}
+
+/// The message an `kah send` delegate delivers. Herdr types only its text, so
+/// the sender prefix alone must mark it as delegate context in every adapter.
+pub fn delegate_message(session: &str, sender: &str, receipt: &str, text: &str) -> Result<Message> {
     if sender == "kah-user" {
         return Err("SEND_ARGUMENTS stage=delegate_channel: reserved user sender".into());
     }
-    deliver(&args[1], &args[2], sender, receipt, false)
+    if !kah_core::intent_history::is_kah_delegate_message(&format!("[{sender}]")) {
+        return Err("SEND_SENDER stage=delegate_channel: a sender is kah- followed by lowercase letters, digits or -".into());
+    }
+    Ok(Message::new(session, sender, receipt, text)?)
 }
 
 pub fn user(session: &str, text: &str, receipt: Option<&str>) -> Result<()> {
@@ -72,7 +81,7 @@ fn deliver(
     let message = if user {
         Message::user(session, receipt, text)?
     } else {
-        Message::new(session, sender, receipt, text)?
+        delegate_message(session, sender, receipt, text)?
     };
     eprintln!("kah message receipt: {receipt} (reuse --receipt on retry)");
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("SEND_HOME stage=arguments")?);

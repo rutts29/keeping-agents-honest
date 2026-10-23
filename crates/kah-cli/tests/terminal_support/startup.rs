@@ -63,7 +63,7 @@ fn send_probe(id: &str, terminal: &Terminal) -> Value {
             id,
             "Visibility probe",
             "--sender",
-            "gate-probe",
+            "kah-gate-probe",
             "--receipt",
             "3f-visibility",
         ])
@@ -79,7 +79,7 @@ fn send_probe(id: &str, terminal: &Terminal) -> Value {
     let delivery: Value = serde_json::from_slice(&sender.stdout).unwrap();
     assert_eq!(delivery["transport"], "herdr");
     assert_eq!(delivery["status"], "submitted");
-    wait_shown(terminal, "gate-probe] Visibility probe");
+    wait_shown(terminal, "[kah-gate-probe] Visibility probe");
     delivery
 }
 
