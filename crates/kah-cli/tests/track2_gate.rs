@@ -10,7 +10,7 @@ mod pty;
 mod track2_support;
 
 #[test]
-#[ignore = "ten real builder commits through the full native C observer; make gate only"]
+#[ignore = "cache regression on a generated repository through the full native observer; opt in with --ignored"]
 fn real_commit_cache_benchmark() {
     track2_support::launch("cache");
 }

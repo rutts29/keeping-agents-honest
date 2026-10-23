@@ -61,28 +61,43 @@ pub fn generate(root: &Path) -> PathBuf {
     save(&output.join("intent-only.json"), &items);
     output
 }
-/// One labelled flag per case, bound to that case's measured request. These
-/// exercise the confirmation transport; they are not Jev answers.
+/// One labelled flag per case, bound to that case's measured request: the
+/// flag names the request's own question for the rule. These exercise the
+/// confirmation transport; they are not Jev answers.
 pub fn flags(corpus: &Path) -> PathBuf {
     let output = corpus.join("jev-output");
     kah_core::run_store::ensure_private_directory(&output).unwrap();
     let mut records = vec![];
     for (index, (id, file, _, rule, words)) in CASES.into_iter().enumerate() {
         let request = corpus.join(id).join("all_changed_files/literal.json");
+        let bytes = fs::read(&request).unwrap();
+        let question = question(&serde_json::from_slice(&bytes).unwrap(), rule);
         let job = output.join(format!("{id}-job.json"));
         save(
             &job,
             &json!({"case_id":id,"file":file,"rule":rule,"rule_text":words,"request":request,
-                "request_digest":kah_observer::commit_check::digest(&fs::read(&request).unwrap())}),
+                "question":question,"request_digest":kah_observer::commit_check::digest(&bytes)}),
         );
         records.push(json!({"index":index,"job":{"case_id":id,"path":job},
-            "flags":[{"question":format!("literal.{rule}"),"label":"synthetic"}]}));
+            "flags":[{"question":question,"label":"synthetic"}]}));
     }
     save(
         &output.join("complete.json"),
         &json!({"records":records,"source":"labelled synthetic flags; no Jev call"}),
     );
     output
+}
+/// The request's question key for `rule`: `rule.<check key>` of the check
+/// whose requirement is that rule.
+fn question(request: &Value, rule: &str) -> String {
+    let checks = request["state"]["checks"].as_object().unwrap();
+    let (key, _) = checks
+        .iter()
+        .find(|(_, check)| check["requirement"] == rule)
+        .unwrap_or_else(|| panic!("no literal check for {rule}"));
+    let question = format!("rule.{key}");
+    assert!(request["questions"].get(&question).is_some(), "{question}");
+    question
 }
 fn snapshot(repo: &Path, head: &str, rule: &str, words: &str) -> Snapshot {
     let source = |record: &str, text: &str| {

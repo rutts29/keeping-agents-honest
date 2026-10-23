@@ -108,6 +108,16 @@ fn generated_corpus_has_measured_cases_atomization_input_and_bound_flags() {
             job["request_digest"],
             kah_observer::commit_check::digest(&request)
         );
+        // Each flag names a question of that exact request, for the job's rule.
+        let request: serde_json::Value = serde_json::from_slice(&request).unwrap();
+        let flags = record["flags"].as_array().unwrap();
+        assert!(!flags.is_empty());
+        for flag in flags {
+            let question = flag["question"].as_str().unwrap();
+            assert!(request["questions"].get(question).is_some(), "{question}");
+            let check = &request["state"]["checks"][question.strip_prefix("rule.").unwrap()];
+            assert_eq!(check["requirement"], job["rule"]);
+        }
     }
     std::fs::remove_dir_all(root).unwrap();
 }
