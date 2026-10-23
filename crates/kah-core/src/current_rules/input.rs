@@ -114,8 +114,9 @@ impl Input {
 
 fn history_sources(history: &History) -> Result<Vec<Source>, String> {
     let mut sources = Vec::new();
+    let mut raised = std::collections::BTreeMap::new();
     for record in history.records() {
-        let mut origin = json!({"kind":"history", "sequence":record.sequence, "event":record});
+        let origin = json!({"kind":"history", "sequence":record.sequence, "event":record});
         match &record.event {
             Event::RunStarted { goal } | Event::GoalRevised { goal } => {
                 sources.push(Source::new(
@@ -127,16 +128,7 @@ fn history_sources(history: &History) -> Result<Vec<Source>, String> {
             Event::RequirementAdded { item, .. }
             | Event::RequirementSuperseded {
                 replacement: item, ..
-            } => {
-                origin["current_lifecycle"] =
-                    serde_json::to_value(&history.intents()[&item.id].lifecycle)
-                        .map_err(|e| error("JSON", &e.to_string()))?;
-                sources.push(Source::new(
-                    format!("intent:{}", item.id),
-                    item.text.clone(),
-                    origin,
-                ));
-            }
+            } => sources.push(intent_source(history, item, origin)?),
             Event::EvidenceAttached { evidence, .. } => {
                 sources.push(Source::new(
                     format!("evidence:{}", record.sequence),
@@ -151,8 +143,78 @@ fn history_sources(history: &History) -> Result<Vec<Source>, String> {
                     origin,
                 ));
             }
+            Event::ConflictRaised { conflict, .. } => {
+                raised.insert(conflict.id.clone(), conflict.clone());
+            }
+            Event::ConflictResolved {
+                conflict_id,
+                resolution,
+            } => {
+                let conflict = raised
+                    .get(conflict_id)
+                    .ok_or_else(|| error("HISTORY", "resolution of an unknown conflict"))?;
+                sources.push(resolution_source(
+                    history, record, conflict, resolution, origin,
+                )?);
+            }
             _ => {}
         }
     }
     Ok(sources)
+}
+
+/// An item's words as recorded, labelled with its current lifecycle. A
+/// conflict resolution may have replaced these words since.
+fn intent_source(
+    history: &History,
+    item: &crate::intent_history::IntentItem,
+    mut origin: Value,
+) -> Result<Source, String> {
+    let current = &history.intents()[&item.id];
+    origin["current_lifecycle"] = if current.text == item.text {
+        serde_json::to_value(&current.lifecycle).map_err(|e| error("JSON", &e.to_string()))?
+    } else {
+        json!(REPLACED_BY_RESOLUTION)
+    };
+    Ok(Source::new(
+        format!("intent:{}", item.id),
+        item.text.clone(),
+        origin,
+    ))
+}
+
+/// Lifecycle label of history words a conflict resolution has replaced.
+const REPLACED_BY_RESOLUTION: &str = "replaced_by_resolution";
+
+/// The chosen alternative's words, active while an affected item still
+/// carries them.
+fn resolution_source(
+    history: &History,
+    record: &crate::intent_history::EventRecord,
+    conflict: &crate::intent_history::Conflict,
+    resolution: &crate::intent_history::ConflictResolution,
+    mut origin: Value,
+) -> Result<Source, String> {
+    let text = conflict
+        .alternatives
+        .iter()
+        .find(|alternative| alternative.id == resolution.alternative_id)
+        .map(|alternative| alternative.text.clone())
+        .ok_or_else(|| error("HISTORY", "resolution selects no alternative"))?;
+    let active = conflict.intent_ids.iter().any(|id| {
+        history
+            .intents()
+            .get(id)
+            .is_some_and(|item| item.is_active() && item.text == text)
+    });
+    origin["current_lifecycle"] = json!(if active {
+        "active"
+    } else {
+        REPLACED_BY_RESOLUTION
+    });
+    Ok(Source::new(
+        format!("resolution:{}", record.sequence),
+        text,
+        origin,
+    ))
 }
