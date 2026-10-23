@@ -158,7 +158,7 @@ fn retain(state: &Control, root: &Path, delivery: &Delivery, mut outcome: Value)
         return Ok(());
     }
     // After its one redelivery (exec loss or decline), any end of the request
-    // is final for it alone; later triggers must still be reviewed (878-12c).
+    // is final for it alone; later triggers must still be reviewed.
     let retire = refused || redelivered(root, &delivery.request);
     terminal(state, root, delivery, &mut outcome, retire)?;
     if retire {
@@ -212,8 +212,8 @@ fn terminal(
     };
     super::provider_block::reviewer(state, &text, root)
 }
-/// A checkpoint can be declined after the provider truncates two of
-/// its tool outputs; other turns read the same evidence in pages. Once per
+/// The observer declined a checkpoint after the provider truncated tool
+/// output; other turns read the same evidence in pages. Once per
 /// request, redeliver the same request in a fresh turn. A request that an exec
 /// loss already redelivered gets no second redelivery here.
 fn retry_refusal(
@@ -273,8 +273,8 @@ pub fn retire_terminal(worker: &str) -> Result<bool> {
     super::missing_report::retire(worker, &pending.id, gap)?;
     Ok(true)
 }
-/// The observer's exec transport can be lost during a daemon restart,
-/// so the same observer process can never run the review. Once per request,
+/// The observer's exec transport was lost (for example the container runtime
+/// restarted), so the same observer process can never run the review. Once per request,
 /// ask for a fresh observer process on the same native session and redeliver
 /// the same request. Returns false when that was already done.
 fn replace(state: &Control, root: &Path, delivery: &Delivery, outcome: &Value) -> Result<bool> {

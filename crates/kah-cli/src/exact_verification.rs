@@ -4,7 +4,7 @@ use kah_run::{access, verification, worktree::Worktree};
 use kah_sandbox::{Domain, LaunchOptions, Project};
 use std::{path::Path, time::Duration};
 mod access_path;
-/// #878 (safetensors) in gVisor, cold registry: 2m33s build, 171 s in total.
+/// Generous bound for a cold-registry build inside gVisor. This is not a review deadline.
 const DEADLINE: Duration = Duration::from_secs(600);
 #[cfg(test)]
 pub(crate) fn prepare_access(path: &Path, uid: u32) -> Result<serde_json::Value> {

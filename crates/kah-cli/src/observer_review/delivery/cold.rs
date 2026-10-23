@@ -1,8 +1,7 @@
-//! #51 (exec-loss proof run 4, 10-20): a resumed observer appends to the
-//! native transcript of its old process. Read from offset 0, the old rows of
-//! the same request were a receipt before the new process existed. The
-//! liveness watcher then redelivered during the slow start, and the new
-//! process ran the same request twice.
+//! A resumed observer appends to the native transcript of its old process.
+//! Read from offset 0, the old rows of the same request would count as a
+//! receipt before the new process exists. The liveness watcher could then
+//! redeliver during the slow start, and the request would run twice.
 use super::{diagnostic, prompt_marker, screen, wait_receipt, warm};
 use crate::Result;
 use crate::observer_review::state::{State, Store};

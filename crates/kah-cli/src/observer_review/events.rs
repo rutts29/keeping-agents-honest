@@ -35,8 +35,8 @@ pub fn run(worker: &str) -> Result<()> {
     drain_all(worker, &lease, |w| super::queue::drain(w).map(|_| ()))
 }
 /// hook::spawn starts nothing while this job holds its lock, so an event
-/// written during a drain had no job left to transfer it (5f, 2026-10-17: a
-/// worker commit was never reviewed). The job settles instead of exiting.
+/// written during a drain had no job left to transfer it. The job settles
+/// instead of exiting.
 pub fn drain_all(
     worker: &str,
     lease: &fs::File,

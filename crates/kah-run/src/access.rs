@@ -67,8 +67,8 @@ fn operate(
         // tolerates only that readdir/stat race, not access or ACL failures.
         .arg("-ignore_readdir_race")
         // Never enter a directory below the root that another UID owns: the
-        // sandbox can make one the operator cannot read (5r-i: mktemp -d made
-        // outbox/build-o48f, mode 0700), and its entries are not ours to share.
+        // sandbox can make one the operator cannot read (a build can create a 0700
+        // directory owned by another UID), and its entries are not ours to share.
         .args(["(", "-type", "d", "!", "-uid", &operator, "!", "-samefile"])
         .arg(root)
         .args(["-prune", ")", "-o", "-uid", &operator]);

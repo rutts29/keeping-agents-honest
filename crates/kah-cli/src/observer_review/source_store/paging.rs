@@ -1,5 +1,6 @@
-//! Pages of `kah observe read-source` output (#52b). Codex cuts any tool output over 10,000 tokens, so a
-//! large source is served in pages well under that, split on line boundaries and never inside a UTF-8 char.
+//! Pages of `kah observe read-source` output. Codex truncates long tool output (about 10,000 tokens at the
+//! time of writing), so a large source is served in pages well under that, split on
+//! line boundaries and never inside a UTF-8 char.
 use crate::Result;
 use std::ops::Range;
 

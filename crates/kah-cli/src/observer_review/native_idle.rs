@@ -1,8 +1,7 @@
-//! Herdr can keep the observer pane Working after its native turn has
-//! ended, which can prevent the retained request from being delivered.
-//! redelivered the retained request. The transcript had turn_duration after a
-//! Stop hook and then stayed unchanged. The provider integration
-//! reports only SessionStart, so it cannot learn turn end from Claude hooks.
+//! Herdr can keep the observer pane Working after its native turn has ended,
+//! so nothing redelivers the retained request. The transcript shows
+//! turn_duration after the Stop hook and then stays unchanged. Herdr's Claude
+//! hook reports only SessionStart, so it cannot learn turn end from Claude hooks.
 //! A durable ended turn whose transcript has stayed unchanged for QUIET is idle
 //! proof. It never interrupts a turn and starts at most one delivery per request.
 use super::state::{State, Store};
@@ -73,8 +72,8 @@ pub fn turn_ended(provider: &str, text: &str, session: &str) -> bool {
 }
 
 /// This request's native receipt, while the turn that received it is open.
-/// Once that turn ended without a report the receipt is stale: 5h-f
-/// 2026-10-17 skipped 43 redeliveries on it, so no retry turn ever started.
+/// Once that turn ended without a report the receipt is stale, so no retry
+/// turn would ever start.
 pub fn accepted_open(state: &State) -> Result<bool> {
     let current = Store::read(&state.worker.session)?.unwrap_or_else(|| state.clone());
     let (Some(pending), Some(path)) = (&state.pending, &current.observer.transcript) else {

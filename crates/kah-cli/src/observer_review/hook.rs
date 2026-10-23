@@ -287,7 +287,7 @@ fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
         .open(Store::directory(worker)?.join(format!("job-{command}.log")))?;
     let home = PathBuf::from(env::var_os("HOME").ok_or("REVIEW_HOME stage=spawn")?);
     let Some(program) = job_program(&env::current_exe()?, &home)? else {
-        // #53: a library test runner records the request. A job (even the
+        // A library test runner records the request. A job (even the
         // installed kah, often an older build) on the state a test asserts on
         // and removes is a race.
         writeln!(log, "{}", json!({"recorded_spawn":command,"worker":worker}))?;
@@ -305,7 +305,7 @@ fn spawn_command(command: &str, worker: &str, stdin: Stdio) -> Result<()> {
 /// The program for a detached job: the installed kah, else this kah in a
 /// disposable home. Installation can replace our executable while this host
 /// watcher remains alive; /proc/self/exe then names a deleted inode. None when
-/// the caller is not kah: only kah starts jobs (#53).
+/// the caller is not kah: only kah starts jobs.
 pub fn job_program(current: &std::path::Path, home: &std::path::Path) -> Result<Option<PathBuf>> {
     let name = current
         .file_name()

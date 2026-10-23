@@ -7,7 +7,7 @@ pub(crate) struct Evaluation {
     pub assessment: Value,
 }
 /// A handoff written after this job listed its jobs starts no job, and the
-/// in-process kick of its own pass cannot start it again (finding #21).
+/// in-process kick of its own pass cannot start it again.
 pub fn run(worker: &str) -> Result<()> {
     let lease = super::super::job_lease::lease(worker, "__gate-host")?;
     run_with(worker, &lease, || pass(worker))

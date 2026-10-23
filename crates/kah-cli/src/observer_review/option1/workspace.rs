@@ -15,7 +15,7 @@ pub fn schema(request: &Request, legacy: Value) -> Value {
 /// never expanded whole; every other request keeps the complete legacy path.
 pub fn report(args: &[String]) -> Result<()> {
     if args.len() == 6 && args[2] == "--request" {
-        // #52b: every page of the request's listed evidence must have been served by read-source.
+        // Every page of the request's listed evidence must have been served by read-source.
         source_store::read_ledger::require_read(Path::new(&args[3]))?;
     }
     let selected = args.len() == 6 && args[0] == "observe" && args[2] == "--request";

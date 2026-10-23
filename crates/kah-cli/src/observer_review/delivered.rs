@@ -28,9 +28,9 @@ pub fn record(directory: &Path, input: &kah_observer::commit_check::Input) -> Re
 }
 
 /// Commit admission: record the deferral. If the commit's own turn already
-/// ended, that turn's end check ran before the deferral existed (5f on
-/// an earlier admission waited behind the cold current_rules review), so run
-/// the check here. Only the worker's native transcript tells, never kah's Stop
+/// ended, that turn's end check ran before the deferral existed (admission
+/// waited behind the cold current-rules review), so run the check here.
+/// Only the worker's native transcript tells, never kah's Stop
 /// path; the review is still queued once per HEAD.
 pub fn admitted(
     home: &Path,
@@ -63,7 +63,7 @@ fn recheck(home: &Path, state: &super::state::State, head: &str) -> Result<()> {
 /// Only interactive sessions need the catch-up. An unattended `kah run` worker
 /// has a run-completion checkpoint ahead that reviews every rule on the
 /// delivered head (due() is false once a checkpoint ran there), so the late
-/// order is harmless there and preserves the existing path.
+/// order is harmless there and it keeps the existing path.
 pub fn catch_up_applies(project: &Path) -> bool {
     super::execution_fact::run_domain(project).is_none()
 }
@@ -81,7 +81,7 @@ pub fn push_notice(trigger: &Value, project: &Path) -> bool {
 
 /// The text pushed into the pane. Typed into the worker's prompt, it must be
 /// a kah delegate message (like advance::correction's '[kah-observer]'), or kah
-/// captures its own notice as user intent (5f on 056b103).
+/// captures its own notice as user intent.
 pub fn pushed_text(notice: &str) -> String {
     format!("[kah-observer] {notice}")
 }
