@@ -90,3 +90,9 @@ fn detects_symlink_aliases() {
 }
 
 mod intake;
+
+#[test]
+fn the_app_server_client_is_named_after_the_product() {
+    let params = super::initialize_params();
+    assert_eq!(params["clientInfo"]["name"], "kah");
+}

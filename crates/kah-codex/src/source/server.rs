@@ -7,6 +7,21 @@ pub(super) struct AppServer {
     pub(super) next_request_id: u64,
 }
 
+/// The `initialize` request names this product to the Codex App Server.
+pub(super) fn initialize_params() -> Value {
+    json!({
+        "clientInfo": {
+            "name": "kah",
+            "title": null,
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+        "capabilities": {
+            "experimentalApi": false,
+            "requestAttestation": false,
+        },
+    })
+}
+
 impl AppServer {
     pub(super) fn start() -> Result<Self, SourceError> {
         let program = env::var_os("KAH_CODEX_BIN").unwrap_or_else(|| "codex".into());
@@ -46,20 +61,7 @@ impl AppServer {
     }
 
     pub(super) fn initialize(&mut self) -> Result<(), SourceError> {
-        self.request(
-            "initialize",
-            json!({
-                "clientInfo": {
-                    "name": "driftctl",
-                    "title": null,
-                    "version": env!("CARGO_PKG_VERSION"),
-                },
-                "capabilities": {
-                    "experimentalApi": false,
-                    "requestAttestation": false,
-                },
-            }),
-        )?;
+        self.request("initialize", initialize_params())?;
         self.notify("initialized", json!({}))
     }
 
