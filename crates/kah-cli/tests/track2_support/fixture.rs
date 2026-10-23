@@ -7,6 +7,8 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+/// The runner's native long-session inventory (see track2_gate.rs long_session).
+const LONG_SESSION_INVENTORY: &str = "KAH_TRACK2_LONG_SESSION_INVENTORY";
 pub struct Fixture {
     pub root: PathBuf,
     pub home: PathBuf,
@@ -97,13 +99,11 @@ impl Fixture {
         if mode != "long" {
             return;
         }
-        let inventory: Value = serde_json::from_slice(
-            &fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(
-                "../../docs/gates/evidence/phase-5o-long-session/source-inventory-before.json",
-            ))
-            .unwrap(),
-        )
-        .unwrap();
+        // The runner supplies the native sessions; none ship with the tests.
+        let inventory = std::env::var_os(LONG_SESSION_INVENTORY).unwrap_or_else(|| {
+            panic!("TRACK2_LONG_SESSION_INVENTORY stage=prepare: set {LONG_SESSION_INVENTORY}")
+        });
+        let inventory: Value = serde_json::from_slice(&fs::read(inventory).unwrap()).unwrap();
         let mut rows = vec![];
         for row in inventory["inventory"].as_array().unwrap() {
             if row["provider"] == "claude"

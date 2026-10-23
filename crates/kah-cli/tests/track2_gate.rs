@@ -21,8 +21,13 @@ fn detour_integration_deferral() {
     track2_support::launch("proofs");
 }
 
+/// Forks retained native sessions on both providers and checks checkpoint
+/// continuity through backlog and restart. No sessions ship with the tests:
+/// set `KAH_TRACK2_LONG_SESSION_INVENTORY` to a JSON file
+/// `{"inventory":[{"provider":"codex"|"claude","id":SESSION_ID,"path":TRANSCRIPT,"digest":"sha256:HEX"}]}`
+/// that lists one long session per provider. Each digest must match its file.
 #[test]
-#[ignore = "full native retained-session journey on both providers; make gate only"]
+#[ignore = "full native retained-session journey on both providers; needs KAH_TRACK2_LONG_SESSION_INVENTORY"]
 fn long_session() {
     track2_support::launch("long");
 }
