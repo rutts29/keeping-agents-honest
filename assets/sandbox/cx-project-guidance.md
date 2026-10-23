@@ -6,8 +6,9 @@ preserve local conventions and run checks relevant to each change.
 
 ## Git continuity
 
-- This project has a committed Git baseline. Work in this repository; do not
-  replace its Git history or silently move work to another project.
+- This project is a Git repository; a new one has no commit yet. Work in this
+  repository; do not replace its Git history or silently move work to another
+  project.
 - Make a descriptive local commit after each coherent, checked milestone and
   before a long pause, risky refactor or handoff. Choose milestones by actual
   work, not a timer. Report the latest commit and any remaining dirty files.
@@ -15,9 +16,9 @@ preserve local conventions and run checks relevant to each change.
   keys, tokens, personal session data, dependency caches or generated output.
   A local commit is not an off-host backup; ask before creating or pushing a
   remote unless the user has already authorized it.
-- In the Research sandbox, Git sees the selected bind at /workspace under a
-  different host UID. Use the command-scoped form
-  `git -c safe.directory=/workspace -C /workspace ...` for that exact
+- In the Research sandbox, Git sees the selected project at its original
+  absolute path under a different host UID. Use the command-scoped form
+  `git -c safe.directory="$PWD" ...` from the project root for that exact
   repo; never set a wildcard or host-global safe-directory exception.
 
 ## Dependency decisions
@@ -39,7 +40,7 @@ preserve local conventions and run checks relevant to each change.
 - Preserve and commit supported lockfiles. Do not silently run a broad
   upgrade, install an audit tool, suppress an advisory or execute an
   unnecessary package lifecycle script merely to finish the task.
-- Respect the selected CX route: Research and Untrusted are offline unless
+- Respect the selected kah route: Research and Untrusted are offline unless
   the user explicitly starts an online session. If an advisory lookup is
   unavailable offline, use local evidence and state the uncertainty. Do not bypass the route to perform the lookup.
 

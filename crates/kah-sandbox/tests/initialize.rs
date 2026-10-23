@@ -164,3 +164,18 @@ fn a_directory_inside_another_repository_never_edits_that_repository() {
     assert!(!nested.ensure_identity_from(&global).unwrap());
     assert_eq!(git(&parent.root, &["config", "--local", "user.name"]), "");
 }
+
+#[test]
+fn the_written_guidance_is_the_checked_in_asset() {
+    // The asset was a stale template that initialize rewrote before writing.
+    let f = Fixture(std::env::temp_dir().join(format!("kah-guidance-test-{}", std::process::id())));
+    fs::create_dir_all(f.0.join("research")).unwrap();
+    let project = Project::select(&f.0, &f.0, Some((Domain::Research, "demo"))).unwrap();
+    project.initialize().unwrap();
+    let written = fs::read_to_string(project.root.join("AGENTS.md")).unwrap();
+    let asset = include_str!("../../../assets/sandbox/cx-project-guidance.md");
+    assert_eq!(written, asset);
+    for stale in ["/workspace", "CX", "committed Git baseline"] {
+        assert!(!written.contains(stale), "{stale}");
+    }
+}

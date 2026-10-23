@@ -102,16 +102,6 @@ impl Project {
     }
 
     fn write_guidance(&self) -> Result<(), Error> {
-        let guidance = GUIDANCE
-            .replace("selected CX route", "selected kah route")
-            .replace(
-                "selected bind at /workspace",
-                "selected project at its original absolute path",
-            )
-            .replace(
-                "`git -c safe.directory=/workspace -C /workspace ...`",
-                "`git -c safe.directory=\"$PWD\" ...` from the project root",
-            );
         let mut file = OpenOptions::new()
             .create_new(true)
             .write(true)
@@ -122,7 +112,7 @@ impl Project {
             })
             .open(self.root.join("AGENTS.md"))
             .map_err(init_error)?;
-        file.write_all(guidance.as_bytes()).map_err(init_error)?;
+        file.write_all(GUIDANCE.as_bytes()).map_err(init_error)?;
         symlink("AGENTS.md", self.root.join("CLAUDE.md")).map_err(init_error)?;
         Ok(())
     }
