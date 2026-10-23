@@ -25,17 +25,15 @@ impl RuleSet {
         for clause in &self.clauses {
             validate_clause(clause, input, &rules)?;
         }
-        for conflict in crate::intent_history::History::replay(input.history.clone())
-            .map_err(|e| error("HISTORY", &e.to_string()))?
-            .open_conflicts()
-            .values()
-        {
+        let history = crate::intent_history::History::replay(input.history.clone())
+            .map_err(|e| error("HISTORY", &e.to_string()))?;
+        for conflict in history.open_conflicts().values() {
+            // Only the conflicted item's current words account for it.
             if !self.clauses.iter().any(|c| {
                 c.disposition == Disposition::UnresolvedConflict
-                    && conflict
-                        .intent_ids
-                        .iter()
-                        .any(|id| c.words.source == format!("intent:{id}"))
+                    && conflict.intent_ids.iter().any(|id| {
+                        input.current_words(&history, id) == Some(c.words.source.as_str())
+                    })
             }) {
                 return Err(error("CONFLICT", "History conflict was silently resolved"));
             }

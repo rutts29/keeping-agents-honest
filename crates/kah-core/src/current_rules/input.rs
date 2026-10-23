@@ -1,5 +1,5 @@
 use super::*;
-use crate::intent_history::{Event, History};
+use crate::intent_history::{Event, History, IntentId};
 use serde_json::{Value, json};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -74,6 +74,20 @@ impl Input {
             sources,
             history: history.records().to_vec(),
         })
+    }
+    /// The source of an item's current words: its latest resolution source
+    /// that still matches, else its recorded `intent:` words when unchanged.
+    pub(super) fn current_words(&self, history: &History, id: &IntentId) -> Option<&str> {
+        let item = history.intents().get(id)?;
+        self.sources
+            .iter()
+            .rev()
+            .find(|s| {
+                s.text == item.text
+                    && (s.id == format!("intent:{id}")
+                        || s.id.starts_with("resolution:") && s.origin["intent_id"] == id.as_str())
+            })
+            .map(|s| s.id.as_str())
     }
     /// Clock changes alone do not invalidate the projection.
     pub fn digest(&self) -> Result<String, String> {
@@ -153,8 +167,8 @@ fn history_sources(history: &History) -> Result<Vec<Source>, String> {
                 let conflict = raised
                     .get(conflict_id)
                     .ok_or_else(|| error("HISTORY", "resolution of an unknown conflict"))?;
-                sources.push(resolution_source(
-                    history, record, conflict, resolution, origin,
+                sources.extend(resolution_sources(
+                    history, record, conflict, resolution, &origin,
                 )?);
             }
             _ => {}
@@ -186,35 +200,40 @@ fn intent_source(
 /// Lifecycle label of history words a conflict resolution has replaced.
 const REPLACED_BY_RESOLUTION: &str = "replaced_by_resolution";
 
-/// The chosen alternative's words, active while an affected item still
-/// carries them.
-fn resolution_source(
+/// The chosen alternative's words, one source per affected item so each
+/// keeps its own association. A source carries the item's current lifecycle
+/// while the item still has these words.
+fn resolution_sources(
     history: &History,
     record: &crate::intent_history::EventRecord,
     conflict: &crate::intent_history::Conflict,
     resolution: &crate::intent_history::ConflictResolution,
-    mut origin: Value,
-) -> Result<Source, String> {
+    origin: &Value,
+) -> Result<Vec<Source>, String> {
     let text = conflict
         .alternatives
         .iter()
         .find(|alternative| alternative.id == resolution.alternative_id)
         .map(|alternative| alternative.text.clone())
         .ok_or_else(|| error("HISTORY", "resolution selects no alternative"))?;
-    let active = conflict.intent_ids.iter().any(|id| {
-        history
+    let mut sources = Vec::new();
+    for id in &conflict.intent_ids {
+        let item = history
             .intents()
             .get(id)
-            .is_some_and(|item| item.is_active() && item.text == text)
-    });
-    origin["current_lifecycle"] = json!(if active {
-        "active"
-    } else {
-        REPLACED_BY_RESOLUTION
-    });
-    Ok(Source::new(
-        format!("resolution:{}", record.sequence),
-        text,
-        origin,
-    ))
+            .ok_or_else(|| error("HISTORY", "resolution of an unknown item"))?;
+        let mut origin = origin.clone();
+        origin["intent_id"] = json!(id);
+        origin["current_lifecycle"] = if item.text == text {
+            serde_json::to_value(&item.lifecycle).map_err(|e| error("JSON", &e.to_string()))?
+        } else {
+            json!(REPLACED_BY_RESOLUTION)
+        };
+        sources.push(Source::new(
+            format!("resolution:{}:{id}", record.sequence),
+            text.clone(),
+            origin,
+        ));
+    }
+    Ok(sources)
 }

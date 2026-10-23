@@ -132,3 +132,142 @@ fn a_resolution_is_quotable_and_the_replaced_words_cannot_support_a_rule() {
         .validate(&input, None)
         .unwrap();
 }
+
+fn requirement(history: &mut History, id: &str, text: &str) {
+    history
+        .append(Event::RequirementAdded {
+            item: IntentItem::new(id, IntentKind::Constraint, text, vec![user(id)]),
+            approval: None,
+        })
+        .unwrap();
+}
+
+fn conflict(history: &mut History, id: &str, intents: &[&str], texts: [&str; 2]) {
+    history
+        .append(Event::ConflictRaised {
+            conflict: Conflict::new(
+                id,
+                intents.iter().map(|i| IntentId::new(*i)).collect(),
+                vec![
+                    ConflictAlternative::new("first", texts[0], vec![user("alt-1")]),
+                    ConflictAlternative::new("second", texts[1], vec![user("alt-2")]),
+                ],
+                vec![user(id)],
+            ),
+            approval: None,
+        })
+        .unwrap();
+}
+
+fn resolve(history: &mut History, id: &str) {
+    history
+        .append(Event::ConflictResolved {
+            conflict_id: id.into(),
+            resolution: ConflictResolution::new("second", vec![user("resolution")], None),
+        })
+        .unwrap();
+}
+
+/// The source carrying `text`, for `intent` when it is a resolution's words.
+fn source<'a>(input: &'a Input, text: &str, intent: Option<&str>) -> &'a Source {
+    input
+        .sources
+        .iter()
+        .find(|s| s.text == text && intent.is_none_or(|i| s.origin["intent_id"] == i))
+        .unwrap_or_else(|| panic!("no source for {text}"))
+}
+
+/// Each listed source gets its disposition and one witness; every other
+/// source contributes its own rule.
+fn account(input: &Input, plan: &[(&Source, Disposition, &Source)]) -> RuleSet {
+    let mut set = rule_set(input, None);
+    for (source, disposition, witness) in plan {
+        let clause = set.clauses.iter_mut().find(|c| c.id == source.id).unwrap();
+        clause.disposition = disposition.clone();
+        clause.rules.clear();
+        clause.witnesses = vec![words(witness)];
+        set.rules.retain(|r| r.id != source.id);
+    }
+    set
+}
+
+#[test]
+fn a_later_conflict_is_accounted_on_the_items_current_resolved_words() {
+    // After "keep alpha" was resolved to "use beta", a new conflict on the
+    // same item could only be accounted on the replaced "keep alpha" words.
+    let mut history = History::new(GoalRevision::new(1, "Build kah", vec![user("goal")])).unwrap();
+    requirement(&mut history, "i-1", "keep alpha");
+    requirement(&mut history, "i-2", "use gamma");
+    conflict(&mut history, "c-1", &["i-1"], ["keep alpha", "use beta"]);
+    resolve(&mut history, "c-1");
+    conflict(&mut history, "c-2", &["i-1"], ["use beta", "use gamma"]);
+    let input = Input::from_history(&history, vec![], "2026-10-23T00:00:00Z").unwrap();
+    let (alpha, beta) = (
+        source(&input, "keep alpha", None),
+        source(&input, "use beta", None),
+    );
+    let gamma = source(&input, "use gamma", None);
+    assert_eq!(beta.origin["current_lifecycle"], "conflicted");
+
+    let accounted = account(
+        &input,
+        &[
+            (alpha, Disposition::Superseded, beta),
+            (beta, Disposition::UnresolvedConflict, gamma),
+        ],
+    );
+    let validated = accounted.validate(&input, None).unwrap();
+    assert!(validated.has_conflicts());
+    assert!(validated.questions("abc123").is_err());
+    // The replaced words cannot stand in for the item's current words.
+    let stale = account(
+        &input,
+        &[
+            (alpha, Disposition::UnresolvedConflict, gamma),
+            (beta, Disposition::Context, gamma),
+        ],
+    );
+    let error = stale.validate(&input, None).unwrap_err();
+    assert!(error.contains("CONFLICT"), "{error}");
+}
+
+#[test]
+fn each_item_of_a_shared_resolution_keeps_its_own_current_words() {
+    // One resolution rewords two items; a later conflict affects only one.
+    let mut history = History::new(GoalRevision::new(1, "Build kah", vec![user("goal")])).unwrap();
+    requirement(&mut history, "i-1", "keep alpha");
+    requirement(&mut history, "i-3", "keep alpha too");
+    requirement(&mut history, "i-2", "use gamma");
+    conflict(
+        &mut history,
+        "c-1",
+        &["i-1", "i-3"],
+        ["keep alpha", "use beta"],
+    );
+    resolve(&mut history, "c-1");
+    conflict(&mut history, "c-2", &["i-3"], ["use beta", "use gamma"]);
+    let input = Input::from_history(&history, vec![], "2026-10-23T00:00:00Z").unwrap();
+    let alpha = source(&input, "keep alpha", None);
+    let alpha_too = source(&input, "keep alpha too", None);
+    let gamma = source(&input, "use gamma", None);
+    let (beta_1, beta_3) = (
+        source(&input, "use beta", Some("i-1")),
+        source(&input, "use beta", Some("i-3")),
+    );
+    assert_ne!(beta_1.id, beta_3.id);
+    assert_eq!(beta_1.origin["current_lifecycle"], "active");
+    assert_eq!(beta_3.origin["current_lifecycle"], "conflicted");
+    let replaced = [
+        (alpha, Disposition::Superseded, beta_1),
+        (alpha_too, Disposition::Superseded, beta_3),
+    ];
+    let mut plan = replaced.to_vec();
+    plan.push((beta_3, Disposition::UnresolvedConflict, gamma));
+    account(&input, &plan).validate(&input, None).unwrap();
+    // The other item's words do not account for this conflict.
+    let mut plan = replaced.to_vec();
+    plan.push((beta_1, Disposition::UnresolvedConflict, gamma));
+    plan.push((beta_3, Disposition::Context, gamma));
+    let error = account(&input, &plan).validate(&input, None).unwrap_err();
+    assert!(error.contains("CONFLICT"), "{error}");
+}
