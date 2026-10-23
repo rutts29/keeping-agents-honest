@@ -41,14 +41,21 @@ pub fn load(repo: &Path, head: &str) -> Result<Snapshot> {
             return Ok(snapshot);
         }
     }
-    Err(format!("MEASURE_HISTORICAL_INTENT_MISSING stage=corpus: {head}; no retained ledger with an unchanged authority interval").into())
+    Err(format!("MEASURE_HISTORICAL_INTENT_MISSING stage=corpus: {head}; no retained ledger with an unchanged authority interval (set KAH_MEASURE_WORKER to the worker session id)").into())
 }
 fn captures(repo: &Path) -> Result<Vec<Capture>> {
-    // This retained corpus is builder-1's commits, not every session that ever
-    // opened the same project. A different worker's intent is never borrowed.
-    const WORKER: &str = "00000000-0000-4000-8000-100000000001";
+    // The retained corpus is the commits of one worker session, named by
+    // KAH_MEASURE_WORKER, not every session that ever opened the same project.
+    // A different worker's intent is never borrowed. Without the variable
+    // there is no retained ledger to read.
+    let Some(worker) = std::env::var("KAH_MEASURE_WORKER")
+        .ok()
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(vec![]);
+    };
     let root = kah_core::run_store::RunStore::default_state_root()?;
-    let directory = kah_observer::session::Store::directory(&root, WORKER);
+    let directory = kah_observer::session::Store::directory(&root, &worker);
     let state = directory.join("state.json");
     let requests = directory.join("review/requests");
     if !state.is_file() || !requests.is_dir() {
@@ -62,7 +69,7 @@ fn captures(repo: &Path) -> Result<Vec<Capture>> {
         )]),
     )?;
     if binding["binding"]["project"].as_str() != repo.to_str()
-        || binding["binding"]["session"] != WORKER
+        || binding["binding"]["session"] != worker
     {
         return Err("MEASURE_HISTORICAL_WORKER stage=corpus".into());
     }
@@ -77,7 +84,7 @@ fn captures(repo: &Path) -> Result<Vec<Capture>> {
             &path,
             &Select::fields(&[("created_ms", Select::All), ("worker", Select::All)]),
         )?;
-        if stamp["worker"] != WORKER {
+        if stamp["worker"] != worker {
             return Err("MEASURE_HISTORICAL_REQUEST_WORKER stage=corpus".into());
         }
         let at = stamp["created_ms"]
