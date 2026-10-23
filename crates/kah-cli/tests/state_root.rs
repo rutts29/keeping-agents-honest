@@ -44,9 +44,17 @@ fn state_root_child() {
     let project = home.join("repos/mine/p").canonicalize().unwrap();
     let policy =
         claude_policy::permissions(&home, &project, &home.join("private"), false, None).unwrap();
-    for tool in ["Read", "Edit"] {
-        let rule = format!("{tool}(/{}/**)", root.display());
-        assert!(policy["deny"].as_array().unwrap().contains(&rule.into()));
+    // Private state kept at the default path from before XDG was set stays
+    // protected alongside the active root.
+    for path in [root.clone(), home.join(".local/state/kah")] {
+        for tool in ["Read", "Edit"] {
+            let rule = format!("{tool}(/{}/**)", path.display());
+            assert!(
+                policy["deny"].as_array().unwrap().contains(&rule.into()),
+                "{tool} {}",
+                path.display()
+            );
+        }
     }
     assert!(!home.join(".local/state").exists());
 }

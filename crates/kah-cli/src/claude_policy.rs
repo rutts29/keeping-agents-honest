@@ -34,10 +34,15 @@ pub fn permissions(
         home.join(".git-credentials"),
         home.join(".netrc"),
         home.join(".npmrc"),
-        kah_core::run_store::RunStore::state_root_for(home),
+        home.join(".local/state/kah"),
         home.join(".local/share/kah-eval"),
         private.into(),
     ];
+    // The active root, when XDG moves it; earlier state stays at the default.
+    let state = kah_core::run_store::RunStore::state_root_for(home);
+    if !protected.contains(&state) {
+        protected.push(state);
+    }
     for root in [
         home.join(".codex"),
         home.join(".claude"),
