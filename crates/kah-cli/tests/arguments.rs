@@ -70,3 +70,25 @@ fn restricted_native_arguments_allow_resume_and_models_but_reject_policy_bypasse
         );
     }
 }
+
+#[test]
+fn an_attached_model_value_configures_the_app_server_like_a_separate_one() {
+    for args in [
+        vec!["--model", "chosen"],
+        vec!["--model=chosen"],
+        vec!["--", "--model=chosen"],
+        vec!["mine", "demo", "--model=chosen", "resume"],
+    ] {
+        assert_eq!(parse(&args).native_model(), Some("chosen"), "{args:?}");
+    }
+    let args = parse(&["--model=chosen"]);
+    assert_eq!(args.native, ["--model", "chosen"]);
+    for domain in [Domain::Research, Domain::Untrusted] {
+        assert!(args.validate_native(domain).is_ok());
+        assert!(
+            parse(&["--", "--model=chosen"])
+                .validate_native(domain)
+                .is_ok()
+        );
+    }
+}

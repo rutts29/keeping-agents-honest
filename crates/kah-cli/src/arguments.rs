@@ -40,6 +40,11 @@ impl Arguments {
                 "--model" | "-m" => result
                     .native
                     .extend(["--model".into(), value(&mut args, &arg)?]),
+                _ if arg.starts_with("--model=") => {
+                    result
+                        .native
+                        .extend(["--model".into(), arg["--model=".len()..].into()]);
+                }
                 "--effort" => result.effort = Some(value(&mut args, &arg)?),
                 "mine" | "research" | "untrusted" if result.project.is_none() => {
                     let domain = Domain::ALL.into_iter().find(|d| d.as_str() == arg).unwrap();
@@ -55,6 +60,20 @@ impl Arguments {
         Ok(result)
     }
 
+    /// The explicit native model, the last one when given more than once.
+    pub fn native_model(&self) -> Option<&str> {
+        let mut model = None;
+        let mut args = self.native.iter();
+        while let Some(arg) = args.next() {
+            if let Some(value) = arg.strip_prefix("--model=") {
+                model = Some(value);
+            } else if matches!(arg.as_str(), "--model" | "-m") {
+                model = args.next().map(String::as_str).or(model);
+            }
+        }
+        model
+    }
+
     pub fn validate_native(&self, domain: Domain) -> Result<()> {
         let mut args = self.native.iter();
         while let Some(arg) = args.next() {
@@ -66,6 +85,7 @@ impl Arguments {
                 "-m" | "--model" | "-i" | "--image" => {
                     next(&mut args, arg)?;
                 }
+                _ if arg.starts_with("--model=") => (),
                 "-c" | "--config" => {
                     let setting = next(&mut args, arg)?;
                     if domain != Domain::Mine

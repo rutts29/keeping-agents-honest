@@ -132,10 +132,8 @@ fn policy_settings(project: &Project, args: &Arguments) -> serde_json::Value {
         settings["model_reasoning_effort"] = effort.clone().into();
     }
     // app-server has no --model flag; the explicit choice also configures its home.
-    for pair in args.native.windows(2) {
-        if matches!(pair[0].as_str(), "--model" | "-m") {
-            settings["model"] = pair[1].clone().into();
-        }
+    if let Some(model) = args.native_model() {
+        settings["model"] = model.into();
     }
     settings
 }
