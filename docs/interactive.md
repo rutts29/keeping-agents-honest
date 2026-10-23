@@ -5,8 +5,8 @@ with its shell helpers in `~/.local/share/kah/shell.sh` and `~/.local/bin/cx`.
 
 `make install` does not install or configure rootless Docker, gVisor, a sandbox
 service account, the sandbox image, the native agent CLIs, Herdr or logins. Those
-belong to the author's server setup and are not packaged yet; a setup guide will
-follow.
+belong to the author's server setup and are not packaged yet. No user setup
+guide exists yet.
 
 ```sh
 kah                              # current project, native Codex

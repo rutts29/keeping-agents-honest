@@ -31,8 +31,8 @@ task submission. `kah status` records the wait and the native pane ID. Attach to
 that pane to answer; kah never sends consent keys. The wait clears after submission.
 Logs show that pane's recent output. Run time limits continue during this wait.
 Logs use the run's recorded Herdr server, even when requested from another server.
-Notifications honor Herdr's configured `[ui.toast]` delivery, including `off`;
-kah also prints the consent notice at launch and retains the wait in status.
+kah does not override Herdr's `[ui.toast]` setting; if Herdr toasts are off, the
+notice is still printed at launch and kept in status.
 
 A fresh private repository may require native startup consent. kah does not grant
 consent by editing the provider's global trust store. Restricted-source Codex

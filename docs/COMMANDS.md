@@ -88,6 +88,9 @@ Research executor, checks host isolation and cleans up. It uses your configured
 model/login and incurs one short model turn. Run it explicitly when you want to
 check the configured native launch and sandbox.
 
+`kah eval replay DATASET.jsonl [--validation]` replays a saved judgment dataset;
+thresholds are unchanged.
+
 Completion diagnostics: `kah eval completion ~/.local/share/kah-eval/completion/FILE.json`
 replays the saved scrubbed Jev request without changing an active run or its
 policy. Captures are private; copying them elsewhere is a separate user choice.

@@ -2,7 +2,7 @@
 
 Jev supplies typed Noul, Choice and Score judgments in Mine, Research and
 Untrusted. Only Jev answers can drive probability or confidence gates. The
-public backend selector accepts `jev`; it rejects other backend names. Old saved
+`--observer-judge` selector accepts only `jev`. Old saved
 observer bindings migrate to Jev. Judgments recorded by a different backend keep
 their original backend name and do not authorize current drift or completion
 decisions.

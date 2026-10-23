@@ -18,8 +18,7 @@ kah steer SESSION 'steer: Keep the API unchanged' --receipt user-change-001
 kah steer SESSION 'aside: This is only a note' --receipt user-note-001
 ```
 
-Leading `!` invokes the native shell in both TUIs. The old bang prefixes are no
-longer deterministic overrides; old stored source decisions remain historical.
+Leading `!` invokes the native shell in both TUIs and is not a kah override.
 
 Codex control delivery uses a user-message client ID of the form
 `kah-user:operator:<receipt>`; Herdr steering uses a saved relayed-user envelope.

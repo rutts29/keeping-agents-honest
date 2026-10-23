@@ -1,7 +1,9 @@
 # Native Codex overlay recovery
 
 The native-writer references in this page describe Codex tag `rust-v0.160.0`
-(`79b1b666f2e8551f8abbbca34957227f67f3f553`). The configuration reference exposes
+(`79b1b666f2e8551f8abbbca34957227f67f3f553`; the overlay recovery analysis was
+redone against 0.160.0, while the launch references on the startup page remain
+at 0.159.0). The configuration reference exposes
 the credential backend and SQLite directory, but no independent auth, session-index,
 history or model-cache file path. File auth stays under `CODEX_HOME`; switching
 keyring backend would change storage and uses a home-derived key. kah retains the

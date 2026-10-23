@@ -39,10 +39,9 @@ preserve local conventions and run checks relevant to each change.
 - Preserve and commit supported lockfiles. Do not silently run a broad
   upgrade, install an audit tool, suppress an advisory or execute an
   unnecessary package lifecycle script merely to finish the task.
-- Respect the selected CX route: Research is offline unless the user
-  explicitly starts an online session; Untrusted is always offline. If an
-  advisory lookup is unavailable offline, use local evidence and state the
-  uncertainty. Do not bypass the route to perform the lookup.
+- Respect the selected CX route: Research and Untrusted are offline unless
+  the user explicitly starts an online session. If an advisory lookup is
+  unavailable offline, use local evidence and state the uncertainty. Do not bypass the route to perform the lookup.
 
 Authoritative references when network use is permitted:
 [GitHub dependency review](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependency-review),

@@ -15,3 +15,4 @@ policy. [Daily commands](COMMANDS.md) lists the available commands.
 - [Observer judgments](judge-backends.md): Jev answers, context preparation and decision thresholds.
 - [Component maps](component-map.md): change attribution and cached review evidence.
 - [Dependency notes](dependencies.md): manifests, the lockfile and `make audit`.
+- [Evidence summary](evidence-summary.md): how kah was verified during development.
