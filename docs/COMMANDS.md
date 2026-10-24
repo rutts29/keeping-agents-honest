@@ -142,6 +142,8 @@ Every command and flag that `kah` accepts:
 | `kah smoke` | One ephemeral sandbox check. |
 | `kah eval replay DATASET.jsonl [--validation]` | Evaluate a labelled message dataset. |
 | `kah eval completion FILE.json` | Resend a captured completion request. |
+| `kah gate [SESSION]` | Queue a checkpoint review of a session (Mine and Research). Without SESSION, the one active kah session. |
+| `kah measure count\|decomposition\|live\|matrix\|confirmation\|replay ...` | Development measurement of commit checks; `live` calls the Jev API. |
 | `kah --help`, `kah -h` | Usage. |
 
 ### Launch options (`OPTIONS`)

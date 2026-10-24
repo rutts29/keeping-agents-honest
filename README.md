@@ -64,10 +64,12 @@ domain. The review levels are described below.
   unattended run completes only when its tests pass and both completion
   judgments confirm the required outcomes, plus its checkpoint review where
   native review is enabled.
-- **Steering.** Findings reach the working agent as reminders through the
-  provider's native hooks, quoting the user's own words. Users can also send
-  messages to a session (`kah steer`, `kah send`) or relay an exact quote from
-  one session to another (`kah relay`).
+- **Steering.** The current intent and queued reminders, with validated quotes
+  of the user's own words, reach the working agent through the provider's
+  native hooks. A confirmed commit finding is sent to the agent's pane as a
+  labelled `[kah-observer]` message that names the broken rule. Users can also
+  send messages to a session (`kah steer`, `kah send`) or relay an exact quote
+  from one session to another (`kah relay`).
 - **Evidence.** Native review reports cite source evidence, which kah validates
   before it applies a decision. Judgments, review records and run reports are
   kept in the kah state root; `kah status` shows session, review and run state.
