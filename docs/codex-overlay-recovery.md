@@ -1,74 +1,99 @@
 # Native Codex overlay recovery
 
-The native-writer references in this page describe Codex tag `rust-v0.160.0`
-(`79b1b666f2e8551f8abbbca34957227f67f3f553`; the overlay recovery analysis was
-redone against 0.160.0, while the launch references on the startup page remain
-at 0.159.0). The configuration reference exposes
-the credential backend and SQLite directory, but no independent auth, session-index,
-history or model-cache file path. File auth stays under `CODEX_HOME`; switching
-keyring backend would change storage and uses a home-derived key. kah retains the
-user's native backend and independent config overlay, with shared files.
-Sources: [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference),
-[native auth storage](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/login/src/auth/storage.rs).
+A kah overlay is an independent writable Codex configuration per project that
+links your login, history and session index to your canonical Codex home.
+This page covers what happens when native Codex replaces one of those links
+with a regular file, and what `kah repaired shared Codex file` and
+`OVERLAY_SHARED_RECOVERY` mean.
 
-| Shared entry | 0.160.0 native writer | Link behavior |
+## What is shared
+
+Codex's configuration lets you move the credential backend and the SQLite
+directory, but has no separate path setting for auth, the session index,
+history or the model cache. File auth stays under `CODEX_HOME`, and switching
+to the keyring backend would change storage and use a home-derived key. So kah
+keeps your native backend, gives each overlay its own config, and links the
+shared files.
+
+How native Codex writes each shared entry decides whether the link survives:
+
+| Shared entry | How native Codex writes it | Effect on the link |
 | --- | --- | --- |
-| session_index.jsonl | append_thread_name appends a complete JSON record; remove_thread_name_entries writes a temporary file and renames it | Naming preserves the link; thread deletion replaces it |
-| auth.json | FileAuthStorage::save opens with create/write/truncate; refresh records last_refresh then calls save | Refresh follows the link; logout removes the link at that home |
-| models_cache.json | save_file uses tokio::fs::write | Follows the link |
-| history.jsonl | append with native file locking; size trimming uses set_len on the same descriptor | Follows the link and keeps the inode |
-| sessions / archived_sessions | Native operations address children beneath these directories | Directory links survive child writes |
+| session_index.jsonl | Naming appends a complete JSON record; thread deletion writes a temporary file and renames it | Naming keeps the link; deletion replaces it |
+| auth.json | Save opens with create/write/truncate; a refresh records `last_refresh` and then saves | Refresh follows the link; logout removes the link in that home |
+| models_cache.json | Written with `tokio::fs::write` | Follows the link |
+| history.jsonl | Appended under native file locking; trimming uses `set_len` on the same descriptor | Follows the link and keeps the inode |
+| sessions / archived_sessions | Native operations write children beneath these directories | Directory links survive child writes |
 
-Source traces: [index writer](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/rollout/src/session_index.rs),
+kah's first-turn names and run names use the same native naming API; kah does
+not rewrite the index itself.
+
+## When a link is replaced
+
+A replaced link needs recovery. Its modification time alone does not show
+which operation replaced it, so kah validates the current files before it
+merges or relinks them. Every overlay preparation checks whether an entry is a
+link or a regular file before reading a link target. Recovery covers only the
+four known mutable files:
+
+- **Session index.** kah parses RFC3339 timestamps (including offsets), keeps
+  the newest entry for every id, appends missing winners to the canonical
+  index, then relinks. Equal-time conflicting records and incomplete or
+  malformed JSONL are kept for you to resolve.
+- **History.** kah appends missing `(session_id, ts, text)` entries, keeping
+  duplicates and the canonical inode, under the same file lock native history
+  uses.
+- **Auth.** kah selects the whole newer record for the same account by
+  `last_refresh`, never by file modification time and never by mixing
+  individual tokens. It replaces the file atomically with mode 600 and fsyncs
+  before relinking. Ties, different accounts or modes, missing canonical auth
+  (possibly a logout) and incomplete records stop recovery without printing
+  values or keeping a permanent credential backup.
+- **Models cache.** kah discards only the replaced overlay copy and restores
+  the link to the canonical cache; native Codex refetches it when needed.
+
+## Safety limits
+
+- kah repairs one canonical home at a time.
+- Reads refuse symlinks, hard-link aliases, non-regular files and files over
+  32 MiB, and check for changes made in between.
+- Index appends recheck the newest winners, because native index locking works
+  only within one process.
+- If native Codex deletes or replaces a file during repair, kah notices and
+  keeps the local copy so you can retry.
+- These checks do not turn uncooperative native file operations into a
+  cross-process transaction.
+
+The native auth writer keeps existing links when it saves, so kah does not
+create a refresh split. If an auth split already exists:
+
+- Recovery refuses while native Codex clients that use the split copy are
+  running.
+- Promoting a newer split copy also requires clients of the canonical store to
+  be closed, because their refresh lock is process-local.
+- Keeping a newer canonical record does not require stopping its clients.
+
+Close the affected clients and retry. Do not start other native clients during
+recovery.
+
+## Messages you may see
+
+- `kah repaired shared Codex file "PATH"`: recovery succeeded.
+- `OVERLAY_SHARED_RECOVERY stage=codex_overlay`: recovery was unsafe. The
+  message names the path and the condition, without file contents.
+
+Unknown replacement types and foreign links are left in place. kah never edits
+your global Codex config or the Codex binary.
+
+## References
+
+The writer behavior above is from Codex `rust-v0.160.0` source:
+[configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference),
+[native auth storage](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/login/src/auth/storage.rs),
+[index writer](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/rollout/src/session_index.rs),
 [thread/name/set](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server/src/request_processors/thread_processor.rs),
 [metadata name append](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/thread-store/src/local/update_thread_metadata.rs),
 [thread deletion](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/thread-store/src/local/delete_thread.rs),
 [auth refresh/save](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/login/src/auth/manager.rs),
 [cache writer](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/models-manager/src/cache.rs),
 [history writer](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/message-history/src/lib.rs).
-kah's first-turn naming and run names call the same native name API; they do not
-rewrite the index themselves. A replaced overlay link is a recovery
-condition; its modification time alone does not identify the operation that
-replaced it. Recovery validates the current files before deciding whether they
-can be merged or relinked.
-
-Every overlay preparation distinguishes a link from a regular file before
-reading a link target. Recovery runs only for the four known mutable files:
-
-- Index: parse RFC3339 timestamps (including offsets), retain every id's newest
-  entry, append missing winners to the canonical index, then relink. Equal-time
-  conflicting records and incomplete/malformed JSONL are retained for resolution.
-- History: append missing `(session_id, ts, text)` occurrences, preserving duplicate
-  multiplicity and the canonical inode under the same file lock native history uses.
-- Auth: select the whole newer same-account record by `last_refresh`, never by
-  filesystem mtime and never by combining individual tokens. Replace atomically
-  with mode 600 and fsync before relinking. Ties, different accounts/modes, missing
-  canonical auth (possible logout) and incomplete records fail closed without
-  printing values or creating a permanent credential backup.
-- Models cache: discard only the replaced overlay cache and restore its link to
-  the canonical disposable cache; native Codex handles expiry/refetch.
-
-kah serializes its repairs per canonical home. Reads refuse symlinks, hard-link
-aliases, nonregular files and files over 32 MiB, and check for intervening changes.
-Index appends recheck newest winners because native index locking is only
-in-process. Native deletion/replacement during repair is detected; the local copy
-is retained for retry. History uses native-compatible locking. These controls do
-not make uncooperative native filesystem operations a cross-process transaction.
-
-The linked `rust-v0.160.0` auth writer preserves existing links when it saves a
-record, so kah does not create a refresh divergence. If an auth fork already exists, recovery refuses while native Codex clients
-using that fork are running. Promoting a newer fork also requires canonical-store
-clients to be closed: its auth refresh lock is process-local. Keeping a newer
-canonical record does not require stopping its clients. Close affected clients
-and retry; do not start competing native clients during recovery. No real
-token refresh is deliberately triggered by tests. Tests use synthetic credentials.
-
-Successful recovery prints `kah repaired shared Codex file "PATH"`. Unsafe recovery
-uses `OVERLAY_SHARED_RECOVERY stage=codex_overlay` and names the path and condition,
-with contents withheld. Unknown replacement types and foreign links are retained.
-No global config or provider binary is edited. This does not invent a new auth
-store, gateway, background synchronizer or daemon policy.
-
-Fixture cleanup clears inherited `CODEX_HOME` and uses the canonical native home
-for its explicitly recorded fixture session IDs, instead of possibly rewriting an
-overlay index. No user sessions are deleted.

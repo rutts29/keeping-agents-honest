@@ -1,12 +1,20 @@
-# Interactive launcher
+# Interactive sessions
 
-`make install` builds the release launcher and installs it as `~/.local/bin/kah`,
-with its shell helpers in `~/.local/share/kah/shell.sh` and `~/.local/bin/cx`.
+Starting Claude Code or Codex under kah: what runs where in each domain, and
+how resume, naming and messaging work.
+
+## Install
+
+`make install` builds the release launcher and installs it as
+`~/.local/bin/kah`, with its shell helpers in `~/.local/share/kah/shell.sh`
+and `~/.local/bin/cx`.
 
 Rootless Docker, gVisor, the sandbox service account, the sandbox image, the
-native agent CLIs, Herdr and logins are part of the author's server setup, listed
-as requirements in the [README](../README.md#requirements); `make install` does
-not install or configure them.
+native agent CLIs, Herdr and logins are part of the host setup listed in the
+[README requirements](../README.md#requirements). `make install` does not
+install or configure them.
+
+## Start a session
 
 ```sh
 kah                              # current project, native Codex
@@ -20,74 +28,121 @@ kah -- resume --all              # native picker, no kah combined view
 kah --agent claude -- --resume SESSION_ID
 ```
 
-Model and effort remain native choices; kah supplies no default override.
-The observer is separate: `--observer-model` defaults to `gpt-6.1-sol` for
-Codex and `claude-sonnet-5-5` for Claude (a Claude session needs a `claude-`
-observer model), `--observer-effort` defaults to `low`, and `--jev-model`
-defaults to `jev-latest`. Mine
-uses host workspace permissions. Research and Untrusted keep the controller and
-subscription login on the host, with commands in rootless gVisor. Codex native
-file tools also use its executor. Claude uses native project file tools with
-permission denies on sensitive host paths; its Bash uses the native shell prefix
-(see [Claude execution](claude-adapter.md)).
-Workspace egress is offline unless `--online` is supplied in either restricted
-domain. Hosted search stays on. Claude WebFetch follows the online choice.
+The project directory selects the domain (Mine, Research or Untrusted); see
+[Domains](../README.md#domains).
 
-Restricted launches share selected installed setup paths and apply the configured
-hook and MCP policy: the user's global guidance, skills, plugins, hooks and MCP
-setup remain available, mounted directly rather than copied into frozen snapshots.
-Stdio MCP servers use an online executor by default; a kah config list can select
-an offline executor. Declare secret-bearing servers in `~/.config/kah/setup.json`
-and enable each once; see [setup policy](setup.md). Remote MCP connections
-remain native host-controller connections. kah observer hooks stay host-side.
-User-owned Claude exec-form hooks can run on the host.
-Research/Untrusted exclude repository executable Claude settings through native
-`--setting-sources user`; project instructions, skills and agents remain usable.
-Codex marks restricted projects untrusted in its independent overlay.
+## Models and the observer
 
-Restricted Git config, hooks and directory pointers are read-only inside gVisor.
-Claude native file tools also deny Git administration edits. Change remotes and
-Git configuration from your host shell. Normal commits, index updates and branches
-still work. Inherited ACLs keep sandbox-created files editable by the user.
+Model and effort for the agent are native choices; kah supplies no default
+override. The observer has its own settings:
 
-Installed Bash routing sends interactive `codex`, resume and fork through kah under
-the three domain roots. Recognized native management commands pass through; the
-classifier reads `codex --help` on each call, with a static fallback when that
-fails.
-`command codex` bypasses this convenience function. `cx` forwards to `kah`.
+- `--observer-model` defaults to `gpt-6.1-sol` for Codex and
+  `claude-sonnet-5-5` for Claude. A Claude session needs a `claude-` observer
+  model.
+- `--observer-effort` defaults to `low`.
+- `--jev-model` defaults to `jev-latest`.
 
-Codex overlays are stable per domain/network policy and project under `codex/`
-in the kah state root (`$XDG_STATE_HOME/kah` when that is absolute, otherwise
-`~/.local/state/kah`). They share the native login and history stores while
-keeping independent writable config. Keep overlay paths: saved rollouts reference
-them. New overlays go under that root. One made in the default location before
-`XDG_STATE_HOME` was set is reused while no overlay exists under the active root,
-and a resumed session reuses the overlay in its saved policy, or the one its
-native rollout path names. Claude uses its configured native store, which defaults to `~/.claude`, with
-project-keyed history and invocation-local settings. No kah cross-domain picker or credential copy
-exists. Native `--all` passes through. Global provider configuration is unchanged.
+## What runs where
 
-Codex resume by ID restores its saved project and online/yolo policy. In-process
-`/resume` must match the current project and policy; otherwise kah blocks prompts
-with the command to reopen correctly. This guard remains with `--no-observer`.
-For Claude, start in the saved project when resuming.
+- **Mine** uses host workspace permissions.
+- **Research and Untrusted** keep the agent client and its subscription login
+  on the host. Agent commands run in rootless gVisor. Codex's file tools also
+  run through the sandbox. Claude Code
+  keeps its native project file tools on the host, with permission rules that
+  deny sensitive host paths, and its Bash commands run in the sandbox (see
+  [Claude Code under kah](claude-adapter.md)).
 
-The observer reads authoritative native user records and retains their exact
-words. In chat, `steer:` records an instruction and `aside:` marks commentary.
-Leading `!` is native shell syntax, never a kah override. Jev supplies typed
-judgments, and native observer sessions prepare whole-record evidence when
-needed. `kah status
-[SESSION_ID]` shows gaps/usage; `kah ledger [SESSION_ID]` shows source-linked intent.
-Observer failures are recorded as gaps or service failures and can block review
-or completion; the native session stays usable.
+Workspace egress is off unless you pass `--online` in either restricted
+domain. Hosted search stays on. Claude's WebFetch follows the
+`--online` choice.
 
-With the observer attached, kah names a new session after the first prompt/turn
-using its project, native ID and prompt. Claude `--name`, existing resume names
-and later user renames are preserved. Names are cosmetic. `--no-observer` disables
-the hooks supplying automatic names.
+## Your tools in Research and Untrusted
 
-kah launches Codex with `--no-daemon` and launches Claude as a native interactive
+Your global guidance, skills, plugins, hooks and MCP setup stay available.
+kah mounts the selected installed paths directly instead of copying them into
+frozen snapshots.
+
+- Local (stdio) MCP servers run in an online sandbox by default. A list in
+  `~/.config/kah/setup.json` can run chosen servers offline.
+- Declare servers that hold secrets in `~/.config/kah/setup.json` and enable
+  each one once; see [setup policy](setup.md).
+- Remote MCP connections stay native connections from the host.
+- kah's observer hooks stay on the host. Your own Claude exec-form hooks can
+  run on the host.
+- Repository Claude settings that could run programs are excluded (native
+  `--setting-sources user`); project instructions, skills and agents remain
+  usable.
+- Codex marks restricted projects untrusted in its kah overlay (see below).
+
+## Git inside the sandbox
+
+Git configuration, hooks and directory pointers are read-only inside the
+sandbox, and Claude's file tools also deny edits to Git administration files.
+Change remotes and Git configuration from your host shell. Normal commits,
+index updates and branches still work. Inherited ACLs keep files created in
+the sandbox editable by you.
+
+## The `codex` shell function
+
+After you source `~/.local/share/kah/shell.sh`, interactive `codex`, resume
+and fork commands under the three domain roots go through kah.
+
+- Recognized native management commands pass through. The function reads
+  `codex --help` on each call to recognize them, with a built-in list when
+  that fails.
+- `command codex` bypasses the function.
+- `cx` forwards to `kah`.
+
+## Codex overlays and history
+
+An overlay is a separate Codex configuration directory that kah keeps for each
+domain, network policy and project. Overlays live under `codex/` in the kah
+state root (`$XDG_STATE_HOME/kah` when that is absolute, otherwise
+`~/.local/state/kah`).
+
+- Overlays share your native login and history, but have their own writable
+  configuration. Your global provider configuration is unchanged.
+- Keep overlay paths: saved sessions refer to them. New overlays go under the
+  state root. An overlay made in the default location before `XDG_STATE_HOME`
+  was set is reused while no overlay exists under the active root, and a
+  resumed session reuses the overlay of its saved policy, or the one its
+  native session file names.
+- Claude Code uses its configured native store, `~/.claude` by default, with
+  project-keyed history and settings that apply to that launch only.
+- kah has no cross-domain session picker and never copies credentials. Native
+  `--all` passes through.
+
+## Resuming
+
+- Codex resume by ID restores the saved project and its online/yolo policy.
+- Codex's in-session `/resume` must match the current project and policy.
+  Otherwise kah blocks prompts and shows the command that reopens the session
+  correctly. This guard stays on with `--no-observer`.
+- For Claude Code, start in the saved project when resuming.
+
+## The observer in a session
+
+The observer reads the native user records and keeps your exact words. In
+chat, `steer:` records an instruction and `aside:` marks commentary. A leading
+`!` is native shell syntax, never a kah override.
+
+- `kah status [SESSION_ID]` shows gaps and usage.
+- `kah ledger [SESSION_ID]` shows source-linked intent.
+
+Observer failures are recorded as gaps or service failures and can block
+review or completion; the native session stays usable.
+
+## Session names
+
+With the observer attached, kah names a new session after its first prompt,
+using the project, the native ID and the prompt. Claude `--name`, existing
+resume names and later renames are kept. Names are cosmetic. `--no-observer`
+turns off automatic names.
+
+## Messaging a running session
+
+kah launches Codex with `--no-daemon` and Claude Code as a native interactive
 process. A session without a Codex control socket can receive messages through
-its recorded Herdr pane. Unattended run-ID controls work through their own Herdr
-panes. Shared history does not provide remote live control; see
-[startup modes](startup-modes.md) for the transport boundaries.
+the Herdr pane that kah recorded for it.
+Unattended runs are controlled through their own Herdr panes. Shared history
+does not give remote live control; see [startup modes](startup-modes.md).

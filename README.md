@@ -29,6 +29,20 @@ To understand kah in about ten minutes, open these files:
   the sandbox executor, Docker with the gVisor runtime and its container
   options.
 
+## Domains
+
+Every project lives under one of three directories, and the directory sets the
+policy kah applies to it:
+
+| Domain | Directory | Use it for | Agent commands | Observer review |
+| --- | --- | --- | --- | --- |
+| Mine | `~/repos/mine` | Your own projects | Native host permissions, network on; `--yolo` gives full host access | All three levels |
+| Research | `~/repos/research` | Other people's code you are working on, such as an open-source fix | gVisor sandbox, offline unless `--online` | All three levels |
+| Untrusted | `~/repos/untrusted` | Code you do not trust to run on your host | Same sandbox, offline unless `--online` | Jev screen only, as advisory flags |
+
+Unattended runs (`kah run`) execute agent commands in the sandbox in every
+domain. The review levels are described below.
+
 ## The observer
 
 - **Intent ledger.** kah stores the user's exact words with a reference to the
@@ -38,12 +52,15 @@ To understand kah in about ten minutes, open these files:
   requirements; each change is validated and kept in a durable intent history.
   `kah ledger` shows it and lets the user review, confirm, dismiss or promote
   items.
-- **Commit review in three levels.** First, Jev typed judgments check each
-  observed change to Git HEAD against the recorded intent. Second, in Mine and
-  Research, a separate native observer session reviews the change when that is
-  needed and reports with cited source evidence. Third, where native review is
-  enabled (Mine and Research), checkpoint reviews judge the delivered range as a
-  whole. Untrusted uses the first level only and returns advisory flags. An
+- **Commit review in three levels.**
+  1. Jev typed judgments check each observed change to Git HEAD against the
+     recorded intent.
+  2. In Mine and Research, a separate native observer session reviews the
+     change when that is needed and reports with cited source evidence.
+  3. In Mine and Research, checkpoint reviews judge the delivered range as a
+     whole.
+
+  Untrusted uses the first level only and returns advisory flags. An
   unattended run completes only when its tests pass and both completion
   judgments confirm the required outcomes, plus its checkpoint review where
   native review is enabled.
@@ -113,10 +130,8 @@ use configured thresholds. Jev is the only implemented judgment backend.
 
 ## The sandbox
 
-Projects live under `~/repos/mine`, `~/repos/research` or `~/repos/untrusted`,
-and the directory selects the policy. Mine uses the agent's native workspace
-permissions. In Research and Untrusted, and in every unattended run, agent
-commands run in the sandbox:
+In Research and Untrusted (see [Domains](#domains)), and in every unattended
+run, agent commands run in the sandbox:
 
 - **gVisor under a separate account.** Commands run in containers of the
   sandbox service account's rootless Docker daemon with the gVisor runtime

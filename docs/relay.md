@@ -1,90 +1,105 @@
-# Dispatch and verified user relays
+# Relays and dispatch
 
-For an explicit user decision relayed by a host orchestrator, use:
+How a user instruction given in one session reaches another: steering relayed
+by a host orchestrator, quote-verified relays with `kah relay`, and the
+requirements a dispatched run inherits from its parent session.
+
+Run these commands on the host. Both sessions must run under kah with its
+current host hooks; a session started with an older hook configuration needs a
+normal kah resume first. Use the native session ID, not a Herdr display name.
 
 ```sh
 kah steer RECEIVER_SESSION 'The user decided to change the output to RED.'
-```
-
-An embedded session without a control socket receives this through its recorded
-Herdr pane. The primary host hook retains the exact body as user intent with
-`origin=relayed` and the caller's Herdr agent name as `relayer` (or `operator` for
-an unnamed host caller). Jev still classifies steering, kind and supersession;
-the command does not force a kind or lower any threshold. `kah ledger` shows the
-relayer, including in JSON source provenance. No sender registration or original
-quote matching is needed. `--receipt ID` makes an explicit retry idempotent.
-
-This trusts host-side submission, not a cryptographic proof of the original user:
-Research/Untrusted tools have no Herdr socket, and kah's state is outside their
-writable boundary. Use host-side steering only when authorized to submit the user's instruction.
-The relayer is a courier, not a lower authority. Plain `[kah-reviewer]` messages
-remain delegate context and cannot enter the user ledger through this path.
-
-`kah relay` below remains available when original-quote verification is desired.
-
-Run these commands on the host. Both sessions must run under kah with the current native host hooks enabled.
-Use the native session ID, not a Herdr display name. A session started with an
-older hook configuration needs a normal kah resume to pick up new hook events.
-
-```sh
 kah relay sources SENDER_SESSION
 kah relay SENDER_SESSION RECEIVER_SESSION MESSAGE_ID 'Sender paraphrase'
 kah run --parent PARENT_SESSION --test 'your test command' 'Worker assignment'
 ```
 
-Relay reads the selected user text directly from the sender's native transcript.
-The message ID is the adapter's source record ID (for Claude, a native message
-UUID may have a content-block suffix). Delegate messages, tool results, summaries
-and subagent messages cannot supply a user quote. The complete selected text is
-copied verbatim with provider/session/message provenance; it is never extracted
-or summarized by a model. Relay preserves the complete selected user record and
-validates its source identity and content digest.
+## Relayed steering
 
-Jev checks whether the separate paraphrase is supported by the quote. Below 0.90
-support probability, or on judge failure, the paraphrase is labeled UNCONFIRMED.
-Even a supported paraphrase remains delegate context. The exact quote remains
-eligible for normal `steer:` / `aside:` and intent intake regardless of that check.
+When a host orchestrator passes on an explicit user decision, `kah steer`
+delivers it; an embedded session without a control socket receives it through
+its recorded Herdr pane.
 
-kah saves a private receipt before delivery. It uses an existing session-specific
-Codex native control endpoint when available, otherwise the recorded Herdr socket
-and pane. It never probes the global daemon. kah's primary host hook binds the
-pane to its native session; Herdr process-discovery IDs are advisory. The receiving
-hook compares the entire delivered envelope to the saved receipt before importing
-the quote. A forged prefix, wrong recipient or changed text gains no user authority.
-Claude's native multiline paste framing is decoded only as one complete block;
-its content must still match the receipt exactly.
+- kah records the exact text as user intent with `origin=relayed`. The
+  `relayer` is the caller's Herdr agent name, or `operator` for an unnamed host
+  caller. `kah ledger` shows the relayer, including in its JSON provenance.
+- Jev still classifies steering, kind and supersession. Relaying does not force
+  a kind or lower any threshold.
+- No sender registration or quote matching is needed. `--receipt ID` makes a
+  retry idempotent.
 
-The CLI prints the receipt ID and transport result. Submission is not a receiver
-acknowledgment: `received-RECEIPT.json` in the private observer session directory
-records receipt matching. Unknown transport outcomes are not automatically retried.
-The original receipt and delivery diagnostic remain private for inspection.
+This trusts host-side submission; it is not proof of what the user said.
+Research and Untrusted tools have no Herdr socket, and kah's state is outside
+their writable boundary (see [domains](../README.md#domains)). Use it only when
+you are authorized to submit the user's instruction. The relayer is a courier,
+not a lower authority. Plain `[kah-reviewer]` messages stay delegate context
+and cannot enter the user ledger this way.
 
-For dispatch, `--parent` selects the parent explicitly. Inside Codex, kah uses the
-native thread environment; inside a Herdr agent pane it uses kah's native host-hook
-binding. An ordinary shell without a parent starts an independent run. Constraints,
-invariants, prohibitions, validation rules, stop conditions, corrections and scope
-reductions are always inherited. Uncertain categories and inherited scope whose
-original expansion/reduction category is unavailable are retained conservatively.
-Only clear goal/outcome or scope-expansion items are relevance-filtered by Jev;
-uncertain relevance is retained. Dispatch considers active parent items and does not impose a selection or import
-count. An unreadable or invalid inherited source fails before a worker starts and
-never silently drops requirements. Inherited items remain whole and retain their
-original source references, so split unrelated requirements in the parent ledger
-when their scopes need to differ.
+## Quote-verified relays
 
-Before the first native tool, kah copies selected items into the worker ledger
-with original source pointers, categories and uncertainty. It preserves the worker
-assignment as the goal; parent completion evidence and replacement relationships
-do not become worker completion evidence. Uncertain parent relationships remain
-flagged for review. The completion controller also imports the items before
-evaluating a tool-free turn. Imports survive native resume and deduplicate by
-original source identity. Receipt intake uses a separate short I/O lock, so an
-in-flight background judge cannot stall receipt recording.
-The native startup hook supplies the selected inherited quotes before the worker
-plans its first action, without a startup-context size check. Native resume uses the current ledger instead of reinjecting an older
-parent context.
+Use `kah relay` when the receiver should get the user's original words,
+verified against the sender's transcript.
 
-Private kah host state is the trust boundary for receipts. Restricted tools cannot
-write it. This does not authenticate against another process already trusted to
-write the user's host state, and it does not retroactively promote old free-form
-reviewer messages that lack verified source pointers.
+- `kah relay sources SESSION` lists the user messages that can be relayed.
+  The message ID is the source record ID (for Claude, a native message UUID,
+  possibly with a content-block suffix).
+- kah copies the complete selected user message verbatim from the sender's
+  native transcript, with provider, session and message provenance, and
+  validates its source identity and content digest. A model never extracts or
+  summarizes it. Delegate messages, tool results, summaries and subagent
+  messages cannot supply a quote.
+- Jev checks whether your paraphrase is supported by the quote. Below 0.90
+  support probability, or if the judge fails, the paraphrase is labeled
+  `UNCONFIRMED`. Even a supported paraphrase stays delegate context. The exact
+  quote goes through normal `steer:` / `aside:` handling and intent intake
+  either way.
+
+### Delivery and receipts
+
+- kah saves a private receipt before delivery, then uses the session's Codex
+  control endpoint when available, otherwise its recorded Herdr pane. It never
+  probes the global Codex daemon.
+- The receiving hook compares the whole delivered message with the saved
+  receipt before importing the quote. A forged prefix, wrong recipient or
+  changed text gains no user authority. Claude's multiline paste framing is
+  decoded only as one complete block, and its content must still match.
+- The CLI prints the receipt ID and the transport result. Submission is not
+  acknowledgment: `received-RECEIPT.json` in the private observer session
+  directory records the match. Unknown transport outcomes are not retried
+  automatically.
+
+## Dispatch: inherited requirements
+
+`kah run --parent SESSION` starts a worker run that inherits requirements from
+a parent session. Without `--parent`, kah uses the native thread inside Codex,
+or kah's hook binding inside a Herdr agent pane. From an ordinary shell with no
+parent, the run is independent.
+
+What the worker inherits from the parent's active items:
+
+- Always: constraints, invariants, prohibitions, validation rules, stop
+  conditions, corrections and scope reductions.
+- Also kept: items with an uncertain category, and inherited scope whose
+  original category is unavailable.
+- Filtered by Jev for relevance: only clear goal or outcome items and scope
+  expansions. Uncertain relevance is kept.
+
+There is no selection or count limit. An unreadable or invalid inherited source
+fails the run before the worker starts; requirements are never dropped
+silently. Items stay whole with their original source references, so split
+unrelated requirements in the parent ledger when their scopes need to differ.
+
+Before the worker's first tool call, kah copies the selected items into the
+worker's ledger with their source pointers, categories and uncertainty, and
+the startup hook gives the worker the inherited quotes before it plans. The
+worker's assignment is its goal. The parent's completion evidence and
+replacement links do not carry over, and uncertain parent relationships stay
+flagged for review. Imports survive resume and are deduplicated by source; a
+resumed worker uses its current ledger rather than the parent context again.
+
+## Trust boundary
+
+kah's private host state is the trust boundary for receipts, and restricted
+tools cannot write it. This does not authenticate against another process that
+is already trusted to write your host state.
