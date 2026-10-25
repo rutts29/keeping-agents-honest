@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use or write about kah, please cite it as below."
+type: software
+title: "Keeping Agents Honest (kah)"
+abstract: >-
+  An observer-driven system that watches coding agents (Claude Code and
+  OpenAI Codex), checks their committed work against the user's stated
+  intent, and steers the agent back when its work drifts.
+authors:
+  - given-names: Ruttansh
+    family-names: Bhatelia
+    alias: rutts29
+repository-code: "https://github.com/rutts29/keeping-agents-honest"
+url: "https://github.com/rutts29/keeping-agents-honest"
+license: Apache-2.0
+keywords:
+  - coding agents
+  - claude code
+  - codex
+  - intent
+  - code review
+  - sandbox

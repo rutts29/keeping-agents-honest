@@ -1,9 +1,17 @@
 # Keeping Agents Honest
 
+Built by Ruttansh B. ([X](https://x.com/0xRutts) ·
+[LinkedIn](https://www.linkedin.com/in/ruttansh/))
+
 Keeping Agents Honest (`kah`) is an observer-driven system that watches coding
 agents (Claude Code and OpenAI Codex) and checks their work against the
 user's stated intent. It records what the user asked for, reviews the agent's
 committed changes against it, and steers the agent back when its work drifts.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/kah-context-dark.svg">
+  <img src="docs/images/kah-context.svg" alt="System context. A developer prompts a native coding agent, Claude Code or Codex, and runs kah commands. kah receives the agent's hook events and commits and sends labelled findings and reminders back. kah asks the TypeSafe Jev API typed questions. The agent and kah's native observer session call the model providers with the user's login.">
+</picture>
 
 ## Start here
 
@@ -318,5 +326,6 @@ verified during development.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). kah includes code adapted from driftctl (MIT);
-see [NOTICE](NOTICE).
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). kah includes
+code adapted from driftctl (MIT); NOTICE keeps its copyright and permission
+notice. To cite kah, use [CITATION.cff](CITATION.cff).
