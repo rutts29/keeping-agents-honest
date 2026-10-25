@@ -145,7 +145,7 @@ run, agent commands run in the sandbox:
 
 - **gVisor under a separate account.** Commands run in containers of the
   sandbox service account's rootless Docker daemon with the gVisor runtime
-  (`runsc`). On the author's server gVisor runs on a host without KVM.
+  (`runsc`). On my server gVisor runs on a host without KVM.
 - **Locked-down containers.** Read-only root filesystem, `--cap-drop ALL`,
   `no-new-privileges`, and network `none` unless `--online` is given. The
   project directory is writable; the native Codex binary is mounted read-only
@@ -168,15 +168,15 @@ Claude Code's file-tool rules in
 
 ## Scope
 
-This repository is the open-source release of the author's personal
-development setup: the source of kah and of the sandboxed deployment it runs in
-on the author's own server. That deployment is kah with Claude Code and Codex,
-a gVisor sandbox under a dedicated service account, and Herdr panes. It is why
-the requirements below list that full custom setup.
+This repository is the open-source release of my personal development setup:
+the source of kah and of the sandboxed deployment it runs in on my own server.
+That deployment is kah with Claude Code and Codex, a gVisor sandbox under a
+dedicated service account, and Herdr panes. It is why the requirements below
+list that full custom setup.
 The ideas are free to borrow.
 
-kah is built around the two ways its author works every day: Mine for their own
-projects and Research for third-party repos. Those are the paths where every
+kah is built around the two ways I work every day: Mine for my own projects
+and Research for third-party repos. Those are the paths where every
 review level is in daily use. Untrusted mode and unattended runs work and are
 being brought to the same level; see [Roadmap](#roadmap).
 
@@ -236,7 +236,7 @@ To run the default tests, also:
   `pidwait`, and PTY support.
 - A writable temporary directory that allows executables.
 
-To run kah itself, as on the author's server:
+To run kah itself, as on my server:
 
 - Codex at `~/.local/bin/codex` with its native login. kah needs it even when
   the agent is Claude Code: every unattended run, every native observer

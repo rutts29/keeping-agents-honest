@@ -48,7 +48,7 @@ file: 37 seconds after the reminder for Codex and 70 seconds for Claude Code.
 
 ## Live end-to-end runs
 
-kah ran against real Claude Code and Codex sessions on the author's server,
+kah ran against real Claude Code and Codex sessions on my server,
 with the full sandbox setup described in the README. Across the two
 providers, these runs covered:
 
