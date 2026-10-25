@@ -168,11 +168,17 @@ Claude Code's file-tool rules in
 
 ## Scope
 
-This repository is proof of work: the source of kah and of the sandboxed
-deployment it runs in on the author's own server. That deployment is kah with
-Claude Code and Codex, a gVisor sandbox under a dedicated service account, and
-Herdr panes. It is why the requirements below list that full custom setup.
+This repository is the open-source release of the author's personal
+development setup: the source of kah and of the sandboxed deployment it runs in
+on the author's own server. That deployment is kah with Claude Code and Codex,
+a gVisor sandbox under a dedicated service account, and Herdr panes. It is why
+the requirements below list that full custom setup.
 The ideas are free to borrow.
+
+kah is built around the two ways its author works every day: Mine for their own
+projects and Research for third-party repos. Those are the paths where every
+review level is in daily use. Untrusted mode and unattended runs work and are
+being brought to the same level; see [Roadmap](#roadmap).
 
 - `make install` builds and installs `kah` and its shell helpers. Docker, gVisor,
   the service account, the sandbox image, the agent CLIs, Herdr and logins are
@@ -197,9 +203,13 @@ in more than one place, so search for each before changing it:
 
 ### Roadmap
 
-Next: kah as a standalone install. The observer (intent ledger, commit review,
-steering) separated from the sandbox, so that it can be set up in other agent
-harnesses with a short setup.
+Next:
+
+- Untrusted mode and unattended runs at the same level as Mine and Research,
+  including the full three-level review for Untrusted.
+- A general release: kah as a standalone install, with the observer (intent
+  ledger, commit review, steering) separated from the sandbox, so that it can
+  be set up in any agent client or harness with a short setup.
 
 ## Requirements
 

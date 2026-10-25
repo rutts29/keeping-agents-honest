@@ -95,6 +95,14 @@ These are not checked by tooling; reviewers apply them.
 - For provider integration changes, use the official documentation or source
   for the provider version in question.
 
+## Mode status
+
+Mine and Research are the primary paths and use all three review levels.
+Untrusted mode (first review level only, advisory flags) and unattended runs
+(`kah run`) are in progress. Their narrower scope is known work on the
+roadmap, not a defect: do not report it as a bug or change it unless the task
+asks for that work.
+
 ## Safety notes for coding agents
 
 - **Live tests cost money.** Tests that start real Codex or Claude Code
